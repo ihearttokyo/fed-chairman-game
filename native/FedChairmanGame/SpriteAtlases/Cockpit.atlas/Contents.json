@@ -1,0 +1,9 @@
+{
+  "info" : {
+    "author" : "codex",
+    "version" : 1
+  },
+  "properties" : {
+    "provides-namespace" : true
+  }
+}

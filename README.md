@@ -1,6 +1,6 @@
 # Fed Chairman Game
 
-Fed Chairman Game is a clean-room macOS desktop simulation about the pressure of running monetary policy across real four-year Fed Chair terms.
+Fed Chairman Game is a native macOS simulation about the pressure of running monetary policy across real four-year Fed Chair terms.
 
 Players make one policy decision per quarter, read the briefing, watch credibility and macro lags transmit through the economy, then face a reappointment decision after 16 quarters. Reappointed chairs continue into another full term with one continuous career history.
 
@@ -8,106 +8,117 @@ This project is independent and is not affiliated with, sponsored by, or endorse
 
 ## Beta Scope
 
-- Native macOS desktop app built with Tauri 2 and Rust.
+- Native macOS app built with SwiftUI and SpriteKit.
 - Classic Monetary Policy Mode only: fixed four-year, 16-quarter terms.
 - One-click rate decisions plus validated custom basis-point moves.
 - Deterministic seeded shocks, credibility, policy lags, scorecards, and reappointment debriefs.
-- Full-career chart and table history that append across terms.
+- Full-career chart history that appends across terms.
 - Portable `.fedchair-save.json` saves with tamper-evident SHA-256 digests.
 - CSV, JSON, and Markdown exports for the full career timeline.
-- Accessible light/dark cockpit theme, reduced motion support, keyboard shortcuts, and fail-closed Web Audio.
+- Native dock panels for Newspaper, Help, and Settings with reduced-motion support.
 
-The release direction is intentionally narrow: one macOS desktop application. There are no browser-launcher, website, or standalone local-server product paths.
+The release direction is intentionally narrow: one native macOS application. There are no browser-launcher, website, standalone local-server, DMG, or ZIP product paths.
 
 ## Gameplay Loop
 
-1. Read the quarterly briefing and any shock report.
+1. Read the quarterly newspaper briefing.
 2. Inspect inflation, unemployment, fed funds, credibility, and the policy path.
 3. Commit exactly one policy move for the quarter.
-4. Review the model trace and three-month transmission readout.
+4. Review the fixed policy decision tape and three-month transmission readout.
 5. Complete 16 quarters, face reappointment, then continue or retire when eligible.
 
-## Development
+## Native Development
+
+The native product lives in `native/FedChairmanGame`.
 
 ```bash
-npm install
-npm run dev
+cd native/FedChairmanGame
+xcodegen generate
+swift build
+swift test
+xcodebuild test -project FedChairmanGameNative.xcodeproj -scheme FedChairmanGameNative -destination 'platform=macOS'
 ```
 
-`npm run dev` opens the desktop app in Tauri. Development tooling may start a local UI process, but the product direction and shipped app are desktop-only.
-
-## Build
-
-```bash
-npm run build
-```
-
-This builds the production macOS app bundle through Tauri.
-
-For a local beta candidate:
-
-```bash
-npm run package:mac
-```
-
-The packaging command stages a clean app bundle outside the FileProvider-backed project folder, strips extended attributes, ad-hoc signs it, creates a local macOS disk image, mounts it read-only, verifies the mounted app signature, and performs a launch smoke.
-
-Current limitation: beta builds are ad-hoc signed, not Developer ID signed or notarized.
-
-## Verification
+Root `npm` scripts are compatibility shims for the native app only. They do not install Node dependencies or build a web surface.
 
 ```bash
 npm run typecheck
 npm run lint
-npm test -- --run --maxWorkers=1
-npm run build:frontend
-npm run perf:budget
-npm run e2e
-cargo fmt --manifest-path src-tauri/Cargo.toml --check
-cargo check --manifest-path src-tauri/Cargo.toml
-npm run build
-npm run verify:desktop
+npm test
+npm run test:ui
 ```
 
-Fresh machines can install Playwright Chromium with:
+## Build And Install
+
+Create a local native release candidate:
 
 ```bash
-npm run playwright:install
+npm run build
 ```
 
-`npm run e2e` also repairs a missing Playwright Chromium cache before running.
+Install the verified local build into `/Applications`:
+
+```bash
+npm run install:mac
+```
+
+The local release-candidate path creates and verifies an `.app` bundle only. It does not create a DMG or ZIP. Local builds are ad-hoc signed for private machine testing.
+
+## Production Signing
+
+Developer ID signing and notarization are scripted but require Apple credentials:
+
+```bash
+npm run package:production
+```
+
+The production script archives with hardened runtime, submits the app to Apple notarization, staples the accepted ticket, verifies Gatekeeper acceptance, and keeps the release surface focused on the notarized `.app` plus manifests.
+
+## Verification
+
+```bash
+npm run native:generate
+npm run typecheck
+npm run lint
+npm test
+npm run test:ui
+npm run build
+```
+
+The native release-candidate script also runs its own formatting, lint, unit-test, UI-test, archive, codesign, manifest, and optional install gates.
 
 ## Tech Stack
 
-- React 19, TypeScript, Vite
-- Zustand for local state
-- Recharts for the mandate dashboard
-- Zod for save/session validation
-- Vitest and Playwright for test coverage
-- Tauri 2 and Rust for native desktop packaging
+- Swift 6.1
+- SwiftUI for native macOS app structure and controls
+- SpriteKit for the animated mandate dashboard graph
+- AppKit where macOS save/open panels, sounds, keyboard dispatch, and packaging behavior require it
+- XcodeGen for reproducible Xcode project generation
+- Swift Testing and XCUITest for core and native UI coverage
 
 ## Project Map
 
 ```text
-src/
-  engine/       deterministic macro model, policy decisions, score engine
-  features/     gameplay panels: briefing, policy, history, results, export
-  state/        session store, save-file envelope, exporters, schema validation
-  ui/           shared visual components and theme support
-src-tauri/      Tauri/Rust desktop shell
-scripts/        desktop packaging, desktop verification, and performance-budget scripts
-e2e/            Playwright gameplay coverage
+native/FedChairmanGame/
+  Sources/FedChairmanCore/       deterministic macro model, saves, exports, debriefs
+  Sources/FedChairmanNativeApp/  SwiftUI/SpriteKit native cockpit
+  Tests/                         Swift core tests and native macOS UI tests
+  Assets.xcassets/               native app icon assets
+  SpriteAtlases/                 original generated cockpit art
+  scripts/                       native release-candidate and production packaging
 ```
+
+The old Web/Tauri source has been removed from the release tree. Historical web code remains available through git history only.
 
 ## Release Artifacts
 
-Generated artifacts are intentionally ignored by git:
+Generated artifacts are ignored by git:
 
 - `release/`
-- `dist/`
-- `src-tauri/target/`
+- `native/FedChairmanGame/.build/`
+- `native/FedChairmanGame/release/`
 
-Build artifacts locally when cutting a private beta release. Do not commit generated app bundles, disk images, or build output.
+Do not commit generated app bundles, disk images, ZIPs, build output, or notarization upload archives.
 
 ## Clean-Room Discipline
 
@@ -118,3 +129,4 @@ Supporting docs:
 - `ASSET_PROVENANCE.md`
 - `CLEANROOM.md`
 - `THIRD_PARTY_NOTICES.md`
+- `native/FedChairmanGame/NATIVE_MIGRATION_STATUS.md`

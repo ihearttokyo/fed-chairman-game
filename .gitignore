@@ -8,13 +8,15 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-dist
-dist-ssr
 release
-src-tauri/target
+native/FedChairmanGame/.build
+native/FedChairmanGame/release
 playwright-report
 test-results
 *.local
+*.dmg
+*.zip
+*.app
 
 # Editor directories and files
 .vscode/*

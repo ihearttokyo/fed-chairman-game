@@ -1,17 +1,17 @@
 # Asset Provenance
 
-All visual and audio assets currently used by Classic Monetary Policy Mode are original project assets or runtime-generated browser output.
+All visual and audio assets currently used by Classic Monetary Policy Mode are original project assets or native runtime output.
 
 ## In-repo assets
 
-- `public/favicon.svg`: hand-authored abstract chart/rate mark created for this project.
-- `src-tauri/icons/*`: original macOS app icon generated for this project with OpenAI image generation on 2026-05-31, using a prompt for an abstract monetary-policy command dial. The prompt explicitly prohibited Federal Reserve seals, official government logos, real buildings, flags, text, or letters.
-- `src/ui/BrandMark.tsx`: hand-authored SVG React component derived from the same abstract mark.
-- CSS chart-paper grids, progress rails, mandate meters, and command-center panel styling in `src/index.css`: authored from scratch for this project.
+- `native/FedChairmanGame/SpriteAtlases/Cockpit.atlas/newspaper-icon.png`, `help-icon.png`, `settings-icon.png`, and `cockpit-paper-texture.png`: original cockpit UI art generated for this project with OpenAI image generation on 2026-05-31. Prompts requested abstract newspaper/help/settings command assets and a subtle paper/control-surface texture, while explicitly excluding Federal Reserve seals, government logos, buildings, flags, official emblems, copied interface chrome, text, and letters.
+- `native/FedChairmanGame/Sources/FedChairmanNativeApp/Resources/newspaper-panel.png` and `native/FedChairmanGame/SpriteAtlases/Cockpit.atlas/newspaper-panel.png`: original generated newspaper briefing panel art created on 2026-06-01 for the native macOS liquid-glass dock briefing. The prompt requested a transparent-safe antique newspaper panel texture with mahogany desk warmth and no readable text, letters, official marks, Federal Reserve seals, flags, buildings, dollar signs, or copied UI.
+- `native/FedChairmanGame/Assets.xcassets/AppIcon.appiconset/*`, `native/FedChairmanGame/App/AppIconSource.png`, and `native/FedChairmanGame/App/AppIcon.icns`: original native macOS app icon generated for this project with OpenAI image generation on 2026-06-01. The prompt requested a premium command-desk instrument with abstract policy lever, economic traces, rate pips, and newspaper texture, while explicitly excluding Federal Reserve seals, flags, buildings, official emblems, dollar signs, text, and letters.
+- Native SwiftUI/SpriteKit chart grids, progress rails, mandate meters, policy buttons, and command-desk panel styling in `native/FedChairmanGame/Sources/FedChairmanNativeApp`: authored from scratch for this project.
 
 ## Audio
 
-No audio files are bundled. All sound is generated at runtime through Web Audio oscillator/gain nodes in `src/audio`.
+No audio files are bundled. Current cockpit feedback uses native macOS system sounds through AppKit and respects the in-game sound and reduced-noise settings.
 
 ## Prohibited sources
 

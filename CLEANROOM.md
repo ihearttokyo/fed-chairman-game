@@ -1,6 +1,6 @@
 # Clean-Room Release Rules
 
-This game uses original implementation, copy, visual styling, and synthesized browser audio.
+This game uses original implementation, copy, visual styling, generated native UI art, and native runtime audio feedback.
 
 Do not add:
 

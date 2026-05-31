@@ -1,4 +1,4 @@
-name: Verify
+name: Verify Native macOS
 
 on:
   push:
@@ -7,58 +7,43 @@ on:
     branches: [main]
 
 jobs:
-  app:
-    name: App checks
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Unit tests
-        run: npm test -- --run --maxWorkers=1
-
-      - name: Build
-        run: npm run build:frontend
-
-      - name: Performance budget
-        run: npm run perf:budget
-
-  desktop:
-    name: Desktop app build
+  native:
+    name: Native app checks
     runs-on: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Install native tooling
+        run: brew install xcodegen swiftformat swiftlint
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Generate Xcode project
+        working-directory: native/FedChairmanGame
+        run: xcodegen generate
 
-      - name: Rust format
-        run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+      - name: Swift build
+        working-directory: native/FedChairmanGame
+        run: swift build
 
-      - name: Desktop beta package
-        run: npm run package:mac
+      - name: SwiftFormat lint
+        working-directory: native/FedChairmanGame
+        run: swiftformat Sources Tests --swift-version 6.1 --lint
+
+      - name: SwiftLint
+        working-directory: native/FedChairmanGame
+        run: swiftlint lint --strict
+
+      - name: Swift tests
+        working-directory: native/FedChairmanGame
+        run: swift test
+
+      - name: Native UI tests
+        working-directory: native/FedChairmanGame
+        run: xcodebuild test -project FedChairmanGameNative.xcodeproj -scheme FedChairmanGameNative -destination 'platform=macOS'
+
+      - name: Local release candidate
+        working-directory: native/FedChairmanGame
+        run: scripts/package-native-release-candidate.sh

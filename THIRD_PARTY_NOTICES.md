@@ -1,23 +1,20 @@
 # Third-Party Notices
 
-This project uses npm packages for the React application, charting, icons, state, validation, testing, and build tooling. Direct dependencies are listed in `package.json`; exact resolved versions are listed in `package-lock.json`.
+The release app is native SwiftUI/SpriteKit and uses Apple platform frameworks bundled with macOS and Xcode:
 
-## Direct runtime dependencies
+- SwiftUI
+- SpriteKit
+- AppKit
+- CryptoKit
+- XCTest and XCUITest for development verification
 
-- React / React DOM
-- Zustand
-- Zod
-- Recharts
-- Lucide React
+Project-generation, formatting, linting, and packaging tools are development-only:
 
-## Development and test dependencies
+- XcodeGen
+- SwiftFormat
+- SwiftLint
+- Xcode command-line tools
 
-- Vite
-- TypeScript
-- ESLint
-- Vitest
-- Testing Library
-- Playwright
-- axe-core Playwright integration
+No third-party runtime packages, external image assets, external audio packs, backend services, telemetry SDKs, or live-data feeds are bundled with the native app.
 
-Before commercial distribution, run a dependency license report from `package-lock.json` and archive it with the release artifacts. No third-party image, font, or audio assets are bundled.
+Before commercial distribution, archive this notice with the release manifest and re-run a dependency review if any non-Apple runtime package is introduced.
