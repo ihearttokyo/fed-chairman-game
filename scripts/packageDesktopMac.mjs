@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { execFileSync, spawn } from 'node:child_process'
@@ -41,12 +41,20 @@ function createCleanDmg(stagedAppPath, stagingRoot) {
     rmSync(releaseDmgPath, { force: true })
   }
 
+  const outputRoot = mkdtempSync(join(tmpdir(), 'fed-chairman-desktop-dmg-output-'))
+  const tempDmgPath = join(outputRoot, `${appName}.dmg`)
+
   signCleanApp(stagedAppPath)
-  execFileSync(
-    'hdiutil',
-    ['create', '-ov', '-format', 'UDZO', '-volname', appName, '-srcfolder', stagingRoot, releaseDmgPath],
-    { stdio: 'inherit' },
-  )
+  try {
+    execFileSync(
+      'hdiutil',
+      ['create', '-ov', '-format', 'UDZO', '-volname', appName, '-srcfolder', stagingRoot, tempDmgPath],
+      { stdio: 'inherit' },
+    )
+    copyFileSync(tempDmgPath, releaseDmgPath)
+  } finally {
+    rmSync(outputRoot, { recursive: true, force: true })
+  }
 }
 
 async function packageDesktopMac() {

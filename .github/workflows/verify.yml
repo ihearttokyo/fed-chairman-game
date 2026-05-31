@@ -60,8 +60,5 @@ jobs:
       - name: Rust format
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
 
-      - name: Desktop app build
-        run: npm run build
-
-      - name: Desktop bundle verification
-        run: npm run verify:desktop
+      - name: Desktop beta package
+        run: npm run package:mac

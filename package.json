@@ -12,6 +12,7 @@
     "playwright:install": "playwright install chromium",
     "pree2e": "playwright install chromium",
     "e2e": "playwright test",
+    "prebuild": "node scripts/cleanDesktopBuild.mjs",
     "build": "tauri build",
     "build:frontend": "tsc -b && vite build",
     "tauri": "tauri",
