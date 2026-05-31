@@ -5,6 +5,7 @@ All visual and audio assets currently used by Classic Monetary Policy Mode are o
 ## In-repo assets
 
 - `public/favicon.svg`: hand-authored abstract chart/rate mark created for this project.
+- `src-tauri/icons/*`: original macOS app icon generated for this project with OpenAI image generation on 2026-05-31, using a prompt for an abstract monetary-policy command dial. The prompt explicitly prohibited Federal Reserve seals, official government logos, real buildings, flags, text, or letters.
 - `src/ui/BrandMark.tsx`: hand-authored SVG React component derived from the same abstract mark.
 - CSS chart-paper grids, progress rails, mandate meters, and command-center panel styling in `src/index.css`: authored from scratch for this project.
 
