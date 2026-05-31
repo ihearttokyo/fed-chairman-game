@@ -1,5 +1,5 @@
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
-import { isAbsolute, join, resolve } from 'node:path'
+import { extname, isAbsolute, join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { execFileSync, spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -8,15 +8,15 @@ import { dirname } from 'node:path'
 const projectRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 const appName = 'Fed Chairman Game'
 const defaultDmgPath = join(projectRoot, 'release', `${appName}.dmg`)
-const tauriDmgPath = join(projectRoot, 'src-tauri', 'target', 'release', 'bundle', 'dmg', `${appName}_0.1.0_aarch64.dmg`)
+const defaultAppPath = join(projectRoot, 'src-tauri', 'target', 'release', 'bundle', 'macos', `${appName}.app`)
 const requestedDmgPath = process.argv[2]
-const dmgPath = requestedDmgPath
+const bundlePath = requestedDmgPath
   ? isAbsolute(requestedDmgPath)
     ? requestedDmgPath
     : resolve(process.cwd(), requestedDmgPath)
-  : existsSync(defaultDmgPath)
-    ? defaultDmgPath
-    : tauriDmgPath
+  : existsSync(defaultAppPath)
+    ? defaultAppPath
+    : defaultDmgPath
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -45,14 +45,21 @@ async function launchSmoke(executablePath) {
   }
 }
 
-async function verifyDesktopBundle() {
-  if (process.platform !== 'darwin') {
-    throw new Error('Desktop bundle verification is only supported on macOS.')
-  }
-  if (!existsSync(dmgPath)) {
-    throw new Error(`Missing ${dmgPath}. Run npm run desktop:build first.`)
-  }
+async function verifyAppBundle(appPath, { stripExtendedAttributes = false } = {}) {
+  const infoPlistPath = join(appPath, 'Contents', 'Info.plist')
+  const executablePath = join(appPath, 'Contents', 'MacOS', 'fed-chairman-game')
 
+  if (stripExtendedAttributes) {
+    execFileSync('xattr', ['-cr', appPath], { stdio: 'ignore' })
+  }
+  execFileSync('plutil', ['-lint', infoPlistPath], { stdio: 'inherit' })
+  execFileSync('codesign', ['--verify', '--deep', '--strict', '--verbose=2', appPath], { stdio: 'inherit' })
+  await launchSmoke(executablePath)
+
+  console.log(`Verified ${appPath}`)
+}
+
+async function verifyDmgBundle(dmgPath) {
   const mountPoint = mkdtempSync(join(tmpdir(), 'fed-chairman-desktop-dmg-'))
   let attached = false
 
@@ -64,13 +71,7 @@ async function verifyDesktopBundle() {
     attached = true
 
     const appPath = join(mountPoint, `${appName}.app`)
-    const infoPlistPath = join(appPath, 'Contents', 'Info.plist')
-    const executablePath = join(appPath, 'Contents', 'MacOS', 'fed-chairman-game')
-
-    execFileSync('plutil', ['-lint', infoPlistPath], { stdio: 'inherit' })
-    execFileSync('codesign', ['--verify', '--deep', '--strict', '--verbose=2', appPath], { stdio: 'inherit' })
-    await launchSmoke(executablePath)
-
+    await verifyAppBundle(appPath)
     console.log(`Verified ${dmgPath}`)
   } finally {
     if (attached) {
@@ -78,6 +79,27 @@ async function verifyDesktopBundle() {
     }
     rmSync(mountPoint, { recursive: true, force: true })
   }
+}
+
+async function verifyDesktopBundle() {
+  if (process.platform !== 'darwin') {
+    throw new Error('Desktop bundle verification is only supported on macOS.')
+  }
+  if (!existsSync(bundlePath)) {
+    throw new Error(`Missing ${bundlePath}. Run npm run build or npm run package:mac first.`)
+  }
+
+  if (bundlePath.endsWith('.app')) {
+    await verifyAppBundle(bundlePath, { stripExtendedAttributes: true })
+    return
+  }
+
+  if (extname(bundlePath) === '.dmg') {
+    await verifyDmgBundle(bundlePath)
+    return
+  }
+
+  throw new Error(`Unsupported desktop bundle type: ${bundlePath}`)
 }
 
 verifyDesktopBundle().catch((error) => {

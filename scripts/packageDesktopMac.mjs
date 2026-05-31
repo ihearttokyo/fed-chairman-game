@@ -54,7 +54,7 @@ async function packageDesktopMac() {
     throw new Error('Desktop DMG packaging is only supported on macOS.')
   }
 
-  await run('npm', ['run', 'desktop:build'])
+  await run('npm', ['run', 'build'])
   if (!existsSync(builtAppPath)) {
     throw new Error(`Expected ${builtAppPath} after desktop build.`)
   }
@@ -66,7 +66,7 @@ async function packageDesktopMac() {
   try {
     execFileSync('ditto', ['--norsrc', '--noextattr', builtAppPath, stagedAppPath], { stdio: 'inherit' })
     createCleanDmg(stagedAppPath, stagingRoot)
-    await run('npm', ['run', 'desktop:verify', '--', releaseDmgPath])
+    await run('npm', ['run', 'verify:desktop', '--', releaseDmgPath])
     console.log(`Created ${releaseDmgPath}`)
   } finally {
     rmSync(stagingRoot, { recursive: true, force: true })

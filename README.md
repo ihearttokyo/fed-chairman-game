@@ -1,21 +1,23 @@
 # Fed Chairman Game
 
-Classic Monetary Policy Mode is a clean-room Fed Chair simulation about one hard question: can you keep the economy close enough to mandate targets to earn another four-year term?
+Fed Chairman Game is a clean-room macOS desktop simulation about one hard question: can you keep the economy close enough to mandate targets to earn another four-year term?
 
-Players make one-click federal funds rate decisions across a real 16-quarter term, read the news shock, watch credibility and macro lags transmit through the economy, then face a reappointment gate. Reappointed chairs continue into another full term with a persistent career timeline.
+Players make atomic federal funds rate decisions across real 16-quarter Fed Chair terms, read deterministic quarterly briefings, watch credibility and macro lags transmit through the economy, then face a reappointment gate. Reappointed chairs continue into another full term with a persistent career timeline.
 
 This project is independent and is not affiliated with, sponsored by, or endorsed by the Board of Governors of the Federal Reserve System or any Federal Reserve Bank.
 
-## What It Includes
+## Beta Scope
 
+- Native macOS app delivered through Tauri 2 and Rust.
 - Classic Monetary Policy Mode only: fixed four-year, 16-quarter terms.
-- One-click policy moves plus custom basis-point moves.
+- One-click policy moves plus validated custom basis-point moves.
 - Deterministic seeded shocks, credibility, policy lags, scorecards, and reappointment debriefs.
 - Full-career chart/table history that appends across terms instead of resetting.
 - Portable `.fedchair-save.json` saves with tamper-evident SHA-256 digests.
 - CSV, JSON, and Markdown exports for the full career timeline.
 - Accessible light/dark cockpit theme, reduced motion support, keyboard shortcuts, and Web Audio that fails closed.
-- Web app, local click-to-run launcher, standalone local Mac bundle, and Tauri/Rust desktop DMG packaging.
+
+There are no browser-launcher or standalone local-server release paths. The React/Vite frontend is internal app UI code that is bundled into the macOS application at build time.
 
 ## Gameplay Loop
 
@@ -25,52 +27,24 @@ This project is independent and is not affiliated with, sponsored by, or endorse
 4. Review the model trace and three-month transmission readout.
 5. Complete 16 quarters, face reappointment, then continue or retire when eligible.
 
-## Quick Start
+## Development
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173/`.
+`npm run dev` opens the Tauri desktop app. During development, Tauri starts Vite as a local UI build server; the shipped app loads bundled files from `dist/`, not a website or separate server.
 
-## Click-To-Run Options
-
-### Local macOS command launcher
-
-Double-click:
-
-```text
-Fed Chairman Game.command
-```
-
-Or run:
+## Build A macOS Beta
 
 ```bash
-npm run launch
+npm run package:mac
 ```
 
-This builds when needed, starts a local production preview server, and opens the game in your browser.
+The package command builds the Tauri app bundle, stages a clean copy outside the FileProvider-backed project folder, strips extended attributes, ad-hoc signs it, creates `release/Fed Chairman Game.dmg`, mounts it read-only, verifies the mounted app signature, and performs a launch smoke.
 
-### Native macOS desktop DMG
-
-```bash
-npm run package:desktop:mac
-open "release/Fed Chairman Game.dmg"
-```
-
-The desktop shell uses Tauri/Rust to load the same React build inside a native macOS window. The package command builds the app, stages a clean copy outside the FileProvider-backed project folder, strips extended attributes, ad-hoc signs it, creates `release/Fed Chairman Game.dmg`, mounts it read-only, verifies the mounted app signature, and performs a launch smoke.
-
-Current limitation: this is ad-hoc signed, not Developer ID signed or notarized.
-
-### Self-contained local server bundle
-
-```bash
-npm run package:mac:standalone
-npm run verify:mac:standalone
-```
-
-This creates `release/Fed Chairman Game Standalone.zip`, which contains a local-server `.app` with built assets plus embedded Node runtime dependencies. Use the Tauri DMG for the preferred desktop path.
+Current limitation: beta builds are ad-hoc signed, not Developer ID signed or notarized.
 
 ## Verification
 
@@ -78,12 +52,13 @@ This creates `release/Fed Chairman Game Standalone.zip`, which contains a local-
 npm run typecheck
 npm run lint
 npm test -- --run --maxWorkers=1
-npm run build
+npm run build:frontend
 npm run perf:budget
 npm run e2e
 cargo fmt --manifest-path src-tauri/Cargo.toml --check
 cargo check --manifest-path src-tauri/Cargo.toml
-npm run desktop:verify
+npm run build
+npm run verify:desktop
 ```
 
 Fresh machines can install Playwright Chromium with:
@@ -112,20 +87,19 @@ src/
   state/        session store, save-file envelope, exporters, schema validation
   ui/           shared visual components and theme support
 src-tauri/      Tauri/Rust desktop shell
-scripts/        launch, packaging, verification, and performance-budget scripts
+scripts/        desktop packaging, desktop verification, and performance-budget scripts
 e2e/            Playwright gameplay coverage
 ```
 
 ## Release Artifacts
 
-Generated release artifacts are intentionally ignored by git:
+Generated artifacts are intentionally ignored by git:
 
-- `release/Fed Chairman Game.dmg`
-- `release/Fed Chairman Game Standalone.zip`
+- `release/`
 - `dist/`
 - `src-tauri/target/`
 
-Build them locally or attach them to a private GitHub release when needed.
+Build artifacts locally when cutting a private beta release. Do not commit generated app bundles, disk images, zips, or build output.
 
 ## Clean-Room Discipline
 

@@ -7,8 +7,8 @@ on:
     branches: [main]
 
 jobs:
-  web:
-    name: Web checks
+  app:
+    name: App checks
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -33,13 +33,13 @@ jobs:
         run: npm test -- --run --maxWorkers=1
 
       - name: Build
-        run: npm run build
+        run: npm run build:frontend
 
       - name: Performance budget
         run: npm run perf:budget
 
   desktop:
-    name: Desktop compile check
+    name: Desktop app build
     runs-on: macos-latest
     steps:
       - name: Checkout
@@ -60,5 +60,8 @@ jobs:
       - name: Rust format
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
 
-      - name: Desktop compile
-        run: cargo check --manifest-path src-tauri/Cargo.toml
+      - name: Desktop app build
+        run: npm run build
+
+      - name: Desktop bundle verification
+        run: npm run verify:desktop
