@@ -8,7 +8,7 @@
     "typecheck": "cd native/FedChairmanGame && swift build",
     "lint": "cd native/FedChairmanGame && swiftformat Sources Tests --swift-version 6.1 --lint && swiftlint lint --strict",
     "test": "cd native/FedChairmanGame && swift test",
-    "test:ui": "cd native/FedChairmanGame && xcodebuild test -project FedChairmanGameNative.xcodeproj -scheme FedChairmanGameNative -destination 'platform=macOS'",
+    "test:ui": "mkdir -p /tmp/fed-chairman-visual-smoke && chmod 777 /tmp/fed-chairman-visual-smoke && cd native/FedChairmanGame && xcodebuild test -project FedChairmanGameNative.xcodeproj -scheme FedChairmanGameNative -destination 'platform=macOS'",
     "verify:desktop": "npm run lint && npm test && npm run test:ui",
     "build": "cd native/FedChairmanGame && scripts/package-native-release-candidate.sh",
     "install:mac": "cd native/FedChairmanGame && scripts/package-native-release-candidate.sh --install",

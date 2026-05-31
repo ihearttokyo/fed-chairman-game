@@ -99,19 +99,28 @@ struct NativeCockpitView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .top) {
-            commandDeskBackground
-            VStack(spacing: 12) {
-                statusRail
-                dashboard
-                policyLever
-                metricsGrid
-                quarterReview
-            }
-            .padding(18)
+        GeometryReader { proxy in
+            let layout = cockpitLayoutMetrics(width: proxy.size.width, height: proxy.size.height)
+            ZStack(alignment: .top) {
+                CommandDeskBackground()
+                VStack(spacing: layout.spacing.cg) {
+                    statusRail
+                    dashboard(layout: layout)
+                    policyLever(layout: layout)
+                    metricsGrid(layout: layout)
+                    quarterReview(layout: layout)
+                }
+                .padding(layout.panelPadding.cg)
 
-            debriefOverlay
-            cockpitDock
+                debriefOverlay
+                cockpitDock(layout: layout)
+                Text(motionMode == .reduced ? "Reduced motion mode" : "Spring motion mode")
+                    .font(.system(size: 1))
+                    .foregroundStyle(.clear)
+                    .accessibilityLabel("motion-mode-\(motionMode == .reduced ? "reduced" : "spring")")
+                    .accessibilityIdentifier("motion-mode-\(motionMode == .reduced ? "reduced" : "spring")")
+                    .frame(width: 1, height: 1)
+            }
         }
         .onAppear {
             dockState.closeAll()
@@ -119,6 +128,7 @@ struct NativeCockpitView: View {
             if session.status == .notStarted {
                 store.start()
             }
+            configureUITestStateIfNeeded()
             autoPeekBriefing()
         }
         .onReceive(NotificationCenter.default.publisher(for: .policyShortcutAction)) { notification in
@@ -129,32 +139,14 @@ struct NativeCockpitView: View {
             }
             commit(action)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .closeCockpitOverlays)) { _ in
+            closeOverlays()
+        }
         .onChange(of: briefingKey) {
             autoPeekBriefing()
         }
         .onExitCommand {
             closeOverlays()
-        }
-    }
-
-    private var commandDeskBackground: some View {
-        LinearGradient(
-            colors: [
-                Color(red: 0.06, green: 0.025, blue: 0.012),
-                Color(red: 0.13, green: 0.065, blue: 0.03),
-                Color(red: 0.018, green: 0.035, blue: 0.03),
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing,
-        )
-        .ignoresSafeArea()
-        .overlay {
-            RadialGradient(colors: [Color.orange.opacity(0.24), .clear], center: .topLeading, startRadius: 30, endRadius: 520)
-                .ignoresSafeArea()
-        }
-        .overlay {
-            RadialGradient(colors: [Color.green.opacity(0.18), .clear], center: .bottomTrailing, startRadius: 80, endRadius: 760)
-                .ignoresSafeArea()
         }
     }
 
@@ -171,8 +163,8 @@ struct NativeCockpitView: View {
         .frame(maxWidth: .infinity, alignment: .trailing)
     }
 
-    private var dashboard: some View {
-        CommandPanel {
+    private func dashboard(layout: CockpitLayoutMetrics) -> some View {
+        CommandPanel(padding: layout.panelPadding.cg, tone: .monitor) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Mandate Dashboard")
@@ -194,14 +186,17 @@ struct NativeCockpitView: View {
                 reducedMotion: reduceMotion || session.ui.reducedMotion,
                 onInspectionIndexChanged: { inspectedChartIndex = $0 },
             )
-            .frame(height: 250)
+            .frame(height: layout.chartHeight.cg)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.16)))
+            .shadow(color: .black.opacity(0.45), radius: 16, y: 10)
         }
         .accessibilityIdentifier("mandate-dashboard")
     }
 
-    private var policyLever: some View {
-        CommandPanel {
-            VStack(spacing: 12) {
+    private func policyLever(layout: CockpitLayoutMetrics) -> some View {
+        CommandPanel(padding: layout.panelPadding.cg, tone: .keyboard) {
+            VStack(spacing: max(8, layout.spacing - 1).cg) {
                 HStack {
                     Text("Policy Lever")
                         .font(.system(size: 20, weight: .black, design: .rounded))
@@ -210,23 +205,24 @@ struct NativeCockpitView: View {
                         .font(.system(size: 16, weight: .bold, design: .rounded))
                         .foregroundStyle(.green)
                 }
-                HStack(spacing: 8) {
+                HStack(spacing: layout.policyKeySpacing.cg) {
                     ForEach(fixedActions, id: \.self) { action in
                         Button(policyActions[action]?.label ?? action.rawValue) {
                             commit(action)
                         }
-                        .buttonStyle(PolicyButtonStyle(pulse: decisionPulse))
+                        .buttonStyle(PolicyButtonStyle(pulse: decisionPulse, width: layout.policyKeyWidth.cg, height: layout.policyKeyHeight.cg))
                         .disabled(resultingRate(for: action) < 0 || resultingRate(for: action) > 20)
                     }
                     TextField("Custom bps", text: $customBps)
                         .textFieldStyle(.roundedBorder)
-                        .frame(width: 92)
+                        .frame(width: layout.customFieldWidth.cg)
                     Button("Commit") {
                         commitCustom()
                     }
-                    .buttonStyle(PolicyButtonStyle(pulse: decisionPulse))
+                    .buttonStyle(PolicyButtonStyle(pulse: decisionPulse, width: max(70, layout.policyKeyWidth + 4).cg, height: layout.policyKeyHeight.cg))
                     .disabled(customDelta == nil)
                 }
+                .frame(maxWidth: .infinity, alignment: .center)
                 DecisionTapeView(feedback: decisionFeedback, pulse: decisionPulse, motionMode: motionMode)
             }
         }
@@ -234,19 +230,19 @@ struct NativeCockpitView: View {
         .accessibilityIdentifier("policy-lever")
     }
 
-    private var metricsGrid: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 5), spacing: 10) {
-            metric("Inflation", value: session.current.inflation, suffix: "%", color: .orange)
-            metric("Unemployment", value: session.current.unemployment, suffix: "%", color: .blue)
-            metric("Fed Funds", value: session.current.fedFundsRate, suffix: "%", color: .green)
-            metric("Expectations", value: session.current.expectedInflation, suffix: "%", color: .mint)
-            metric("Credibility", value: session.current.credibility, suffix: "", color: .yellow)
+    private func metricsGrid(layout: CockpitLayoutMetrics) -> some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: layout.metricsColumns), spacing: 10) {
+            metric("Inflation", value: session.current.inflation, suffix: "%", color: .orange, layout: layout)
+            metric("Unemployment", value: session.current.unemployment, suffix: "%", color: .blue, layout: layout)
+            metric("Fed Funds", value: session.current.fedFundsRate, suffix: "%", color: .green, layout: layout)
+            metric("Expectations", value: session.current.expectedInflation, suffix: "%", color: .mint, layout: layout)
+            metric("Credibility", value: session.current.credibility, suffix: "", color: .yellow, layout: layout)
         }
         .accessibilityIdentifier("macro-metrics")
     }
 
-    private func metric(_ label: String, value: Double, suffix: String, color: Color) -> some View {
-        CommandPanel {
+    private func metric(_ label: String, value: Double, suffix: String, color: Color, layout: CockpitLayoutMetrics) -> some View {
+        CommandPanel(padding: max(10, layout.panelPadding - 2).cg, tone: .instrument) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(label)
                     .font(.caption.weight(.black))
@@ -259,8 +255,8 @@ struct NativeCockpitView: View {
         }
     }
 
-    private var quarterReview: some View {
-        CommandPanel {
+    private func quarterReview(layout: CockpitLayoutMetrics) -> some View {
+        CommandPanel(padding: layout.panelPadding.cg, tone: .instrument) {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Quarter Review")
                     .font(.headline.weight(.black))
@@ -300,7 +296,7 @@ struct NativeCockpitView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(height: 165, alignment: .top)
+        .frame(height: layout.quarterReviewHeight.cg, alignment: .top)
         .clipped()
         .accessibilityIdentifier("quarter-review")
     }
@@ -362,14 +358,15 @@ struct NativeCockpitView: View {
         }
     }
 
-    private var cockpitDock: some View {
+    private func cockpitDock(layout: CockpitLayoutMetrics) -> some View {
         VStack {
             Spacer()
             HStack(alignment: .bottom, spacing: 10) {
                 Spacer()
                 ForEach(dockState.cascadePlacements()) { placement in
-                    dockPanel(placement.panel)
-                        .frame(width: dockPanelWidth(placement.panel))
+                    dockPanel(placement.panel, layout: layout)
+                        .frame(width: dockPanelWidth(placement.panel, layout: layout))
+                        .frame(maxHeight: layout.dockPanelMaxHeight.cg, alignment: .bottom)
                         .offset(x: placement.xOffset, y: placement.yOffset)
                         .transition(motionMode == .reduced ? .opacity : .scale(scale: 0.62, anchor: .bottomTrailing).combined(with: .opacity))
                 }
@@ -379,29 +376,33 @@ struct NativeCockpitView: View {
                     } label: {
                         DockIcon(panel: panel)
                     }
-                    .buttonStyle(DockButtonStyle(isOpen: dockState.isOpen(panel, briefingVisible: briefingVisible)))
+                    .buttonStyle(DockButtonStyle(
+                        isOpen: dockState.isOpen(panel, briefingVisible: briefingVisible),
+                        width: layout.dockButtonWidth.cg,
+                        height: layout.dockButtonHeight.cg,
+                    ))
                     .accessibilityLabel("\(dockState.isOpen(panel, briefingVisible: briefingVisible) ? "Close" : "Open") \(panel.title.lowercased()) panel")
                     .accessibilityIdentifier("dock-\(panel.rawValue)")
                 }
             }
-            .padding(.horizontal, CockpitDockLayout.outerPadding)
+            .padding(.horizontal, layout.dockOuterPadding.cg)
             .padding(.top, 14)
-            .padding(.bottom, CockpitDockLayout.bottomLift)
+            .padding(.bottom, layout.dockBottomLift.cg)
             .background(alignment: .bottomTrailing) {
-                dockTray
-                    .padding(.trailing, CockpitDockLayout.outerPadding - 4)
+                dockTray(layout: layout)
+                    .padding(.trailing, max(0, layout.dockOuterPadding - 4).cg)
                     .padding(.bottom, 16)
             }
-            .offset(y: -72)
+            .offset(y: layout.dockVerticalOffset.cg)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
         .animation(motionMode == .reduced ? nil : .bouncy(duration: 0.36, extraBounce: 0.28), value: dockState.openPanels)
     }
 
-    private var dockTray: some View {
+    private func dockTray(layout: CockpitLayoutMetrics) -> some View {
         RoundedRectangle(cornerRadius: 28)
             .fill(.ultraThinMaterial)
-            .frame(width: 314, height: 126)
+            .frame(width: layout.dockTrayWidth.cg, height: layout.dockTrayHeight.cg)
             .overlay {
                 RoundedRectangle(cornerRadius: 28)
                     .fill(
@@ -422,14 +423,14 @@ struct NativeCockpitView: View {
             .accessibilityHidden(true)
     }
 
-    private func dockPanelWidth(_ panel: CockpitDockPanel) -> CGFloat {
+    private func dockPanelWidth(_ panel: CockpitDockPanel, layout: CockpitLayoutMetrics) -> CGFloat {
         switch panel {
         case .newspaper:
-            820
+            layout.newspaperPanelWidth.cg
         case .help:
-            800
+            layout.helpPanelWidth.cg
         case .settings:
-            340
+            layout.settingsPanelWidth.cg
         }
     }
 
@@ -504,125 +505,72 @@ struct NativeCockpitView: View {
         .animation(motionMode == .reduced ? nil : .bouncy(duration: 0.42, extraBounce: 0.18), value: session.status)
     }
 
-    private func dockPanel(_ panel: CockpitDockPanel) -> some View {
-        CommandPanel {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(panel == .help ? "Policy Notebook" : panel.title)
-                    .font(.headline.weight(.black))
-                if panel == .newspaper {
-                    newspaperPanelContent
-                } else if panel == .help {
-                    LazyVGrid(
-                        columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 4),
-                        alignment: .leading,
-                        spacing: 8,
-                    ) {
-                        ForEach(buildHelpTopics(session: session)) { topic in
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(topic.title)
-                                    .font(topic.isPrimary ? .caption.weight(.black) : .caption2.weight(.black))
-                                    .foregroundStyle(topic.isPrimary ? .green : .white.opacity(0.7))
-                                Text(topic.body)
-                                    .font(.caption2)
-                                    .lineLimit(2)
-                                    .foregroundStyle(.white.opacity(0.72))
+    private func dockPanel(_ panel: CockpitDockPanel, layout: CockpitLayoutMetrics) -> some View {
+        Group {
+            if panel == .newspaper {
+                NewspaperPanelView(briefing: briefing, layout: layout)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel(panel.title)
+                    .accessibilityIdentifier("\(panel.rawValue)-panel")
+            } else {
+                CommandPanel(padding: layout.panelPadding.cg, tone: .glass) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(panel == .help ? "Policy Notebook" : panel.title)
+                            .font(.headline.weight(.black))
+                        if panel == .help {
+                            LazyVGrid(
+                                columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 4),
+                                alignment: .leading,
+                                spacing: 8,
+                            ) {
+                                ForEach(buildHelpTopics(session: session)) { topic in
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(topic.title)
+                                            .font(topic.isPrimary ? .caption.weight(.black) : .caption2.weight(.black))
+                                            .foregroundStyle(topic.isPrimary ? .green : .white.opacity(0.7))
+                                        Text(topic.body)
+                                            .font(.caption2)
+                                            .lineLimit(2)
+                                            .foregroundStyle(.white.opacity(0.72))
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                                }
                             }
-                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                        } else {
+                            Toggle("Reduced motion", isOn: Binding(
+                                get: { session.ui.reducedMotion },
+                                set: { store.setReducedMotion($0) },
+                            ))
+                            Toggle("Sound", isOn: Binding(
+                                get: { session.ui.soundEnabled },
+                                set: { store.setSoundEnabled($0) },
+                            ))
+                            Toggle("Reduced noise", isOn: Binding(
+                                get: { session.ui.reducedNoise },
+                                set: { store.setReducedNoise($0) },
+                            ))
+                            HStack {
+                                Button("Save") { savePortableSession() }
+                                Button("Load") { loadPortableSession() }
+                                Button("CSV") { exportCsv() }
+                                Button("JSON") { exportJson() }
+                                Button("Markdown") { exportMarkdown() }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            if let panelMessage {
+                                Text(panelMessage)
+                                    .font(.caption)
+                                    .foregroundStyle(.white.opacity(0.66))
+                            }
                         }
                     }
-                } else {
-                    Toggle("Reduced motion", isOn: Binding(
-                        get: { session.ui.reducedMotion },
-                        set: { store.setReducedMotion($0) },
-                    ))
-                    Toggle("Sound", isOn: Binding(
-                        get: { session.ui.soundEnabled },
-                        set: { store.setSoundEnabled($0) },
-                    ))
-                    Toggle("Reduced noise", isOn: Binding(
-                        get: { session.ui.reducedNoise },
-                        set: { store.setReducedNoise($0) },
-                    ))
-                    HStack {
-                        Button("Save") { savePortableSession() }
-                        Button("Load") { loadPortableSession() }
-                        Button("CSV") { exportCsv() }
-                        Button("JSON") { exportJson() }
-                        Button("Markdown") { exportMarkdown() }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    if let panelMessage {
-                        Text(panelMessage)
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.66))
-                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel(panel == .help ? "Policy Notebook" : panel.title)
+                .accessibilityIdentifier("\(panel.rawValue)-panel")
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(panel == .help ? "Policy Notebook" : panel.title)
-        .accessibilityIdentifier("\(panel.rawValue)-panel")
-    }
-
-    private var newspaperPanelContent: some View {
-        ZStack(alignment: .topLeading) {
-            if let image = NativeImageLoader.image(named: "newspaper-panel") {
-                Image(nsImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .saturation(0.82)
-                    .brightness(-0.05)
-                    .accessibilityHidden(true)
-            }
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text("THE MANDATE DESK")
-                        .font(.system(size: 13, weight: .black, design: .serif))
-                        .foregroundStyle(Color(red: 0.19, green: 0.13, blue: 0.07))
-                    Spacer()
-                    Text(briefing.metadata)
-                        .font(.caption.weight(.black))
-                        .foregroundStyle(Color(red: 0.22, green: 0.16, blue: 0.09))
-                }
-                Rectangle()
-                    .fill(Color(red: 0.22, green: 0.15, blue: 0.08))
-                    .frame(height: 1)
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(briefing.headline)
-                        .font(.system(size: 24, weight: .black, design: .serif))
-                        .foregroundStyle(Color(red: 0.08, green: 0.05, blue: 0.03))
-                        .lineLimit(2)
-                    Text(briefing.body)
-                        .font(.system(size: 14, weight: .semibold, design: .serif))
-                        .foregroundStyle(Color(red: 0.13, green: 0.085, blue: 0.05))
-                        .lineLimit(3)
-                }
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(red: 0.95, green: 0.84, blue: 0.64), in: RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(red: 0.24, green: 0.16, blue: 0.08).opacity(0.38)))
-                HStack(spacing: 10) {
-                    newspaperChip(briefing.severity.rawValue.uppercased())
-                    newspaperChip(briefing.riskCalendar)
-                    newspaperChip("Policy implication: \(briefing.policyImplication)")
-                }
-            }
-            .padding(.horizontal, 54)
-            .padding(.vertical, 38)
-        }
-        .frame(height: 300)
-        .clipShape(RoundedRectangle(cornerRadius: 18))
-    }
-
-    private func newspaperChip(_ text: String) -> some View {
-        Text(text)
-            .font(.caption2.weight(.black))
-            .lineLimit(2)
-            .foregroundStyle(Color(red: 0.1, green: 0.07, blue: 0.04))
-            .padding(.vertical, 6)
-            .padding(.horizontal, 8)
-            .background(Color(red: 0.96, green: 0.84, blue: 0.58).opacity(0.72), in: Capsule())
     }
 
     private func toggle(_ panel: CockpitDockPanel) {
@@ -843,6 +791,39 @@ struct NativeCockpitView: View {
         }
     }
 
+    private func configureUITestStateIfNeeded() {
+        let environment = ProcessInfo.processInfo.environment
+        if environment["FED_CHAIRMAN_TEST_REDUCE_MOTION"] == "1" {
+            store.setReducedMotion(true)
+        }
+        guard let rawSize = environment["FED_CHAIRMAN_TEST_WINDOW_SIZE"] else {
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            applyWindowSize(rawSize)
+        }
+    }
+
+    private func applyWindowSize(_ rawSize: String) {
+        let parts = rawSize.lowercased().split(separator: "x")
+        guard parts.count == 2,
+              let width = Double(parts[0]),
+              let height = Double(parts[1]),
+              let window = NSApp.windows.first(where: { $0.canBecomeKey })
+        else {
+            return
+        }
+        var frame = window.frame
+        frame.size = CGSize(width: width, height: height)
+        if let visibleFrame = NSScreen.main?.visibleFrame {
+            frame.origin.x = min(80, visibleFrame.maxX - width - 12)
+            frame.origin.y = min(max(40, visibleFrame.maxY - height - 40), visibleFrame.maxY - 40)
+        } else {
+            frame.origin.x = 80
+        }
+        window.setFrame(frame, display: true, animate: false)
+    }
+
     private var fixedActions: [PolicyAction] {
         [.cut150, .cut100, .cut75, .cut50, .cut25, .hold, .raise25, .raise50, .raise75, .raise100, .raise150]
     }
@@ -861,38 +842,9 @@ struct NativeCockpitView: View {
     }
 }
 
-private struct CommandPanel<Content: View>: View {
-    @ViewBuilder var content: Content
-
-    var body: some View {
-        content
-            .padding(14)
-            .foregroundStyle(.white)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color(red: 0.18, green: 0.085, blue: 0.035).opacity(0.92),
-                                Color(red: 0.025, green: 0.035, blue: 0.032).opacity(0.98),
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing,
-                        ),
-                    )
-                    .overlay(
-                        LinearGradient(colors: [.white.opacity(0.18), .clear, .black.opacity(0.18)], startPoint: .top, endPoint: .bottom)
-                            .clipShape(RoundedRectangle(cornerRadius: 12)),
-                    ),
-            )
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.22)))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(red: 0.65, green: 0.34, blue: 0.12).opacity(0.25)).padding(1))
-            .shadow(color: .black.opacity(0.36), radius: 22, y: 12)
-    }
-}
-
 private extension Notification.Name {
     static let policyShortcutAction = Notification.Name("FedChairmanPolicyShortcutAction")
+    static let closeCockpitOverlays = Notification.Name("FedChairmanCloseCockpitOverlays")
 }
 
 @MainActor
@@ -910,6 +862,10 @@ private final class PolicyShortcutDispatcher {
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             guard NSApp.isActive else {
                 return event
+            }
+            if event.keyCode == 53 {
+                NotificationCenter.default.post(name: .closeCockpitOverlays, object: nil)
+                return nil
             }
             guard let action = Self.action(for: event) else {
                 return event
@@ -947,142 +903,5 @@ private struct QuarterPips: View {
         }
         .padding(6)
         .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
-    }
-}
-
-private struct PolicyButtonStyle: ButtonStyle {
-    var pulse: Bool
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 13, weight: .black, design: .rounded))
-            .frame(minWidth: 72, minHeight: 44)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(
-                        LinearGradient(
-                            colors: configuration.isPressed
-                                ? [Color(red: 0.10, green: 0.26, blue: 0.18), Color(red: 0.035, green: 0.055, blue: 0.05)]
-                                : [Color(red: 0.18, green: 0.18, blue: 0.17), Color(red: 0.045, green: 0.045, blue: 0.044)],
-                            startPoint: .top,
-                            endPoint: .bottom,
-                        ),
-                    ),
-            )
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(configuration.isPressed ? 0.26 : 0.14)))
-            .shadow(color: .black.opacity(configuration.isPressed ? 0.18 : 0.38), radius: configuration.isPressed ? 2 : 7, y: configuration.isPressed ? 1 : 5)
-            .scaleEffect(configuration.isPressed ? 0.92 : (pulse ? 1.025 : 1))
-            .animation(.bouncy(duration: 0.22, extraBounce: 0.24), value: configuration.isPressed)
-            .animation(.bouncy(duration: 0.28, extraBounce: 0.18), value: pulse)
-    }
-}
-
-private struct DockButtonStyle: ButtonStyle {
-    var isOpen: Bool
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(.white)
-            .frame(width: CockpitDockLayout.buttonWidth, height: CockpitDockLayout.buttonHeight)
-            .background(
-                RoundedRectangle(cornerRadius: 22)
-                    .fill(.ultraThinMaterial)
-                    .overlay(
-                        LinearGradient(
-                            colors: [
-                                .white.opacity(isOpen ? 0.3 : 0.16),
-                                Color.green.opacity(isOpen ? 0.2 : 0.05),
-                                .black.opacity(0.16),
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing,
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 22)),
-                    ),
-            )
-            .overlay(RoundedRectangle(cornerRadius: 22).stroke(.white.opacity(isOpen ? 0.42 : 0.2)))
-            .shadow(color: Color.green.opacity(isOpen ? 0.24 : 0.07), radius: isOpen ? 20 : 10, y: 7)
-            .shadow(color: .black.opacity(0.32), radius: 15, y: 8)
-            .scaleEffect(configuration.isPressed ? 0.84 : 1)
-            .animation(.bouncy(duration: 0.28, extraBounce: 0.34), value: configuration.isPressed)
-    }
-}
-
-private enum CockpitDockLayout {
-    static let buttonWidth: CGFloat = 92
-    static let buttonHeight: CGFloat = 112
-    static let outerPadding: CGFloat = 24
-    static let bottomLift: CGFloat = 112
-}
-
-private struct DockIcon: View {
-    var panel: CockpitDockPanel
-
-    var body: some View {
-        VStack(spacing: 7) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(.thinMaterial)
-                    .overlay {
-                        LinearGradient(
-                            colors: [.white.opacity(0.35), .white.opacity(0.08), .black.opacity(0.2)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing,
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-                    }
-                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.3)))
-                    .shadow(color: .black.opacity(0.34), radius: 7, y: 4)
-
-                if let image = NativeImageLoader.image(named: panel.iconName) {
-                    Image(nsImage: image)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 50, height: 50)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .shadow(color: .black.opacity(0.35), radius: 5, y: 3)
-                        .accessibilityHidden(true)
-                } else {
-                    Text(String(panel.rawValue.prefix(1)))
-                        .font(.system(size: 24, weight: .black, design: .rounded))
-                        .accessibilityHidden(true)
-                }
-            }
-            .frame(width: 58, height: 58)
-
-            Text(panel.title)
-                .font(.system(size: 11, weight: .black, design: .rounded))
-                .lineLimit(1)
-                .minimumScaleFactor(0.82)
-                .frame(width: 82, height: 14)
-                .shadow(color: .black.opacity(0.7), radius: 2, y: 1)
-                .accessibilityHidden(true)
-        }
-        .accessibilityElement(children: .ignore)
-    }
-}
-
-private enum NativeImageLoader {
-    static func image(named name: String) -> NSImage? {
-        if let image = NSImage(named: name) {
-            return image
-        }
-        let candidateURLs = [
-            Bundle.main.url(forResource: name, withExtension: "png"),
-            Bundle.main.resourceURL?
-                .appendingPathComponent("FedChairmanGame_FedChairmanNativeApp.bundle")
-                .appendingPathComponent("\(name).png"),
-            Bundle.main.bundleURL
-                .appendingPathComponent("FedChairmanGame_FedChairmanNativeApp.bundle")
-                .appendingPathComponent("\(name).png"),
-        ].compactMap(\.self)
-        #if SWIFT_PACKAGE
-            if let packageURL = Bundle.module.url(forResource: name, withExtension: "png"),
-               let image = NSImage(contentsOf: packageURL)
-            {
-                return image
-            }
-        #endif
-        return candidateURLs.lazy.compactMap(NSImage.init(contentsOf:)).first
     }
 }

@@ -17,6 +17,7 @@
 		40F232907996F42AD82FDF03 /* Scenario.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF3E8F5BB1ADE8F3E4ED50A8 /* Scenario.swift */; };
 		474F620DD469879554339703 /* DashboardHeaderViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A733E9778DB283810A3A4D54 /* DashboardHeaderViews.swift */; };
 		4ACA206FFF9E8E4D1CB24979 /* QuarterEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B31DF8FD32D66D173FBF6F2 /* QuarterEngine.swift */; };
+		4F9311292D2068A1E0A7F2DD /* CockpitChromeViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A210E0A85C438D22E0D12969 /* CockpitChromeViews.swift */; };
 		56382B296CFEAA5A2B9FB6B0 /* FedChairmanCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 17C83FC7F565800C79C166EC /* FedChairmanCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		660921A4562AD17F8BAA333D /* ScoreEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AA0B96605446211F06F00AB /* ScoreEngine.swift */; };
 		7079517EA92B412D27EFB962 /* DecisionTapeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 921A2808C0EF9D40F532F557 /* DecisionTapeView.swift */; };
@@ -39,7 +40,9 @@
 		E0C3BE2E33C994C40C0D4760 /* ChartInspection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56875BFDA7E392687606A030 /* ChartInspection.swift */; };
 		ECDD0DFFA047357F93359972 /* FedChairmanCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 17C83FC7F565800C79C166EC /* FedChairmanCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		F0F661FE9F590BA7CE8F756C /* Types.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E83AF212D60E0425F56EBCC /* Types.swift */; };
+		F87A33FFB210451117D4CB3F /* NewspaperPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEFE2D87EB9CD4B35D08AE5E /* NewspaperPanelView.swift */; };
 		F9E644C3DAF90BF3C4BFBDAA /* Transmission.swift in Sources */ = {isa = PBXBuildFile; fileRef = 524CE25DC2AC7A7834ADD227 /* Transmission.swift */; };
+		FD6152C3DD70C5EF0C8EE256 /* CockpitLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C071E8AD4FC615D8AA22626 /* CockpitLayout.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -103,6 +106,7 @@
 		56875BFDA7E392687606A030 /* ChartInspection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartInspection.swift; sourceTree = "<group>"; };
 		604F1C55FA0096B36F6FB545 /* RNG.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RNG.swift; sourceTree = "<group>"; };
 		6071C1EA951BEE67E4EEE939 /* CockpitDock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CockpitDock.swift; sourceTree = "<group>"; };
+		6C071E8AD4FC615D8AA22626 /* CockpitLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CockpitLayout.swift; sourceTree = "<group>"; };
 		6D866892B30770AAE57EF8F0 /* SaveFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaveFile.swift; sourceTree = "<group>"; };
 		7BC3F395ED099AB164087281 /* CockpitBriefing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CockpitBriefing.swift; sourceTree = "<group>"; };
 		7BCDAD9783A374785230349D /* help-icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "help-icon.png"; sourceTree = "<group>"; };
@@ -113,6 +117,7 @@
 		9090AA571B47C4B8516DDFF6 /* FedChairmanCoreTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FedChairmanCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		921A2808C0EF9D40F532F557 /* DecisionTapeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DecisionTapeView.swift; sourceTree = "<group>"; };
 		95B1AE1F4BB8ABD10797876F /* NativeCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCoreTests.swift; sourceTree = "<group>"; };
+		A210E0A85C438D22E0D12969 /* CockpitChromeViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CockpitChromeViews.swift; sourceTree = "<group>"; };
 		A733E9778DB283810A3A4D54 /* DashboardHeaderViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardHeaderViews.swift; sourceTree = "<group>"; };
 		BFBCAA122BD855A6C74CE16F /* NativeCockpitUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCockpitUITests.swift; sourceTree = "<group>"; };
 		C0417E7B5D00741CF334D1AB /* Debrief.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Debrief.swift; sourceTree = "<group>"; };
@@ -120,6 +125,7 @@
 		C60FADB5B32CFB2276F7F43E /* DecisionFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DecisionFeedback.swift; sourceTree = "<group>"; };
 		DEF12800CF5FA543FBA51FE8 /* GameWindowDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameWindowDelegate.swift; sourceTree = "<group>"; };
 		EA4869025CFC6023D4B2644E /* Exporters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Exporters.swift; sourceTree = "<group>"; };
+		EEFE2D87EB9CD4B35D08AE5E /* NewspaperPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewspaperPanelView.swift; sourceTree = "<group>"; };
 		F3585686B6ADE1C3E02281BE /* settings-icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "settings-icon.png"; sourceTree = "<group>"; };
 		F58D246AD7ADE80BE1F85C79 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F72FA50075368EF6BF5AA0BD /* FedChairmanGameNativeUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FedChairmanGameNativeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -162,6 +168,7 @@
 				56875BFDA7E392687606A030 /* ChartInspection.swift */,
 				7BC3F395ED099AB164087281 /* CockpitBriefing.swift */,
 				6071C1EA951BEE67E4EEE939 /* CockpitDock.swift */,
+				6C071E8AD4FC615D8AA22626 /* CockpitLayout.swift */,
 				C0417E7B5D00741CF334D1AB /* Debrief.swift */,
 				C60FADB5B32CFB2276F7F43E /* DecisionFeedback.swift */,
 				EA4869025CFC6023D4B2644E /* Exporters.swift */,
@@ -192,11 +199,13 @@
 		63CA2C9DDEBB49C6C3445EE7 /* FedChairmanNativeApp */ = {
 			isa = PBXGroup;
 			children = (
+				A210E0A85C438D22E0D12969 /* CockpitChromeViews.swift */,
 				0BA666F6572698F6758EBD47 /* CockpitScene.swift */,
 				A733E9778DB283810A3A4D54 /* DashboardHeaderViews.swift */,
 				921A2808C0EF9D40F532F557 /* DecisionTapeView.swift */,
 				C2BD4434B1C9E9252E0D70C4 /* FedChairmanGameNativeApp.swift */,
 				DEF12800CF5FA543FBA51FE8 /* GameWindowDelegate.swift */,
+				EEFE2D87EB9CD4B35D08AE5E /* NewspaperPanelView.swift */,
 				84C66124875713982223746C /* SpriteKitChartView.swift */,
 				F33B0CA3A9DF281197659565 /* Resources */,
 			);
@@ -395,11 +404,13 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4F9311292D2068A1E0A7F2DD /* CockpitChromeViews.swift in Sources */,
 				02F7EB7CCEA746512D1D471F /* CockpitScene.swift in Sources */,
 				474F620DD469879554339703 /* DashboardHeaderViews.swift in Sources */,
 				7079517EA92B412D27EFB962 /* DecisionTapeView.swift in Sources */,
 				7EAEF3A753A1FC0A4F76FD9F /* FedChairmanGameNativeApp.swift in Sources */,
 				922C6DE6CBBBD1D75CA50C31 /* GameWindowDelegate.swift in Sources */,
+				F87A33FFB210451117D4CB3F /* NewspaperPanelView.swift in Sources */,
 				7661D2C3E41C582075B1DCCB /* SpriteKitChartView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -419,6 +430,7 @@
 				E0C3BE2E33C994C40C0D4760 /* ChartInspection.swift in Sources */,
 				0F9328BE1BFF024C3C8F00B8 /* CockpitBriefing.swift in Sources */,
 				AD13677C1A58B4C2446C12F1 /* CockpitDock.swift in Sources */,
+				FD6152C3DD70C5EF0C8EE256 /* CockpitLayout.swift in Sources */,
 				D12F7356B5829C45B9A0F667 /* Debrief.swift in Sources */,
 				1989648DA89F07E744647C4B /* DecisionFeedback.swift in Sources */,
 				1466F63939CF2AFD8792C888 /* Exporters.swift in Sources */,

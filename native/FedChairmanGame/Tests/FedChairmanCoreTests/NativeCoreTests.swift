@@ -231,6 +231,24 @@ import Testing
     #expect(cockpitMotionMode(reduceMotion: false, ui: ui) == .reduced)
 }
 
+@Test func cockpitLayoutMetricsRespondToWindowSize() {
+    let compact = cockpitLayoutMetrics(width: 1180, height: 700)
+    let standard = cockpitLayoutMetrics(width: 1360, height: 860)
+    let expanded = cockpitLayoutMetrics(width: 1600, height: 1000)
+
+    #expect(compact.mode == .compact)
+    #expect(standard.mode == .standard)
+    #expect(expanded.mode == .expanded)
+    #expect(compact.policyKeyWidth < standard.policyKeyWidth)
+    #expect(standard.policyKeyWidth < expanded.policyKeyWidth)
+    #expect(compact.chartHeight < standard.chartHeight)
+    #expect(standard.chartHeight < expanded.chartHeight)
+    #expect(compact.newspaperPanelWidth <= 1148)
+    #expect(standard.newspaperPanelWidth <= 1312)
+    #expect(expanded.newspaperPanelWidth <= 1552)
+    #expect(compact.dockPanelMaxHeight <= 530)
+}
+
 @Test func nativeDebriefBuildsRichTermGateContent() throws {
     let store = GameSessionStore()
     store.start(seed: "native-rich-debrief")

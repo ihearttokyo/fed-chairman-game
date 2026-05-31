@@ -39,11 +39,16 @@ In progress. The native SwiftUI/SpriteKit product now has a generated Xcode proj
 - Retired the root Web/Tauri release surface: root `npm` scripts now dispatch to native Swift/Xcode verification and packaging, the GitHub workflow runs native macOS checks only, the root README describes the SwiftUI/SpriteKit product, stale Tauri DMG packaging scripts were removed, and the generated local DMG artifact was deleted.
 - Removed the old Web/Tauri source tree, TypeScript/Vite/Playwright configs, root npm lockfile, Node modules, generated browser output, and stale web e2e sources from the working tree. Historical web code is available through git history only.
 - Removed the user-facing "Native" suffix from the macOS product identity. The app now packages and installs as `/Applications/Fed Chairman Game.app` with bundle id `local.fed-chairman-game`; `FedChairmanGameNative` remains only as an internal target/scheme name.
+- Added a native responsive cockpit layout model with compact, standard, and expanded metrics for chart height, terminal-key sizing, metric columns, dock size, panel widths, and physical-screen-aware UI-test window placement.
+- Reworked the active cockpit chrome into a warmer mahogany command-desk and liquid-glass instrument surface, extracting shared native panel/button/dock styles so the dashboard, graph monitor, policy keyboard, metrics, and dock read as one visual system.
+- Rebuilt the Newspaper panel as an opaque broadsheet surface with serif masthead/headline/body columns, dateline/severity/risk side rail, generated blank paper art, and no rounded text bubbles over the newspaper.
+- Added and verified XCUITest responsive visual coverage for `1180x700`, `1360x860`, and `1600x1000`, including dock visibility, panel fit, Escape close, reduced-motion marker, policy/dashboard frame stability, and visual screenshot attachments.
+- Captured installed-app visual smoke PNGs into `/tmp/fed-chairman-visual-smoke/` for closed, Newspaper, Help, and Settings states across the native installed app.
 
 ## Not Complete
 
 - The local release-candidate `.app` is useful for native testing and private beta smoke, but it is still ad-hoc signed and not notarized.
 - Production Developer ID signing and notarization are scripted but not yet proven on this machine because Apple Developer ID/notary credentials are not configured in the environment.
-- The native app still needs final visual variant validation beyond local installed-app screenshot smoke.
+- The native app still needs broader art-direction iteration before public beta, but the current installed build has local responsive screenshot smoke coverage.
 - XCUITest covers the Policy menu command path. Raw `XCUIApplication.typeKey` did not exercise the app-level shortcut monitor reliably in automation, so a future pass should add a lower-level AppKit shortcut test or a manually verified keyboard smoke note before beta release.
 - The prior Stable Cockpit Overlay Plan was only partially implemented because it landed in Web/Tauri; native graphics and native macOS animation remain the required final direction.
