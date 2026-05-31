@@ -1085,7 +1085,7 @@ private enum CockpitDockLayout {
     static let buttonWidth: CGFloat = 92
     static let buttonHeight: CGFloat = 112
     static let outerPadding: CGFloat = 24
-    static let bottomLift: CGFloat = 68
+    static let bottomLift: CGFloat = 112
 }
 
 private struct DockIcon: View {

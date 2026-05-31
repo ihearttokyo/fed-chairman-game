@@ -479,7 +479,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "local.fed-chairman-game.native-ui-tests";
+				PRODUCT_BUNDLE_IDENTIFIER = "local.fed-chairman-game.ui-tests";
 				SDKROOT = macosx;
 				TEST_TARGET_NAME = FedChairmanGameNative;
 			};
@@ -497,8 +497,8 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "local.fed-chairman-game.native";
-				PRODUCT_NAME = "Fed Chairman Game Native";
+				PRODUCT_BUNDLE_IDENTIFIER = "local.fed-chairman-game";
+				PRODUCT_NAME = "Fed Chairman Game";
 				SDKROOT = macosx;
 			};
 			name = Release;
@@ -595,8 +595,8 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "local.fed-chairman-game.native";
-				PRODUCT_NAME = "Fed Chairman Game Native";
+				PRODUCT_BUNDLE_IDENTIFIER = "local.fed-chairman-game";
+				PRODUCT_NAME = "Fed Chairman Game";
 				SDKROOT = macosx;
 			};
 			name = Debug;
@@ -715,7 +715,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "local.fed-chairman-game.native-ui-tests";
+				PRODUCT_BUNDLE_IDENTIFIER = "local.fed-chairman-game.ui-tests";
 				SDKROOT = macosx;
 				TEST_TARGET_NAME = FedChairmanGameNative;
 			};

@@ -4,7 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT="$ROOT_DIR/FedChairmanGameNative.xcodeproj"
 SCHEME="FedChairmanGameNative"
-APP_NAME="Fed Chairman Game Native.app"
+APP_NAME="Fed Chairman Game.app"
+LEGACY_APP_NAME="Fed Chairman Game Native.app"
 RELEASE_ROOT="${FED_CHAIRMAN_NATIVE_RELEASE_ROOT:-$ROOT_DIR/release/native-local}"
 ARCHIVE_PATH="$RELEASE_ROOT/FedChairmanGameNative.xcarchive"
 APP_OUTPUT="$RELEASE_ROOT/$APP_NAME"
@@ -37,7 +38,7 @@ swiftlint lint --strict
 swift test
 xcodebuild test -project "$PROJECT" -scheme "$SCHEME" -destination 'platform=macOS'
 
-rm -rf "$ARCHIVE_PATH" "$APP_OUTPUT"
+rm -rf "$ARCHIVE_PATH" "$APP_OUTPUT" "$RELEASE_ROOT/$LEGACY_APP_NAME"
 xcodebuild archive \
   -project "$PROJECT" \
   -scheme "$SCHEME" \
@@ -62,17 +63,23 @@ if command -v spctl >/dev/null 2>&1; then
 fi
 
 BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_OUTPUT/Contents/Info.plist")"
+DISPLAY_NAME="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$APP_OUTPUT/Contents/Info.plist")"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_OUTPUT/Contents/Info.plist")"
 BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_OUTPUT/Contents/Info.plist")"
 CATEGORY="$(/usr/libexec/PlistBuddy -c 'Print :LSApplicationCategoryType' "$APP_OUTPUT/Contents/Info.plist")"
-EXECUTABLE="$APP_OUTPUT/Contents/MacOS/Fed Chairman Game Native"
+EXECUTABLE="$APP_OUTPUT/Contents/MacOS/Fed Chairman Game"
+if [[ "$BUNDLE_ID" != "local.fed-chairman-game" || "$DISPLAY_NAME" != "Fed Chairman Game" || ! -x "$EXECUTABLE" ]]; then
+  echo "Packaged app identity is invalid: bundle=$BUNDLE_ID display=$DISPLAY_NAME executable=$EXECUTABLE" >&2
+  exit 1
+fi
 EXECUTABLE_SHA="$(shasum -a 256 "$EXECUTABLE" | awk '{print $1}')"
 CREATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 cat > "$MANIFEST" <<MANIFEST_TEXT
-Fed Chairman Game Native release candidate
+Fed Chairman Game release candidate
 Created: $CREATED_AT
 Bundle ID: $BUNDLE_ID
+Display Name: $DISPLAY_NAME
 Version: $VERSION
 Build: $BUILD
 Category: $CATEGORY
@@ -85,15 +92,16 @@ Notarization: not notarized
 Gatekeeper assessment: $SPCTL_RESULT
 MANIFEST_TEXT
 
-python3 - "$JSON_MANIFEST" "$CREATED_AT" "$BUNDLE_ID" "$VERSION" "$BUILD" "$CATEGORY" "$ARCHIVE_PATH" "$APP_OUTPUT" "$EXECUTABLE_SHA" "$SPCTL_RESULT" <<'PY'
+python3 - "$JSON_MANIFEST" "$CREATED_AT" "$BUNDLE_ID" "$DISPLAY_NAME" "$VERSION" "$BUILD" "$CATEGORY" "$ARCHIVE_PATH" "$APP_OUTPUT" "$EXECUTABLE_SHA" "$SPCTL_RESULT" <<'PY'
 import json
 import sys
 
-manifest_path, created_at, bundle_id, version, build, category, archive, app, executable_sha, spctl_result = sys.argv[1:]
+manifest_path, created_at, bundle_id, display_name, version, build, category, archive, app, executable_sha, spctl_result = sys.argv[1:]
 payload = {
-    "product": "Fed Chairman Game Native",
+    "product": "Fed Chairman Game",
     "createdAt": created_at,
     "bundleId": bundle_id,
+    "displayName": display_name,
     "version": version,
     "build": build,
     "category": category,
@@ -115,8 +123,10 @@ with open(manifest_path, "w", encoding="utf-8") as handle:
 PY
 
 if [[ "$INSTALL_APP" == true ]]; then
+  osascript -e 'tell application id "local.fed-chairman-game" to quit' >/dev/null 2>&1 || true
   osascript -e 'tell application id "local.fed-chairman-game.native" to quit' >/dev/null 2>&1 || true
   rm -rf "/Applications/$APP_NAME"
+  rm -rf "/Applications/$LEGACY_APP_NAME"
   ditto --norsrc "$APP_OUTPUT" "/Applications/$APP_NAME"
   codesign --verify --deep --strict --verbose=2 "/Applications/$APP_NAME"
 fi

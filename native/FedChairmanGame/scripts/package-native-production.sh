@@ -4,7 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT="$ROOT_DIR/FedChairmanGameNative.xcodeproj"
 SCHEME="FedChairmanGameNative"
-APP_NAME="Fed Chairman Game Native.app"
+APP_NAME="Fed Chairman Game.app"
+LEGACY_APP_NAME="Fed Chairman Game Native.app"
 RELEASE_ROOT="${FED_CHAIRMAN_NATIVE_PRODUCTION_ROOT:-$ROOT_DIR/release/native-production}"
 ARCHIVE_PATH="$RELEASE_ROOT/FedChairmanGameNative.xcarchive"
 APP_OUTPUT="$RELEASE_ROOT/$APP_NAME"
@@ -81,7 +82,7 @@ if [[ "$SKIP_TESTS" != true ]]; then
   xcodebuild test -project "$PROJECT" -scheme "$SCHEME" -destination 'platform=macOS'
 fi
 
-rm -rf "$ARCHIVE_PATH" "$APP_OUTPUT" "$MANIFEST" "$NOTARY_LOG" "$CODESIGN_DETAILS"
+rm -rf "$ARCHIVE_PATH" "$APP_OUTPUT" "$RELEASE_ROOT/$LEGACY_APP_NAME" "$MANIFEST" "$NOTARY_LOG" "$CODESIGN_DETAILS"
 xcodebuild archive \
   -configuration Release \
   -project "$PROJECT" \
@@ -107,7 +108,7 @@ if ! grep -F "Authority=Developer ID Application" "$CODESIGN_DETAILS" >/dev/null
 fi
 
 UPLOAD_DIR="$(mktemp -d "${TMPDIR:-/tmp}/fed-chairman-notary.XXXXXX")"
-UPLOAD_ZIP="$UPLOAD_DIR/FedChairmanGameNative-notary-upload.zip"
+UPLOAD_ZIP="$UPLOAD_DIR/FedChairmanGame-notary-upload.zip"
 cleanup_upload() {
   if [[ "${FED_CHAIRMAN_KEEP_NOTARY_UPLOAD:-0}" != "1" ]]; then
     rm -rf "$UPLOAD_DIR"
@@ -135,14 +136,19 @@ xcrun stapler validate "$APP_OUTPUT"
 SPCTL_OUTPUT="$(spctl --assess --type execute --verbose=4 "$APP_OUTPUT" 2>&1)"
 
 BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_OUTPUT/Contents/Info.plist")"
+DISPLAY_NAME="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$APP_OUTPUT/Contents/Info.plist")"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_OUTPUT/Contents/Info.plist")"
 BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_OUTPUT/Contents/Info.plist")"
 CATEGORY="$(/usr/libexec/PlistBuddy -c 'Print :LSApplicationCategoryType' "$APP_OUTPUT/Contents/Info.plist")"
-EXECUTABLE="$APP_OUTPUT/Contents/MacOS/Fed Chairman Game Native"
+EXECUTABLE="$APP_OUTPUT/Contents/MacOS/Fed Chairman Game"
+if [[ "$BUNDLE_ID" != "local.fed-chairman-game" || "$DISPLAY_NAME" != "Fed Chairman Game" || ! -x "$EXECUTABLE" ]]; then
+  echo "Packaged app identity is invalid: bundle=$BUNDLE_ID display=$DISPLAY_NAME executable=$EXECUTABLE" >&2
+  exit 1
+fi
 EXECUTABLE_SHA="$(shasum -a 256 "$EXECUTABLE" | awk '{print $1}')"
 CREATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-python3 - "$MANIFEST" "$CREATED_AT" "$BUNDLE_ID" "$VERSION" "$BUILD" "$CATEGORY" "$ARCHIVE_PATH" "$APP_OUTPUT" "$EXECUTABLE_SHA" "$DEVELOPMENT_TEAM" "$SIGNING_IDENTITY" "$SPCTL_OUTPUT" <<'PY'
+python3 - "$MANIFEST" "$CREATED_AT" "$BUNDLE_ID" "$DISPLAY_NAME" "$VERSION" "$BUILD" "$CATEGORY" "$ARCHIVE_PATH" "$APP_OUTPUT" "$EXECUTABLE_SHA" "$DEVELOPMENT_TEAM" "$SIGNING_IDENTITY" "$SPCTL_OUTPUT" <<'PY'
 import json
 import sys
 
@@ -150,6 +156,7 @@ import sys
     manifest_path,
     created_at,
     bundle_id,
+    display_name,
     version,
     build,
     category,
@@ -161,9 +168,10 @@ import sys
     spctl_output,
 ) = sys.argv[1:]
 payload = {
-    "product": "Fed Chairman Game Native",
+    "product": "Fed Chairman Game",
     "createdAt": created_at,
     "bundleId": bundle_id,
+    "displayName": display_name,
     "version": version,
     "build": build,
     "category": category,
@@ -188,8 +196,10 @@ with open(manifest_path, "w", encoding="utf-8") as handle:
 PY
 
 if [[ "$INSTALL_APP" == true ]]; then
+  osascript -e 'tell application id "local.fed-chairman-game" to quit' >/dev/null 2>&1 || true
   osascript -e 'tell application id "local.fed-chairman-game.native" to quit' >/dev/null 2>&1 || true
   rm -rf "/Applications/$APP_NAME"
+  rm -rf "/Applications/$LEGACY_APP_NAME"
   ditto --norsrc "$APP_OUTPUT" "/Applications/$APP_NAME"
   codesign --verify --deep --strict --verbose=2 "/Applications/$APP_NAME"
   xcrun stapler validate "/Applications/$APP_NAME"

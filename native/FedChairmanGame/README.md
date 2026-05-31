@@ -1,4 +1,4 @@
-# Fed Chairman Game Native
+# Fed Chairman Game Native Target
 
 This directory is the native macOS migration target for Fed Chairman Game.
 
@@ -18,10 +18,10 @@ The local machine now has full Xcode selected globally:
 - `swift test`, `swift build`, `swiftformat Sources Tests --swift-version 6.1 --lint`, and `swiftlint lint --strict` are the current native verification commands.
 - `project.yml` is the source of truth for the generated Xcode project. Run `xcodegen generate` before Xcode build/test work when the project spec changes.
 - `xcodebuild test -project FedChairmanGameNative.xcodeproj -scheme FedChairmanGameNative -destination 'platform=macOS'` runs the core tests plus the real native macOS UI tests.
-- `scripts/package-native-dev-app.sh` builds an ad-hoc signed development `.app` bundle from SwiftPM, stages it outside the file-provider-backed repo, and can be copied into `/Applications/Fed Chairman Game Native.app`.
+- `scripts/package-native-dev-app.sh` builds an ad-hoc signed development `.app` bundle from SwiftPM, stages it outside the file-provider-backed repo, and can be copied into `/Applications/Fed Chairman Game.app`.
 - `scripts/package-native-release-candidate.sh --install` runs the native formatting/lint/unit/UI-test gates, creates an Xcode archive, stages an ad-hoc signed local release-candidate `.app`, writes text/JSON manifests, and installs it into `/Applications`.
 - `scripts/package-native-production.sh` is the Developer ID/notarization path. It requires Apple signing credentials, archives with hardened runtime, notarizes with `notarytool`, staples the ticket to the `.app`, verifies Gatekeeper acceptance, and emits a production manifest without keeping DMG/ZIP deliverables.
-- The current installed native development app is `/Applications/Fed Chairman Game Native.app`, bundle id `local.fed-chairman-game.native`.
+- The current installed native development app is `/Applications/Fed Chairman Game.app`, bundle id `local.fed-chairman-game`. Internal Xcode target and scheme names still use `FedChairmanGameNative` to preserve migration/build continuity.
 
 ## Production Signing
 
