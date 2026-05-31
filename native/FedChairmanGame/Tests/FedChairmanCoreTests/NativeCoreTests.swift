@@ -300,3 +300,37 @@ import Testing
     ui.reducedNoise = true
     #expect(!shouldPlayCockpitSound(ui: ui))
 }
+
+@Test func chartInspectionLabelsCareerAndPolicyContext() throws {
+    let opening = GameSessionStore.makeInitialSession(seed: "chart-inspection")
+    let openingInspection = try #require(buildChartInspection(history: opening.careerHistory))
+    #expect(openingInspection.primaryLabel == "Career start")
+    #expect(openingInspection.secondaryLabel == "Before Term 1")
+    #expect(openingInspection.policy == "Starting economy")
+    #expect(openingInspection.movement == "Opening snapshot before the first vote.")
+
+    let store = GameSessionStore()
+    store.start(seed: "chart-inspection")
+    try store.commit(action: .raise25)
+    try store.commit(action: .cut50)
+    let decisions = store.session.completedTerms.flatMap(\.decisions) + store.session.decisions
+    let latest = try #require(buildChartInspection(history: store.session.careerHistory, decisions: decisions))
+    #expect(latest.primaryLabel == "T1 Q2")
+    #expect(latest.secondaryLabel == "Career Q2 | 14 left in term")
+    #expect(latest.policy == "-50 bps")
+    #expect(latest.movement.contains("Since prior: inflation"))
+    #expect(chartInspectionAccessibilityLabel(latest).contains("Policy: -50 bps"))
+
+    let firstQuarter = try #require(buildChartInspection(history: store.session.careerHistory, decisions: decisions, selectedIndex: 1))
+    #expect(firstQuarter.primaryLabel == "T1 Q1")
+    #expect(firstQuarter.policy == "+25 bps")
+
+    let longCareer = (0 ... 17).map { index in
+        var state = classicScenario.startingState
+        state.quarterIndex = index == 0 ? 0 : ((index - 1) % classicScenario.termQuarters) + 1
+        return state
+    }
+    let termTwo = try #require(buildChartInspection(history: longCareer, selectedIndex: 17))
+    #expect(termTwo.primaryLabel == "T2 Q1")
+    #expect(termTwo.secondaryLabel == "Career Q17 | 15 left in term")
+}

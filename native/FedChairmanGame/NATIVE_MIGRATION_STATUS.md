@@ -30,6 +30,8 @@ In progress. The native SwiftUI/SpriteKit product now has a generated Xcode proj
 - Fixed Xcode project build settings for the native core framework/test targets so generated Info.plists are available for bundle signing.
 - Added native app accessibility identifiers for dashboard, policy lever, metrics, quarter review, briefing panel, dock buttons, and dock panels.
 - Installed and verified `/Applications/Fed Chairman Game.app` from the current ad-hoc signed development package.
+- Added a testable native chart-inspection model and SwiftUI readout strip above the SpriteKit graph so the cockpit surfaces selected quarter, policy, movement, and mandate values without moving the policy lever.
+- Extracted the SpriteKit chart bridge into a dedicated native view with mouse tracking that reports chart hover position back to SwiftUI for deterministic inspection behavior.
 - Added Swift unit tests for engine parity, custom bps, reappointment credibility grace, deterministic shocks, tamper-evident saves, full-career exports, load/recompute behavior, term-end debrief continuation, rich debrief content, notebook/help topic parity, briefing/help separation, dock cascade behavior, and reduced-motion behavior.
 - Incorporated the original cockpit prompt and later native art direction into the native target requirements: no duplicated active-play title, dynamic alerts only in the fully opaque bottom-dock newspaper panel, static policy/watch/help content in the Help panel, equal bottom-right Newspaper/Help/Settings dock buttons, mutually exclusive panel toggles, native bouncy open/close motion, click feedback, generated icon/newspaper art, liquid-glass UI touches, mahogany command-desk styling, and no layout movement from rate decisions.
 - Added a local release-candidate packaging script that runs formatting/lint/unit/UI-test gates, creates an Xcode archive, stages the app without DMG/zip artifacts, verifies ad-hoc signing, emits text/JSON manifests, and can install the verified bundle into `/Applications`.
@@ -42,6 +44,6 @@ In progress. The native SwiftUI/SpriteKit product now has a generated Xcode proj
 
 - The local release-candidate `.app` is useful for native testing and private beta smoke, but it is still ad-hoc signed and not notarized.
 - Production Developer ID signing and notarization are scripted but not yet proven on this machine because Apple Developer ID/notary credentials are not configured in the environment.
-- The native app still needs final visual variant validation.
+- The native app still needs final visual variant validation beyond local installed-app screenshot smoke.
 - XCUITest covers the Policy menu command path. Raw `XCUIApplication.typeKey` did not exercise the app-level shortcut monitor reliably in automation, so a future pass should add a lower-level AppKit shortcut test or a manually verified keyboard smoke note before beta release.
 - The prior Stable Cockpit Overlay Plan was only partially implemented because it landed in Web/Tauri; native graphics and native macOS animation remain the required final direction.

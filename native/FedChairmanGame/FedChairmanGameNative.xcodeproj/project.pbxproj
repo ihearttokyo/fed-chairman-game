@@ -15,10 +15,12 @@
 		299E353DE924D94505001CAD /* Math.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D7DA86CA1FDDF61A031939C /* Math.swift */; };
 		2E6C147FC63C258F68FC3DB2 /* RNG.swift in Sources */ = {isa = PBXBuildFile; fileRef = 604F1C55FA0096B36F6FB545 /* RNG.swift */; };
 		40F232907996F42AD82FDF03 /* Scenario.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF3E8F5BB1ADE8F3E4ED50A8 /* Scenario.swift */; };
+		474F620DD469879554339703 /* DashboardHeaderViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A733E9778DB283810A3A4D54 /* DashboardHeaderViews.swift */; };
 		4ACA206FFF9E8E4D1CB24979 /* QuarterEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B31DF8FD32D66D173FBF6F2 /* QuarterEngine.swift */; };
 		56382B296CFEAA5A2B9FB6B0 /* FedChairmanCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 17C83FC7F565800C79C166EC /* FedChairmanCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		660921A4562AD17F8BAA333D /* ScoreEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AA0B96605446211F06F00AB /* ScoreEngine.swift */; };
 		7079517EA92B412D27EFB962 /* DecisionTapeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 921A2808C0EF9D40F532F557 /* DecisionTapeView.swift */; };
+		7661D2C3E41C582075B1DCCB /* SpriteKitChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84C66124875713982223746C /* SpriteKitChartView.swift */; };
 		7EAEF3A753A1FC0A4F76FD9F /* FedChairmanGameNativeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2BD4434B1C9E9252E0D70C4 /* FedChairmanGameNativeApp.swift */; };
 		922C6DE6CBBBD1D75CA50C31 /* GameWindowDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEF12800CF5FA543FBA51FE8 /* GameWindowDelegate.swift */; };
 		94047D2A06962A23CF098ECE /* help-icon.png in Resources */ = {isa = PBXBuildFile; fileRef = 7BCDAD9783A374785230349D /* help-icon.png */; };
@@ -34,6 +36,7 @@
 		CB5BA068AE2A6C23575F0656 /* newspaper-panel.png in Resources */ = {isa = PBXBuildFile; fileRef = FACEC3E1855A65BAE122E1EE /* newspaper-panel.png */; };
 		D12F7356B5829C45B9A0F667 /* Debrief.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0417E7B5D00741CF334D1AB /* Debrief.swift */; };
 		D62CC6B5B2FB2EA021015669 /* NativeCockpitUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFBCAA122BD855A6C74CE16F /* NativeCockpitUITests.swift */; };
+		E0C3BE2E33C994C40C0D4760 /* ChartInspection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56875BFDA7E392687606A030 /* ChartInspection.swift */; };
 		ECDD0DFFA047357F93359972 /* FedChairmanCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 17C83FC7F565800C79C166EC /* FedChairmanCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		F0F661FE9F590BA7CE8F756C /* Types.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E83AF212D60E0425F56EBCC /* Types.swift */; };
 		F9E644C3DAF90BF3C4BFBDAA /* Transmission.swift in Sources */ = {isa = PBXBuildFile; fileRef = 524CE25DC2AC7A7834ADD227 /* Transmission.swift */; };
@@ -97,17 +100,20 @@
 		4AA0B96605446211F06F00AB /* ScoreEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreEngine.swift; sourceTree = "<group>"; };
 		4D7DA86CA1FDDF61A031939C /* Math.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Math.swift; sourceTree = "<group>"; };
 		524CE25DC2AC7A7834ADD227 /* Transmission.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transmission.swift; sourceTree = "<group>"; };
+		56875BFDA7E392687606A030 /* ChartInspection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartInspection.swift; sourceTree = "<group>"; };
 		604F1C55FA0096B36F6FB545 /* RNG.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RNG.swift; sourceTree = "<group>"; };
 		6071C1EA951BEE67E4EEE939 /* CockpitDock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CockpitDock.swift; sourceTree = "<group>"; };
 		6D866892B30770AAE57EF8F0 /* SaveFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaveFile.swift; sourceTree = "<group>"; };
 		7BC3F395ED099AB164087281 /* CockpitBriefing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CockpitBriefing.swift; sourceTree = "<group>"; };
 		7BCDAD9783A374785230349D /* help-icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "help-icon.png"; sourceTree = "<group>"; };
 		7C4FB415E397196676756418 /* newspaper-icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "newspaper-icon.png"; sourceTree = "<group>"; };
+		84C66124875713982223746C /* SpriteKitChartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpriteKitChartView.swift; sourceTree = "<group>"; };
 		89D15C6B5BE67DC9C1323D94 /* FedChairmanGameNative.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FedChairmanGameNative.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8E83AF212D60E0425F56EBCC /* Types.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Types.swift; sourceTree = "<group>"; };
 		9090AA571B47C4B8516DDFF6 /* FedChairmanCoreTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FedChairmanCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		921A2808C0EF9D40F532F557 /* DecisionTapeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DecisionTapeView.swift; sourceTree = "<group>"; };
 		95B1AE1F4BB8ABD10797876F /* NativeCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCoreTests.swift; sourceTree = "<group>"; };
+		A733E9778DB283810A3A4D54 /* DashboardHeaderViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardHeaderViews.swift; sourceTree = "<group>"; };
 		BFBCAA122BD855A6C74CE16F /* NativeCockpitUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCockpitUITests.swift; sourceTree = "<group>"; };
 		C0417E7B5D00741CF334D1AB /* Debrief.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Debrief.swift; sourceTree = "<group>"; };
 		C2BD4434B1C9E9252E0D70C4 /* FedChairmanGameNativeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FedChairmanGameNativeApp.swift; sourceTree = "<group>"; };
@@ -153,6 +159,7 @@
 		5EBCDB025251362656F8682F /* FedChairmanCore */ = {
 			isa = PBXGroup;
 			children = (
+				56875BFDA7E392687606A030 /* ChartInspection.swift */,
 				7BC3F395ED099AB164087281 /* CockpitBriefing.swift */,
 				6071C1EA951BEE67E4EEE939 /* CockpitDock.swift */,
 				C0417E7B5D00741CF334D1AB /* Debrief.swift */,
@@ -186,9 +193,11 @@
 			isa = PBXGroup;
 			children = (
 				0BA666F6572698F6758EBD47 /* CockpitScene.swift */,
+				A733E9778DB283810A3A4D54 /* DashboardHeaderViews.swift */,
 				921A2808C0EF9D40F532F557 /* DecisionTapeView.swift */,
 				C2BD4434B1C9E9252E0D70C4 /* FedChairmanGameNativeApp.swift */,
 				DEF12800CF5FA543FBA51FE8 /* GameWindowDelegate.swift */,
+				84C66124875713982223746C /* SpriteKitChartView.swift */,
 				F33B0CA3A9DF281197659565 /* Resources */,
 			);
 			path = FedChairmanNativeApp;
@@ -387,9 +396,11 @@
 			buildActionMask = 2147483647;
 			files = (
 				02F7EB7CCEA746512D1D471F /* CockpitScene.swift in Sources */,
+				474F620DD469879554339703 /* DashboardHeaderViews.swift in Sources */,
 				7079517EA92B412D27EFB962 /* DecisionTapeView.swift in Sources */,
 				7EAEF3A753A1FC0A4F76FD9F /* FedChairmanGameNativeApp.swift in Sources */,
 				922C6DE6CBBBD1D75CA50C31 /* GameWindowDelegate.swift in Sources */,
+				7661D2C3E41C582075B1DCCB /* SpriteKitChartView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -405,6 +416,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E0C3BE2E33C994C40C0D4760 /* ChartInspection.swift in Sources */,
 				0F9328BE1BFF024C3C8F00B8 /* CockpitBriefing.swift in Sources */,
 				AD13677C1A58B4C2446C12F1 /* CockpitDock.swift in Sources */,
 				D12F7356B5829C45B9A0F667 /* Debrief.swift in Sources */,

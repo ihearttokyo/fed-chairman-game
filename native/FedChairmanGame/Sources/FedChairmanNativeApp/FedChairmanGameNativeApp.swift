@@ -1,6 +1,5 @@
 import AppKit
 import FedChairmanCore
-import SpriteKit
 import SwiftUI
 
 @main
@@ -56,6 +55,7 @@ struct NativeCockpitView: View {
     @State private var customBps = ""
     @State private var decisionPulse = false
     @State private var panelMessage: String?
+    @State private var inspectedChartIndex: Int?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var session: GameSession {
@@ -72,6 +72,18 @@ struct NativeCockpitView: View {
 
     private var decisionFeedback: DecisionFeedback {
         buildDecisionFeedback(session: session)
+    }
+
+    private var careerDecisions: [PolicyDecision] {
+        session.completedTerms.flatMap(\.decisions) + session.decisions
+    }
+
+    private var chartInspection: ChartInspection? {
+        buildChartInspection(
+            history: session.careerHistory,
+            decisions: careerDecisions,
+            selectedIndex: inspectedChartIndex,
+        )
     }
 
     private var briefingVisible: Bool {
@@ -170,32 +182,21 @@ struct NativeCockpitView: View {
                         .foregroundStyle(.white.opacity(0.55))
                 }
                 Spacer()
-                mandateBadge("Inflation", value: session.current.inflation, target: 2, color: .orange)
-                mandateBadge("Labor", value: session.current.unemployment, target: 5, color: .blue)
-                mandateBadge("Credibility", value: session.current.credibility, target: 80, color: .green)
+                MandateBadge(label: "Inflation", value: session.current.inflation, target: 2, color: .orange)
+                MandateBadge(label: "Labor", value: session.current.unemployment, target: 5, color: .blue)
+                MandateBadge(label: "Credibility", value: session.current.credibility, target: 80, color: .green)
             }
             .padding(.bottom, 8)
-            SpriteKitChart(history: session.careerHistory, reducedMotion: reduceMotion || session.ui.reducedMotion)
-                .frame(height: 270)
+            ChartInspectionStrip(inspection: chartInspection, isInspecting: inspectedChartIndex != nil)
+                .padding(.bottom, 8)
+            SpriteKitChart(
+                history: session.careerHistory,
+                reducedMotion: reduceMotion || session.ui.reducedMotion,
+                onInspectionIndexChanged: { inspectedChartIndex = $0 },
+            )
+            .frame(height: 250)
         }
         .accessibilityIdentifier("mandate-dashboard")
-    }
-
-    private func mandateBadge(_ label: String, value: Double, target: Double, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(label.uppercased())
-                .font(.caption2.weight(.black))
-                .foregroundStyle(color)
-            Text(value, format: .number.precision(.fractionLength(label == "Credibility" ? 0 : 2)))
-                .font(.system(size: 18, weight: .black, design: .rounded))
-            Text("Target \(target, format: .number.precision(.fractionLength(label == "Credibility" ? 0 : 1)))")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.52))
-        }
-        .frame(width: 104, alignment: .leading)
-        .padding(10)
-        .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 9))
-        .overlay(RoundedRectangle(cornerRadius: 9).stroke(.white.opacity(0.08)))
     }
 
     private var policyLever: some View {
@@ -391,7 +392,7 @@ struct NativeCockpitView: View {
                     .padding(.trailing, CockpitDockLayout.outerPadding - 4)
                     .padding(.bottom, 16)
             }
-            .offset(y: -44)
+            .offset(y: -72)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
         .animation(motionMode == .reduced ? nil : .bouncy(duration: 0.36, extraBounce: 0.28), value: dockState.openPanels)
@@ -946,80 +947,6 @@ private struct QuarterPips: View {
         }
         .padding(6)
         .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
-    }
-}
-
-private struct SpriteKitChart: NSViewRepresentable {
-    var history: [MacroState]
-    var reducedMotion: Bool
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
-    func makeNSView(context: Context) -> ChartTrackingView {
-        let view = ChartTrackingView()
-        view.allowsTransparency = true
-        view.ignoresSiblingOrder = true
-        view.onMouseMoved = { point in
-            context.coordinator.hoverX = point.x
-            context.coordinator.render(into: view, history: history, reducedMotion: reducedMotion)
-        }
-        view.onMouseExited = {
-            context.coordinator.hoverX = nil
-            context.coordinator.render(into: view, history: history, reducedMotion: reducedMotion)
-        }
-        view.presentScene(CockpitScene(size: CGSize(width: 900, height: 320)))
-        return view
-    }
-
-    func updateNSView(_ view: ChartTrackingView, context: Context) {
-        context.coordinator.render(into: view, history: history, reducedMotion: reducedMotion)
-    }
-
-    @MainActor
-    final class Coordinator {
-        var hoverX: CGFloat?
-
-        func render(into view: SKView, history: [MacroState], reducedMotion: Bool) {
-            view.window?.acceptsMouseMovedEvents = true
-            let scene = (view.scene as? CockpitScene) ?? CockpitScene(size: view.bounds.size)
-            scene.size = view.bounds.size == .zero ? CGSize(width: 900, height: 320) : view.bounds.size
-            scene.render(history: history, reducedMotion: reducedMotion, hoverX: hoverX)
-            if view.scene !== scene {
-                view.presentScene(scene)
-            }
-        }
-    }
-}
-
-private final class ChartTrackingView: SKView {
-    var onMouseMoved: ((CGPoint) -> Void)?
-    var onMouseExited: (() -> Void)?
-    private var chartTrackingArea: NSTrackingArea?
-
-    override func updateTrackingAreas() {
-        if let chartTrackingArea {
-            removeTrackingArea(chartTrackingArea)
-        }
-        let area = NSTrackingArea(
-            rect: bounds,
-            options: [.activeInKeyWindow, .mouseMoved, .mouseEnteredAndExited, .inVisibleRect],
-            owner: self,
-            userInfo: nil,
-        )
-        addTrackingArea(area)
-        chartTrackingArea = area
-        super.updateTrackingAreas()
-    }
-
-    override func mouseMoved(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
-        onMouseMoved?(point)
-    }
-
-    override func mouseExited(with _: NSEvent) {
-        onMouseExited?()
     }
 }
 
