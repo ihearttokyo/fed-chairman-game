@@ -100,7 +100,7 @@ final class NativeCockpitUITests: XCTestCase {
     }
 
     @MainActor
-    func testPolicyLeverDoesNotShiftAfterRateDecisionAndBriefingAutoRetracts() {
+    func testPolicyLeverDoesNotShiftAfterRateDecisionAndBriefingStaysClosed() {
         let app = launchApp()
         defer { app.terminate() }
         let policyLever = app.staticTexts["Policy Lever"]
@@ -120,14 +120,8 @@ final class NativeCockpitUITests: XCTestCase {
         XCTAssertTrue(decisionTape.waitForExistence(timeout: 2))
         XCTAssertTrue(decisionTape.label.contains("+25 bps"))
         XCTAssertTrue(decisionTape.label.contains("4.00% -> 4.25%"))
-        XCTAssertTrue(app.buttons["Close newspaper panel"].waitForExistence(timeout: 2))
-
-        let retracts = expectation(
-            for: NSPredicate(format: "exists == true"),
-            evaluatedWith: app.buttons["Open newspaper panel"],
-        )
-        wait(for: [retracts], timeout: 6)
         XCTAssertTrue(app.buttons["Open newspaper panel"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["newspaper-panel"].exists)
     }
 
     @MainActor
@@ -152,7 +146,8 @@ final class NativeCockpitUITests: XCTestCase {
         app.staticTexts["Mandate Dashboard"].click()
         app.menuBars.menuBarItems["Policy"].click()
         app.menuItems["Raise 25 bps"].click()
-        XCTAssertTrue(app.buttons["Close newspaper panel"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Open newspaper panel"].waitForExistence(timeout: 2))
+        XCTAssertFalse(panelElement("newspaper-panel", in: app).exists)
     }
 
     @MainActor
@@ -219,7 +214,8 @@ final class NativeCockpitUITests: XCTestCase {
 
         app.activate()
         app.buttons["+25 bps"].click()
-        XCTAssertTrue(app.buttons["Close newspaper panel"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Open newspaper panel"].waitForExistence(timeout: 2))
+        XCTAssertFalse(panelElement("newspaper-panel", in: app).exists)
         XCTAssertTrue(app.staticTexts["Quarter Review"].waitForExistence(timeout: 2))
     }
 
@@ -323,12 +319,8 @@ final class NativeCockpitUITests: XCTestCase {
         let app = launchApp(windowSize: "1360x860")
         defer { app.terminate() }
         app.buttons["+25 bps"].click()
-        XCTAssertTrue(app.buttons["Close newspaper panel"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Open newspaper panel"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.descendants(matching: .any)["newspaper-panel"].exists)
         try captureVisualSmoke(app, name: "1360x860-after-decision")
-        let retracts = expectation(
-            for: NSPredicate(format: "exists == true"),
-            evaluatedWith: app.buttons["Open newspaper panel"],
-        )
-        wait(for: [retracts], timeout: 6)
     }
 }

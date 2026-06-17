@@ -619,17 +619,11 @@ struct NativeCockpitView: View {
             autoBriefingKey = nil
             return
         }
-        autoBriefingKey = briefingKey
-        dockState.open(.newspaper)
-        guard !dockState.pinnedBriefing else {
+        guard dockState.isOpen(.newspaper) else {
+            autoBriefingKey = nil
             return
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
-            if autoBriefingKey == briefingKey, !dockState.pinnedBriefing {
-                autoBriefingKey = nil
-                dockState.close(.newspaper)
-            }
-        }
+        autoBriefingKey = briefingKey
     }
 
     private func commit(_ action: PolicyAction) {
