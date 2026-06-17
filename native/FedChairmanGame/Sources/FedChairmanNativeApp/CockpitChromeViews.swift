@@ -6,20 +6,20 @@ struct CommandDeskBackground: View {
     var body: some View {
         LinearGradient(
             colors: [
-                Color(red: 0.075, green: 0.028, blue: 0.010),
-                Color(red: 0.18, green: 0.075, blue: 0.026),
-                Color(red: 0.018, green: 0.038, blue: 0.032),
+                Color(red: 0.030, green: 0.034, blue: 0.034),
+                Color(red: 0.070, green: 0.044, blue: 0.030),
+                Color(red: 0.018, green: 0.030, blue: 0.030),
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing,
         )
         .ignoresSafeArea()
         .overlay {
-            RadialGradient(colors: [Color.orange.opacity(0.34), .clear], center: .topLeading, startRadius: 30, endRadius: 540)
+            RadialGradient(colors: [Color.orange.opacity(0.16), .clear], center: .topLeading, startRadius: 30, endRadius: 540)
                 .ignoresSafeArea()
         }
         .overlay {
-            RadialGradient(colors: [Color.green.opacity(0.18), .clear], center: .bottomTrailing, startRadius: 80, endRadius: 760)
+            RadialGradient(colors: [Color.green.opacity(0.08), .clear], center: .bottomTrailing, startRadius: 80, endRadius: 760)
                 .ignoresSafeArea()
         }
         .overlay(alignment: .bottom) {
@@ -27,8 +27,8 @@ struct CommandDeskBackground: View {
                 .fill(
                     LinearGradient(
                         colors: [
-                            Color(red: 0.24, green: 0.10, blue: 0.034).opacity(0.46),
-                            Color(red: 0.08, green: 0.035, blue: 0.018).opacity(0.82),
+                            Color(red: 0.10, green: 0.075, blue: 0.050).opacity(0.24),
+                            Color(red: 0.022, green: 0.032, blue: 0.030).opacity(0.70),
                         ],
                         startPoint: .top,
                         endPoint: .bottom,
@@ -58,7 +58,7 @@ struct CommandPanel<Content: View>: View {
             .padding(padding)
             .foregroundStyle(.white)
             .background(
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: 8)
                     .fill(
                         LinearGradient(
                             colors: panelColors,
@@ -68,35 +68,34 @@ struct CommandPanel<Content: View>: View {
                     )
                     .overlay(
                         LinearGradient(colors: [.white.opacity(0.18), .clear, .black.opacity(0.18)], startPoint: .top, endPoint: .bottom)
-                            .clipShape(RoundedRectangle(cornerRadius: 12)),
+                            .clipShape(RoundedRectangle(cornerRadius: 8)),
                     ),
             )
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.22)))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(red: 0.65, green: 0.34, blue: 0.12).opacity(0.25)).padding(1))
-            .shadow(color: .black.opacity(0.36), radius: 22, y: 12)
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.16)))
+            .shadow(color: .black.opacity(0.30), radius: 10, y: 6)
     }
 
     private var panelColors: [Color] {
         switch tone {
         case .glass:
             [
-                Color(red: 0.18, green: 0.085, blue: 0.035).opacity(0.92),
-                Color(red: 0.025, green: 0.035, blue: 0.032).opacity(0.98),
+                Color(red: 0.082, green: 0.060, blue: 0.046).opacity(0.94),
+                Color(red: 0.022, green: 0.030, blue: 0.030).opacity(0.99),
             ]
         case .instrument:
             [
-                Color(red: 0.20, green: 0.095, blue: 0.045).opacity(0.94),
-                Color(red: 0.020, green: 0.028, blue: 0.025).opacity(0.99),
+                Color(red: 0.070, green: 0.062, blue: 0.052).opacity(0.95),
+                Color(red: 0.020, green: 0.028, blue: 0.028).opacity(1),
             ]
         case .keyboard:
             [
-                Color(red: 0.19, green: 0.10, blue: 0.052).opacity(0.96),
-                Color(red: 0.016, green: 0.025, blue: 0.023).opacity(1),
+                Color(red: 0.078, green: 0.058, blue: 0.044).opacity(0.97),
+                Color(red: 0.018, green: 0.026, blue: 0.026).opacity(1),
             ]
         case .monitor:
             [
-                Color(red: 0.18, green: 0.11, blue: 0.075).opacity(0.96),
-                Color(red: 0.012, green: 0.020, blue: 0.020).opacity(1),
+                Color(red: 0.060, green: 0.056, blue: 0.050).opacity(0.96),
+                Color(red: 0.012, green: 0.020, blue: 0.022).opacity(1),
             ]
         }
     }
@@ -152,24 +151,24 @@ struct DockButtonStyle: ButtonStyle {
             .foregroundStyle(.white)
             .frame(width: width, height: height)
             .background(
-                RoundedRectangle(cornerRadius: 22)
-                    .fill(.ultraThinMaterial)
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color(red: 0.032, green: 0.045, blue: 0.040).opacity(0.94))
                     .overlay(
                         LinearGradient(
                             colors: [
-                                .white.opacity(isOpen ? 0.3 : 0.16),
-                                Color.green.opacity(isOpen ? 0.2 : 0.05),
-                                .black.opacity(0.16),
+                                .white.opacity(isOpen ? 0.20 : 0.10),
+                                Color.green.opacity(isOpen ? 0.16 : 0.04),
+                                .black.opacity(0.18),
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing,
                         )
-                        .clipShape(RoundedRectangle(cornerRadius: 22)),
+                        .clipShape(RoundedRectangle(cornerRadius: 16)),
                     ),
             )
-            .overlay(RoundedRectangle(cornerRadius: 22).stroke(.white.opacity(isOpen ? 0.42 : 0.2)))
-            .shadow(color: Color.green.opacity(isOpen ? 0.24 : 0.07), radius: isOpen ? 20 : 10, y: 7)
-            .shadow(color: .black.opacity(0.32), radius: 15, y: 8)
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(isOpen ? 0.30 : 0.14)))
+            .shadow(color: Color.green.opacity(isOpen ? 0.18 : 0.03), radius: isOpen ? 12 : 5, y: 4)
+            .shadow(color: .black.opacity(0.28), radius: 8, y: 5)
             .scaleEffect(configuration.isPressed ? 0.84 : 1)
             .animation(.bouncy(duration: 0.28, extraBounce: 0.34), value: configuration.isPressed)
     }
@@ -177,17 +176,20 @@ struct DockButtonStyle: ButtonStyle {
 
 struct DockIcon: View {
     var panel: CockpitDockPanel
+    var compact = false
 
     var body: some View {
-        VStack(spacing: 7) {
+        VStack(spacing: compact ? 0 : 7) {
             iconPlate
-            Text(panel.title)
-                .font(.system(size: 11, weight: .black, design: .rounded))
-                .lineLimit(1)
-                .minimumScaleFactor(0.82)
-                .frame(width: 82, height: 14)
-                .shadow(color: .black.opacity(0.7), radius: 2, y: 1)
-                .accessibilityHidden(true)
+            if !compact {
+                Text(panel.title)
+                    .font(.system(size: 11, weight: .black, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+                    .frame(width: 82, height: 14)
+                    .shadow(color: .black.opacity(0.7), radius: 2, y: 1)
+                    .accessibilityHidden(true)
+            }
         }
         .accessibilityElement(children: .ignore)
     }
@@ -211,17 +213,17 @@ struct DockIcon: View {
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 50, height: 50)
+                    .frame(width: compact ? 32 : 50, height: compact ? 32 : 50)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                     .shadow(color: .black.opacity(0.35), radius: 5, y: 3)
                     .accessibilityHidden(true)
             } else {
                 Text(String(panel.rawValue.prefix(1)))
-                    .font(.system(size: 24, weight: .black, design: .rounded))
+                    .font(.system(size: compact ? 18 : 24, weight: .black, design: .rounded))
                     .accessibilityHidden(true)
             }
         }
-        .frame(width: 58, height: 58)
+        .frame(width: compact ? 38 : 58, height: compact ? 38 : 58)
     }
 }
 

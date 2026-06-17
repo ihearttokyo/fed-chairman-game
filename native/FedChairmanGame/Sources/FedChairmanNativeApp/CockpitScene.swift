@@ -5,7 +5,8 @@ final class CockpitScene: SKScene {
     private let gridNode = SKNode()
     private let pathNode = SKShapeNode()
     private var pulseNode = SKShapeNode()
-    private let yMax = 10.0
+    private var yMin = 0.0
+    private var yMax = 10.0
 
     override init(size: CGSize) {
         super.init(size: size)
@@ -22,15 +23,16 @@ final class CockpitScene: SKScene {
 
     func render(history: [MacroState], reducedMotion: Bool, hoverX: CGFloat? = nil) {
         removeAllChildren()
+        configureDomain(for: history)
         addInstrumentPlate()
         let frame = chartFrame
         addGrid(in: frame)
         addBands()
         addAxisLabels(in: frame)
         addLegend()
-        addSeries(history: history, keyPath: \.inflation, label: "Inflation", color: SKColor.systemOrange)
-        addSeries(history: history, keyPath: \.unemployment, label: "Unemployment", color: SKColor.systemBlue)
-        addSeries(history: history, keyPath: \.fedFundsRate, label: "Fed funds", color: SKColor.systemGreen)
+        addSeries(history: history, keyPath: \.inflation, label: "INF", color: SKColor.systemOrange)
+        addSeries(history: history, keyPath: \.unemployment, label: "U", color: SKColor.systemBlue)
+        addSeries(history: history, keyPath: \.fedFundsRate, label: "FFR", color: SKColor.systemGreen)
         addLatestReadout(history: history)
         addHoverReadout(history: history, hoverX: hoverX, in: frame)
         if !reducedMotion {
@@ -38,8 +40,25 @@ final class CockpitScene: SKScene {
         }
     }
 
+    static func chartFrame(for size: CGSize) -> CGRect {
+        let horizontalInset: CGFloat = size.width < 720 ? 52 : 64
+        let bottomInset: CGFloat = size.height < 170 ? 34 : 48
+        let topInset: CGFloat = size.height < 170 ? 34 : 54
+        return CGRect(
+            x: horizontalInset,
+            y: bottomInset,
+            width: max(1, size.width - horizontalInset * 2 - 20),
+            height: max(1, size.height - bottomInset - topInset),
+        )
+    }
+
     private var chartFrame: CGRect {
-        CGRect(x: 64, y: 48, width: max(1, size.width - 148), height: max(1, size.height - 102))
+        Self.chartFrame(for: size)
+    }
+
+    private func configureDomain(for _: [MacroState]) {
+        yMin = 0
+        yMax = 10
     }
 
     private func addInstrumentPlate() {
@@ -84,26 +103,24 @@ final class CockpitScene: SKScene {
 
     private func addBands() {
         let frame = chartFrame
-        let inflationBand = SKShapeNode(rect: CGRect(x: frame.minX, y: yPosition(1.5, in: frame), width: frame.width, height: frame.height * 0.1))
+        let inflationBand = SKShapeNode(rect: bandRect(from: 1.5, to: 2.5, in: frame))
         inflationBand.fillColor = SKColor.systemOrange.withAlphaComponent(0.13)
         inflationBand.strokeColor = .clear
         addChild(inflationBand)
 
-        let laborBand = SKShapeNode(rect: CGRect(x: frame.minX, y: yPosition(4.2, in: frame), width: frame.width, height: frame.height * 0.16))
+        let laborBand = SKShapeNode(rect: bandRect(from: 4.2, to: 5.8, in: frame))
         laborBand.fillColor = SKColor.systemBlue.withAlphaComponent(0.12)
         laborBand.strokeColor = .clear
         addChild(laborBand)
     }
 
     private func addAxisLabels(in frame: CGRect) {
-        for value in stride(from: 0, through: 10, by: 2) {
-            let label = labelNode("\(value)%", size: 11, color: SKColor.white.withAlphaComponent(0.56), alignment: .right)
+        let tickStep = (yMax - yMin) / 4
+        for index in 0 ... 4 {
+            let value = yMin + tickStep * Double(index)
+            let label = labelNode(String(format: "%.1f%%", value), size: 11, color: SKColor.white.withAlphaComponent(0.56), alignment: .right)
             label.position = CGPoint(x: frame.minX - 10, y: yPosition(Double(value), in: frame) - 4)
             addChild(label)
-
-            let rightLabel = labelNode("\(value)%", size: 11, color: SKColor.white.withAlphaComponent(0.56), alignment: .left)
-            rightLabel.position = CGPoint(x: frame.maxX + 12, y: yPosition(Double(value), in: frame) - 4)
-            addChild(rightLabel)
         }
 
         let left = labelNode("Career start", size: 10, color: SKColor.white.withAlphaComponent(0.45), alignment: .left)
@@ -136,7 +153,7 @@ final class CockpitScene: SKScene {
         }
     }
 
-    private func addSeries(history: [MacroState], keyPath: KeyPath<MacroState, Double>, label _: String, color: SKColor) {
+    private func addSeries(history: [MacroState], keyPath: KeyPath<MacroState, Double>, label: String, color: SKColor) {
         guard !history.isEmpty else {
             return
         }
@@ -171,6 +188,14 @@ final class CockpitScene: SKScene {
             latestPip.strokeColor = SKColor.white.withAlphaComponent(0.95)
             latestPip.lineWidth = 2
             addChild(latestPip)
+
+            let latestValue = history[history.count - 1][keyPath: keyPath]
+            let valueLabel = labelNode("\(label) \(String(format: "%.2f", latestValue))%", size: 11, color: color.withAlphaComponent(0.95), alignment: .left)
+            valueLabel.position = CGPoint(
+                x: min(frame.maxX - 76, latest.x + 14),
+                y: min(frame.maxY - 12, max(frame.minY + 10, latest.y - 4)),
+            )
+            addChild(valueLabel)
         }
     }
 
@@ -207,29 +232,23 @@ final class CockpitScene: SKScene {
         marker.lineWidth = 1.5
         addChild(marker)
 
-        let readoutRect = CGRect(
-            x: min(frame.maxX - 214, max(frame.minX + 8, pointX + 14)),
-            y: frame.maxY - 92,
-            width: 206,
-            height: 74,
-        )
-        let plate = SKShapeNode(rect: readoutRect, cornerRadius: 8)
-        plate.fillColor = SKColor(calibratedRed: 0.04, green: 0.032, blue: 0.025, alpha: 0.96)
-        plate.strokeColor = SKColor(calibratedRed: 0.72, green: 0.46, blue: 0.22, alpha: 0.62)
-        plate.lineWidth = 1
-        addChild(plate)
-
         let quarterLabel = index == 0 ? "Career start" : "Career Q\(index)"
-        let rows = [
-            quarterLabel,
-            "INF \(String(format: "%.2f", state.inflation))%    U \(String(format: "%.2f", state.unemployment))%",
-            "FFR \(String(format: "%.2f", state.fedFundsRate))%    CRED \(String(format: "%.0f", state.credibility))",
+        let values = [
+            (state.inflation, SKColor.systemOrange),
+            (state.unemployment, SKColor.systemBlue),
+            (state.fedFundsRate, SKColor.systemGreen),
         ]
-        for (rowIndex, row) in rows.enumerated() {
-            let label = labelNode(row, size: rowIndex == 0 ? 12 : 11, color: rowIndex == 0 ? .systemOrange : SKColor.white.withAlphaComponent(0.82), alignment: .left)
-            label.position = CGPoint(x: readoutRect.minX + 12, y: readoutRect.maxY - 22 - CGFloat(rowIndex * 20))
-            addChild(label)
+        for (value, color) in values {
+            let highlight = SKShapeNode(circleOfRadius: 7)
+            highlight.position = CGPoint(x: pointX, y: yPosition(value, in: frame))
+            highlight.fillColor = color.withAlphaComponent(0.35)
+            highlight.strokeColor = SKColor.white.withAlphaComponent(0.95)
+            highlight.lineWidth = 2
+            addChild(highlight)
         }
+        let label = labelNode(quarterLabel, size: 11, color: SKColor.white.withAlphaComponent(0.78), alignment: .center)
+        label.position = CGPoint(x: pointX, y: frame.minY - 22)
+        addChild(label)
     }
 
     private func addPulse() {
@@ -246,11 +265,18 @@ final class CockpitScene: SKScene {
     }
 
     private func yPosition(_ value: Double, in frame: CGRect) -> CGFloat {
-        frame.minY + frame.height * CGFloat(min(yMax, max(0, value)) / yMax)
+        let clamped = min(yMax, max(yMin, value))
+        return frame.minY + frame.height * CGFloat((clamped - yMin) / max(0.01, yMax - yMin))
+    }
+
+    private func bandRect(from lower: Double, to upper: Double, in frame: CGRect) -> CGRect {
+        let minY = yPosition(lower, in: frame)
+        let maxY = yPosition(upper, in: frame)
+        return CGRect(x: frame.minX, y: minY, width: frame.width, height: max(1, maxY - minY))
     }
 
     private func labelNode(_ text: String, size: CGFloat, color: SKColor, alignment: SKLabelHorizontalAlignmentMode) -> SKLabelNode {
-        let label = SKLabelNode(fontNamed: "SF Pro Rounded")
+        let label = SKLabelNode(fontNamed: NSFont.systemFont(ofSize: size, weight: .semibold).fontName)
         label.text = text
         label.fontSize = size
         label.fontColor = color

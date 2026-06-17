@@ -104,7 +104,7 @@ struct NativeCockpitView: View {
             ZStack(alignment: .top) {
                 CommandDeskBackground()
                 VStack(spacing: layout.spacing.cg) {
-                    statusRail
+                    statusRail(layout: layout)
                     dashboard(layout: layout)
                     policyLever(layout: layout)
                     metricsGrid(layout: layout)
@@ -150,13 +150,20 @@ struct NativeCockpitView: View {
         }
     }
 
-    private var statusRail: some View {
-        HStack(spacing: 14) {
-            Text("Classic Normal Cycle")
-            Text("Term \(session.termNumber)")
-            Text("Quarter \(session.current.quarterIndex) of 16")
-            Text("\(session.totalCareerQuarters) career quarters")
-            QuarterPips(current: session.current.quarterIndex, total: 16)
+    private func statusRail(layout: CockpitLayoutMetrics) -> some View {
+        HStack(spacing: 12) {
+            Spacer(minLength: 0)
+            HStack(spacing: layout.mode == .compact ? 8 : 14) {
+                Text("Classic Normal Cycle")
+                Text("Term \(session.termNumber)")
+                Text("Quarter \(session.current.quarterIndex) of 16")
+                Text("\(session.totalCareerQuarters) career quarters")
+                if layout.mode != .compact {
+                    QuarterPips(current: session.current.quarterIndex, total: 16)
+                }
+            }
+            .lineLimit(1)
+            dockButtons(layout: layout)
         }
         .font(.system(size: 13, weight: .semibold, design: .rounded))
         .foregroundStyle(.white.opacity(0.76))
@@ -360,66 +367,74 @@ struct NativeCockpitView: View {
 
     private func cockpitDock(layout: CockpitLayoutMetrics) -> some View {
         VStack {
-            Spacer()
-            HStack(alignment: .bottom, spacing: 10) {
-                Spacer()
-                ForEach(dockState.cascadePlacements()) { placement in
-                    dockPanel(placement.panel, layout: layout)
-                        .frame(width: dockPanelWidth(placement.panel, layout: layout))
-                        .frame(maxHeight: layout.dockPanelMaxHeight.cg, alignment: .bottom)
-                        .offset(x: placement.xOffset, y: placement.yOffset)
-                        .transition(motionMode == .reduced ? .opacity : .scale(scale: 0.62, anchor: .bottomTrailing).combined(with: .opacity))
-                }
-                ForEach(CockpitDockPanel.allCases) { panel in
-                    Button {
-                        toggle(panel)
-                    } label: {
-                        DockIcon(panel: panel)
-                    }
-                    .buttonStyle(DockButtonStyle(
-                        isOpen: dockState.isOpen(panel, briefingVisible: briefingVisible),
-                        width: layout.dockButtonWidth.cg,
-                        height: layout.dockButtonHeight.cg,
-                    ))
-                    .accessibilityLabel("\(dockState.isOpen(panel, briefingVisible: briefingVisible) ? "Close" : "Open") \(panel.title.lowercased()) panel")
-                    .accessibilityIdentifier("dock-\(panel.rawValue)")
-                }
+            HStack {
+                Spacer(minLength: 0)
+                dockPanels(layout: layout)
             }
+            .padding(.top, (layout.panelPadding + layout.dockButtonHeight + 8).cg)
             .padding(.horizontal, layout.dockOuterPadding.cg)
-            .padding(.top, 14)
-            .padding(.bottom, layout.dockBottomLift.cg)
-            .background(alignment: .bottomTrailing) {
-                dockTray(layout: layout)
-                    .padding(.trailing, max(0, layout.dockOuterPadding - 4).cg)
-                    .padding(.bottom, 16)
-            }
-            .offset(y: layout.dockVerticalOffset.cg)
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         .animation(motionMode == .reduced ? nil : .bouncy(duration: 0.36, extraBounce: 0.28), value: dockState.openPanels)
     }
 
+    private func dockPanels(layout: CockpitLayoutMetrics) -> some View {
+        ForEach(dockState.cascadePlacements()) { placement in
+            dockPanel(placement.panel, layout: layout)
+                .frame(width: dockPanelWidth(placement.panel, layout: layout))
+                .frame(maxHeight: layout.dockPanelMaxHeight.cg, alignment: .bottom)
+                .offset(x: placement.xOffset, y: placement.yOffset)
+                .transition(motionMode == .reduced ? .opacity : .scale(scale: 0.62, anchor: .bottomTrailing).combined(with: .opacity))
+        }
+    }
+
+    private func dockButtons(layout: CockpitLayoutMetrics) -> some View {
+        let compact = layout.dockButtonHeight <= 60
+        return HStack(spacing: compact ? 6 : 10) {
+            ForEach(CockpitDockPanel.allCases) { panel in
+                Button {
+                    toggle(panel)
+                } label: {
+                    DockIcon(panel: panel, compact: compact)
+                }
+                .buttonStyle(DockButtonStyle(
+                    isOpen: dockState.isOpen(panel, briefingVisible: briefingVisible),
+                    width: layout.dockButtonWidth.cg,
+                    height: layout.dockButtonHeight.cg,
+                ))
+                .accessibilityLabel("\(dockState.isOpen(panel, briefingVisible: briefingVisible) ? "Close" : "Open") \(panel.title.lowercased()) panel")
+                .accessibilityIdentifier("dock-\(panel.rawValue)")
+            }
+        }
+        .padding(6)
+        .background(alignment: .bottomTrailing) {
+            dockTray(layout: layout)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("dock-button-cluster")
+    }
+
     private func dockTray(layout: CockpitLayoutMetrics) -> some View {
-        RoundedRectangle(cornerRadius: 28)
-            .fill(.ultraThinMaterial)
+        RoundedRectangle(cornerRadius: 18)
+            .fill(Color(red: 0.026, green: 0.036, blue: 0.032).opacity(0.88))
             .frame(width: layout.dockTrayWidth.cg, height: layout.dockTrayHeight.cg)
             .overlay {
-                RoundedRectangle(cornerRadius: 28)
+                RoundedRectangle(cornerRadius: 18)
                     .fill(
                         LinearGradient(
                             colors: [
-                                .white.opacity(0.18),
-                                Color.green.opacity(0.1),
-                                Color(red: 0.11, green: 0.06, blue: 0.03).opacity(0.5),
+                                .white.opacity(0.10),
+                                Color.green.opacity(0.06),
+                                .black.opacity(0.18),
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing,
                         ),
                     )
             }
-            .overlay(RoundedRectangle(cornerRadius: 28).stroke(.white.opacity(0.22)))
-            .shadow(color: Color.green.opacity(0.14), radius: 22, y: 8)
-            .shadow(color: .black.opacity(0.42), radius: 26, y: 12)
+            .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.15)))
+            .shadow(color: .black.opacity(0.28), radius: 10, y: 5)
             .accessibilityHidden(true)
     }
 
@@ -549,7 +564,11 @@ struct NativeCockpitView: View {
                                 get: { session.ui.reducedNoise },
                                 set: { store.setReducedNoise($0) },
                             ))
-                            HStack {
+                            LazyVGrid(
+                                columns: [GridItem(.adaptive(minimum: 74), spacing: 6)],
+                                alignment: .leading,
+                                spacing: 6,
+                            ) {
                                 Button("Save") { savePortableSession() }
                                 Button("Load") { loadPortableSession() }
                                 Button("CSV") { exportCsv() }

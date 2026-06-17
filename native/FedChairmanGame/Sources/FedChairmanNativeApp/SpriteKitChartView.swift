@@ -60,10 +60,9 @@ struct SpriteKitChart: NSViewRepresentable {
                 setInspectionIndex(nil)
                 return
             }
-            let frameMinX: CGFloat = 64
-            let frameWidth = max(1, viewWidth - 148)
-            let clampedX = min(frameMinX + frameWidth, max(frameMinX, x))
-            let progress = (clampedX - frameMinX) / frameWidth
+            let frame = CockpitScene.chartFrame(for: CGSize(width: viewWidth, height: 180))
+            let clampedX = min(frame.maxX, max(frame.minX, x))
+            let progress = (clampedX - frame.minX) / max(1, frame.width)
             let index = min(historyCount - 1, max(0, Int(round(progress * CGFloat(max(1, historyCount - 1))))))
             setInspectionIndex(index)
         }
