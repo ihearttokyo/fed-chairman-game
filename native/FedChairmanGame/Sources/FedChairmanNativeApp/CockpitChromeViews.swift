@@ -4,40 +4,30 @@ import SwiftUI
 
 struct CommandDeskBackground: View {
     var body: some View {
-        LinearGradient(
-            colors: [
-                Color(red: 0.030, green: 0.034, blue: 0.034),
-                Color(red: 0.070, green: 0.044, blue: 0.030),
-                Color(red: 0.018, green: 0.030, blue: 0.030),
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing,
-        )
-        .ignoresSafeArea()
-        .overlay {
-            RadialGradient(colors: [Color.orange.opacity(0.16), .clear], center: .topLeading, startRadius: 30, endRadius: 540)
-                .ignoresSafeArea()
-        }
-        .overlay {
-            RadialGradient(colors: [Color.green.opacity(0.08), .clear], center: .bottomTrailing, startRadius: 80, endRadius: 760)
-                .ignoresSafeArea()
-        }
-        .overlay(alignment: .bottom) {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.025, green: 0.029, blue: 0.036),
+                    Color(red: 0.038, green: 0.051, blue: 0.058),
+                    Color(red: 0.018, green: 0.024, blue: 0.025),
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing,
+            )
+            LinearGradient(
+                colors: [
+                    Color(red: 0.28, green: 0.38, blue: 0.52).opacity(0.26),
+                    .clear,
+                    Color(red: 0.08, green: 0.30, blue: 0.25).opacity(0.18),
+                ],
+                startPoint: .top,
+                endPoint: .bottomTrailing,
+            )
             Rectangle()
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.10, green: 0.075, blue: 0.050).opacity(0.24),
-                            Color(red: 0.022, green: 0.032, blue: 0.030).opacity(0.70),
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom,
-                    ),
-                )
-                .frame(height: 190)
-                .blur(radius: 18)
-                .ignoresSafeArea()
+                .fill(.black.opacity(0.22))
+                .blendMode(.multiply)
         }
+        .ignoresSafeArea()
     }
 }
 
@@ -46,6 +36,26 @@ enum CommandPanelTone {
     case instrument
     case keyboard
     case monitor
+}
+
+func cockpitContentTopInset(_ layout: CockpitLayoutMetrics) -> Double {
+    switch layout.mode {
+    case .compact:
+        62
+    case .standard:
+        94
+    case .expanded:
+        100
+    }
+}
+
+func dockPanelTopInset(_ layout: CockpitLayoutMetrics) -> Double {
+    switch layout.mode {
+    case .compact:
+        layout.panelPadding + 10
+    case .standard, .expanded:
+        layout.panelPadding + layout.dockButtonHeight + 8
+    }
 }
 
 struct CommandPanel<Content: View>: View {
@@ -57,8 +67,21 @@ struct CommandPanel<Content: View>: View {
         content
             .padding(padding)
             .foregroundStyle(.white)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
+            .background(glassFill)
+            .overlay(glassEdge)
+            .shadow(color: .black.opacity(0.38), radius: 18, y: 10)
+            .shadow(color: toneGlow.opacity(0.12), radius: 18, y: 3)
+    }
+
+    private var radius: CGFloat {
+        tone == .keyboard ? 14 : 12
+    }
+
+    private var glassFill: some View {
+        RoundedRectangle(cornerRadius: radius)
+            .fill(.ultraThinMaterial)
+            .overlay {
+                RoundedRectangle(cornerRadius: radius)
                     .fill(
                         LinearGradient(
                             colors: panelColors,
@@ -66,36 +89,73 @@ struct CommandPanel<Content: View>: View {
                             endPoint: .bottomTrailing,
                         ),
                     )
-                    .overlay(
-                        LinearGradient(colors: [.white.opacity(0.18), .clear, .black.opacity(0.18)], startPoint: .top, endPoint: .bottom)
-                            .clipShape(RoundedRectangle(cornerRadius: 8)),
-                    ),
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: radius)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                .white.opacity(0.18),
+                                .white.opacity(0.035),
+                                .black.opacity(0.20),
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom,
+                        ),
+                    )
+            }
+    }
+
+    private var glassEdge: some View {
+        RoundedRectangle(cornerRadius: radius)
+            .stroke(
+                LinearGradient(
+                    colors: [
+                        .white.opacity(0.34),
+                        toneGlow.opacity(0.20),
+                        .white.opacity(0.08),
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing,
+                ),
+                lineWidth: 1,
             )
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.16)))
-            .shadow(color: .black.opacity(0.30), radius: 10, y: 6)
+    }
+
+    private var toneGlow: Color {
+        switch tone {
+        case .glass:
+            Color.cyan
+        case .instrument:
+            Color.mint
+        case .keyboard:
+            Color.green
+        case .monitor:
+            Color.blue
+        }
     }
 
     private var panelColors: [Color] {
         switch tone {
         case .glass:
             [
-                Color(red: 0.082, green: 0.060, blue: 0.046).opacity(0.94),
-                Color(red: 0.022, green: 0.030, blue: 0.030).opacity(0.99),
+                Color(red: 0.18, green: 0.22, blue: 0.25).opacity(0.40),
+                Color(red: 0.035, green: 0.052, blue: 0.058).opacity(0.82),
             ]
         case .instrument:
             [
-                Color(red: 0.070, green: 0.062, blue: 0.052).opacity(0.95),
-                Color(red: 0.020, green: 0.028, blue: 0.028).opacity(1),
+                Color(red: 0.16, green: 0.18, blue: 0.19).opacity(0.46),
+                Color(red: 0.024, green: 0.036, blue: 0.040).opacity(0.90),
             ]
         case .keyboard:
             [
-                Color(red: 0.078, green: 0.058, blue: 0.044).opacity(0.97),
-                Color(red: 0.018, green: 0.026, blue: 0.026).opacity(1),
+                Color(red: 0.12, green: 0.18, blue: 0.16).opacity(0.52),
+                Color(red: 0.020, green: 0.035, blue: 0.034).opacity(0.94),
             ]
         case .monitor:
             [
-                Color(red: 0.060, green: 0.056, blue: 0.050).opacity(0.96),
-                Color(red: 0.012, green: 0.020, blue: 0.022).opacity(1),
+                Color(red: 0.13, green: 0.17, blue: 0.20).opacity(0.50),
+                Color(red: 0.015, green: 0.025, blue: 0.030).opacity(0.94),
             ]
         }
     }
@@ -115,13 +175,14 @@ struct PolicyButtonStyle: ButtonStyle {
             .background(keyFill(configuration: configuration))
             .overlay(alignment: .top) {
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(.white.opacity(configuration.isPressed ? 0.06 : 0.12))
+                    .fill(.white.opacity(configuration.isPressed ? 0.10 : 0.20))
                     .frame(height: max(3, height * 0.22))
                     .padding(.horizontal, 3)
                     .padding(.top, 3)
             }
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(configuration.isPressed ? 0.30 : 0.16)))
-            .shadow(color: .black.opacity(configuration.isPressed ? 0.20 : 0.46), radius: configuration.isPressed ? 2 : 8, y: configuration.isPressed ? 1 : 6)
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(configuration.isPressed ? 0.44 : 0.22)))
+            .shadow(color: Color.green.opacity(configuration.isPressed ? 0.25 : 0.06), radius: configuration.isPressed ? 12 : 8, y: 4)
+            .shadow(color: .black.opacity(configuration.isPressed ? 0.20 : 0.42), radius: configuration.isPressed ? 2 : 8, y: configuration.isPressed ? 1 : 6)
             .scaleEffect(configuration.isPressed ? 0.92 : (pulse ? 1.025 : 1))
             .animation(.bouncy(duration: 0.22, extraBounce: 0.24), value: configuration.isPressed)
             .animation(.bouncy(duration: 0.28, extraBounce: 0.18), value: pulse)
@@ -132,8 +193,8 @@ struct PolicyButtonStyle: ButtonStyle {
             .fill(
                 LinearGradient(
                     colors: configuration.isPressed
-                        ? [Color(red: 0.10, green: 0.32, blue: 0.18), Color(red: 0.025, green: 0.060, blue: 0.045)]
-                        : [Color(red: 0.095, green: 0.102, blue: 0.095), Color(red: 0.018, green: 0.020, blue: 0.020)],
+                        ? [Color(red: 0.18, green: 0.42, blue: 0.30), Color(red: 0.030, green: 0.082, blue: 0.070)]
+                        : [Color(red: 0.16, green: 0.18, blue: 0.18).opacity(0.92), Color(red: 0.030, green: 0.038, blue: 0.040).opacity(0.98)],
                     startPoint: .top,
                     endPoint: .bottom,
                 ),
@@ -152,13 +213,14 @@ struct DockButtonStyle: ButtonStyle {
             .frame(width: width, height: height)
             .background(
                 RoundedRectangle(cornerRadius: 16)
-                    .fill(Color(red: 0.032, green: 0.045, blue: 0.040).opacity(0.94))
+                    .fill(.ultraThinMaterial)
                     .overlay(
                         LinearGradient(
                             colors: [
-                                .white.opacity(isOpen ? 0.20 : 0.10),
+                                .white.opacity(isOpen ? 0.30 : 0.18),
+                                Color.cyan.opacity(isOpen ? 0.18 : 0.05),
                                 Color.green.opacity(isOpen ? 0.16 : 0.04),
-                                .black.opacity(0.18),
+                                .black.opacity(0.20),
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing,
@@ -166,8 +228,8 @@ struct DockButtonStyle: ButtonStyle {
                         .clipShape(RoundedRectangle(cornerRadius: 16)),
                     ),
             )
-            .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(isOpen ? 0.30 : 0.14)))
-            .shadow(color: Color.green.opacity(isOpen ? 0.18 : 0.03), radius: isOpen ? 12 : 5, y: 4)
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(isOpen ? 0.48 : 0.22)))
+            .shadow(color: Color.cyan.opacity(isOpen ? 0.22 : 0.04), radius: isOpen ? 18 : 8, y: 4)
             .shadow(color: .black.opacity(0.28), radius: 8, y: 5)
             .scaleEffect(configuration.isPressed ? 0.84 : 1)
             .animation(.bouncy(duration: 0.28, extraBounce: 0.34), value: configuration.isPressed)
@@ -200,7 +262,7 @@ struct DockIcon: View {
                 .fill(.thinMaterial)
                 .overlay {
                     LinearGradient(
-                        colors: [.white.opacity(0.35), .white.opacity(0.08), .black.opacity(0.2)],
+                        colors: [.white.opacity(0.46), .white.opacity(0.10), .black.opacity(0.22)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing,
                     )

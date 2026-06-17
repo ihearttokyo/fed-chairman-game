@@ -115,7 +115,7 @@ final class NativeCockpitUITests: XCTestCase {
         let dashboardAfter = app.staticTexts["Mandate Dashboard"].frame
         XCTAssertLessThanOrEqual(abs(leverBefore.minY - leverAfter.minY), 4)
         XCTAssertLessThanOrEqual(abs(dashboardBefore.minY - dashboardAfter.minY), 4)
-        XCTAssertTrue(app.staticTexts["Quarter Review"].waitForExistence(timeout: 2))
+        XCTAssertTrue(panelElement("quarter-review", in: app).waitForExistence(timeout: 2))
         let decisionTape = app.descendants(matching: .any)["decision-tape"]
         XCTAssertTrue(decisionTape.waitForExistence(timeout: 2))
         XCTAssertTrue(decisionTape.label.contains("+25 bps"))
@@ -216,7 +216,7 @@ final class NativeCockpitUITests: XCTestCase {
         app.buttons["+25 bps"].click()
         XCTAssertTrue(app.buttons["Open newspaper panel"].waitForExistence(timeout: 2))
         XCTAssertFalse(panelElement("newspaper-panel", in: app).exists)
-        XCTAssertTrue(app.staticTexts["Quarter Review"].waitForExistence(timeout: 2))
+        XCTAssertTrue(panelElement("quarter-review", in: app).waitForExistence(timeout: 2))
     }
 
     @MainActor

@@ -41,8 +41,8 @@ struct ChartInspectionStrip: View {
                 .padding(.vertical, 8)
                 .padding(.horizontal, 10)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 9))
-                .overlay(RoundedRectangle(cornerRadius: 9).stroke(.white.opacity(0.1)))
+                .background(.white.opacity(0.070), in: RoundedRectangle(cornerRadius: 9))
+                .overlay(RoundedRectangle(cornerRadius: 9).stroke(.white.opacity(0.16)))
             }
         }
     }
@@ -78,7 +78,69 @@ struct MandateBadge: View {
         }
         .frame(width: 104, alignment: .leading)
         .padding(10)
-        .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 9))
-        .overlay(RoundedRectangle(cornerRadius: 9).stroke(.white.opacity(0.08)))
+        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 9))
+        .overlay(RoundedRectangle(cornerRadius: 9).stroke(color.opacity(0.22)))
+        .shadow(color: color.opacity(0.08), radius: 10, y: 4)
+    }
+}
+
+struct MandateMetricCard: View {
+    var label: String
+    var value: Double
+    var suffix: String
+    var color: Color
+    var layout: CockpitLayoutMetrics
+
+    var body: some View {
+        CommandPanel(padding: max(10, layout.panelPadding - 2).cg, tone: .instrument) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(label)
+                    .font(.caption.weight(.black))
+                    .foregroundStyle(.white.opacity(0.68))
+                Text("\(value, format: .number.precision(.fractionLength(suffix.isEmpty ? 0 : 2)))\(suffix)")
+                    .font(.system(size: 24, weight: .black, design: .rounded))
+                    .foregroundStyle(color)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+struct CompactQuarterReview: View {
+    var transmission: TransmissionBriefing
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text("REVIEW")
+                .font(.caption2.weight(.black))
+                .foregroundStyle(.white.opacity(0.58))
+            Text(transmission.receipt.headline)
+                .font(.system(size: 14, weight: .black, design: .rounded))
+                .foregroundStyle(toneColor)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+            Divider()
+                .frame(height: 28)
+                .overlay(.white.opacity(0.16))
+            Text(transmission.summary)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.70))
+                .lineLimit(2)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var toneColor: Color {
+        switch transmission.receipt.tone {
+        case .cooling:
+            .cyan
+        case .heating:
+            .orange
+        case .stabilizing:
+            .green
+        case .stress:
+            .red
+        }
     }
 }

@@ -10,10 +10,24 @@ struct NewspaperPanelView: View {
             backgroundArt
             broadsheetContent
         }
-        .frame(height: min(layout.dockPanelMaxHeight, layout.mode == .expanded ? 390 : 330).cg)
+        .frame(height: min(layout.dockPanelMaxHeight, panelHeight).cg)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
         .clipShape(RoundedRectangle(cornerRadius: 18))
-        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color(red: 0.22, green: 0.13, blue: 0.06).opacity(0.58)))
-        .shadow(color: .black.opacity(0.5), radius: 24, y: 14)
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.26)))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color(red: 0.22, green: 0.13, blue: 0.06).opacity(0.42)))
+        .shadow(color: .black.opacity(0.52), radius: 28, y: 16)
+        .shadow(color: .white.opacity(0.06), radius: 16, y: -4)
+    }
+
+    private var panelHeight: Double {
+        switch layout.mode {
+        case .compact:
+            292
+        case .standard:
+            330
+        case .expanded:
+            390
+        }
     }
 
     private var backgroundArt: some View {
@@ -22,8 +36,8 @@ struct NewspaperPanelView: View {
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFill()
-                    .saturation(0.82)
-                    .brightness(-0.05)
+                    .saturation(0.90)
+                    .brightness(0.03)
                     .accessibilityHidden(true)
             }
         }

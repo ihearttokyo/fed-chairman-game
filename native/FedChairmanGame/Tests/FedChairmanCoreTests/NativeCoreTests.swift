@@ -246,7 +246,7 @@ import Testing
     #expect(compact.chartHeight <= 180)
     #expect(standard.chartHeight <= 235)
     #expect(expanded.chartHeight <= 265)
-    #expect(compact.metricsColumns == 3)
+    #expect(compact.metricsColumns == 5)
     #expect(compact.dockBottomLift == 0)
     #expect(standard.dockBottomLift == 0)
     #expect(expanded.dockBottomLift == 0)

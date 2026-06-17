@@ -50,7 +50,8 @@ struct DecisionTapeView: View {
         .padding(.vertical, 8)
         .padding(.horizontal, 10)
         .background(background)
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(toneColor.opacity(pulse ? 0.5 : 0.22)))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(toneColor.opacity(pulse ? 0.62 : 0.30)))
+        .shadow(color: toneColor.opacity(pulse ? 0.18 : 0.06), radius: pulse ? 18 : 10, y: 4)
         .scaleEffect(pulse && motionMode == .spring ? 1.012 : 1)
         .animation(motionMode == .reduced ? nil : .bouncy(duration: 0.3, extraBounce: 0.16), value: pulse)
         .accessibilityElement(children: .combine)
@@ -60,10 +61,10 @@ struct DecisionTapeView: View {
 
     private var background: some View {
         RoundedRectangle(cornerRadius: 10)
-            .fill(.black.opacity(0.22))
+            .fill(.black.opacity(0.18))
             .overlay(
                 LinearGradient(
-                    colors: [toneColor.opacity(pulse ? 0.24 : 0.1), .clear],
+                    colors: [toneColor.opacity(pulse ? 0.30 : 0.14), .white.opacity(0.035), .clear],
                     startPoint: .leading,
                     endPoint: .trailing,
                 )

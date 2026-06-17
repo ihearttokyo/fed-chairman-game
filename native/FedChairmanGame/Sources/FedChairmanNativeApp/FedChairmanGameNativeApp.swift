@@ -104,16 +104,19 @@ struct NativeCockpitView: View {
             ZStack(alignment: .top) {
                 CommandDeskBackground()
                 VStack(spacing: layout.spacing.cg) {
-                    statusRail(layout: layout)
                     dashboard(layout: layout)
                     policyLever(layout: layout)
                     metricsGrid(layout: layout)
                     quarterReview(layout: layout)
                 }
                 .padding(layout.panelPadding.cg)
+                .padding(.top, cockpitContentTopInset(layout).cg)
 
                 debriefOverlay
                 cockpitDock(layout: layout)
+                statusRail(layout: layout)
+                    .padding(.top, layout.panelPadding.cg)
+                    .padding(.horizontal, layout.dockOuterPadding.cg)
                 Text(motionMode == .reduced ? "Reduced motion mode" : "Spring motion mode")
                     .font(.system(size: 1))
                     .foregroundStyle(.clear)
@@ -163,10 +166,15 @@ struct NativeCockpitView: View {
                 }
             }
             .lineLimit(1)
+            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .background(.ultraThinMaterial, in: Capsule())
+            .overlay(Capsule().stroke(.white.opacity(0.20)))
+            .shadow(color: .black.opacity(0.22), radius: 10, y: 5)
             dockButtons(layout: layout)
         }
         .font(.system(size: 13, weight: .semibold, design: .rounded))
-        .foregroundStyle(.white.opacity(0.76))
+        .foregroundStyle(.white.opacity(0.82))
         .frame(maxWidth: .infinity, alignment: .trailing)
     }
 
@@ -195,7 +203,7 @@ struct NativeCockpitView: View {
             )
             .frame(height: layout.chartHeight.cg)
             .clipShape(RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.16)))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.24)))
             .shadow(color: .black.opacity(0.45), radius: 16, y: 10)
         }
         .accessibilityIdentifier("mandate-dashboard")
@@ -211,6 +219,10 @@ struct NativeCockpitView: View {
                     Text("Fed funds \(session.current.fedFundsRate, format: .number.precision(.fractionLength(2)))%")
                         .font(.system(size: 16, weight: .bold, design: .rounded))
                         .foregroundStyle(.green)
+                        .padding(.vertical, 5)
+                        .padding(.horizontal, 10)
+                        .background(.green.opacity(0.10), in: Capsule())
+                        .overlay(Capsule().stroke(.green.opacity(0.22)))
                 }
                 HStack(spacing: layout.policyKeySpacing.cg) {
                     ForEach(fixedActions, id: \.self) { action in
@@ -239,66 +251,55 @@ struct NativeCockpitView: View {
 
     private func metricsGrid(layout: CockpitLayoutMetrics) -> some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: layout.metricsColumns), spacing: 10) {
-            metric("Inflation", value: session.current.inflation, suffix: "%", color: .orange, layout: layout)
-            metric("Unemployment", value: session.current.unemployment, suffix: "%", color: .blue, layout: layout)
-            metric("Fed Funds", value: session.current.fedFundsRate, suffix: "%", color: .green, layout: layout)
-            metric("Expectations", value: session.current.expectedInflation, suffix: "%", color: .mint, layout: layout)
-            metric("Credibility", value: session.current.credibility, suffix: "", color: .yellow, layout: layout)
+            MandateMetricCard(label: "Inflation", value: session.current.inflation, suffix: "%", color: .orange, layout: layout)
+            MandateMetricCard(label: "Unemployment", value: session.current.unemployment, suffix: "%", color: .blue, layout: layout)
+            MandateMetricCard(label: "Fed Funds", value: session.current.fedFundsRate, suffix: "%", color: .green, layout: layout)
+            MandateMetricCard(label: "Expectations", value: session.current.expectedInflation, suffix: "%", color: .mint, layout: layout)
+            MandateMetricCard(label: "Credibility", value: session.current.credibility, suffix: "", color: .yellow, layout: layout)
         }
         .accessibilityIdentifier("macro-metrics")
-    }
-
-    private func metric(_ label: String, value: Double, suffix: String, color: Color, layout: CockpitLayoutMetrics) -> some View {
-        CommandPanel(padding: max(10, layout.panelPadding - 2).cg, tone: .instrument) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(label)
-                    .font(.caption.weight(.black))
-                    .foregroundStyle(.white.opacity(0.68))
-                Text("\(value, format: .number.precision(.fractionLength(suffix.isEmpty ? 0 : 2)))\(suffix)")
-                    .font(.system(size: 24, weight: .black, design: .rounded))
-                    .foregroundStyle(color)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
     }
 
     private func quarterReview(layout: CockpitLayoutMetrics) -> some View {
         CommandPanel(padding: layout.panelPadding.cg, tone: .instrument) {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Quarter Review")
-                    .font(.headline.weight(.black))
                 if let transmission = buildTransmissionBriefing(session: session) {
-                    Text(transmission.receipt.headline)
-                        .font(.system(size: 18, weight: .black, design: .rounded))
-                        .foregroundStyle(trendColor(transmission.receipt.tone))
-                    Text(transmission.summary)
-                        .font(.callout.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.74))
-                    HStack(spacing: 8) {
-                        ForEach(Array(transmission.path.enumerated()), id: \.offset) { index, leg in
-                            Text("STEP \(index + 1)  \(leg)")
-                                .font(.caption.weight(.black))
-                                .padding(.vertical, 6)
-                                .padding(.horizontal, 8)
-                                .background(.white.opacity(0.08), in: Capsule())
+                    if layout.mode == .compact {
+                        CompactQuarterReview(transmission: transmission)
+                    } else {
+                        Text(transmission.receipt.headline)
+                            .font(.system(size: 18, weight: .black, design: .rounded))
+                            .foregroundStyle(trendColor(transmission.receipt.tone))
+                        Text(transmission.summary)
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.74))
+                        HStack(spacing: 8) {
+                            ForEach(Array(transmission.path.enumerated()), id: \.offset) { index, leg in
+                                Text("STEP \(index + 1)  \(leg)")
+                                    .font(.caption.weight(.black))
+                                    .padding(.vertical, 6)
+                                    .padding(.horizontal, 8)
+                                    .background(.white.opacity(0.08), in: Capsule())
+                            }
                         }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
-                        ForEach(transmission.steps) { step in
-                            transmissionStepCard(step)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
+                            ForEach(transmission.steps) { step in
+                                transmissionStepCard(step)
+                            }
                         }
-                    }
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
-                        ForEach(transmission.changes) { change in
-                            transmissionChangeCard(change)
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
+                            ForEach(transmission.changes) { change in
+                                transmissionChangeCard(change)
+                            }
                         }
+                        Text(transmission.decisionMemo.nextBias)
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.white.opacity(0.62))
                     }
-                    Text(transmission.decisionMemo.nextBias)
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.white.opacity(0.62))
                 } else {
                     Text("Make the first policy decision to generate a native trace readout.")
+                        .font(layout.mode == .compact ? .caption.weight(.semibold) : .body)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -332,7 +333,8 @@ struct NativeCockpitView: View {
                 .lineLimit(3)
         }
         .padding(10)
-        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 8))
+        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.08)))
     }
 
     private func transmissionChangeCard(_ change: TransmissionChange) -> some View {
@@ -349,7 +351,8 @@ struct NativeCockpitView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 8))
+        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.08)))
     }
 
     private func trendColor(_ trend: TransmissionTrend) -> Color {
@@ -371,7 +374,7 @@ struct NativeCockpitView: View {
                 Spacer(minLength: 0)
                 dockPanels(layout: layout)
             }
-            .padding(.top, (layout.panelPadding + layout.dockButtonHeight + 8).cg)
+            .padding(.top, dockPanelTopInset(layout).cg)
             .padding(.horizontal, layout.dockOuterPadding.cg)
             Spacer(minLength: 0)
         }
@@ -385,7 +388,7 @@ struct NativeCockpitView: View {
                 .frame(width: dockPanelWidth(placement.panel, layout: layout))
                 .frame(maxHeight: layout.dockPanelMaxHeight.cg, alignment: .bottom)
                 .offset(x: placement.xOffset, y: placement.yOffset)
-                .transition(motionMode == .reduced ? .opacity : .scale(scale: 0.62, anchor: .bottomTrailing).combined(with: .opacity))
+                .transition(motionMode == .reduced ? .opacity : .scale(scale: 0.74, anchor: .topTrailing).combined(with: .opacity))
         }
     }
 
@@ -417,24 +420,25 @@ struct NativeCockpitView: View {
 
     private func dockTray(layout: CockpitLayoutMetrics) -> some View {
         RoundedRectangle(cornerRadius: 18)
-            .fill(Color(red: 0.026, green: 0.036, blue: 0.032).opacity(0.88))
+            .fill(.ultraThinMaterial)
             .frame(width: layout.dockTrayWidth.cg, height: layout.dockTrayHeight.cg)
             .overlay {
                 RoundedRectangle(cornerRadius: 18)
                     .fill(
                         LinearGradient(
                             colors: [
-                                .white.opacity(0.10),
+                                .white.opacity(0.20),
+                                Color.cyan.opacity(0.08),
                                 Color.green.opacity(0.06),
-                                .black.opacity(0.18),
+                                .black.opacity(0.22),
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing,
                         ),
                     )
             }
-            .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.15)))
-            .shadow(color: .black.opacity(0.28), radius: 10, y: 5)
+            .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.24)))
+            .shadow(color: .black.opacity(0.32), radius: 14, y: 7)
             .accessibilityHidden(true)
     }
 

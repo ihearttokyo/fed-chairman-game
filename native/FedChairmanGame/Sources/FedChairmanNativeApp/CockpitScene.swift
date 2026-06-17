@@ -63,17 +63,17 @@ final class CockpitScene: SKScene {
 
     private func addInstrumentPlate() {
         let plate = SKShapeNode(rect: CGRect(x: 16, y: 12, width: max(1, size.width - 32), height: max(1, size.height - 24)), cornerRadius: 14)
-        plate.fillColor = SKColor.black.withAlphaComponent(0.1)
-        plate.strokeColor = SKColor.white.withAlphaComponent(0.08)
+        plate.fillColor = SKColor.black.withAlphaComponent(0.05)
+        plate.strokeColor = SKColor.white.withAlphaComponent(0.14)
         plate.lineWidth = 1
         addChild(plate)
     }
 
     private func addGrid(in frame: CGRect) {
         let border = SKShapeNode(rect: frame, cornerRadius: 8)
-        border.strokeColor = SKColor.white.withAlphaComponent(0.28)
+        border.strokeColor = SKColor.white.withAlphaComponent(0.36)
         border.lineWidth = 1
-        border.fillColor = SKColor.black.withAlphaComponent(0.08)
+        border.fillColor = SKColor.black.withAlphaComponent(0.04)
         addChild(border)
 
         for index in 0 ... 4 {
@@ -83,7 +83,7 @@ final class CockpitScene: SKScene {
             path.move(to: CGPoint(x: frame.minX, y: y))
             path.addLine(to: CGPoint(x: frame.maxX, y: y))
             line.path = path
-            line.strokeColor = SKColor.white.withAlphaComponent(index == 0 ? 0.32 : 0.16)
+            line.strokeColor = SKColor.white.withAlphaComponent(index == 0 ? 0.34 : 0.18)
             line.lineWidth = 1
             addChild(line)
         }
@@ -95,7 +95,7 @@ final class CockpitScene: SKScene {
             path.move(to: CGPoint(x: x, y: frame.minY))
             path.addLine(to: CGPoint(x: x, y: frame.maxY))
             line.path = path
-            line.strokeColor = SKColor.white.withAlphaComponent(index == 0 ? 0.22 : 0.08)
+            line.strokeColor = SKColor.white.withAlphaComponent(index == 0 ? 0.24 : 0.10)
             line.lineWidth = 1
             addChild(line)
         }
@@ -104,12 +104,12 @@ final class CockpitScene: SKScene {
     private func addBands() {
         let frame = chartFrame
         let inflationBand = SKShapeNode(rect: bandRect(from: 1.5, to: 2.5, in: frame))
-        inflationBand.fillColor = SKColor.systemOrange.withAlphaComponent(0.13)
+        inflationBand.fillColor = SKColor.systemOrange.withAlphaComponent(0.16)
         inflationBand.strokeColor = .clear
         addChild(inflationBand)
 
         let laborBand = SKShapeNode(rect: bandRect(from: 4.2, to: 5.8, in: frame))
-        laborBand.fillColor = SKColor.systemBlue.withAlphaComponent(0.12)
+        laborBand.fillColor = SKColor.systemBlue.withAlphaComponent(0.15)
         laborBand.strokeColor = .clear
         addChild(laborBand)
     }
@@ -170,7 +170,7 @@ final class CockpitScene: SKScene {
         }
         let line = SKShapeNode(path: path)
         line.strokeColor = color
-        line.lineWidth = 4
+        line.lineWidth = 4.5
         line.lineCap = .round
         addChild(line)
         for point in points {
