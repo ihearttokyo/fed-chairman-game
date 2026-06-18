@@ -7,23 +7,23 @@ struct DecisionTapeView: View {
     var motionMode: CockpitMotionMode
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(feedback.headline.uppercased())
                     .font(.caption2.weight(.black))
                     .foregroundStyle(toneColor)
                 Text(feedback.moveLabel)
-                    .font(.system(size: 17, weight: .black, design: .rounded))
+                    .font(.system(size: 15, weight: .black, design: .rounded))
                     .lineLimit(1)
                     .minimumScaleFactor(0.78)
                 Text(feedback.ratePath)
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.white.opacity(0.66))
             }
-            .frame(width: 178, alignment: .leading)
+            .frame(width: 150, alignment: .leading)
 
             Divider()
-                .frame(height: 42)
+                .frame(height: 32)
                 .overlay(.white.opacity(0.18))
 
             VStack(alignment: .leading, spacing: 4) {
@@ -57,17 +57,17 @@ struct DecisionTapeView: View {
                 .font(.system(size: 8, weight: .bold, design: .rounded))
                 .foregroundStyle(.white.opacity(0.38))
             }
-            .frame(width: 96, alignment: .trailing)
+            .frame(width: 86, alignment: .trailing)
         }
-        .frame(height: 48)
-        .padding(.vertical, 6)
-        .padding(.horizontal, 10)
+        .frame(height: 42)
+        .padding(.vertical, 5)
+        .padding(.horizontal, 9)
         .background(background)
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(toneColor.opacity(pulse ? 0.62 : 0.30)))
         .shadow(color: toneColor.opacity(pulse ? 0.18 : 0.06), radius: pulse ? 18 : 10, y: 4)
         .scaleEffect(pulse && motionMode == .spring ? 1.012 : 1)
         .animation(motionMode == .reduced ? nil : .bouncy(duration: 0.3, extraBounce: 0.16), value: pulse)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)
         .accessibilityIdentifier("decision-tape")
     }
@@ -97,10 +97,10 @@ struct DecisionTapeView: View {
                         .fill(index < pressureSegments ? toneColor.opacity(0.88) : Color.white.opacity(0.12))
                 }
             }
-            .frame(width: 92, height: 9)
+            .frame(width: 82, height: 8)
             RoundedRectangle(cornerRadius: 2)
                 .stroke(.white.opacity(0.16), lineWidth: 1)
-                .frame(width: 92, height: 9)
+                .frame(width: 82, height: 8)
         }
     }
 

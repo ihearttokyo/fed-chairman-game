@@ -45,46 +45,46 @@ public func cockpitLayoutMetrics(width: Double, height: Double) -> CockpitLayout
     let sideMargin = mode == .compact ? 18.0 : 26.0
     let safeWidth = max(0, width - sideMargin * 2)
     let panelWidth = max(320, safeWidth - 28)
-    let maxPanelHeight = max(184, min(height - 236, mode == .expanded ? 292 : 244))
-    let compactPanelHeight = max(164, min(height - 438, 210))
+    let maxPanelHeight = max(210, min(height - 236, mode == .expanded ? 328 : 292))
+    let compactPanelHeight = max(204, min(height - 438, 248))
 
     switch mode {
     case .compact:
         return CockpitLayoutMetrics(
             mode: mode,
-            spacing: 8,
-            panelPadding: 9,
-            chartHeight: 116,
-            policyKeyWidth: 62,
-            policyKeyHeight: 34,
-            policyKeySpacing: 7,
-            customFieldWidth: 84,
+            spacing: 6,
+            panelPadding: 7,
+            chartHeight: 104,
+            policyKeyWidth: 56,
+            policyKeyHeight: 30,
+            policyKeySpacing: 5,
+            customFieldWidth: 78,
             metricsColumns: 5,
             quarterReviewHeight: 44,
-            dockButtonWidth: 44,
-            dockButtonHeight: 44,
-            dockTrayWidth: 158,
-            dockTrayHeight: 52,
+            dockButtonWidth: 50,
+            dockButtonHeight: 50,
+            dockTrayWidth: 176,
+            dockTrayHeight: 58,
             dockOuterPadding: 16,
             dockBottomLift: 0,
             dockVerticalOffset: 0,
             newspaperPanelWidth: panelWidth,
             helpPanelWidth: panelWidth,
             settingsPanelWidth: panelWidth,
-            dockPanelMaxHeight: min(64, compactPanelHeight),
+            dockPanelMaxHeight: min(96, compactPanelHeight),
         )
     case .standard:
         return CockpitLayoutMetrics(
             mode: mode,
             spacing: 12,
             panelPadding: 12,
-            chartHeight: 166,
+            chartHeight: 204,
             policyKeyWidth: 72,
             policyKeyHeight: 40,
             policyKeySpacing: 8,
             customFieldWidth: 90,
             metricsColumns: 5,
-            quarterReviewHeight: 52,
+            quarterReviewHeight: 136,
             dockButtonWidth: 52,
             dockButtonHeight: 52,
             dockTrayWidth: 190,
@@ -95,20 +95,20 @@ public func cockpitLayoutMetrics(width: Double, height: Double) -> CockpitLayout
             newspaperPanelWidth: panelWidth,
             helpPanelWidth: panelWidth,
             settingsPanelWidth: min(760, panelWidth),
-            dockPanelMaxHeight: min(96, maxPanelHeight),
+            dockPanelMaxHeight: min(118, maxPanelHeight),
         )
     case .expanded:
         return CockpitLayoutMetrics(
             mode: mode,
             spacing: 14,
             panelPadding: 14,
-            chartHeight: 190,
+            chartHeight: 226,
             policyKeyWidth: 78,
             policyKeyHeight: 42,
             policyKeySpacing: 9,
             customFieldWidth: 96,
             metricsColumns: 5,
-            quarterReviewHeight: 76,
+            quarterReviewHeight: 158,
             dockButtonWidth: 54,
             dockButtonHeight: 54,
             dockTrayWidth: 196,
@@ -119,7 +119,7 @@ public func cockpitLayoutMetrics(width: Double, height: Double) -> CockpitLayout
             newspaperPanelWidth: panelWidth,
             helpPanelWidth: panelWidth,
             settingsPanelWidth: min(820, panelWidth),
-            dockPanelMaxHeight: min(112, maxPanelHeight),
+            dockPanelMaxHeight: min(132, maxPanelHeight),
         )
     }
 }

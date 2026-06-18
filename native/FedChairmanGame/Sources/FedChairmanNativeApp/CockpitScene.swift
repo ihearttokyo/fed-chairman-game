@@ -32,9 +32,9 @@ final class CockpitScene: SKScene {
     }
 
     static func chartFrame(for size: CGSize) -> CGRect {
-        let horizontalInset: CGFloat = size.width < 720 ? 58 : 70
-        let bottomInset: CGFloat = size.height < 170 ? 38 : 46
-        let topInset: CGFloat = size.height < 170 ? 38 : 50
+        let horizontalInset: CGFloat = size.width < 720 ? 50 : 62
+        let bottomInset: CGFloat = size.height < 130 ? 25 : (size.height < 170 ? 34 : 46)
+        let topInset: CGFloat = size.height < 130 ? 25 : (size.height < 170 ? 34 : 50)
         return CGRect(
             x: horizontalInset,
             y: bottomInset,

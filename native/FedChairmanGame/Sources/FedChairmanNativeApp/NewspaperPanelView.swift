@@ -9,6 +9,10 @@ struct NewspaperPanelView: View {
 
     var body: some View {
         HStack(spacing: layout.mode == .compact ? 12 : 16) {
+            Text("THE MANDATE DESK")
+                .font(.system(size: 1))
+                .foregroundStyle(.clear)
+                .frame(width: 1, height: 1)
             if layout.mode != .compact {
                 mastheadTile
             }
@@ -18,6 +22,7 @@ struct NewspaperPanelView: View {
         }
         .padding(layout.mode == .compact ? 10 : 18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .foregroundStyle(.white)
         .background(panelFill)
         .clipShape(RoundedRectangle(cornerRadius: 18))
         .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.26)))
@@ -30,9 +35,9 @@ struct NewspaperPanelView: View {
             .overlay(
                 LinearGradient(
                     colors: [
-                        Color.white.opacity(0.15),
-                        Color(red: 0.18, green: 0.16, blue: 0.12).opacity(0.24),
-                        Color.black.opacity(0.18),
+                        Color.white.opacity(0.07),
+                        Color(red: 0.18, green: 0.16, blue: 0.12).opacity(0.16),
+                        Color.black.opacity(0.36),
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing,
@@ -71,7 +76,7 @@ struct NewspaperPanelView: View {
     private var briefingContent: some View {
         VStack(alignment: .leading, spacing: layout.mode == .compact ? 6 : 8) {
             HStack(spacing: 8) {
-                Text(layout.mode == .compact ? "Briefing" : "Latest Briefing")
+                Text("THE MANDATE DESK")
                     .font(.caption.weight(.black))
                     .foregroundStyle(.orange)
                 Text(briefing.metadata)
@@ -81,6 +86,7 @@ struct NewspaperPanelView: View {
             .lineLimit(1)
             Text(briefing.headline)
                 .font(.system(size: layout.mode == .compact ? 15 : 25, weight: .black, design: .rounded))
+                .foregroundStyle(.white)
                 .lineLimit(layout.mode == .compact ? 1 : 2)
                 .minimumScaleFactor(0.82)
             if layout.mode != .compact {
@@ -133,34 +139,39 @@ struct HelpDrawerView: View {
         topics.filter { !$0.isPrimary }
     }
 
+    private var secondaryColumnCount: Int {
+        layout.mode == .compact ? 2 : 3
+    }
+
     var body: some View {
-        HStack(alignment: .center, spacing: layout.mode == .compact ? 10 : 14) {
+        VStack(alignment: .leading, spacing: layout.mode == .compact ? 8 : 12) {
             drawerHeader(
                 systemName: "questionmark.circle.fill",
                 eyebrow: "Policy Guide",
-                title: "Chair's Notes",
-                caption: "Economy, stance, lags.",
+                title: "Policy Notebook",
+                caption: "Read the economy, pick a stance, then watch the lags.",
                 tint: .green,
             )
-            .frame(width: layout.mode == .compact ? 224 : 292, alignment: .leading)
 
-            HStack(spacing: 8) {
-                ForEach(primaryTopics.prefix(3)) { topic in
-                    SlimHelpChip(topic: topic, tint: .green)
+            HStack(alignment: .top, spacing: 8) {
+                ForEach(primaryTopics.prefix(layout.mode == .compact ? 2 : 3)) { topic in
+                    HelpPrimaryTopicTile(topic: topic, compact: layout.mode == .compact)
                 }
             }
 
-            if layout.mode != .compact {
-                HStack(spacing: 8) {
-                    ForEach(secondaryTopics.prefix(3)) { topic in
-                        SlimHelpChip(topic: topic, tint: .white.opacity(0.70))
-                    }
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible(), spacing: 8, alignment: .top), count: secondaryColumnCount),
+                alignment: .leading,
+                spacing: 8,
+            ) {
+                ForEach(secondaryTopics.prefix(layout.mode == .compact ? 4 : 6)) { topic in
+                    HelpTopicRow(topic: topic, compact: layout.mode == .compact)
                 }
             }
         }
-        .padding(.vertical, layout.mode == .compact ? 8 : 10)
-        .padding(.horizontal, layout.mode == .compact ? 10 : 14)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .padding(layout.mode == .compact ? 10 : 14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .foregroundStyle(.white)
         .background(drawerPanelFill(tint: .green))
         .clipShape(RoundedRectangle(cornerRadius: drawerCornerRadius))
         .overlay(RoundedRectangle(cornerRadius: drawerCornerRadius).stroke(.white.opacity(0.24)))
@@ -186,31 +197,88 @@ struct SettingsDrawerView: View {
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: layout.mode == .compact ? 10 : 12) {
+        content
+            .padding(layout.mode == .compact ? 10 : 14)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .foregroundStyle(.white)
+            .background(drawerPanelFill(tint: .cyan))
+            .clipShape(RoundedRectangle(cornerRadius: drawerCornerRadius))
+            .overlay(RoundedRectangle(cornerRadius: drawerCornerRadius).stroke(.white.opacity(0.24)))
+            .shadow(color: .black.opacity(0.28), radius: 18, y: 10)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if layout.mode == .compact {
+            compactContent
+        } else {
+            fullContent
+        }
+    }
+
+    private var compactContent: some View {
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("PREFERENCES")
+                    .font(.caption2.weight(.black))
+                    .foregroundStyle(.cyan)
+                Text("Desk Setup")
+                    .font(.headline.weight(.black))
+                if let panelMessage {
+                    Text(panelMessage)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.58))
+                        .lineLimit(1)
+                }
+            }
+            .frame(width: 112, alignment: .leading)
+
+            HStack(spacing: 7) {
+                compactToggle("Motion", isOn: $reducedMotion)
+                compactToggle("Sound", isOn: $soundEnabled)
+                compactToggle("Noise", isOn: $reducedNoise)
+            }
+
+            HStack(spacing: 6) {
+                drawerActionButton("Save", systemName: "square.and.arrow.down", action: save)
+                drawerActionButton("Load", systemName: "folder", action: load)
+                drawerActionButton("CSV", systemName: "tablecells", action: exportCsv)
+                drawerActionButton("JSON", systemName: "curlybraces", action: exportJson)
+                drawerActionButton("Markdown", systemName: "doc.plaintext", action: exportMarkdown)
+            }
+            .buttonStyle(.plain)
+            .controlSize(.small)
+        }
+    }
+
+    private var fullContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
             drawerHeader(
                 systemName: "slider.horizontal.3",
                 eyebrow: "Preferences",
                 title: "Desk Setup",
-                caption: "Feel, audio, records.",
+                caption: "Tune feel, audio, and portable records without leaving the cockpit.",
                 tint: .cyan,
             )
-            .frame(width: layout.mode == .compact ? 218 : 276, alignment: .leading)
 
-            HStack(spacing: 8) {
-                SlimSettingsToggle(
+            HStack(alignment: .top, spacing: 8) {
+                SettingsToggleTile(
                     title: "Motion",
+                    subtitle: "Quieter transitions",
                     systemName: "figure.walk.motion",
                     tint: .cyan,
                     isOn: $reducedMotion,
                 )
-                SlimSettingsToggle(
+                SettingsToggleTile(
                     title: "Sound",
+                    subtitle: "Cockpit cues",
                     systemName: "speaker.wave.2.fill",
                     tint: .orange,
                     isOn: $soundEnabled,
                 )
-                SlimSettingsToggle(
+                SettingsToggleTile(
                     title: "Noise",
+                    subtitle: "Reduced texture",
                     systemName: "dial.low.fill",
                     tint: .mint,
                     isOn: $reducedNoise,
@@ -227,9 +295,10 @@ struct SettingsDrawerView: View {
                 ) {
                     drawerActionButton("CSV", systemName: "tablecells", action: exportCsv)
                     drawerActionButton("JSON", systemName: "curlybraces", action: exportJson)
-                    drawerActionButton("MD", systemName: "doc.plaintext", action: exportMarkdown)
+                    drawerActionButton("Markdown", systemName: "doc.plaintext", action: exportMarkdown)
                 }
             }
+            .buttonStyle(.plain)
 
             if let panelMessage {
                 Label(panelMessage, systemImage: "checkmark.circle.fill")
@@ -241,64 +310,96 @@ struct SettingsDrawerView: View {
                     .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 9))
             }
         }
-        .padding(.vertical, layout.mode == .compact ? 8 : 10)
-        .padding(.horizontal, layout.mode == .compact ? 10 : 14)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .background(drawerPanelFill(tint: .cyan))
-        .clipShape(RoundedRectangle(cornerRadius: drawerCornerRadius))
-        .overlay(RoundedRectangle(cornerRadius: drawerCornerRadius).stroke(.white.opacity(0.24)))
-        .shadow(color: .black.opacity(0.28), radius: 18, y: 10)
+    }
+
+    private func compactToggle(_ title: String, isOn: Binding<Bool>) -> some View {
+        Toggle(title, isOn: isOn)
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(.white.opacity(0.82))
     }
 }
 
-private struct SlimHelpChip: View {
+private struct HelpPrimaryTopicTile: View {
     var topic: HelpTopic
-    var tint: Color
+    var compact: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 4) {
             Text(topic.title)
                 .font(.caption.weight(.black))
-                .foregroundStyle(tint)
+                .foregroundStyle(.green)
                 .lineLimit(1)
             Text(topic.body)
                 .font(.caption2.weight(.medium))
-                .foregroundStyle(.white.opacity(0.66))
-                .lineLimit(2)
-                .minimumScaleFactor(0.84)
+                .foregroundStyle(.white.opacity(0.74))
+                .lineLimit(compact ? 2 : 3)
         }
-        .padding(.vertical, 7)
-        .padding(.horizontal, 9)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white.opacity(0.065), in: RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(tint.opacity(0.16)))
+        .padding(9)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(.white.opacity(0.075), in: RoundedRectangle(cornerRadius: 11))
+        .overlay(RoundedRectangle(cornerRadius: 11).stroke(.green.opacity(0.18)))
     }
 }
 
-private struct SlimSettingsToggle: View {
+private struct HelpTopicRow: View {
+    var topic: HelpTopic
+    var compact: Bool
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 7) {
+            Circle()
+                .fill(.white.opacity(0.42))
+                .frame(width: 5, height: 5)
+                .padding(.top, 5)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(topic.title)
+                    .font(.caption2.weight(.black))
+                    .foregroundStyle(.white.opacity(0.78))
+                    .lineLimit(1)
+                Text(topic.body)
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.62))
+                    .lineLimit(compact ? 1 : 2)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+}
+
+private struct SettingsToggleTile: View {
     var title: String
+    var subtitle: String
     var systemName: String
     var tint: Color
     @Binding var isOn: Bool
 
     var body: some View {
         Toggle(isOn: $isOn) {
-            HStack(spacing: 6) {
+            HStack(spacing: 7) {
                 Image(systemName: systemName)
                     .font(.caption.weight(.black))
                     .foregroundStyle(tint)
-                Text(title)
-                    .font(.caption.weight(.black))
-                    .foregroundStyle(.white.opacity(0.82))
-                    .lineLimit(1)
+                    .frame(width: 18)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(.caption.weight(.black))
+                        .foregroundStyle(.white.opacity(0.84))
+                        .lineLimit(1)
+                    Text(subtitle)
+                        .font(.caption2)
+                        .foregroundStyle(.white.opacity(0.54))
+                        .lineLimit(1)
+                }
             }
         }
         .toggleStyle(.switch)
-        .controlSize(.mini)
-        .padding(.vertical, 7)
-        .padding(.horizontal, 8)
-        .background(.white.opacity(0.065), in: RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(tint.opacity(0.14)))
+        .controlSize(.small)
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white.opacity(0.065), in: RoundedRectangle(cornerRadius: 11))
+        .overlay(RoundedRectangle(cornerRadius: 11).stroke(.white.opacity(0.10)))
     }
 }
 
@@ -330,9 +431,9 @@ private func drawerPanelFill(tint: Color) -> some View {
         .overlay(
             LinearGradient(
                 colors: [
-                    .white.opacity(0.13),
-                    tint.opacity(0.08),
-                    .black.opacity(0.20),
+                    .white.opacity(0.07),
+                    tint.opacity(0.075),
+                    .black.opacity(0.38),
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing,
@@ -341,16 +442,16 @@ private func drawerPanelFill(tint: Color) -> some View {
         )
 }
 
-@MainActor
 private func drawerActionButton(_ title: String, systemName: String, action: @escaping () -> Void) -> some View {
     Button(action: action) {
         Label(title, systemImage: systemName)
             .font(.caption.weight(.bold))
             .foregroundStyle(.white.opacity(0.86))
             .lineLimit(1)
-            .frame(maxWidth: .infinity, minHeight: 28)
-            .background(.white.opacity(0.075), in: RoundedRectangle(cornerRadius: 9))
-            .overlay(RoundedRectangle(cornerRadius: 9).stroke(.white.opacity(0.13)))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+            .padding(.horizontal, 8)
+            .background(.white.opacity(0.060), in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.10)))
     }
-    .buttonStyle(.plain)
 }
