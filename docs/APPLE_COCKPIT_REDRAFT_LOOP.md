@@ -4,7 +4,7 @@ This branch is rebuilding the native cockpit UI around a content-first, Apple-st
 
 ## Current Branch
 
-- Branch: `codex/apple-liquid-glass-redesign`
+- Branch: `codex/native-ui-repair-loop`
 - Baseline: `origin/main`
 - App under visual test: latest artifact built from this branch only
 
@@ -31,11 +31,25 @@ This branch is rebuilding the native cockpit UI around a content-first, Apple-st
 ## Validation Loop
 
 1. Build/install the current branch artifact and record commit/hash provenance.
-2. Capture first launch at 1180x700 and 1600x1000.
-3. Capture Newspaper open, Help open, and Settings open once each.
-4. Advance at least five quarters with mixed policy moves and capture the chart.
-5. Inspect screenshots directly. If a screenshot shows overlap, unreadable labels, hidden controls, or weak hierarchy, patch before running broad tests again.
-6. Run lint and unit tests after each coherent patch set. Run the native UI suite only as a final regression gate when the desktop is not blocked by macOS auth/occlusion.
+2. Capture the screenshot matrix below before making visual claims.
+3. Inspect screenshots directly. If a screenshot shows overlap, unreadable labels, hidden controls, stale chart state, or weak hierarchy, patch before running broad tests again.
+4. Rerun only the targeted scenario that proves the patch. Do not repeat the Newspaper/Help/Settings click path unless the drawer code changed, the gameplay/window state changed, or the run has a named hypothesis.
+5. Run lint and unit tests after each coherent patch set. Run the native UI suite only as a final regression gate when the desktop is not blocked by macOS auth/occlusion.
+
+## Screenshot Matrix For Repair Pass
+
+Record provenance once per app artifact before the first screenshot: git commit, app path, app modified timestamp, bundle version/build, executable SHA-256, and whether the artifact was rebuilt from the commit under test.
+
+| Label | Window | State | Acceptance criteria |
+| --- | --- | --- | --- |
+| `q1-first-launch-1180x700` | 1180x700 | Fresh cockpit, no drawers open | No occlusion; chart, metric cards, dock controls, policy controls, and current rate are visible and readable. |
+| `q1-first-launch-1600x1000` | 1600x1000 | Fresh cockpit, no drawers open | Layout expands without floating controls, excessive empty space, or stretched chart artifacts. |
+| `q1-newspaper-drawer-1180x700` | 1180x700 | Newspaper opened once from fresh cockpit | Drawer is managed by layout, readable, dismissible, and does not cover required policy controls. |
+| `q1-help-drawer-1180x700` | 1180x700 | Help opened once from fresh cockpit | Help content is brief, readable, dismissible, and does not collide with chart or dock controls. |
+| `q1-settings-drawer-1180x700` | 1180x700 | Settings opened once from fresh cockpit | Settings controls are readable, targetable, dismissible, and do not hide critical gameplay context. |
+| `q6-mixed-policy-chart-1180x700` | 1180x700 | Advance at least five quarters with mixed policy moves | Trend lines, dots, labels, target bands, and decision feedback remain stable after state transitions. |
+| `q12-midgame-chart-1360x860` | 1360x860 | Continue into midgame after varied decisions | No stale/reset chart positions; policy area and metrics preserve hierarchy and scanability. |
+| `late-game-stress-1600x1000` | 1600x1000 | Late-quarter or stressed economy state when reachable | Dense data remains legible; chart traces and panels do not become cluttered or misleading. |
 
 ## Screenshot Evidence
 

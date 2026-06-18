@@ -64,10 +64,18 @@ safe_label="$(printf '%s' "$label" | tr -c 'A-Za-z0-9._-' '-')"
 path="$out_dir/${timestamp}-${safe_label}-${size}.png"
 
 open -a "$app"
-sleep 1
+for _ in {1..20}; do
+  if osascript -e 'tell application "System Events" to tell process "Fed Chairman Game" to get count of windows' >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.25
+done
 
 osascript \
+  -e 'tell application "Fed Chairman Game" to activate' \
+  -e 'delay 0.2' \
   -e 'tell application "System Events" to tell process "Fed Chairman Game" to set frontmost to true' \
+  -e 'tell application "System Events" to tell process "Fed Chairman Game" to perform action "AXRaise" of window 1' \
   -e "tell application \"System Events\" to tell process \"Fed Chairman Game\" to set position of window 1 to {80, 80}" \
   -e "tell application \"System Events\" to tell process \"Fed Chairman Game\" to set size of window 1 to {$width, $height}"
 
@@ -76,8 +84,18 @@ sleep 0.5
 actual_size="$(osascript -e 'tell application "System Events" to tell process "Fed Chairman Game" to get size of window 1' | tr -d ' ')"
 actual_width="${actual_size%,*}"
 actual_height="${actual_size#*,}"
+actual_position="$(osascript -e 'tell application "System Events" to tell process "Fed Chairman Game" to get position of window 1' | tr -d ' ')"
+actual_x="${actual_position%,*}"
+actual_y="${actual_position#*,}"
+window_id="$(/usr/bin/swift -e 'import CoreGraphics; let windows = CGWindowListCopyWindowInfo(CGWindowListOption(arrayLiteral: .optionAll), kCGNullWindowID) as! [[String: Any]]; for window in windows { if (window[kCGWindowOwnerName as String] as? String) == "Fed Chairman Game", (window[kCGWindowName as String] as? String) == "Fed Chairman Game" { print(window[kCGWindowNumber as String] as! Int); break } }' 2>/dev/null || true)"
 
-screencapture -x -R"80,80,${actual_width},${actual_height}" "$path"
+if [[ -n "$window_id" ]]; then
+  if ! screencapture -x -l"$window_id" "$path"; then
+    screencapture -x -R"${actual_x},${actual_y},${actual_width},${actual_height}" "$path"
+  fi
+else
+  screencapture -x -R"${actual_x},${actual_y},${actual_width},${actual_height}" "$path"
+fi
 
 cat <<EOF
 artifact_provenance:
