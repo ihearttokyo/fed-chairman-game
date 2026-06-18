@@ -41,11 +41,11 @@ enum CommandPanelTone {
 func cockpitContentTopInset(_ layout: CockpitLayoutMetrics) -> Double {
     switch layout.mode {
     case .compact:
-        62
+        38
     case .standard:
-        94
+        42
     case .expanded:
-        100
+        46
     }
 }
 
@@ -69,12 +69,12 @@ struct CommandPanel<Content: View>: View {
             .foregroundStyle(.white)
             .background(glassFill)
             .overlay(glassEdge)
-            .shadow(color: .black.opacity(0.38), radius: 18, y: 10)
-            .shadow(color: toneGlow.opacity(0.12), radius: 18, y: 3)
+            .shadow(color: .black.opacity(0.30), radius: 18, y: 10)
+            .shadow(color: toneGlow.opacity(0.08), radius: 18, y: 3)
     }
 
     private var radius: CGFloat {
-        tone == .keyboard ? 14 : 12
+        tone == .keyboard ? 16 : 18
     }
 
     private var glassFill: some View {
@@ -95,9 +95,9 @@ struct CommandPanel<Content: View>: View {
                     .fill(
                         LinearGradient(
                             colors: [
-                                .white.opacity(0.18),
+                                .white.opacity(0.14),
                                 .white.opacity(0.035),
-                                .black.opacity(0.20),
+                                .black.opacity(0.16),
                             ],
                             startPoint: .top,
                             endPoint: .bottom,
@@ -111,8 +111,8 @@ struct CommandPanel<Content: View>: View {
             .stroke(
                 LinearGradient(
                     colors: [
-                        .white.opacity(0.34),
-                        toneGlow.opacity(0.20),
+                        .white.opacity(0.30),
+                        toneGlow.opacity(0.16),
                         .white.opacity(0.08),
                     ],
                     startPoint: .topLeading,
@@ -212,27 +212,27 @@ struct DockButtonStyle: ButtonStyle {
             .foregroundStyle(.white)
             .frame(width: width, height: height)
             .background(
-                RoundedRectangle(cornerRadius: 16)
+                RoundedRectangle(cornerRadius: 18)
                     .fill(.ultraThinMaterial)
                     .overlay(
                         LinearGradient(
                             colors: [
-                                .white.opacity(isOpen ? 0.30 : 0.18),
-                                Color.cyan.opacity(isOpen ? 0.18 : 0.05),
-                                Color.green.opacity(isOpen ? 0.16 : 0.04),
-                                .black.opacity(0.20),
+                                .white.opacity(isOpen ? 0.34 : 0.16),
+                                Color.cyan.opacity(isOpen ? 0.15 : 0.04),
+                                Color.green.opacity(isOpen ? 0.12 : 0.03),
+                                .black.opacity(0.14),
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing,
                         )
-                        .clipShape(RoundedRectangle(cornerRadius: 16)),
+                        .clipShape(RoundedRectangle(cornerRadius: 18)),
                     ),
             )
-            .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(isOpen ? 0.48 : 0.22)))
-            .shadow(color: Color.cyan.opacity(isOpen ? 0.22 : 0.04), radius: isOpen ? 18 : 8, y: 4)
-            .shadow(color: .black.opacity(0.28), radius: 8, y: 5)
-            .scaleEffect(configuration.isPressed ? 0.84 : 1)
-            .animation(.bouncy(duration: 0.28, extraBounce: 0.34), value: configuration.isPressed)
+            .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(isOpen ? 0.46 : 0.20)))
+            .shadow(color: Color.cyan.opacity(isOpen ? 0.18 : 0.03), radius: isOpen ? 16 : 8, y: 4)
+            .shadow(color: .black.opacity(0.22), radius: 8, y: 5)
+            .scaleEffect(configuration.isPressed ? 0.92 : 1)
+            .animation(.smooth(duration: 0.18), value: configuration.isPressed)
     }
 }
 
@@ -241,51 +241,42 @@ struct DockIcon: View {
     var compact = false
 
     var body: some View {
-        VStack(spacing: compact ? 0 : 7) {
+        VStack(spacing: 0) {
             iconPlate
-            if !compact {
-                Text(panel.title)
-                    .font(.system(size: 11, weight: .black, design: .rounded))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.82)
-                    .frame(width: 82, height: 14)
-                    .shadow(color: .black.opacity(0.7), radius: 2, y: 1)
-                    .accessibilityHidden(true)
-            }
         }
         .accessibilityElement(children: .ignore)
     }
 
     private var iconPlate: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: 14)
                 .fill(.thinMaterial)
                 .overlay {
                     LinearGradient(
-                        colors: [.white.opacity(0.46), .white.opacity(0.10), .black.opacity(0.22)],
+                        colors: [.white.opacity(0.42), .white.opacity(0.10), .black.opacity(0.18)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing,
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
-                .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.3)))
-                .shadow(color: .black.opacity(0.34), radius: 7, y: 4)
+                .overlay(RoundedRectangle(cornerRadius: 14).stroke(.white.opacity(0.28)))
+                .shadow(color: .black.opacity(0.26), radius: 6, y: 3)
 
             if let image = NativeImageLoader.image(named: panel.iconName) {
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFit()
-                    .frame(width: compact ? 32 : 50, height: compact ? 32 : 50)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .shadow(color: .black.opacity(0.35), radius: 5, y: 3)
+                    .frame(width: compact ? 30 : 36, height: compact ? 30 : 36)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .shadow(color: .black.opacity(0.28), radius: 4, y: 2)
                     .accessibilityHidden(true)
             } else {
                 Text(String(panel.rawValue.prefix(1)))
-                    .font(.system(size: compact ? 18 : 24, weight: .black, design: .rounded))
+                    .font(.system(size: compact ? 18 : 20, weight: .black, design: .rounded))
                     .accessibilityHidden(true)
             }
         }
-        .frame(width: compact ? 38 : 58, height: compact ? 38 : 58)
+        .frame(width: compact ? 36 : 42, height: compact ? 36 : 42)
     }
 }
 

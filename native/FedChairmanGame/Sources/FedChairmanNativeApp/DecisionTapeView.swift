@@ -39,12 +39,23 @@ struct DecisionTapeView: View {
             .foregroundStyle(.white.opacity(0.74))
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Gauge(value: Double(feedback.intensity), in: 0 ... 100) {
+            VStack(alignment: .trailing, spacing: 5) {
                 Text("Pressure")
+                    .font(.caption2.weight(.black))
+                    .foregroundStyle(.white.opacity(0.56))
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(.white.opacity(0.10))
+                    Capsule()
+                        .fill(toneColor.opacity(0.86))
+                        .frame(width: max(8, CGFloat(feedback.intensity) * 0.72))
+                }
+                .frame(width: 72, height: 7)
+                Text("\(feedback.intensity)%")
+                    .font(.caption2.monospacedDigit().weight(.black))
+                    .foregroundStyle(toneColor)
             }
-            .gaugeStyle(.accessoryCircularCapacity)
-            .tint(toneColor)
-            .frame(width: 58)
+            .frame(width: 86, alignment: .trailing)
         }
         .frame(height: 58)
         .padding(.vertical, 8)

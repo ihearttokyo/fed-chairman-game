@@ -104,6 +104,8 @@ struct NativeCockpitView: View {
             ZStack(alignment: .top) {
                 CommandDeskBackground()
                 VStack(spacing: layout.spacing.cg) {
+                    statusRail(layout: layout)
+                    dockPanels(layout: layout)
                     dashboard(layout: layout)
                     policyLever(layout: layout)
                     metricsGrid(layout: layout)
@@ -113,10 +115,6 @@ struct NativeCockpitView: View {
                 .padding(.top, cockpitContentTopInset(layout).cg)
 
                 debriefOverlay
-                cockpitDock(layout: layout)
-                statusRail(layout: layout)
-                    .padding(.top, layout.panelPadding.cg)
-                    .padding(.horizontal, layout.dockOuterPadding.cg)
                 Text(motionMode == .reduced ? "Reduced motion mode" : "Spring motion mode")
                     .font(.system(size: 1))
                     .foregroundStyle(.clear)
@@ -155,13 +153,22 @@ struct NativeCockpitView: View {
 
     private func statusRail(layout: CockpitLayoutMetrics) -> some View {
         HStack(spacing: 12) {
-            Spacer(minLength: 0)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Fed Chairman")
+                    .font(.system(size: layout.mode == .compact ? 16 : 18, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                Text("Mandate cockpit")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.52))
+            }
+            .frame(width: layout.mode == .compact ? 132 : 168, alignment: .leading)
+
             HStack(spacing: layout.mode == .compact ? 8 : 14) {
                 Text("Classic Normal Cycle")
                 Text("Term \(session.termNumber)")
                 Text("Quarter \(session.current.quarterIndex) of 16")
-                Text("\(session.totalCareerQuarters) career quarters")
                 if layout.mode != .compact {
+                    Text("\(session.totalCareerQuarters) career quarters")
                     QuarterPips(current: session.current.quarterIndex, total: 16)
                 }
             }
@@ -171,11 +178,13 @@ struct NativeCockpitView: View {
             .background(.ultraThinMaterial, in: Capsule())
             .overlay(Capsule().stroke(.white.opacity(0.20)))
             .shadow(color: .black.opacity(0.22), radius: 10, y: 5)
+            Spacer(minLength: 0)
             dockButtons(layout: layout)
         }
         .font(.system(size: 13, weight: .semibold, design: .rounded))
         .foregroundStyle(.white.opacity(0.82))
-        .frame(maxWidth: .infinity, alignment: .trailing)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: max(58, layout.dockTrayHeight).cg)
     }
 
     private func dashboard(layout: CockpitLayoutMetrics) -> some View {
@@ -368,32 +377,20 @@ struct NativeCockpitView: View {
         }
     }
 
-    private func cockpitDock(layout: CockpitLayoutMetrics) -> some View {
-        VStack {
-            HStack {
-                Spacer(minLength: 0)
-                dockPanels(layout: layout)
-            }
-            .padding(.top, dockPanelTopInset(layout).cg)
-            .padding(.horizontal, layout.dockOuterPadding.cg)
-            Spacer(minLength: 0)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-        .animation(motionMode == .reduced ? nil : .bouncy(duration: 0.36, extraBounce: 0.28), value: dockState.openPanels)
-    }
-
     private func dockPanels(layout: CockpitLayoutMetrics) -> some View {
-        ForEach(dockState.cascadePlacements()) { placement in
-            dockPanel(placement.panel, layout: layout)
-                .frame(width: dockPanelWidth(placement.panel, layout: layout))
-                .frame(maxHeight: layout.dockPanelMaxHeight.cg, alignment: .bottom)
-                .offset(x: placement.xOffset, y: placement.yOffset)
-                .transition(motionMode == .reduced ? .opacity : .scale(scale: 0.74, anchor: .topTrailing).combined(with: .opacity))
+        Group {
+            if let panel = dockState.openPanels.last {
+                dockPanel(panel, layout: layout)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: layout.dockPanelMaxHeight.cg, alignment: .top)
+                    .transition(motionMode == .reduced ? .opacity : .move(edge: .top).combined(with: .opacity))
+            }
         }
+        .animation(motionMode == .reduced ? nil : .smooth(duration: 0.28), value: dockState.openPanels)
     }
 
     private func dockButtons(layout: CockpitLayoutMetrics) -> some View {
-        let compact = layout.dockButtonHeight <= 60
+        let compact = true
         return HStack(spacing: compact ? 6 : 10) {
             ForEach(CockpitDockPanel.allCases) { panel in
                 Button {
@@ -410,7 +407,7 @@ struct NativeCockpitView: View {
                 .accessibilityIdentifier("dock-\(panel.rawValue)")
             }
         }
-        .padding(6)
+        .padding(5)
         .background(alignment: .bottomTrailing) {
             dockTray(layout: layout)
         }
@@ -427,10 +424,10 @@ struct NativeCockpitView: View {
                     .fill(
                         LinearGradient(
                             colors: [
-                                .white.opacity(0.20),
+                                .white.opacity(0.16),
                                 Color.cyan.opacity(0.08),
                                 Color.green.opacity(0.06),
-                                .black.opacity(0.22),
+                                .black.opacity(0.16),
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing,
@@ -438,7 +435,7 @@ struct NativeCockpitView: View {
                     )
             }
             .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.24)))
-            .shadow(color: .black.opacity(0.32), radius: 14, y: 7)
+            .shadow(color: .black.opacity(0.24), radius: 14, y: 7)
             .accessibilityHidden(true)
     }
 
