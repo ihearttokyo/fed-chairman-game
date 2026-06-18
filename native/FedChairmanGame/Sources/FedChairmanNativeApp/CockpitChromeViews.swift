@@ -41,7 +41,7 @@ enum CommandPanelTone {
 func cockpitContentTopInset(_ layout: CockpitLayoutMetrics) -> Double {
     switch layout.mode {
     case .compact:
-        18
+        10
     case .standard:
         24
     case .expanded:

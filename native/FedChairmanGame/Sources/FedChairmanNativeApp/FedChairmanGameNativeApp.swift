@@ -110,7 +110,9 @@ struct NativeCockpitView: View {
                     metricsGrid(layout: layout)
                     dashboard(layout: layout)
                     policyLever(layout: layout)
-                    quarterReview(layout: layout)
+                    if shouldShowQuarterReview(layout: layout) {
+                        quarterReview(layout: layout)
+                    }
                 }
                 .padding(layout.panelPadding.cg)
                 .padding(.top, cockpitContentTopInset(layout).cg)
@@ -186,7 +188,7 @@ struct NativeCockpitView: View {
         .font(.system(size: 13, weight: .semibold, design: .rounded))
         .foregroundStyle(.white.opacity(0.82))
         .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: max(58, layout.dockTrayHeight).cg)
+        .frame(height: (layout.mode == .compact ? 50 : max(58, layout.dockTrayHeight)).cg)
     }
 
     private func dashboard(layout: CockpitLayoutMetrics) -> some View {
@@ -212,12 +214,14 @@ struct NativeCockpitView: View {
                 }
             }
             .padding(.bottom, layout.mode == .compact ? 3 : 6)
-            ChartInspectionStrip(
-                inspection: chartInspection,
-                isInspecting: inspectedChartIndex != nil,
-                compact: layout.mode == .compact,
-            )
-            .padding(.bottom, layout.mode == .compact ? 4 : 6)
+            if layout.mode != .compact {
+                ChartInspectionStrip(
+                    inspection: chartInspection,
+                    isInspecting: inspectedChartIndex != nil,
+                    compact: false,
+                )
+                .padding(.bottom, 6)
+            }
             SpriteKitChart(
                 history: session.careerHistory,
                 reducedMotion: reduceMotion || session.ui.reducedMotion,
@@ -313,7 +317,7 @@ struct NativeCockpitView: View {
         CommandPanel(padding: layout.panelPadding.cg, tone: .instrument) {
             VStack(alignment: .leading, spacing: layout.mode == .compact ? 4 : 12) {
                 if let transmission = buildTransmissionBriefing(session: session) {
-                    if layout.mode == .compact {
+                    if layout.mode != .expanded {
                         CompactQuarterReview(transmission: transmission)
                     } else {
                         Text(transmission.receipt.headline)
@@ -353,9 +357,21 @@ struct NativeCockpitView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(height: layout.quarterReviewHeight.cg, alignment: .top)
-        .clipped()
+        .frame(minHeight: layout.quarterReviewHeight.cg, alignment: .top)
         .accessibilityIdentifier("quarter-review")
+    }
+
+    private func shouldShowQuarterReview(layout: CockpitLayoutMetrics) -> Bool {
+        guard dockState.openPanels.isEmpty else {
+            return false
+        }
+        guard session.current.quarterIndex > 0 || session.totalCareerQuarters > 0 else {
+            return false
+        }
+        guard buildTransmissionBriefing(session: session) != nil else {
+            return false
+        }
+        return layout.mode != .compact || session.current.quarterIndex >= 8
     }
 
     private func transmissionStepCard(_ step: TransmissionStep) -> some View {
@@ -418,7 +434,10 @@ struct NativeCockpitView: View {
     }
 
     private func dockPanels(layout: CockpitLayoutMetrics) -> some View {
-        ZStack(alignment: .top) {
+        let isDrawerOpen = dockState.openPanels.last != nil
+        let panelHeight = isDrawerOpen ? layout.dockPanelMaxHeight : briefingPreviewHeight(layout)
+
+        return ZStack(alignment: .top) {
             if let panel = dockState.openPanels.last {
                 dockPanel(panel, layout: layout)
                     .frame(maxWidth: .infinity)
@@ -430,9 +449,20 @@ struct NativeCockpitView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .frame(height: layout.dockPanelMaxHeight.cg, alignment: .top)
+        .frame(height: panelHeight.cg, alignment: .top)
         .clipped()
         .animation(motionMode == .reduced ? nil : .smooth(duration: 0.28), value: dockState.openPanels)
+    }
+
+    private func briefingPreviewHeight(_ layout: CockpitLayoutMetrics) -> Double {
+        switch layout.mode {
+        case .compact:
+            64
+        case .standard:
+            90
+        case .expanded:
+            102
+        }
     }
 
     private func briefingPreview(layout: CockpitLayoutMetrics) -> some View {

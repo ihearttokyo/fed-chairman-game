@@ -8,7 +8,7 @@ struct NewspaperPanelView: View {
     var layout: CockpitLayoutMetrics
 
     var body: some View {
-        HStack(spacing: layout.mode == .compact ? 12 : 16) {
+        HStack(spacing: layout.mode == .compact ? 12 : 18) {
             Text("THE MANDATE DESK")
                 .font(.system(size: 1))
                 .foregroundStyle(.clear)
@@ -20,7 +20,7 @@ struct NewspaperPanelView: View {
             Spacer(minLength: 0)
             riskStack
         }
-        .padding(layout.mode == .compact ? 10 : 18)
+        .padding(layout.mode == .compact ? 10 : 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .foregroundStyle(.white)
         .background(panelFill)
@@ -85,15 +85,15 @@ struct NewspaperPanelView: View {
             }
             .lineLimit(1)
             Text(briefing.headline)
-                .font(.system(size: layout.mode == .compact ? 15 : 25, weight: .black, design: .rounded))
+                .font(.system(size: layout.mode == .compact ? 15 : 22, weight: .black, design: .rounded))
                 .foregroundStyle(.white)
                 .lineLimit(layout.mode == .compact ? 1 : 2)
                 .minimumScaleFactor(0.82)
             if layout.mode != .compact {
                 Text(briefing.body)
-                    .font(.callout.weight(.semibold))
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.72))
-                    .lineLimit(3)
+                    .lineLimit(2)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -103,7 +103,7 @@ struct NewspaperPanelView: View {
         VStack(alignment: .leading, spacing: 8) {
             briefingChip("Risk", briefing.riskCalendar)
             briefingChip("Policy", briefing.policyImplication)
-            if layout.mode != .compact {
+            if layout.mode == .expanded {
                 briefingChip("Watch", "Labor, credibility, lagged policy")
             }
         }
@@ -118,7 +118,7 @@ struct NewspaperPanelView: View {
             Text(body)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.white.opacity(0.78))
-                .lineLimit(layout.mode == .compact ? 1 : 2)
+                .lineLimit(1)
         }
         .padding(layout.mode == .compact ? 7 : 9)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -144,28 +144,34 @@ struct HelpDrawerView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: layout.mode == .compact ? 8 : 12) {
-            drawerHeader(
-                systemName: "questionmark.circle.fill",
-                eyebrow: "Policy Guide",
-                title: "Policy Notebook",
-                caption: "Read the economy, pick a stance, then watch the lags.",
-                tint: .green,
-            )
+        Group {
+            if layout.mode == .compact {
+                compactBody
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    drawerHeader(
+                        systemName: "questionmark.circle.fill",
+                        eyebrow: "Policy Guide",
+                        title: "Policy Notebook",
+                        caption: "Read the economy, pick a stance, then watch the lags.",
+                        tint: .green,
+                    )
 
-            HStack(alignment: .top, spacing: 8) {
-                ForEach(primaryTopics.prefix(layout.mode == .compact ? 2 : 3)) { topic in
-                    HelpPrimaryTopicTile(topic: topic, compact: layout.mode == .compact)
-                }
-            }
+                    HStack(alignment: .top, spacing: 8) {
+                        ForEach(primaryTopics.prefix(3)) { topic in
+                            HelpPrimaryTopicTile(topic: topic, compact: false)
+                        }
+                    }
 
-            LazyVGrid(
-                columns: Array(repeating: GridItem(.flexible(), spacing: 8, alignment: .top), count: secondaryColumnCount),
-                alignment: .leading,
-                spacing: 8,
-            ) {
-                ForEach(secondaryTopics.prefix(layout.mode == .compact ? 4 : 6)) { topic in
-                    HelpTopicRow(topic: topic, compact: layout.mode == .compact)
+                    LazyVGrid(
+                        columns: Array(repeating: GridItem(.flexible(), spacing: 8, alignment: .top), count: secondaryColumnCount),
+                        alignment: .leading,
+                        spacing: 8,
+                    ) {
+                        ForEach(secondaryTopics.prefix(6)) { topic in
+                            HelpTopicRow(topic: topic, compact: false)
+                        }
+                    }
                 }
             }
         }
@@ -176,6 +182,37 @@ struct HelpDrawerView: View {
         .clipShape(RoundedRectangle(cornerRadius: drawerCornerRadius))
         .overlay(RoundedRectangle(cornerRadius: drawerCornerRadius).stroke(.white.opacity(0.24)))
         .shadow(color: .black.opacity(0.28), radius: 18, y: 10)
+    }
+
+    private var compactBody: some View {
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Label("Policy Guide", systemImage: "questionmark.circle.fill")
+                    .font(.caption2.weight(.black))
+                    .foregroundStyle(.green)
+                    .lineLimit(1)
+                Text("Policy Notebook")
+                    .font(.headline.weight(.black))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Text("Balance inflation, labor, and policy lags.")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.62))
+                    .lineLimit(1)
+            }
+            .frame(width: 172, alignment: .leading)
+
+            ForEach(primaryTopics.prefix(2)) { topic in
+                HelpPrimaryTopicTile(topic: topic, compact: true)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(secondaryTopics.prefix(2)) { topic in
+                    HelpTopicRow(topic: topic, compact: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }
 
