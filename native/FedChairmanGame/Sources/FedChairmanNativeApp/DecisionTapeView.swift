@@ -40,25 +40,27 @@ struct DecisionTapeView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             VStack(alignment: .trailing, spacing: 5) {
-                Text("Pressure")
-                    .font(.caption2.weight(.black))
-                    .foregroundStyle(.white.opacity(0.56))
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(.white.opacity(0.10))
-                    Capsule()
-                        .fill(toneColor.opacity(0.86))
-                        .frame(width: max(8, CGFloat(feedback.intensity) * 0.72))
+                HStack(spacing: 4) {
+                    Text(pressureLabel)
+                        .font(.caption2.weight(.black))
+                        .foregroundStyle(toneColor)
+                    Text("\(feedback.intensity)%")
+                        .font(.caption2.monospacedDigit().weight(.black))
+                        .foregroundStyle(.white.opacity(0.72))
                 }
-                .frame(width: 72, height: 7)
-                Text("\(feedback.intensity)%")
-                    .font(.caption2.monospacedDigit().weight(.black))
-                    .foregroundStyle(toneColor)
+                pressureMeter
+                HStack(spacing: 2) {
+                    Text("calm")
+                    Spacer(minLength: 0)
+                    Text("stress")
+                }
+                .font(.system(size: 8, weight: .bold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.38))
             }
-            .frame(width: 86, alignment: .trailing)
+            .frame(width: 96, alignment: .trailing)
         }
-        .frame(height: 58)
-        .padding(.vertical, 8)
+        .frame(height: 48)
+        .padding(.vertical, 6)
         .padding(.horizontal, 10)
         .background(background)
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(toneColor.opacity(pulse ? 0.62 : 0.30)))
@@ -85,6 +87,36 @@ struct DecisionTapeView: View {
 
     private var accessibilityText: String {
         "Decision tape. \(feedback.headline). \(feedback.moveLabel). \(feedback.ratePath). \(feedback.mandateLine)."
+    }
+
+    private var pressureMeter: some View {
+        ZStack(alignment: .leading) {
+            HStack(spacing: 2) {
+                ForEach(0 ..< 5, id: \.self) { index in
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(index < pressureSegments ? toneColor.opacity(0.88) : Color.white.opacity(0.12))
+                }
+            }
+            .frame(width: 92, height: 9)
+            RoundedRectangle(cornerRadius: 2)
+                .stroke(.white.opacity(0.16), lineWidth: 1)
+                .frame(width: 92, height: 9)
+        }
+    }
+
+    private var pressureSegments: Int {
+        max(1, min(5, Int(ceil(Double(feedback.intensity) / 20.0))))
+    }
+
+    private var pressureLabel: String {
+        switch feedback.intensity {
+        case 0 ..< 35:
+            "Low"
+        case 35 ..< 70:
+            "Watch"
+        default:
+            "High"
+        }
     }
 
     private var toneColor: Color {

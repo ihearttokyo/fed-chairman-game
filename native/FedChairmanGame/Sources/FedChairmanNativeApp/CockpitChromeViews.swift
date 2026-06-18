@@ -41,20 +41,20 @@ enum CommandPanelTone {
 func cockpitContentTopInset(_ layout: CockpitLayoutMetrics) -> Double {
     switch layout.mode {
     case .compact:
-        38
+        16
     case .standard:
-        42
+        20
     case .expanded:
-        46
+        24
     }
 }
 
 func dockPanelTopInset(_ layout: CockpitLayoutMetrics) -> Double {
     switch layout.mode {
     case .compact:
-        layout.panelPadding + 10
+        layout.panelPadding + 8
     case .standard, .expanded:
-        layout.panelPadding + layout.dockButtonHeight + 8
+        layout.panelPadding + layout.dockButtonHeight + 6
     }
 }
 
@@ -69,8 +69,8 @@ struct CommandPanel<Content: View>: View {
             .foregroundStyle(.white)
             .background(glassFill)
             .overlay(glassEdge)
-            .shadow(color: .black.opacity(0.30), radius: 18, y: 10)
-            .shadow(color: toneGlow.opacity(0.08), radius: 18, y: 3)
+            .shadow(color: .black.opacity(0.20), radius: 14, y: 7)
+            .shadow(color: toneGlow.opacity(0.045), radius: 12, y: 2)
     }
 
     private var radius: CGFloat {
@@ -95,9 +95,9 @@ struct CommandPanel<Content: View>: View {
                     .fill(
                         LinearGradient(
                             colors: [
-                                .white.opacity(0.14),
-                                .white.opacity(0.035),
-                                .black.opacity(0.16),
+                                .white.opacity(0.11),
+                                .white.opacity(0.030),
+                                .black.opacity(0.10),
                             ],
                             startPoint: .top,
                             endPoint: .bottom,
@@ -111,9 +111,9 @@ struct CommandPanel<Content: View>: View {
             .stroke(
                 LinearGradient(
                     colors: [
-                        .white.opacity(0.30),
-                        toneGlow.opacity(0.16),
-                        .white.opacity(0.08),
+                        .white.opacity(0.22),
+                        toneGlow.opacity(0.09),
+                        .white.opacity(0.055),
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing,
@@ -139,23 +139,23 @@ struct CommandPanel<Content: View>: View {
         switch tone {
         case .glass:
             [
-                Color(red: 0.18, green: 0.22, blue: 0.25).opacity(0.40),
-                Color(red: 0.035, green: 0.052, blue: 0.058).opacity(0.82),
+                Color(red: 0.21, green: 0.24, blue: 0.27).opacity(0.30),
+                Color(red: 0.042, green: 0.056, blue: 0.062).opacity(0.70),
             ]
         case .instrument:
             [
-                Color(red: 0.16, green: 0.18, blue: 0.19).opacity(0.46),
-                Color(red: 0.024, green: 0.036, blue: 0.040).opacity(0.90),
+                Color(red: 0.18, green: 0.20, blue: 0.20).opacity(0.34),
+                Color(red: 0.030, green: 0.040, blue: 0.043).opacity(0.78),
             ]
         case .keyboard:
             [
-                Color(red: 0.12, green: 0.18, blue: 0.16).opacity(0.52),
-                Color(red: 0.020, green: 0.035, blue: 0.034).opacity(0.94),
+                Color(red: 0.14, green: 0.19, blue: 0.17).opacity(0.38),
+                Color(red: 0.024, green: 0.038, blue: 0.037).opacity(0.82),
             ]
         case .monitor:
             [
-                Color(red: 0.13, green: 0.17, blue: 0.20).opacity(0.50),
-                Color(red: 0.015, green: 0.025, blue: 0.030).opacity(0.94),
+                Color(red: 0.15, green: 0.18, blue: 0.21).opacity(0.36),
+                Color(red: 0.020, green: 0.030, blue: 0.035).opacity(0.82),
             ]
         }
     }
@@ -212,25 +212,25 @@ struct DockButtonStyle: ButtonStyle {
             .foregroundStyle(.white)
             .frame(width: width, height: height)
             .background(
-                RoundedRectangle(cornerRadius: 18)
+                RoundedRectangle(cornerRadius: 16)
                     .fill(.ultraThinMaterial)
                     .overlay(
                         LinearGradient(
                             colors: [
-                                .white.opacity(isOpen ? 0.34 : 0.16),
-                                Color.cyan.opacity(isOpen ? 0.15 : 0.04),
-                                Color.green.opacity(isOpen ? 0.12 : 0.03),
-                                .black.opacity(0.14),
+                                .white.opacity(isOpen ? 0.28 : 0.13),
+                                Color.cyan.opacity(isOpen ? 0.10 : 0.025),
+                                Color.green.opacity(isOpen ? 0.08 : 0.02),
+                                .black.opacity(0.10),
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing,
                         )
-                        .clipShape(RoundedRectangle(cornerRadius: 18)),
+                        .clipShape(RoundedRectangle(cornerRadius: 16)),
                     ),
             )
-            .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(isOpen ? 0.46 : 0.20)))
-            .shadow(color: Color.cyan.opacity(isOpen ? 0.18 : 0.03), radius: isOpen ? 16 : 8, y: 4)
-            .shadow(color: .black.opacity(0.22), radius: 8, y: 5)
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(isOpen ? 0.34 : 0.14)))
+            .shadow(color: Color.cyan.opacity(isOpen ? 0.10 : 0.015), radius: isOpen ? 12 : 6, y: 3)
+            .shadow(color: .black.opacity(0.16), radius: 6, y: 4)
             .scaleEffect(configuration.isPressed ? 0.92 : 1)
             .animation(.smooth(duration: 0.18), value: configuration.isPressed)
     }
@@ -253,22 +253,22 @@ struct DockIcon: View {
                 .fill(.thinMaterial)
                 .overlay {
                     LinearGradient(
-                        colors: [.white.opacity(0.42), .white.opacity(0.10), .black.opacity(0.18)],
+                        colors: [.white.opacity(0.30), .white.opacity(0.08), .black.opacity(0.12)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing,
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
-                .overlay(RoundedRectangle(cornerRadius: 14).stroke(.white.opacity(0.28)))
-                .shadow(color: .black.opacity(0.26), radius: 6, y: 3)
+                .overlay(RoundedRectangle(cornerRadius: 14).stroke(.white.opacity(0.18)))
+                .shadow(color: .black.opacity(0.18), radius: 5, y: 2)
 
             if let image = NativeImageLoader.image(named: panel.iconName) {
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFit()
-                    .frame(width: compact ? 30 : 36, height: compact ? 30 : 36)
+                    .frame(width: compact ? 28 : 34, height: compact ? 28 : 34)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .shadow(color: .black.opacity(0.28), radius: 4, y: 2)
+                    .shadow(color: .black.opacity(0.20), radius: 3, y: 1)
                     .accessibilityHidden(true)
             } else {
                 Text(String(panel.rawValue.prefix(1)))

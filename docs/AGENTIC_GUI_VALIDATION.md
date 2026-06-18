@@ -22,6 +22,8 @@ Do not repeatedly run the same scripted click path. If a validation step opens N
 
 Otherwise, stop running tests and inspect the app or code.
 
+Do not run `npm` or XCTest commands in a loop during visual repair. Lint, unit tests, packaging scripts, and UI suites are gates, not discovery tools. For UI/UX defects, the required discovery loop is: build the current app, capture a fresh screenshot from that build, inspect the pixels, patch the visible problem, and rerun only the targeted screenshot scenario that proves the patch. If an automated UI run fails, use its screenshot/artifact or the implicated source code to decide the next patch; do not rerun the same command unless code changed or a new hypothesis is named.
+
 ## Preferred Loop
 
 1. Verify artifact provenance for the app under test. Rebuild/install if the app is stale, ambiguous, or from a different commit.
@@ -40,7 +42,7 @@ Otherwise, stop running tests and inspect the app or code.
 7. Save screenshots for each meaningful state with stable names.
 8. Patch the highest-impact issue found.
 9. Repeat only the targeted scenario that proves the patch.
-10. Run lint/unit/build checks.
+10. Run lint/unit/build checks after the screenshot loop has produced a visually coherent app.
 11. Run the native XCTest UI suite once as the final regression gate if the desktop is clear enough for reliable interaction.
 
 ## Screenshot Evidence
@@ -57,6 +59,7 @@ Computer-use screenshots are still preferred when available because they pair pi
 
 ## Anti-Patterns
 
+- Looping on `npm test`, `npm run test:ui`, or install/package commands before inspecting the current app screenshot.
 - Rerunning `npm run install:mac` as a substitute for looking at the app.
 - Repeating the Newspaper/Help/Settings click path without new code or a new hypothesis.
 - Treating XCTest screenshots as sufficient when no model has inspected them.

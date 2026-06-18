@@ -1,6 +1,8 @@
 import FedChairmanCore
 import SwiftUI
 
+private let drawerCornerRadius: CGFloat = 18
+
 struct NewspaperPanelView: View {
     var briefing: CockpitBriefing
     var layout: CockpitLayoutMetrics
@@ -117,4 +119,238 @@ struct NewspaperPanelView: View {
         .background(.white.opacity(0.065), in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(.white.opacity(0.10)))
     }
+}
+
+struct HelpDrawerView: View {
+    var topics: [HelpTopic]
+    var layout: CockpitLayoutMetrics
+
+    private var primaryTopics: [HelpTopic] {
+        topics.filter(\.isPrimary)
+    }
+
+    private var secondaryTopics: [HelpTopic] {
+        topics.filter { !$0.isPrimary }
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: layout.mode == .compact ? 10 : 14) {
+            drawerHeader(
+                systemName: "questionmark.circle.fill",
+                eyebrow: "Policy Guide",
+                title: "Chair's Notes",
+                caption: "Economy, stance, lags.",
+                tint: .green,
+            )
+            .frame(width: layout.mode == .compact ? 224 : 292, alignment: .leading)
+
+            HStack(spacing: 8) {
+                ForEach(primaryTopics.prefix(3)) { topic in
+                    SlimHelpChip(topic: topic, tint: .green)
+                }
+            }
+
+            if layout.mode != .compact {
+                HStack(spacing: 8) {
+                    ForEach(secondaryTopics.prefix(3)) { topic in
+                        SlimHelpChip(topic: topic, tint: .white.opacity(0.70))
+                    }
+                }
+            }
+        }
+        .padding(.vertical, layout.mode == .compact ? 8 : 10)
+        .padding(.horizontal, layout.mode == .compact ? 10 : 14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .background(drawerPanelFill(tint: .green))
+        .clipShape(RoundedRectangle(cornerRadius: drawerCornerRadius))
+        .overlay(RoundedRectangle(cornerRadius: drawerCornerRadius).stroke(.white.opacity(0.24)))
+        .shadow(color: .black.opacity(0.28), radius: 18, y: 10)
+    }
+}
+
+struct SettingsDrawerView: View {
+    @Binding var reducedMotion: Bool
+    @Binding var soundEnabled: Bool
+    @Binding var reducedNoise: Bool
+
+    var panelMessage: String?
+    var layout: CockpitLayoutMetrics
+    var save: () -> Void
+    var load: () -> Void
+    var exportCsv: () -> Void
+    var exportJson: () -> Void
+    var exportMarkdown: () -> Void
+
+    private var exportColumnCount: Int {
+        layout.mode == .compact ? 5 : 5
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: layout.mode == .compact ? 10 : 12) {
+            drawerHeader(
+                systemName: "slider.horizontal.3",
+                eyebrow: "Preferences",
+                title: "Desk Setup",
+                caption: "Feel, audio, records.",
+                tint: .cyan,
+            )
+            .frame(width: layout.mode == .compact ? 218 : 276, alignment: .leading)
+
+            HStack(spacing: 8) {
+                SlimSettingsToggle(
+                    title: "Motion",
+                    systemName: "figure.walk.motion",
+                    tint: .cyan,
+                    isOn: $reducedMotion,
+                )
+                SlimSettingsToggle(
+                    title: "Sound",
+                    systemName: "speaker.wave.2.fill",
+                    tint: .orange,
+                    isOn: $soundEnabled,
+                )
+                SlimSettingsToggle(
+                    title: "Noise",
+                    systemName: "dial.low.fill",
+                    tint: .mint,
+                    isOn: $reducedNoise,
+                )
+            }
+
+            HStack(spacing: 8) {
+                drawerActionButton("Save", systemName: "square.and.arrow.down", action: save)
+                drawerActionButton("Load", systemName: "folder", action: load)
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: exportColumnCount - 2),
+                    alignment: .leading,
+                    spacing: 6,
+                ) {
+                    drawerActionButton("CSV", systemName: "tablecells", action: exportCsv)
+                    drawerActionButton("JSON", systemName: "curlybraces", action: exportJson)
+                    drawerActionButton("MD", systemName: "doc.plaintext", action: exportMarkdown)
+                }
+            }
+
+            if let panelMessage {
+                Label(panelMessage, systemImage: "checkmark.circle.fill")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.70))
+                    .lineLimit(1)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 9))
+            }
+        }
+        .padding(.vertical, layout.mode == .compact ? 8 : 10)
+        .padding(.horizontal, layout.mode == .compact ? 10 : 14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .background(drawerPanelFill(tint: .cyan))
+        .clipShape(RoundedRectangle(cornerRadius: drawerCornerRadius))
+        .overlay(RoundedRectangle(cornerRadius: drawerCornerRadius).stroke(.white.opacity(0.24)))
+        .shadow(color: .black.opacity(0.28), radius: 18, y: 10)
+    }
+}
+
+private struct SlimHelpChip: View {
+    var topic: HelpTopic
+    var tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(topic.title)
+                .font(.caption.weight(.black))
+                .foregroundStyle(tint)
+                .lineLimit(1)
+            Text(topic.body)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.white.opacity(0.66))
+                .lineLimit(2)
+                .minimumScaleFactor(0.84)
+        }
+        .padding(.vertical, 7)
+        .padding(.horizontal, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white.opacity(0.065), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(tint.opacity(0.16)))
+    }
+}
+
+private struct SlimSettingsToggle: View {
+    var title: String
+    var systemName: String
+    var tint: Color
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Toggle(isOn: $isOn) {
+            HStack(spacing: 6) {
+                Image(systemName: systemName)
+                    .font(.caption.weight(.black))
+                    .foregroundStyle(tint)
+                Text(title)
+                    .font(.caption.weight(.black))
+                    .foregroundStyle(.white.opacity(0.82))
+                    .lineLimit(1)
+            }
+        }
+        .toggleStyle(.switch)
+        .controlSize(.mini)
+        .padding(.vertical, 7)
+        .padding(.horizontal, 8)
+        .background(.white.opacity(0.065), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(tint.opacity(0.14)))
+    }
+}
+
+private func drawerHeader(systemName: String, eyebrow: String, title: String, caption: String, tint: Color) -> some View {
+    HStack(alignment: .firstTextBaseline, spacing: 9) {
+        Image(systemName: systemName)
+            .font(.title3.weight(.bold))
+            .foregroundStyle(tint)
+        VStack(alignment: .leading, spacing: 2) {
+            Text(eyebrow.uppercased())
+                .font(.caption2.weight(.black))
+                .foregroundStyle(tint.opacity(0.92))
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(title)
+                    .font(.headline.weight(.black))
+                    .foregroundStyle(.white)
+                Text(caption)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.58))
+                    .lineLimit(1)
+            }
+        }
+    }
+}
+
+private func drawerPanelFill(tint: Color) -> some View {
+    RoundedRectangle(cornerRadius: drawerCornerRadius)
+        .fill(.ultraThinMaterial)
+        .overlay(
+            LinearGradient(
+                colors: [
+                    .white.opacity(0.13),
+                    tint.opacity(0.08),
+                    .black.opacity(0.20),
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing,
+            )
+            .clipShape(RoundedRectangle(cornerRadius: drawerCornerRadius)),
+        )
+}
+
+@MainActor
+private func drawerActionButton(_ title: String, systemName: String, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+        Label(title, systemImage: systemName)
+            .font(.caption.weight(.bold))
+            .foregroundStyle(.white.opacity(0.86))
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, minHeight: 28)
+            .background(.white.opacity(0.075), in: RoundedRectangle(cornerRadius: 9))
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(.white.opacity(0.13)))
+    }
+    .buttonStyle(.plain)
 }

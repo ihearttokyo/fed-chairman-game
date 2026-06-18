@@ -56,6 +56,7 @@ struct NativeCockpitView: View {
     @State private var decisionPulse = false
     @State private var panelMessage: String?
     @State private var inspectedChartIndex: Int?
+    @State private var didApplyValidationProgression = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var session: GameSession {
@@ -106,9 +107,9 @@ struct NativeCockpitView: View {
                 VStack(spacing: layout.spacing.cg) {
                     statusRail(layout: layout)
                     dockPanels(layout: layout)
+                    metricsGrid(layout: layout)
                     dashboard(layout: layout)
                     policyLever(layout: layout)
-                    metricsGrid(layout: layout)
                     quarterReview(layout: layout)
                 }
                 .padding(layout.panelPadding.cg)
@@ -129,7 +130,9 @@ struct NativeCockpitView: View {
             if session.status == .notStarted {
                 store.start()
             }
+            applyValidationProgressionIfNeeded()
             configureUITestStateIfNeeded()
+            applyLaunchPanelIfNeeded()
             autoPeekBriefing()
         }
         .onReceive(NotificationCenter.default.publisher(for: .policyShortcutAction)) { notification in
@@ -157,54 +160,57 @@ struct NativeCockpitView: View {
                 Text("Fed Chairman")
                     .font(.system(size: layout.mode == .compact ? 16 : 18, weight: .black, design: .rounded))
                     .foregroundStyle(.white)
-                Text("Mandate cockpit")
+                Text("Policy command")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.52))
             }
             .frame(width: layout.mode == .compact ? 132 : 168, alignment: .leading)
 
             HStack(spacing: layout.mode == .compact ? 8 : 14) {
-                Text("Classic Normal Cycle")
                 Text("Term \(session.termNumber)")
-                Text("Quarter \(session.current.quarterIndex) of 16")
+                Text("Q\(session.current.quarterIndex)/16")
                 if layout.mode != .compact {
-                    Text("\(session.totalCareerQuarters) career quarters")
+                    Text("\(session.totalCareerQuarters) career Q")
                     QuarterPips(current: session.current.quarterIndex, total: 16)
                 }
             }
             .lineLimit(1)
-            .padding(.vertical, 8)
-            .padding(.horizontal, 12)
-            .background(.ultraThinMaterial, in: Capsule())
-            .overlay(Capsule().stroke(.white.opacity(0.20)))
-            .shadow(color: .black.opacity(0.22), radius: 10, y: 5)
+            .padding(.vertical, 7)
+            .padding(.horizontal, 11)
+            .background(.white.opacity(0.055), in: Capsule())
+            .overlay(Capsule().stroke(.white.opacity(0.12)))
             Spacer(minLength: 0)
             dockButtons(layout: layout)
         }
         .font(.system(size: 13, weight: .semibold, design: .rounded))
         .foregroundStyle(.white.opacity(0.82))
         .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: max(58, layout.dockTrayHeight).cg)
+        .frame(height: (layout.mode == .compact ? 46 : 50).cg)
     }
 
     private func dashboard(layout: CockpitLayoutMetrics) -> some View {
         CommandPanel(padding: layout.panelPadding.cg, tone: .monitor) {
-            HStack(alignment: .top) {
+            HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Mandate Dashboard")
-                        .font(.system(size: 22, weight: .bold, design: .rounded))
-                    Text("Animated native SpriteKit trace")
+                        .font(.system(size: layout.mode == .compact ? 18 : 21, weight: .bold, design: .rounded))
+                    Text("Inflation, labor, funds rate, and credibility trace")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.white.opacity(0.55))
                 }
                 Spacer()
-                MandateBadge(label: "Inflation", value: session.current.inflation, target: 2, color: .orange)
-                MandateBadge(label: "Labor", value: session.current.unemployment, target: 5, color: .blue)
-                MandateBadge(label: "Credibility", value: session.current.credibility, target: 80, color: .green)
+                if layout.mode != .compact {
+                    Text("Latest Q\(session.current.quarterIndex)")
+                        .font(.caption.weight(.black))
+                        .foregroundStyle(.white.opacity(0.58))
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 10)
+                        .background(.white.opacity(0.055), in: Capsule())
+                }
             }
-            .padding(.bottom, 8)
+            .padding(.bottom, layout.mode == .expanded ? 5 : 2)
             ChartInspectionStrip(inspection: chartInspection, isInspecting: inspectedChartIndex != nil)
-                .padding(.bottom, 8)
+                .padding(.bottom, layout.mode == .expanded ? 5 : 3)
             SpriteKitChart(
                 history: session.careerHistory,
                 reducedMotion: reduceMotion || session.ui.reducedMotion,
@@ -220,10 +226,10 @@ struct NativeCockpitView: View {
 
     private func policyLever(layout: CockpitLayoutMetrics) -> some View {
         CommandPanel(padding: layout.panelPadding.cg, tone: .keyboard) {
-            VStack(spacing: max(8, layout.spacing - 1).cg) {
+            VStack(spacing: (layout.mode == .expanded ? 8 : 6).cg) {
                 HStack {
                     Text("Policy Lever")
-                        .font(.system(size: 20, weight: .black, design: .rounded))
+                        .font(.system(size: layout.mode == .compact ? 17 : 20, weight: .black, design: .rounded))
                     Spacer()
                     Text("Fed funds \(session.current.fedFundsRate, format: .number.precision(.fractionLength(2)))%")
                         .font(.system(size: 16, weight: .bold, design: .rounded))
@@ -233,24 +239,27 @@ struct NativeCockpitView: View {
                         .background(.green.opacity(0.10), in: Capsule())
                         .overlay(Capsule().stroke(.green.opacity(0.22)))
                 }
-                HStack(spacing: layout.policyKeySpacing.cg) {
-                    ForEach(fixedActions, id: \.self) { action in
-                        Button(policyActions[action]?.label ?? action.rawValue) {
-                            commit(action)
+                HStack(alignment: .top, spacing: layout.policyKeySpacing.cg) {
+                    policyActionCluster(title: "CUT", actions: cutActions, layout: layout)
+                    policyActionCluster(title: "HOLD", actions: [.hold], layout: layout)
+                    policyActionCluster(title: "RAISE", actions: raiseActions, layout: layout)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("CUSTOM")
+                            .font(.caption2.weight(.black))
+                            .foregroundStyle(.white.opacity(0.46))
+                        HStack(spacing: 6) {
+                            TextField("bps", text: $customBps)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: layout.customFieldWidth.cg)
+                            Button("Commit") {
+                                commitCustom()
+                            }
+                            .buttonStyle(PolicyButtonStyle(pulse: decisionPulse, width: max(68, layout.policyKeyWidth).cg, height: layout.policyKeyHeight.cg))
+                            .disabled(customDelta == nil)
                         }
-                        .buttonStyle(PolicyButtonStyle(pulse: decisionPulse, width: layout.policyKeyWidth.cg, height: layout.policyKeyHeight.cg))
-                        .disabled(resultingRate(for: action) < 0 || resultingRate(for: action) > 20)
                     }
-                    TextField("Custom bps", text: $customBps)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: layout.customFieldWidth.cg)
-                    Button("Commit") {
-                        commitCustom()
-                    }
-                    .buttonStyle(PolicyButtonStyle(pulse: decisionPulse, width: max(70, layout.policyKeyWidth + 4).cg, height: layout.policyKeyHeight.cg))
-                    .disabled(customDelta == nil)
                 }
-                .frame(maxWidth: .infinity, alignment: .center)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 DecisionTapeView(feedback: decisionFeedback, pulse: decisionPulse, motionMode: motionMode)
             }
         }
@@ -259,21 +268,41 @@ struct NativeCockpitView: View {
     }
 
     private func metricsGrid(layout: CockpitLayoutMetrics) -> some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: layout.metricsColumns), spacing: 10) {
-            MandateMetricCard(label: "Inflation", value: session.current.inflation, suffix: "%", color: .orange, layout: layout)
-            MandateMetricCard(label: "Unemployment", value: session.current.unemployment, suffix: "%", color: .blue, layout: layout)
-            MandateMetricCard(label: "Fed Funds", value: session.current.fedFundsRate, suffix: "%", color: .green, layout: layout)
-            MandateMetricCard(label: "Expectations", value: session.current.expectedInflation, suffix: "%", color: .mint, layout: layout)
-            MandateMetricCard(label: "Credibility", value: session.current.credibility, suffix: "", color: .yellow, layout: layout)
+        CommandPanel(padding: max(8, layout.panelPadding - 4).cg, tone: .instrument) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: layout.metricsColumns), spacing: 8) {
+                MandateMetricCard(label: "Inflation", value: session.current.inflation, target: "2.0%", suffix: "%", color: .orange, layout: layout)
+                MandateMetricCard(label: "Unemployment", value: session.current.unemployment, target: "5.0%", suffix: "%", color: .blue, layout: layout)
+                MandateMetricCard(label: "Fed Funds", value: session.current.fedFundsRate, target: "policy", suffix: "%", color: .green, layout: layout)
+                MandateMetricCard(label: "Expectations", value: session.current.expectedInflation, target: "anchor", suffix: "%", color: .mint, layout: layout)
+                MandateMetricCard(label: "Credibility", value: session.current.credibility, target: "80+", suffix: "", color: .yellow, layout: layout)
+            }
         }
         .accessibilityIdentifier("macro-metrics")
     }
 
+    private func policyActionCluster(title: String, actions: [PolicyAction], layout: CockpitLayoutMetrics) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption2.weight(.black))
+                .foregroundStyle(title == "CUT" ? .cyan.opacity(0.78) : title == "RAISE" ? .orange.opacity(0.78) : .green.opacity(0.78))
+            HStack(spacing: layout.policyKeySpacing.cg) {
+                ForEach(actions, id: \.self) { action in
+                    Button(policyActions[action]?.label ?? action.rawValue) {
+                        commit(action)
+                    }
+                    .buttonStyle(PolicyButtonStyle(pulse: decisionPulse, width: layout.policyKeyWidth.cg, height: layout.policyKeyHeight.cg))
+                    .disabled(resultingRate(for: action) < 0 || resultingRate(for: action) > 20)
+                    .help(resultingRateHelp(for: action))
+                }
+            }
+        }
+    }
+
     private func quarterReview(layout: CockpitLayoutMetrics) -> some View {
-        CommandPanel(padding: layout.panelPadding.cg, tone: .instrument) {
-            VStack(alignment: .leading, spacing: 12) {
+        CommandPanel(padding: max(7, layout.panelPadding - 4).cg, tone: .instrument) {
+            VStack(alignment: .leading, spacing: layout.mode == .expanded ? 10 : 6) {
                 if let transmission = buildTransmissionBriefing(session: session) {
-                    if layout.mode == .compact {
+                    if layout.mode != .expanded {
                         CompactQuarterReview(transmission: transmission)
                     } else {
                         Text(transmission.receipt.headline)
@@ -382,7 +411,8 @@ struct NativeCockpitView: View {
             if let panel = dockState.openPanels.last {
                 dockPanel(panel, layout: layout)
                     .frame(maxWidth: .infinity)
-                    .frame(height: layout.dockPanelMaxHeight.cg, alignment: .top)
+                .frame(height: layout.dockPanelMaxHeight.cg, alignment: .top)
+                .clipped()
                     .transition(motionMode == .reduced ? .opacity : .move(edge: .top).combined(with: .opacity))
             }
         }
@@ -528,66 +558,35 @@ struct NativeCockpitView: View {
                     .accessibilityElement(children: .contain)
                     .accessibilityLabel(panel.title)
                     .accessibilityIdentifier("\(panel.rawValue)-panel")
+            } else if panel == .help {
+                HelpDrawerView(topics: buildHelpTopics(session: session), layout: layout)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel("Policy Notebook")
+                    .accessibilityIdentifier("\(panel.rawValue)-panel")
             } else {
-                CommandPanel(padding: layout.panelPadding.cg, tone: .glass) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(panel == .help ? "Policy Notebook" : panel.title)
-                            .font(.headline.weight(.black))
-                        if panel == .help {
-                            LazyVGrid(
-                                columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 4),
-                                alignment: .leading,
-                                spacing: 8,
-                            ) {
-                                ForEach(buildHelpTopics(session: session)) { topic in
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(topic.title)
-                                            .font(topic.isPrimary ? .caption.weight(.black) : .caption2.weight(.black))
-                                            .foregroundStyle(topic.isPrimary ? .green : .white.opacity(0.7))
-                                        Text(topic.body)
-                                            .font(.caption2)
-                                            .lineLimit(2)
-                                            .foregroundStyle(.white.opacity(0.72))
-                                    }
-                                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                                }
-                            }
-                        } else {
-                            Toggle("Reduced motion", isOn: Binding(
-                                get: { session.ui.reducedMotion },
-                                set: { store.setReducedMotion($0) },
-                            ))
-                            Toggle("Sound", isOn: Binding(
-                                get: { session.ui.soundEnabled },
-                                set: { store.setSoundEnabled($0) },
-                            ))
-                            Toggle("Reduced noise", isOn: Binding(
-                                get: { session.ui.reducedNoise },
-                                set: { store.setReducedNoise($0) },
-                            ))
-                            LazyVGrid(
-                                columns: [GridItem(.adaptive(minimum: 74), spacing: 6)],
-                                alignment: .leading,
-                                spacing: 6,
-                            ) {
-                                Button("Save") { savePortableSession() }
-                                Button("Load") { loadPortableSession() }
-                                Button("CSV") { exportCsv() }
-                                Button("JSON") { exportJson() }
-                                Button("Markdown") { exportMarkdown() }
-                            }
-                            .buttonStyle(.borderedProminent)
-                            if let panelMessage {
-                                Text(panelMessage)
-                                    .font(.caption)
-                                    .foregroundStyle(.white.opacity(0.66))
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
+                SettingsDrawerView(
+                    reducedMotion: Binding(
+                        get: { session.ui.reducedMotion },
+                        set: { store.setReducedMotion($0) },
+                    ),
+                    soundEnabled: Binding(
+                        get: { session.ui.soundEnabled },
+                        set: { store.setSoundEnabled($0) },
+                    ),
+                    reducedNoise: Binding(
+                        get: { session.ui.reducedNoise },
+                        set: { store.setReducedNoise($0) },
+                    ),
+                    panelMessage: panelMessage,
+                    layout: layout,
+                    save: savePortableSession,
+                    load: loadPortableSession,
+                    exportCsv: exportCsv,
+                    exportJson: exportJson,
+                    exportMarkdown: exportMarkdown,
+                )
                 .accessibilityElement(children: .contain)
-                .accessibilityLabel(panel == .help ? "Policy Notebook" : panel.title)
+                .accessibilityLabel(panel.title)
                 .accessibilityIdentifier("\(panel.rawValue)-panel")
             }
         }
@@ -805,7 +804,34 @@ struct NativeCockpitView: View {
         }
     }
 
-    private func configureUITestStateIfNeeded() {
+    private var cutActions: [PolicyAction] {
+        [.cut150, .cut100, .cut75, .cut50, .cut25]
+    }
+
+    private var raiseActions: [PolicyAction] {
+        [.raise25, .raise50, .raise75, .raise100, .raise150]
+    }
+
+    private func resultingRate(for action: PolicyAction) -> Double {
+        session.current.fedFundsRate + (policyActions[action]?.delta ?? 0)
+    }
+
+    private func resultingRateHelp(for action: PolicyAction) -> String {
+        String(format: "Resulting fed funds rate %.2f percent", resultingRate(for: action))
+    }
+
+    private var customDelta: Double? {
+        guard let bps = Int(customBps.trimmingCharacters(in: .whitespacesAndNewlines)), abs(bps) <= 300 else {
+            return nil
+        }
+        let delta = Double(bps) / 100
+        let resulting = session.current.fedFundsRate + delta
+        return resulting >= 0 && resulting <= 20 ? delta : nil
+    }
+}
+
+private extension NativeCockpitView {
+    func configureUITestStateIfNeeded() {
         let environment = ProcessInfo.processInfo.environment
         if environment["FED_CHAIRMAN_TEST_REDUCE_MOTION"] == "1" {
             store.setReducedMotion(true)
@@ -818,7 +844,39 @@ struct NativeCockpitView: View {
         }
     }
 
-    private func applyWindowSize(_ rawSize: String) {
+    func applyLaunchPanelIfNeeded() {
+        guard let rawPanel = ProcessInfo.processInfo.environment["FED_CHAIRMAN_TEST_OPEN_PANEL"],
+              let panel = CockpitDockPanel(rawValue: rawPanel.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+        else {
+            return
+        }
+        dockState.open(panel)
+    }
+
+    func applyValidationProgressionIfNeeded() {
+        guard !didApplyValidationProgression,
+              let rawQuarterCount = ProcessInfo.processInfo.environment["FED_CHAIRMAN_TEST_QUARTERS"],
+              let requestedQuarterCount = Int(rawQuarterCount)
+        else {
+            return
+        }
+        didApplyValidationProgression = true
+        let quarterCount = max(0, min(15, requestedQuarterCount))
+        let sequence: [PolicyAction] = [
+            .hold, .raise25, .hold, .cut25, .raise50,
+            .hold, .cut50, .raise25, .hold, .raise75,
+            .cut25, .hold, .raise50, .cut25, .hold,
+        ]
+        for index in 0 ..< quarterCount {
+            do {
+                try store.commit(action: sequence[index % sequence.count])
+            } catch {
+                break
+            }
+        }
+    }
+
+    func applyWindowSize(_ rawSize: String) {
         let parts = rawSize.lowercased().split(separator: "x")
         guard parts.count == 2,
               let width = Double(parts[0]),
@@ -836,23 +894,6 @@ struct NativeCockpitView: View {
             frame.origin.x = 80
         }
         window.setFrame(frame, display: true, animate: false)
-    }
-
-    private var fixedActions: [PolicyAction] {
-        [.cut150, .cut100, .cut75, .cut50, .cut25, .hold, .raise25, .raise50, .raise75, .raise100, .raise150]
-    }
-
-    private func resultingRate(for action: PolicyAction) -> Double {
-        session.current.fedFundsRate + (policyActions[action]?.delta ?? 0)
-    }
-
-    private var customDelta: Double? {
-        guard let bps = Int(customBps.trimmingCharacters(in: .whitespacesAndNewlines)), abs(bps) <= 300 else {
-            return nil
-        }
-        let delta = Double(bps) / 100
-        let resulting = session.current.fedFundsRate + delta
-        return resulting >= 0 && resulting <= 20 ? delta : nil
     }
 }
 

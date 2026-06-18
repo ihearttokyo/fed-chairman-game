@@ -10,6 +10,8 @@
 
 - Do not confuse the native XCTest UI suite with an agentic GUI validation loop. XCTest/native UI tests are regression guards and final gates; they are not the primary debug signal for visual quality or gameplay usability. Never repeatedly rerun the same broad suite or the same Newspaper/Help/Settings click pattern hoping it will reveal new information.
 
+- Do not enter an `npm`/XCTest validation loop before screenshot-driven iteration. After a source change that affects UI, build the app artifact, capture and inspect fresh screenshots from that artifact, patch the visible defect, and only then run `npm run lint`, `npm test`, or the native UI suite as supporting/final gates. If a test fails during visual repair, inspect the screenshot or code path that explains the failure instead of rerunning the same command.
+
 - Use [docs/AGENTIC_GUI_VALIDATION.md](docs/AGENTIC_GUI_VALIDATION.md) as the source-of-truth workflow for visual/playability validation. Prefer direct computer-use app state, screenshots, and LLM visual inspection over brittle scripted click loops. Use [scripts/agentic-gui-capture.sh](scripts/agentic-gui-capture.sh) to create timestamped screenshot evidence when a local macOS app build exists.
 
 - Use this agentic GUI loop instead:

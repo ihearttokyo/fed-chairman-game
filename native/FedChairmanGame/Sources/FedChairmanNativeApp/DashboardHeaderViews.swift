@@ -38,7 +38,7 @@ struct ChartInspectionStrip: View {
                         Spacer(minLength: 0)
                     }
                 }
-                .padding(.vertical, 8)
+                .padding(.vertical, 5)
                 .padding(.horizontal, 10)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(.white.opacity(0.070), in: RoundedRectangle(cornerRadius: 9))
@@ -59,50 +59,39 @@ struct ChartInspectionStrip: View {
     }
 }
 
-struct MandateBadge: View {
-    var label: String
-    var value: Double
-    var target: Double
-    var color: Color
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(label.uppercased())
-                .font(.caption2.weight(.black))
-                .foregroundStyle(color)
-            Text(value, format: .number.precision(.fractionLength(label == "Credibility" ? 0 : 2)))
-                .font(.system(size: 18, weight: .black, design: .rounded))
-            Text("Target \(target, format: .number.precision(.fractionLength(label == "Credibility" ? 0 : 1)))")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.52))
-        }
-        .frame(width: 104, alignment: .leading)
-        .padding(10)
-        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 9))
-        .overlay(RoundedRectangle(cornerRadius: 9).stroke(color.opacity(0.22)))
-        .shadow(color: color.opacity(0.08), radius: 10, y: 4)
-    }
-}
-
 struct MandateMetricCard: View {
     var label: String
     var value: Double
+    var target: String
     var suffix: String
     var color: Color
     var layout: CockpitLayoutMetrics
 
     var body: some View {
-        CommandPanel(padding: max(10, layout.panelPadding - 2).cg, tone: .instrument) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(label)
-                    .font(.caption.weight(.black))
-                    .foregroundStyle(.white.opacity(0.68))
-                Text("\(value, format: .number.precision(.fractionLength(suffix.isEmpty ? 0 : 2)))\(suffix)")
-                    .font(.system(size: 24, weight: .black, design: .rounded))
-                    .foregroundStyle(color)
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label.uppercased())
+                    .font(.caption2.weight(.black))
+                    .foregroundStyle(.white.opacity(0.58))
+                    .lineLimit(1)
+                Text(target)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.40))
+                    .lineLimit(1)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            Spacer(minLength: 4)
+            Text("\(value, format: .number.precision(.fractionLength(suffix.isEmpty ? 0 : 2)))\(suffix)")
+                .font(.system(size: layout.mode == .compact ? 18 : 22, weight: .black, design: .rounded))
+                .foregroundStyle(color)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
         }
+        .frame(maxWidth: .infinity, minHeight: layout.mode == .compact ? 36 : 42, alignment: .leading)
+        .padding(.vertical, layout.mode == .expanded ? 6 : 4)
+        .padding(.horizontal, 9)
+        .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(color.opacity(0.16)))
     }
 }
 
