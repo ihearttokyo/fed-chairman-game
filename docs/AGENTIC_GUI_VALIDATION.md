@@ -4,6 +4,16 @@ This repo requires screenshot-first, computer-use validation for UI, UX, and gam
 
 ## Core Rule
 
+Validate the latest intended build, not whatever app happens to launch. Before any screenshot, click, or visual judgment, prove artifact provenance:
+
+- current git commit under test;
+- app path being launched;
+- production or local manifest timestamp when available;
+- executable SHA-256 or bundle metadata;
+- whether the app was built after the relevant source change.
+
+If the app cannot be tied to the commit under test, rebuild/install first. Screenshots from older artifacts may guide debugging, but they are historical evidence and must not be counted as validation.
+
 Do not repeatedly run the same scripted click path. If a validation step opens Newspaper, Help, and Settings in the same order more than once, the next run must have one of these:
 
 - a new code change that directly targets that path;
@@ -14,11 +24,12 @@ Otherwise, stop running tests and inspect the app or code.
 
 ## Preferred Loop
 
-1. Launch the installed app or current development build.
-2. Move or minimize Codex and other windows so they cannot occlude the app under test.
-3. Capture a screenshot and app accessibility state with computer-use.
-4. Inspect the screenshot directly for layout, hierarchy, readability, occlusion, target size, affordance clarity, and visual quality.
-5. Drive the game through meaningful gameplay states:
+1. Verify artifact provenance for the app under test. Rebuild/install if the app is stale, ambiguous, or from a different commit.
+2. Launch the installed app or current development build.
+3. Move or minimize Codex and other windows so they cannot occlude the app under test.
+4. Capture a screenshot and app accessibility state with computer-use.
+5. Inspect the screenshot directly for layout, hierarchy, readability, occlusion, target size, affordance clarity, and visual quality.
+6. Drive the game through meaningful gameplay states:
    - first launch;
    - first decision;
    - several sequential decisions;
@@ -26,11 +37,11 @@ Otherwise, stop running tests and inspect the app or code.
    - Newspaper open/close after progression;
    - Help and Settings only as workflow coverage;
    - compact, standard, and large windows when responsive layout is touched.
-6. Save screenshots for each meaningful state with stable names.
-7. Patch the highest-impact issue found.
-8. Repeat only the targeted scenario that proves the patch.
-9. Run lint/unit/build checks.
-10. Run the native XCTest UI suite once as the final regression gate if the desktop is clear enough for reliable interaction.
+7. Save screenshots for each meaningful state with stable names.
+8. Patch the highest-impact issue found.
+9. Repeat only the targeted scenario that proves the patch.
+10. Run lint/unit/build checks.
+11. Run the native XCTest UI suite once as the final regression gate if the desktop is clear enough for reliable interaction.
 
 ## Screenshot Evidence
 
@@ -56,6 +67,7 @@ Computer-use screenshots are still preferred when available because they pair pi
 
 For UI/UX work, final reports must include:
 
+- the commit and app artifact provenance used for GUI validation;
 - the specific gameplay states visually inspected;
 - screenshot paths or direct image attachments;
 - what problems were found and fixed;
