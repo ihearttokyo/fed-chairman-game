@@ -75,6 +75,10 @@ struct NativeCockpitView: View {
         buildDecisionFeedback(session: session)
     }
 
+    private var boardWatch: BoardWatch {
+        buildBoardWatch(session: session)
+    }
+
     private var careerDecisions: [PolicyDecision] {
         session.completedTerms.flatMap(\.decisions) + session.decisions
     }
@@ -182,6 +186,7 @@ struct NativeCockpitView: View {
             .padding(.horizontal, 11)
             .background(.white.opacity(0.055), in: Capsule())
             .overlay(Capsule().stroke(.white.opacity(0.12)))
+            BoardWatchRailView(watch: boardWatch, layout: layout)
             Spacer(minLength: 0)
             dockButtons(layout: layout)
         }
@@ -436,19 +441,21 @@ struct NativeCockpitView: View {
     private func dockPanels(layout: CockpitLayoutMetrics) -> some View {
         let isDrawerOpen = dockState.openPanels.last != nil
         let panelHeight = isDrawerOpen ? layout.dockPanelMaxHeight : briefingPreviewHeight(layout)
+        let panelInset = (layout.mode == .compact ? 8 : 12).cg
 
-        return ZStack(alignment: .top) {
+        return ZStack(alignment: .topLeading) {
             if let panel = dockState.openPanels.last {
-                dockPanel(panel, layout: layout)
-                    .frame(maxWidth: .infinity)
+                dockPanel(panel, layout: layout, maxHeight: panelHeight)
+                    .padding(.horizontal, panelInset)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .transition(motionMode == .reduced ? .opacity : .move(edge: .top).combined(with: .opacity))
             } else {
                 briefingPreview(layout: layout)
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .transition(.opacity)
             }
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .frame(height: panelHeight.cg, alignment: .top)
         .clipped()
         .animation(motionMode == .reduced ? nil : .smooth(duration: 0.28), value: dockState.openPanels)
@@ -576,18 +583,17 @@ struct NativeCockpitView: View {
         }
     }
 
-    private func dockPanel(_ panel: CockpitDockPanel, layout: CockpitLayoutMetrics) -> some View {
-        Group {
+    private func dockPanel(_ panel: CockpitDockPanel, layout: CockpitLayoutMetrics, maxHeight: Double) -> some View {
+        let panelInset = (layout.mode == .compact ? 8 : 12).cg
+        return Group {
             if panel == .newspaper {
                 NewspaperPanelView(briefing: briefing, layout: layout)
                     .accessibilityElement(children: .contain)
                     .accessibilityLabel(panel.title)
-                    .accessibilityIdentifier("\(panel.rawValue)-panel")
             } else if panel == .help {
                 HelpDrawerView(topics: buildHelpTopics(session: session), layout: layout)
                     .accessibilityElement(children: .contain)
                     .accessibilityLabel("Policy Notebook")
-                    .accessibilityIdentifier("\(panel.rawValue)-panel")
             } else {
                 SettingsDrawerView(
                     reducedMotion: Binding(
@@ -612,9 +618,15 @@ struct NativeCockpitView: View {
                 )
                 .accessibilityElement(children: .contain)
                 .accessibilityLabel(panel.title)
-                .accessibilityIdentifier("\(panel.rawValue)-panel")
             }
         }
+        .frame(
+            width: max(240.cg, dockPanelWidth(panel, layout: layout) - (panelInset * 2)),
+            height: maxHeight.cg,
+            alignment: .top,
+        )
+        .clipped()
+        .accessibilityIdentifier("\(panel.rawValue)-panel")
     }
 
     private func toggle(_ panel: CockpitDockPanel) {

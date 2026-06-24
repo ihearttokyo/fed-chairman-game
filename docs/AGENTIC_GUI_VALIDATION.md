@@ -47,7 +47,9 @@ Do not run `npm` or XCTest commands in a loop during visual repair. Lint, unit t
 
 ## Screenshot Evidence
 
-Use `scripts/agentic-gui-capture.sh` when the app exists locally. It creates timestamped screenshots under `/tmp/fed-chairman-agentic-gui/` and prints direct file paths for inspection or final reports.
+Use `npm run test:gui` as the default desktop/playability gate. It builds a current local app bundle, launches it, drives a small policy/panel/responsive path, creates timestamped screenshots under `/tmp/fed-chairman-agentic-gui/`, and prints direct file paths for inspection or final reports.
+
+Use `scripts/agentic-gui-capture.sh` for a single targeted screenshot when the app already exists locally.
 
 Example:
 
@@ -56,6 +58,8 @@ scripts/agentic-gui-capture.sh --app "/Applications/Fed Chairman Game.app" --siz
 ```
 
 Computer-use screenshots are still preferred when available because they pair pixels with the accessibility tree and allow direct interaction with the running app.
+
+`npm run test:ui` remains available as an XCUITest regression guard, but it is deliberately not part of the default `npm run verify:desktop` path. Run `npm run verify:desktop:xcuitest` only when the desktop is clear and a deterministic accessibility regression pass is useful.
 
 ## Anti-Patterns
 

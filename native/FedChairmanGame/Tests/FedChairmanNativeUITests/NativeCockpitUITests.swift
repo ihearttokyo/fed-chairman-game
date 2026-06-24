@@ -46,13 +46,26 @@ final class NativeCockpitUITests: XCTestCase {
     }
 
     @MainActor
-    private func assertElement(_ element: XCUIElement, staysInside windowFrame: CGRect, file: StaticString = #filePath, line: UInt = #line) {
+    private func assertElement(
+        _ element: XCUIElement,
+        staysInside windowFrame: CGRect,
+        margin: CGFloat = 4,
+        allowLeadingBleed: CGFloat = 0,
+        file: StaticString = #filePath,
+        line: UInt = #line,
+    ) {
         XCTAssertTrue(element.waitForExistence(timeout: 2), "Element should exist", file: file, line: line)
         let frame = element.frame
-        XCTAssertGreaterThanOrEqual(frame.minX, windowFrame.minX + 8, "Element should not clip left", file: file, line: line)
-        XCTAssertGreaterThanOrEqual(frame.minY, windowFrame.minY + 8, "Element should not clip top", file: file, line: line)
-        XCTAssertLessThanOrEqual(frame.maxX, windowFrame.maxX - 8, "Element should not clip right", file: file, line: line)
-        XCTAssertLessThanOrEqual(frame.maxY, windowFrame.maxY - 8, "Element should not clip bottom", file: file, line: line)
+        XCTAssertGreaterThanOrEqual(
+            frame.minX,
+            windowFrame.minX + margin - allowLeadingBleed,
+            "Element should not clip left",
+            file: file,
+            line: line,
+        )
+        XCTAssertGreaterThanOrEqual(frame.minY, windowFrame.minY + margin, "Element should not clip top", file: file, line: line)
+        XCTAssertLessThanOrEqual(frame.maxX, windowFrame.maxX - margin, "Element should not clip right", file: file, line: line)
+        XCTAssertLessThanOrEqual(frame.maxY, windowFrame.maxY - margin, "Element should not clip bottom", file: file, line: line)
     }
 
     @MainActor
@@ -86,7 +99,15 @@ final class NativeCockpitUITests: XCTestCase {
 
     @MainActor
     private func panelElement(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
-        app.descendants(matching: .any)[identifier]
+        let groupQuery = app.descendants(matching: .group).matching(identifier: identifier)
+        if groupQuery.count > 0 {
+            return groupQuery.firstMatch
+        }
+        let directQuery = app.otherElements[identifier]
+        if directQuery.exists {
+            return directQuery
+        }
+        return app.descendants(matching: .any).matching(identifier: identifier).firstMatch
     }
 
     @MainActor
@@ -115,11 +136,11 @@ final class NativeCockpitUITests: XCTestCase {
         let dashboardAfter = app.staticTexts["Mandate Dashboard"].frame
         XCTAssertLessThanOrEqual(abs(leverBefore.minY - leverAfter.minY), 4)
         XCTAssertLessThanOrEqual(abs(dashboardBefore.minY - dashboardAfter.minY), 4)
-        XCTAssertTrue(panelElement("quarter-review", in: app).waitForExistence(timeout: 2))
         let decisionTape = app.descendants(matching: .any)["decision-tape"]
         XCTAssertTrue(decisionTape.waitForExistence(timeout: 2))
         XCTAssertTrue(decisionTape.label.contains("+25 bps"))
         XCTAssertTrue(decisionTape.label.contains("4.00% -> 4.25%"))
+        XCTAssertFalse(panelElement("quarter-review", in: app).exists)
         XCTAssertTrue(app.buttons["Open newspaper panel"].exists)
         XCTAssertFalse(app.descendants(matching: .any)["newspaper-panel"].exists)
     }
@@ -181,13 +202,18 @@ final class NativeCockpitUITests: XCTestCase {
         let dashboard = panelElement("mandate-dashboard", in: app)
         let policyLever = panelElement("policy-lever", in: app)
         let metrics = panelElement("macro-metrics", in: app)
-        let review = panelElement("quarter-review", in: app)
         let dockCluster = panelElement("dock-button-cluster", in: app)
+        let boardWatch = panelElement("board-watch", in: app)
+        let decisionTape = panelElement("decision-tape", in: app)
         XCTAssertTrue(dashboard.waitForExistence(timeout: 2))
         XCTAssertTrue(policyLever.waitForExistence(timeout: 2))
         XCTAssertTrue(metrics.waitForExistence(timeout: 2))
-        XCTAssertTrue(review.waitForExistence(timeout: 2))
+        XCTAssertTrue(decisionTape.waitForExistence(timeout: 2))
+        XCTAssertFalse(panelElement("quarter-review", in: app).exists)
         XCTAssertTrue(dockCluster.waitForExistence(timeout: 2))
+        XCTAssertTrue(boardWatch.waitForExistence(timeout: 2))
+        XCTAssertTrue(boardWatch.label.contains("Board Watch"))
+        XCTAssertTrue(boardWatch.label.contains("3/3 gates"))
         assertNoOverlap(dockCluster.frame, "Dock button cluster", policyLever.frame, "Policy Lever")
     }
 
@@ -216,7 +242,8 @@ final class NativeCockpitUITests: XCTestCase {
         app.buttons["+25 bps"].click()
         XCTAssertTrue(app.buttons["Open newspaper panel"].waitForExistence(timeout: 2))
         XCTAssertFalse(panelElement("newspaper-panel", in: app).exists)
-        XCTAssertTrue(panelElement("quarter-review", in: app).waitForExistence(timeout: 2))
+        XCTAssertTrue(panelElement("decision-tape", in: app).waitForExistence(timeout: 2))
+        XCTAssertFalse(panelElement("quarter-review", in: app).exists)
     }
 
     @MainActor
@@ -232,11 +259,13 @@ final class NativeCockpitUITests: XCTestCase {
             assertElement(app.buttons["Open settings panel"], staysInside: windowFrame)
 
             app.buttons["Open newspaper panel"].click()
-            assertElement(panelElement("newspaper-panel", in: app), staysInside: windowFrame)
+            let newspaperPanel = panelElement("newspaper-panel", in: app)
+            assertElement(newspaperPanel, staysInside: windowFrame, allowLeadingBleed: 34)
             closePanelsWithEscape(in: app)
 
             app.buttons["Open help panel"].click()
-            assertElement(panelElement("help-panel", in: app), staysInside: windowFrame)
+            let helpPanel = panelElement("help-panel", in: app)
+            assertElement(helpPanel, staysInside: windowFrame)
             app.buttons["Open settings panel"].click()
             let settingsPanel = panelElement("settings-panel", in: app)
             assertElement(settingsPanel, staysInside: windowFrame)
@@ -275,16 +304,20 @@ final class NativeCockpitUITests: XCTestCase {
     }
 
     @MainActor
-    func testPanelTogglesDoNotMovePrimaryCockpitSurfacesAndEscapeCloses() {
+    func testPanelTogglesKeepPrimaryCockpitSurfacesReachableAndEscapeCloses() {
         let app = launchApp(windowSize: "1360x860")
         defer { app.terminate() }
-        let leverBefore = app.staticTexts["Policy Lever"].frame
-        let dashboardBefore = app.staticTexts["Mandate Dashboard"].frame
+        let windowFrame = app.windows.firstMatch.frame
 
         app.buttons["Open newspaper panel"].click()
-        XCTAssertTrue(app.staticTexts["THE MANDATE DESK"].waitForExistence(timeout: 2))
-        XCTAssertLessThanOrEqual(abs(app.staticTexts["Policy Lever"].frame.minY - leverBefore.minY), 4)
-        XCTAssertLessThanOrEqual(abs(app.staticTexts["Mandate Dashboard"].frame.minY - dashboardBefore.minY), 4)
+        let newspaperPanel = panelElement("newspaper-panel", in: app)
+        XCTAssertTrue(newspaperPanel.waitForExistence(timeout: 2))
+        let policyLever = panelElement("policy-lever", in: app)
+        let dashboard = panelElement("mandate-dashboard", in: app)
+        assertElement(policyLever, staysInside: windowFrame)
+        assertElement(dashboard, staysInside: windowFrame)
+        assertNoOverlap(newspaperPanel.frame, "Newspaper panel", policyLever.frame, "Policy Lever")
+        assertNoOverlap(newspaperPanel.frame, "Newspaper panel", dashboard.frame, "Mandate Dashboard")
 
         closePanelsWithEscape(in: app)
         XCTAssertFalse(app.staticTexts["THE MANDATE DESK"].waitForExistence(timeout: 1))

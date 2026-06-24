@@ -45,8 +45,13 @@ Root `npm` scripts are compatibility shims for the native app only. They do not 
 npm run typecheck
 npm run lint
 npm test
+npm run test:gui
 npm run test:ui
 ```
+
+`npm run test:gui` is the default desktop/playability gate. It builds a current local app bundle, launches it, captures provenance-backed screenshots across first launch, a policy decision, Newspaper, Help, Settings, and responsive sizes, then prints the screenshot paths that must be visually inspected before UI work is called complete.
+
+`npm run test:ui` still runs the native XCUITest regression suite. Use it as a final clean-desktop guardrail when the app can run unobstructed, not as the primary visual QA loop.
 
 ## Build And Install
 
@@ -81,11 +86,11 @@ npm run native:generate
 npm run typecheck
 npm run lint
 npm test
-npm run test:ui
+npm run test:gui
 npm run build
 ```
 
-The native release-candidate script also runs its own formatting, lint, unit-test, UI-test, archive, codesign, manifest, and optional install gates.
+The native release-candidate script also runs its own formatting, lint, unit-test, XCUITest, archive, codesign, manifest, and optional install gates. For day-to-day UI work, prefer the screenshot-first `npm run test:gui` loop and reserve XCUITest for a clear-desktop regression pass.
 
 ## Tech Stack
 

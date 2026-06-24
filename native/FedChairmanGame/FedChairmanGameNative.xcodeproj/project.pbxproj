@@ -23,6 +23,7 @@
 		7079517EA92B412D27EFB962 /* DecisionTapeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 921A2808C0EF9D40F532F557 /* DecisionTapeView.swift */; };
 		7661D2C3E41C582075B1DCCB /* SpriteKitChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84C66124875713982223746C /* SpriteKitChartView.swift */; };
 		7EAEF3A753A1FC0A4F76FD9F /* FedChairmanGameNativeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2BD4434B1C9E9252E0D70C4 /* FedChairmanGameNativeApp.swift */; };
+		89967EBB30B08D1C967E34B3 /* BoardWatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE0BF42C6BA7EF56DC50A641 /* BoardWatch.swift */; };
 		922C6DE6CBBBD1D75CA50C31 /* GameWindowDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEF12800CF5FA543FBA51FE8 /* GameWindowDelegate.swift */; };
 		94047D2A06962A23CF098ECE /* help-icon.png in Resources */ = {isa = PBXBuildFile; fileRef = 7BCDAD9783A374785230349D /* help-icon.png */; };
 		97AC4D4C4C2A0CA849CCBB74 /* FedChairmanCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 17C83FC7F565800C79C166EC /* FedChairmanCore.framework */; };
@@ -123,6 +124,7 @@
 		C0417E7B5D00741CF334D1AB /* Debrief.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Debrief.swift; sourceTree = "<group>"; };
 		C2BD4434B1C9E9252E0D70C4 /* FedChairmanGameNativeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FedChairmanGameNativeApp.swift; sourceTree = "<group>"; };
 		C60FADB5B32CFB2276F7F43E /* DecisionFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DecisionFeedback.swift; sourceTree = "<group>"; };
+		CE0BF42C6BA7EF56DC50A641 /* BoardWatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardWatch.swift; sourceTree = "<group>"; };
 		DEF12800CF5FA543FBA51FE8 /* GameWindowDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameWindowDelegate.swift; sourceTree = "<group>"; };
 		EA4869025CFC6023D4B2644E /* Exporters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Exporters.swift; sourceTree = "<group>"; };
 		EEFE2D87EB9CD4B35D08AE5E /* NewspaperPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewspaperPanelView.swift; sourceTree = "<group>"; };
@@ -165,6 +167,7 @@
 		5EBCDB025251362656F8682F /* FedChairmanCore */ = {
 			isa = PBXGroup;
 			children = (
+				CE0BF42C6BA7EF56DC50A641 /* BoardWatch.swift */,
 				56875BFDA7E392687606A030 /* ChartInspection.swift */,
 				7BC3F395ED099AB164087281 /* CockpitBriefing.swift */,
 				6071C1EA951BEE67E4EEE939 /* CockpitDock.swift */,
@@ -427,6 +430,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				89967EBB30B08D1C967E34B3 /* BoardWatch.swift in Sources */,
 				E0C3BE2E33C994C40C0D4760 /* ChartInspection.swift in Sources */,
 				0F9328BE1BFF024C3C8F00B8 /* CockpitBriefing.swift in Sources */,
 				AD13677C1A58B4C2446C12F1 /* CockpitDock.swift in Sources */,

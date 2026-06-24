@@ -231,6 +231,42 @@ import Testing
     #expect(cockpitMotionMode(reduceMotion: false, ui: ui) == .reduced)
 }
 
+@Test func boardWatchSummarizesLiveReappointmentGate() throws {
+    let store = GameSessionStore()
+    store.start(seed: "board-watch")
+    try store.commit(action: .hold)
+
+    let openingWatch = buildBoardWatch(session: store.session)
+    #expect(openingWatch.tone == .onTrack)
+    #expect(openingWatch.headline == "On track for renewal")
+    #expect(openingWatch.gateLabel == "3/3 gates")
+    #expect(openingWatch.scoreDetail.contains("needs 70"))
+    #expect(openingWatch.riskLabel == "Protect the glide path")
+    #expect(openingWatch.accessibilityLabel.contains("Board Watch"))
+
+    var stressedSession = store.session
+    stressedSession.current.inflation = 5.2
+    stressedSession.current.unemployment = 8.1
+    stressedSession.score = ScoreState(
+        score: 58,
+        grade: .f,
+        reappointed: false,
+        meanAbsInflationGap: 2.2,
+        meanAbsUnemploymentGap: 2.9,
+        volatilityIndex: 1.1,
+        recessionQuarterShare: 0.4,
+        credibilityBonus: 0,
+        biggestMiss: "recession risk",
+        takeaway: "Stabilize the mandate before the gate.",
+    )
+
+    let stressedWatch = buildBoardWatch(session: stressedSession)
+    #expect(stressedWatch.tone == .danger)
+    #expect(stressedWatch.headline == "Renewal at risk")
+    #expect(stressedWatch.gateLabel == "0/3 gates")
+    #expect(stressedWatch.riskLabel == "Raise score above 70")
+}
+
 @Test func cockpitLayoutMetricsRespondToWindowSize() {
     let compact = cockpitLayoutMetrics(width: 1180, height: 700)
     let standard = cockpitLayoutMetrics(width: 1360, height: 860)

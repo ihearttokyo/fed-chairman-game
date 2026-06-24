@@ -1,6 +1,69 @@
 import FedChairmanCore
 import SwiftUI
 
+struct BoardWatchRailView: View {
+    var watch: BoardWatch
+    var layout: CockpitLayoutMetrics
+
+    var body: some View {
+        HStack(spacing: layout.mode == .compact ? 6 : 9) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("BOARD WATCH")
+                    .font(.system(size: 8, weight: .black, design: .rounded))
+                    .foregroundStyle(toneColor)
+                Text(watch.headline)
+                    .font(.caption2.weight(.black))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+            }
+            Divider()
+                .frame(height: layout.mode == .compact ? 24 : 30)
+                .overlay(.white.opacity(0.13))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(watch.scoreLabel)
+                    .font(.caption.weight(.black))
+                    .monospacedDigit()
+                Text(watch.gateLabel)
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.54))
+            }
+            if layout.mode != .compact {
+                Divider()
+                    .frame(height: 30)
+                    .overlay(.white.opacity(0.13))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(watch.riskLabel)
+                        .font(.caption2.weight(.bold))
+                        .lineLimit(1)
+                    Text("\(watch.quartersRemaining) quarters to gate")
+                        .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.50))
+                }
+                .frame(maxWidth: 180, alignment: .leading)
+            }
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, layout.mode == .compact ? 8 : 10)
+        .frame(width: layout.mode == .compact ? 214 : 390, alignment: .leading)
+        .background(toneColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(toneColor.opacity(0.25)))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(watch.accessibilityLabel)
+        .accessibilityIdentifier("board-watch")
+    }
+
+    private var toneColor: Color {
+        switch watch.tone {
+        case .onTrack, .complete:
+            .green
+        case .watch:
+            .orange
+        case .danger:
+            .red
+        }
+    }
+}
+
 struct ChartInspectionStrip: View {
     var inspection: ChartInspection?
     var isInspecting: Bool

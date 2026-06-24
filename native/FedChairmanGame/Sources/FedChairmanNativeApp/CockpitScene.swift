@@ -138,7 +138,7 @@ final class CockpitScene: SKScene {
         }
     }
 
-    private func addSeries(history: [MacroState], keyPath: KeyPath<MacroState, Double>, label: String, color: SKColor) {
+    private func addSeries(history: [MacroState], keyPath: KeyPath<MacroState, Double>, label _: String, color: SKColor) {
         guard !history.isEmpty else {
             return
         }
@@ -174,7 +174,6 @@ final class CockpitScene: SKScene {
             latestPip.strokeColor = SKColor.white.withAlphaComponent(0.82)
             latestPip.lineWidth = 1.5
             addChild(latestPip)
-
         }
     }
 
