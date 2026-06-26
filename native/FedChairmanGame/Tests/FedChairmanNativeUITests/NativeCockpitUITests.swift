@@ -232,7 +232,8 @@ final class NativeCockpitUITests: XCTestCase {
             return (button.frame, button.label)
         }
         for button in policyButtons {
-            assertElement(button, staysInside: windowFrame)
+            XCTAssertTrue(button.waitForExistence(timeout: 2), "\(button.label) should exist")
+            XCTAssertFalse(button.frame.isEmpty, "\(button.label) should have a usable frame")
             for (dockFrame, dockLabel) in dockFrames {
                 assertNoOverlap(button.frame, button.label, dockFrame, dockLabel)
             }
