@@ -47,7 +47,9 @@ Do not run `npm` or XCTest commands in a loop during visual repair. Lint, unit t
 
 ## Screenshot Evidence
 
-Use `npm run test:gui` as the default desktop/playability gate. It builds a current local app bundle, launches it, drives a small policy/panel/responsive path, creates timestamped screenshots under `/tmp/fed-chairman-agentic-gui/`, and prints direct file paths for inspection or final reports.
+Use `npm run test:gui` as the default desktop evidence gate. It builds a current local app bundle, launches it, creates timestamped responsive screenshots under `/tmp/fed-chairman-agentic-gui/`, and prints direct file paths for inspection or final reports.
+
+Use Computer Use against that same app build for the interactive playability pass: make at least one policy decision, open Newspaper, Help, and Settings, and visually inspect the resulting states.
 
 Use `scripts/agentic-gui-capture.sh` for a single targeted screenshot when the app already exists locally.
 

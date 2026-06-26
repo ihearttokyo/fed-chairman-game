@@ -49,7 +49,7 @@ npm run test:gui
 npm run test:ui
 ```
 
-`npm run test:gui` is the default desktop/playability gate. It builds a current local app bundle, launches it, captures provenance-backed screenshots across first launch, a policy decision, Newspaper, Help, Settings, and responsive sizes, then prints the screenshot paths that must be visually inspected before UI work is called complete.
+`npm run test:gui` is the default desktop evidence gate. It builds a current local app bundle, launches it, captures provenance-backed screenshots at responsive sizes, then prints the screenshot paths that must be visually inspected before UI work is called complete. Use Computer Use for the interactive playability pass: make at least one policy decision and open Newspaper, Help, and Settings against that same app build.
 
 `npm run test:ui` still runs the native XCUITest regression suite. Use it as a final clean-desktop guardrail when the app can run unobstructed, not as the primary visual QA loop.
 

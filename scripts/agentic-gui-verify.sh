@@ -30,7 +30,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ "$build_app" == true ]]; then
-  app="$("$repo_root/native/FedChairmanGame/scripts/package-native-dev-app.sh")"
+  app="$("$repo_root/native/FedChairmanGame/scripts/package-native-dev-app.sh" | tail -n 1)"
 elif [[ -z "$app" ]]; then
   app="/Applications/Fed Chairman Game.app"
 fi
@@ -43,6 +43,9 @@ if [[ ! -d "$app" ]]; then
   echo "App not found: $app" >&2
   exit 1
 fi
+
+osascript -e 'tell application id "local.fed-chairman-game" to quit' >/dev/null 2>&1 || true
+sleep 0.5
 
 mkdir -p "$out_dir"
 evidence="$out_dir/agentic-gui-evidence-$(date +%Y%m%d-%H%M%S).txt"
@@ -59,39 +62,6 @@ capture() {
   "$capture_script" --app "$app" --size "$size" --label "$label" --out-dir "$out_dir" | tee -a "$evidence"
 }
 
-click_button() {
-  local label="$1"
-  osascript <<APPLESCRIPT
-tell application "Fed Chairman Game" to activate
-delay 0.15
-tell application "System Events"
-  tell process "Fed Chairman Game"
-    set frontmost to true
-    if exists button "$label" of window 1 then
-      click button "$label" of window 1
-    else
-      error "Button not found: $label"
-    end if
-  end tell
-end tell
-APPLESCRIPT
-  sleep 0.25
-}
-
-press_escape() {
-  osascript <<'APPLESCRIPT'
-tell application "Fed Chairman Game" to activate
-delay 0.15
-tell application "System Events"
-  tell process "Fed Chairman Game"
-    set frontmost to true
-    key code 53
-  end tell
-end tell
-APPLESCRIPT
-  sleep 0.25
-}
-
 record "Fed Chairman Game agentic GUI evidence run"
 record "repo: $repo_root"
 record "commit: $(git -C "$repo_root" rev-parse --short=12 HEAD)"
@@ -99,22 +69,13 @@ record "app: $app"
 record "out_dir: $out_dir"
 
 capture "1180x700" "first-launch"
-click_button "+25 bps"
-capture "1180x700" "after-first-decision"
-click_button "Open newspaper panel"
-capture "1180x700" "newspaper-after-decision"
-press_escape
-capture "1360x860" "standard-after-decision"
-click_button "Open help panel"
-capture "1360x860" "help-panel"
-click_button "Open settings panel"
-capture "1360x860" "settings-panel"
-press_escape
+capture "1360x860" "standard-responsive"
 capture "1600x1000" "large-responsive"
 
 record
 record "required_visual_review:"
 record "  - Inspect each screenshot path above before declaring UI/UX complete."
 record "  - Check readability, clipping, occlusion, hierarchy, affordances, chart stability, and panel reachability."
+record "  - Use Computer Use to interact with at least one decision plus Newspaper, Help, and Settings."
 record "  - Run npm run test:ui separately only as a final XCUITest regression gate when the desktop is clear."
 record "evidence_file: $evidence"
