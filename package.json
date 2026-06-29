@@ -15,6 +15,7 @@
     "build": "cd native/FedChairmanGame && scripts/package-native-release-candidate.sh",
     "install:mac": "cd native/FedChairmanGame && scripts/package-native-release-candidate.sh --install",
     "package:mac": "cd native/FedChairmanGame && scripts/package-native-release-candidate.sh",
+    "package:mac:xcuitest": "cd native/FedChairmanGame && scripts/package-native-release-candidate.sh --with-xcuitest",
     "package:production": "cd native/FedChairmanGame && scripts/package-native-production.sh"
   }
 }

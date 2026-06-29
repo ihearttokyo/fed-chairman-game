@@ -12,10 +12,24 @@ APP_OUTPUT="$RELEASE_ROOT/$APP_NAME"
 MANIFEST="$RELEASE_ROOT/release-manifest.txt"
 JSON_MANIFEST="$RELEASE_ROOT/release-manifest.json"
 INSTALL_APP=false
+RUN_XCUITEST=false
 
-if [[ "${1:-}" == "--install" ]]; then
-  INSTALL_APP=true
-fi
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --install)
+      INSTALL_APP=true
+      shift
+      ;;
+    --with-xcuitest)
+      RUN_XCUITEST=true
+      shift
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
 
 cd "$ROOT_DIR"
 mkdir -p "$RELEASE_ROOT"
@@ -36,7 +50,9 @@ fi
 swiftformat Sources Tests --swift-version 6.1 --lint
 swiftlint lint --strict
 swift test
-xcodebuild test -project "$PROJECT" -scheme "$SCHEME" -destination 'platform=macOS'
+if [[ "$RUN_XCUITEST" == true ]]; then
+  xcodebuild test -project "$PROJECT" -scheme "$SCHEME" -destination 'platform=macOS'
+fi
 
 rm -rf "$ARCHIVE_PATH" "$APP_OUTPUT" "$RELEASE_ROOT/$LEGACY_APP_NAME"
 xcodebuild archive \
@@ -89,14 +105,15 @@ Executable SHA-256: $EXECUTABLE_SHA
 Signing: ad-hoc local signing for development/beta smoke only
 Hardened runtime: disabled for ad-hoc local launch compatibility
 Notarization: not notarized
+XCUITest gate: $([[ "$RUN_XCUITEST" == true ]] && echo "run" || echo "skipped")
 Gatekeeper assessment: $SPCTL_RESULT
 MANIFEST_TEXT
 
-python3 - "$JSON_MANIFEST" "$CREATED_AT" "$BUNDLE_ID" "$DISPLAY_NAME" "$VERSION" "$BUILD" "$CATEGORY" "$ARCHIVE_PATH" "$APP_OUTPUT" "$EXECUTABLE_SHA" "$SPCTL_RESULT" <<'PY'
+python3 - "$JSON_MANIFEST" "$CREATED_AT" "$BUNDLE_ID" "$DISPLAY_NAME" "$VERSION" "$BUILD" "$CATEGORY" "$ARCHIVE_PATH" "$APP_OUTPUT" "$EXECUTABLE_SHA" "$SPCTL_RESULT" "$RUN_XCUITEST" <<'PY'
 import json
 import sys
 
-manifest_path, created_at, bundle_id, display_name, version, build, category, archive, app, executable_sha, spctl_result = sys.argv[1:]
+manifest_path, created_at, bundle_id, display_name, version, build, category, archive, app, executable_sha, spctl_result, run_xcuitest = sys.argv[1:]
 payload = {
     "product": "Fed Chairman Game",
     "createdAt": created_at,
@@ -111,6 +128,7 @@ payload = {
     "signing": "ad-hoc local signing for development/beta smoke only",
     "hardenedRuntime": False,
     "notarized": False,
+    "xcuitestGate": run_xcuitest == "true",
     "gatekeeperAssessment": spctl_result,
     "artifacts": {
         "dmg": None,

@@ -71,6 +71,8 @@ npm run install:mac
 
 The local release-candidate path creates and verifies an `.app` bundle only. It does not create a DMG or ZIP. Local builds are ad-hoc signed for private machine testing.
 
+`npm run build`, `npm run package:mac`, and `npm run install:mac` run formatting, lint, unit tests, archive, codesign, manifest, and optional install gates. They do not run the native XCUITest suite by default. Use `npm run package:mac:xcuitest` only when a clean-desktop native UI regression pass is explicitly desired.
+
 ## Production Signing
 
 Developer ID signing and notarization are scripted but require Apple credentials:
@@ -92,7 +94,7 @@ npm run test:gui
 npm run build
 ```
 
-The native release-candidate script also runs its own formatting, lint, unit-test, XCUITest, archive, codesign, manifest, and optional install gates. For day-to-day UI work, prefer the screenshot-first `npm run test:gui` loop and reserve XCUITest for a clear-desktop regression pass.
+The native release-candidate script also runs its own formatting, lint, unit-test, archive, codesign, manifest, and optional install gates. For day-to-day UI work, prefer a single screenshot-first large-window check and reserve XCUITest for an explicit clean-desktop regression pass.
 
 ## Tech Stack
 

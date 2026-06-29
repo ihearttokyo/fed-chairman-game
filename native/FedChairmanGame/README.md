@@ -55,6 +55,8 @@ scripts/package-native-release-candidate.sh
 scripts/package-native-release-candidate.sh --install
 ```
 
+The release-candidate script runs formatting, lint, unit tests, archive, codesign, manifest, and optional install gates. It skips native XCUITest by default so local install is not blocked by desktop automation state. Add `--with-xcuitest` only when a clean-desktop native UI regression pass is explicitly desired.
+
 Production signing and notarization:
 
 ```bash
