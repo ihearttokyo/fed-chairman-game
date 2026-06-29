@@ -22,6 +22,7 @@ npm run native:generate
 npm run typecheck
 npm run lint
 npm test
+npm run test:fast
 npm run test:gui
 ```
 
@@ -33,12 +34,19 @@ swift build
 swift test
 swiftformat Sources Tests --swift-version 6.1 --lint
 swiftlint lint --strict
-xcodebuild test -project FedChairmanGameNative.xcodeproj -scheme FedChairmanGameNative -destination 'platform=macOS'
 ```
 
 `project.yml` is the source of truth for the generated Xcode project. Regenerate the project after changing target structure, resources, build settings, or test targets.
 
 The internal target and scheme still use `FedChairmanGameNative` as a stable build identifier. The installed product name is `Fed Chairman Game`.
+
+Use the root validation ladder for native UI tests. Do not run raw `xcodebuild test` for XCUITest:
+
+```bash
+npm run test:ui:prepare
+npm run test:ui:one -- FedChairmanGameNativeUITests/NativeCockpitUITests/testLaunchStartsWithDockPanelsClosedAndPrimarySurfacesClear
+npm run test:ui:final
+```
 
 ## Packaging
 
@@ -72,11 +80,14 @@ Production packaging requires Apple credentials:
 
 The production path creates a temporary ZIP only for Apple notarization upload and deletes it by default. Set `FED_CHAIRMAN_KEEP_NOTARY_UPLOAD=1` only when debugging notarization failures.
 
+Production packaging runs native XCUITest only when invoked with `--with-xcuitest`.
+
 ## Validation Expectations
 
 Use fast code checks for core/model changes:
 
 ```bash
+npm run test:fast
 npm run typecheck
 npm run lint
 npm test
@@ -84,7 +95,7 @@ npm test
 
 For UI, layout, chart, dock, settings, briefing, or gameplay changes, follow the repo root `AGENTS.md` and `docs/AGENTIC_GUI_VALIDATION.md`: build the current app, verify artifact provenance, inspect real screenshots or Computer Use state, interact through meaningful gameplay paths, then run supporting code checks.
 
-Use `npm run test:ui` only when a clean-desktop XCUITest regression pass is specifically useful or explicitly requested.
+Use `npm run test:ui:final` only when a clean-desktop XCUITest regression pass is specifically useful or explicitly requested. It is guarded against repeated runs for the same workspace fingerprint. Use `npm run test:ui:one -- <Target/Class/testMethod>` only after `npm run test:ui:prepare` when a targeted UI regression is explicitly useful.
 
 ## Source Control Hygiene
 

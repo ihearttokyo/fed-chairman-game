@@ -26,6 +26,22 @@ Do not run `npm` or XCTest commands in a loop during visual repair. Lint, unit t
 
 When Jared explicitly asks for native XCUITest coverage, run one large-window suite pass by default. Do not run compact/standard/large responsive matrices, repeated full-suite retries, or targeted rerun loops unless Jared explicitly asks for that exact validation in the current task. If the large-window pass fails because of desktop focus, Codex occlusion, stale geometry assertions, or automation state, stop and report the blocker instead of patching tests and cycling again.
 
+## Validation Ladder
+
+Use the repo-owned ladder instead of raw `xcodebuild test`:
+
+```bash
+npm run test:fast
+npm run test:gui
+npm run test:ui:prepare
+npm run test:ui:one -- FedChairmanGameNativeUITests/NativeCockpitUITests/testLaunchStartsWithDockPanelsClosedAndPrimarySurfacesClear
+npm run test:ui:final
+```
+
+`test:fast` is the inner loop: Swift build plus Swift unit tests. `test:gui` is the screenshot/computer-use evidence path. `test:ui:prepare` runs `build-for-testing` into reusable DerivedData. `test:ui:one` runs exactly one named UI test with `test-without-building` and `-only-testing`. `test:ui:final` is the explicit large-window final gate and is guarded against repeated runs for the same workspace fingerprint.
+
+Do not invoke raw `xcodebuild test` for UI validation. If a second `test:ui:final` is blocked, report the prior result and the guard message. Override only when Jared explicitly asks for another pass.
+
 ## Preferred Loop
 
 1. Verify artifact provenance for the app under test. Rebuild/install if the app is stale, ambiguous, or from a different commit.
@@ -46,7 +62,7 @@ When Jared explicitly asks for native XCUITest coverage, run one large-window su
 8. Patch the highest-impact issue found.
 9. Repeat only the targeted scenario that proves the patch.
 10. Run lint/unit/build checks after the screenshot loop has produced a visually coherent app.
-11. Do not run the native XCTest UI suite by default. Use it only when Jared explicitly requests it, when the change is specifically an accessibility/XCUITest regression, or when a release-grade final gate is truly useful after screenshot validation is already clean.
+11. Do not run the native XCTest UI suite by default. Use `npm run test:ui:final` only when Jared explicitly requests it, when the change is specifically an accessibility/XCUITest regression, or when a release-grade final gate is truly useful after screenshot validation is already clean.
 
 ## Screenshot Evidence
 
@@ -66,11 +82,12 @@ scripts/agentic-gui-capture.sh --app "/Applications/Fed Chairman Game.app" --siz
 
 Computer-use screenshots are still preferred when available because they pair pixels with the accessibility tree and allow direct interaction with the running app.
 
-`npm run test:ui` remains available as an XCUITest regression guard, but it is deliberately not part of the default validation path and should be skipped for almost all visual/product iteration. If Jared requests it, run one large-window pass unless the current task explicitly asks for responsive matrices or targeted reruns.
+`npm run test:ui` remains available as an alias for the guarded final XCUITest regression gate, but it is deliberately not part of the default validation path and should be skipped for almost all visual/product iteration. If Jared requests it, run one large-window pass unless the current task explicitly asks for responsive matrices or targeted reruns.
 
 ## Anti-Patterns
 
 - Looping on `npm test`, `npm run test:ui`, or install/package commands before inspecting the current app screenshot.
+- Running raw `xcodebuild test` for UI validation instead of `scripts/native-validation.sh`.
 - Rerunning `npm run install:mac` as a substitute for looking at the app.
 - Repeating the Newspaper/Help/Settings click path without new code or a new hypothesis.
 - Treating XCTest screenshots as sufficient when no model has inspected them.

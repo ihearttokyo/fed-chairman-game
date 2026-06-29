@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
 PROJECT="$ROOT_DIR/FedChairmanGameNative.xcodeproj"
 SCHEME="FedChairmanGameNative"
 APP_NAME="Fed Chairman Game.app"
@@ -51,7 +52,7 @@ swiftformat Sources Tests --swift-version 6.1 --lint
 swiftlint lint --strict
 swift test
 if [[ "$RUN_XCUITEST" == true ]]; then
-  xcodebuild test -project "$PROJECT" -scheme "$SCHEME" -destination 'platform=macOS'
+  "$REPO_ROOT/scripts/native-validation.sh" ui-final
 fi
 
 rm -rf "$ARCHIVE_PATH" "$APP_OUTPUT" "$RELEASE_ROOT/$LEGACY_APP_NAME"

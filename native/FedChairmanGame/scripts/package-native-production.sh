@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
 PROJECT="$ROOT_DIR/FedChairmanGameNative.xcodeproj"
 SCHEME="FedChairmanGameNative"
 APP_NAME="Fed Chairman Game.app"
@@ -14,6 +15,7 @@ NOTARY_LOG="$RELEASE_ROOT/notary-log.json"
 CODESIGN_DETAILS="$RELEASE_ROOT/codesign-details.txt"
 INSTALL_APP=false
 SKIP_TESTS=false
+RUN_XCUITEST=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -23,6 +25,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --skip-tests)
       SKIP_TESTS=true
+      shift
+      ;;
+    --with-xcuitest)
+      RUN_XCUITEST=true
       shift
       ;;
     *)
@@ -79,7 +85,9 @@ swiftformat Sources Tests --swift-version 6.1 --lint
 swiftlint lint --strict
 if [[ "$SKIP_TESTS" != true ]]; then
   swift test
-  xcodebuild test -project "$PROJECT" -scheme "$SCHEME" -destination 'platform=macOS'
+  if [[ "$RUN_XCUITEST" == true ]]; then
+    "$REPO_ROOT/scripts/native-validation.sh" ui-final
+  fi
 fi
 
 rm -rf "$ARCHIVE_PATH" "$APP_OUTPUT" "$RELEASE_ROOT/$LEGACY_APP_NAME" "$MANIFEST" "$NOTARY_LOG" "$CODESIGN_DETAILS"
@@ -148,7 +156,7 @@ fi
 EXECUTABLE_SHA="$(shasum -a 256 "$EXECUTABLE" | awk '{print $1}')"
 CREATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-python3 - "$MANIFEST" "$CREATED_AT" "$BUNDLE_ID" "$DISPLAY_NAME" "$VERSION" "$BUILD" "$CATEGORY" "$ARCHIVE_PATH" "$APP_OUTPUT" "$EXECUTABLE_SHA" "$DEVELOPMENT_TEAM" "$SIGNING_IDENTITY" "$SPCTL_OUTPUT" <<'PY'
+python3 - "$MANIFEST" "$CREATED_AT" "$BUNDLE_ID" "$DISPLAY_NAME" "$VERSION" "$BUILD" "$CATEGORY" "$ARCHIVE_PATH" "$APP_OUTPUT" "$EXECUTABLE_SHA" "$DEVELOPMENT_TEAM" "$SIGNING_IDENTITY" "$SPCTL_OUTPUT" "$RUN_XCUITEST" <<'PY'
 import json
 import sys
 
@@ -166,6 +174,7 @@ import sys
     team_id,
     signing_identity,
     spctl_output,
+    run_xcuitest,
 ) = sys.argv[1:]
 payload = {
     "product": "Fed Chairman Game",
@@ -183,6 +192,7 @@ payload = {
     "hardenedRuntime": True,
     "notarized": True,
     "stapled": True,
+    "xcuitestGate": run_xcuitest == "true",
     "gatekeeperAssessment": spctl_output,
     "artifacts": {
         "deliverable": "app",

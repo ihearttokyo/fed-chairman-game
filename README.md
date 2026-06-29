@@ -36,24 +36,28 @@ cd native/FedChairmanGame
 xcodegen generate
 swift build
 swift test
-xcodebuild test -project FedChairmanGameNative.xcodeproj -scheme FedChairmanGameNative -destination 'platform=macOS'
 ```
 
 Root `npm` scripts are compatibility shims for the native app only. They do not install Node dependencies or build a web surface.
 
 ```bash
+npm run test:fast
 npm run typecheck
 npm run lint
 npm test
 npm run test:gui
-npm run test:ui
+npm run test:ui:prepare
+npm run test:ui:one -- FedChairmanGameNativeUITests/NativeCockpitUITests/testLaunchStartsWithDockPanelsClosedAndPrimarySurfacesClear
+npm run test:ui:final
 ```
+
+`npm run test:fast` is the cheap inner loop: Swift build plus Swift unit tests.
 
 `npm run test:gui` is the default desktop evidence gate. It builds a current local app bundle, launches it, captures provenance-backed screenshots at responsive sizes, then prints the screenshot paths that must be visually inspected before UI work is called complete. Use Computer Use for the interactive playability pass: make at least one policy decision and open Newspaper, Help, and Settings against that same app build.
 
 If the active macOS capture backend returns black screenshots, `test:gui` fails rather than treating those files as evidence. In that case, grant Screen Recording permission to the invoking app/terminal or use Computer Use directly and report that evidence path.
 
-`npm run test:ui` still runs the native XCUITest regression suite. Use it as a final clean-desktop guardrail when the app can run unobstructed, not as the primary visual QA loop.
+`npm run test:ui` and `npm run test:ui:final` run the guarded native XCUITest final gate. They do not run raw `xcodebuild test`; they use the repo validation ladder, reusable DerivedData, `test-without-building`, and one large-window smoke test. Use `npm run test:ui:prepare` before `npm run test:ui:one -- <Target/Class/testMethod>` when a single targeted UI regression is explicitly useful.
 
 ## Build And Install
 
@@ -71,7 +75,7 @@ npm run install:mac
 
 The local release-candidate path creates and verifies an `.app` bundle only. It does not create a DMG or ZIP. Local builds are ad-hoc signed for private machine testing.
 
-`npm run build`, `npm run package:mac`, and `npm run install:mac` run formatting, lint, unit tests, archive, codesign, manifest, and optional install gates. They do not run the native XCUITest suite by default. Use `npm run package:mac:xcuitest` only when a clean-desktop native UI regression pass is explicitly desired.
+`npm run build`, `npm run package:mac`, and `npm run install:mac` run formatting, lint, unit tests, archive, codesign, manifest, and optional install gates. They do not run native XCUITest by default. Use `npm run package:mac:xcuitest` only when a clean-desktop native UI regression pass is explicitly desired.
 
 ## Production Signing
 
@@ -81,7 +85,7 @@ Developer ID signing and notarization are scripted but require Apple credentials
 npm run package:production
 ```
 
-The production script archives with hardened runtime, submits the app to Apple notarization, staples the accepted ticket, verifies Gatekeeper acceptance, and keeps the release surface focused on the notarized `.app` plus manifests.
+The production script archives with hardened runtime, submits the app to Apple notarization, staples the accepted ticket, verifies Gatekeeper acceptance, and keeps the release surface focused on the notarized `.app` plus manifests. It runs format/lint/unit gates by default and runs XCUITest only with `--with-xcuitest`.
 
 ## Verification
 
@@ -94,7 +98,7 @@ npm run test:gui
 npm run build
 ```
 
-The native release-candidate script also runs its own formatting, lint, unit-test, archive, codesign, manifest, and optional install gates. For day-to-day UI work, prefer a single screenshot-first large-window check and reserve XCUITest for an explicit clean-desktop regression pass.
+The native release-candidate script also runs its own formatting, lint, unit-test, archive, codesign, manifest, and optional install gates. For day-to-day UI work, prefer `npm run test:fast` plus a single screenshot-first large-window check and reserve `npm run test:ui:final` for an explicit clean-desktop regression pass. Final reports should name the highest validation ladder step run and why broader UI gates were skipped.
 
 ## Tech Stack
 
