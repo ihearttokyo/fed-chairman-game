@@ -4,31 +4,86 @@ import SpriteKit
 final class CockpitScene: SKScene {
     private var yMin = 0.0
     private var yMax = 10.0
+    private let staticLayer = SKNode()
+    private let hoverLayer = SKNode()
+    private var lastRenderSignature: RenderSignature?
+    private var lastHoverSignature: HoverSignature?
+
+    private struct RenderSignature: Equatable {
+        let historyCount: Int
+        let historyDigest: Int
+        let frameWidth: Int
+        let frameHeight: Int
+        let reducedMotion: Bool
+        let inflationUpperBound: Int
+    }
+
+    private struct HoverSignature: Equatable {
+        let hoverIndex: Int?
+        let frameWidth: Int
+        let frameHeight: Int
+    }
 
     override init(size: CGSize) {
         super.init(size: size)
         scaleMode = .resizeFill
         backgroundColor = .clear
+        addChild(staticLayer)
+        addChild(hoverLayer)
     }
 
     required init?(coder _: NSCoder) {
         nil
     }
 
-    func render(history: [MacroState], reducedMotion _: Bool, hoverX: CGFloat? = nil) {
-        removeAllChildren()
-        configureDomain(for: history)
+    func render(history: [MacroState], reducedMotion: Bool, inflationUpperBound: Double = 4.0, hoverIndex: Int? = nil) {
         let frame = chartFrame
-        addGrid(in: frame)
-        addBands()
-        addAxisLabels(in: frame)
-        addLegend(in: frame)
-        addSeries(history: history, keyPath: \.inflation, label: "INF", color: SKColor.systemOrange)
-        addSeries(history: history, keyPath: \.unemployment, label: "U", color: SKColor.systemBlue)
-        addSeries(history: history, keyPath: \.fedFundsRate, label: "FFR", color: SKColor.systemGreen)
-        addLatestEndpointLabels(history: history, in: frame)
-        addLatestReadout(history: history, in: frame)
-        addHoverReadout(history: history, hoverX: hoverX, in: frame)
+        let signature = RenderSignature(
+            historyCount: history.count,
+            historyDigest: Self.historyDigest(for: history),
+            frameWidth: Int(frame.width.rounded()),
+            frameHeight: Int(frame.height.rounded()),
+            reducedMotion: reducedMotion,
+            inflationUpperBound: Self.quantized(inflationUpperBound),
+        )
+
+        if signature != lastRenderSignature {
+            staticLayer.removeAllChildren()
+            configureDomain(for: history)
+            addGrid(in: frame, to: staticLayer)
+            addBands(in: frame, inflationUpperBound: inflationUpperBound, to: staticLayer)
+            addAxisLabels(in: frame, to: staticLayer)
+            addLegend(in: frame, to: staticLayer)
+            addSeries(history: history, keyPath: \.inflation, label: "INF", color: SKColor.systemOrange, to: staticLayer)
+            addSeries(history: history, keyPath: \.unemployment, label: "U", color: SKColor.systemBlue, to: staticLayer)
+            addSeries(history: history, keyPath: \.fedFundsRate, label: "FFR", color: SKColor.systemGreen, to: staticLayer)
+            addLatestEndpointLabels(history: history, in: frame, to: staticLayer)
+            addLatestReadout(history: history, in: frame, to: staticLayer)
+            lastRenderSignature = signature
+        }
+
+        let hoverSignature = HoverSignature(
+            hoverIndex: hoverIndex,
+            frameWidth: Int(frame.width.rounded()),
+            frameHeight: Int(frame.height.rounded()),
+        )
+        if hoverSignature != lastHoverSignature {
+            hoverLayer.removeAllChildren()
+            addHoverReadout(history: history, hoverIndex: hoverIndex, in: frame)
+            lastHoverSignature = hoverSignature
+        }
+    }
+
+    private static func historyDigest(for history: [MacroState]) -> Int {
+        var hasher = Hasher()
+        for state in history {
+            hasher.combine(state.quarterIndex)
+            hasher.combine(state.quartersRemaining)
+            hasher.combine(Self.quantized(state.inflation))
+            hasher.combine(Self.quantized(state.unemployment))
+            hasher.combine(Self.quantized(state.fedFundsRate))
+        }
+        return hasher.finalize()
     }
 
     static func chartFrame(for size: CGSize) -> CGRect {
@@ -52,11 +107,11 @@ final class CockpitScene: SKScene {
         yMax = 10
     }
 
-    private func addGrid(in frame: CGRect) {
+    private func addGrid(in frame: CGRect, to layer: SKNode) {
         let plotWash = SKShapeNode(rect: frame, cornerRadius: 6)
         plotWash.fillColor = SKColor.black.withAlphaComponent(0.018)
         plotWash.strokeColor = .clear
-        addChild(plotWash)
+        layer.addChild(plotWash)
 
         for index in 0 ... 4 {
             let y = frame.minY + frame.height * CGFloat(index) / 4
@@ -67,7 +122,7 @@ final class CockpitScene: SKScene {
             line.path = path
             line.strokeColor = SKColor.white.withAlphaComponent(index == 0 ? 0.20 : 0.10)
             line.lineWidth = 1
-            addChild(line)
+            layer.addChild(line)
         }
 
         for index in 0 ... 4 {
@@ -79,30 +134,29 @@ final class CockpitScene: SKScene {
             line.path = path
             line.strokeColor = SKColor.white.withAlphaComponent(index == 0 ? 0.14 : 0.06)
             line.lineWidth = 1
-            addChild(line)
+            layer.addChild(line)
         }
     }
 
-    private func addBands() {
-        let frame = chartFrame
-        let inflationBand = SKShapeNode(rect: bandRect(from: 1.5, to: 2.5, in: frame))
+    private func addBands(in frame: CGRect, inflationUpperBound: Double, to layer: SKNode) {
+        let inflationBand = SKShapeNode(rect: bandRect(from: 1.5, to: inflationUpperBound, in: frame))
         inflationBand.fillColor = SKColor.systemOrange.withAlphaComponent(0.075)
         inflationBand.strokeColor = .clear
-        addChild(inflationBand)
+        layer.addChild(inflationBand)
 
         let laborBand = SKShapeNode(rect: bandRect(from: 4.2, to: 5.8, in: frame))
         laborBand.fillColor = SKColor.systemBlue.withAlphaComponent(0.065)
         laborBand.strokeColor = .clear
-        addChild(laborBand)
+        layer.addChild(laborBand)
     }
 
-    private func addAxisLabels(in frame: CGRect) {
+    private func addAxisLabels(in frame: CGRect, to layer: SKNode) {
         let tickStep = (yMax - yMin) / 4
         for index in 0 ... 4 {
             let value = yMin + tickStep * Double(index)
             let label = labelNode(String(format: "%.0f%%", value), size: 10, color: SKColor.white.withAlphaComponent(0.50), alignment: .right)
             label.position = CGPoint(x: frame.minX - 12, y: yPosition(Double(value), in: frame) - 4)
-            addChild(label)
+            layer.addChild(label)
         }
 
         let axisTicks = [0, 4, 8, 12, 16]
@@ -110,11 +164,11 @@ final class CockpitScene: SKScene {
             let alignment: SKLabelHorizontalAlignmentMode = tick == 0 ? .left : (tick == 16 ? .right : .center)
             let label = labelNode("Q\(tick)", size: 10, color: SKColor.white.withAlphaComponent(0.48), alignment: alignment)
             label.position = CGPoint(x: xPosition(index: tick, count: 17, in: frame), y: frame.minY - 23)
-            addChild(label)
+            layer.addChild(label)
         }
     }
 
-    private func addLegend(in frame: CGRect) {
+    private func addLegend(in frame: CGRect, to layer: SKNode) {
         let compact = size.width < 640
         let items: [(String, SKColor)] = [
             (compact ? "INF" : "Inflation", .systemOrange),
@@ -130,15 +184,15 @@ final class CockpitScene: SKScene {
             swatch.fillColor = item.1
             swatch.strokeColor = SKColor.white.withAlphaComponent(0.75)
             swatch.lineWidth = 1
-            addChild(swatch)
+            layer.addChild(swatch)
 
             let label = labelNode(item.0, size: 10, color: SKColor.white.withAlphaComponent(0.72), alignment: .left)
             label.position = CGPoint(x: x + 10, y: y)
-            addChild(label)
+            layer.addChild(label)
         }
     }
 
-    private func addSeries(history: [MacroState], keyPath: KeyPath<MacroState, Double>, label _: String, color: SKColor) {
+    private func addSeries(history: [MacroState], keyPath: KeyPath<MacroState, Double>, label _: String, color: SKColor, to layer: SKNode) {
         guard !history.isEmpty else {
             return
         }
@@ -158,14 +212,14 @@ final class CockpitScene: SKScene {
         line.lineWidth = 3
         line.lineCap = .round
         line.lineJoin = .round
-        addChild(line)
+        layer.addChild(line)
         for point in points {
             let pip = SKShapeNode(circleOfRadius: history.count == 1 ? 4.5 : 3.2)
             pip.position = point
             pip.fillColor = color
             pip.strokeColor = SKColor.white.withAlphaComponent(0.70)
             pip.lineWidth = 1
-            addChild(pip)
+            layer.addChild(pip)
         }
         if let latest = points.last {
             let latestPip = SKShapeNode(circleOfRadius: history.count == 1 ? 6 : 5)
@@ -173,11 +227,11 @@ final class CockpitScene: SKScene {
             latestPip.fillColor = color
             latestPip.strokeColor = SKColor.white.withAlphaComponent(0.82)
             latestPip.lineWidth = 1.5
-            addChild(latestPip)
+            layer.addChild(latestPip)
         }
     }
 
-    private func addLatestEndpointLabels(history: [MacroState], in frame: CGRect) {
+    private func addLatestEndpointLabels(history: [MacroState], in frame: CGRect, to layer: SKNode) {
         guard let latest = history.last, history.count >= 6 else {
             return
         }
@@ -190,11 +244,11 @@ final class CockpitScene: SKScene {
         for (label, value, color, y) in labels {
             let valueLabel = labelNode("\(label) \(String(format: "%.2f", value))%", size: 10, color: color.withAlphaComponent(0.94), alignment: .left)
             valueLabel.position = CGPoint(x: x, y: y)
-            addChild(valueLabel)
+            layer.addChild(valueLabel)
         }
     }
 
-    private func addLatestReadout(history: [MacroState], in frame: CGRect) {
+    private func addLatestReadout(history: [MacroState], in frame: CGRect, to layer: SKNode) {
         guard let latest = history.last else {
             return
         }
@@ -206,18 +260,18 @@ final class CockpitScene: SKScene {
         ].joined(separator: "  ")
         let label = labelNode(readout, size: 10, color: SKColor.white.withAlphaComponent(0.66), alignment: .left)
         label.position = CGPoint(x: frame.minX, y: min(size.height - 18, frame.maxY + 27))
-        addChild(label)
+        layer.addChild(label)
     }
 
-    private func addHoverReadout(history: [MacroState], hoverX: CGFloat?, in frame: CGRect) {
-        guard let hoverX, !history.isEmpty else {
+    private func addHoverReadout(history: [MacroState], hoverIndex: Int?, in frame: CGRect) {
+        guard let hoverIndex else {
             return
         }
-        let x = min(frame.maxX, max(frame.minX, hoverX))
-        let progress = (x - frame.minX) / max(1, frame.width)
-        let index = min(history.count - 1, max(0, Int(round(progress * CGFloat(max(1, history.count - 1))))))
-        let state = history[index]
-        let pointX = xPosition(index: index, count: history.count, in: frame)
+        guard history.indices.contains(hoverIndex) else {
+            return
+        }
+        let state = history[hoverIndex]
+        let pointX = xPosition(index: hoverIndex, count: history.count, in: frame)
 
         let path = CGMutablePath()
         path.move(to: CGPoint(x: pointX, y: frame.minY))
@@ -225,9 +279,9 @@ final class CockpitScene: SKScene {
         let marker = SKShapeNode(path: path)
         marker.strokeColor = SKColor.white.withAlphaComponent(0.40)
         marker.lineWidth = 1
-        addChild(marker)
+        hoverLayer.addChild(marker)
 
-        let quarterLabel = index == 0 ? "Career start" : "Career Q\(index)"
+        let quarterLabel = hoverIndex == 0 ? "Career start" : "Career Q\(hoverIndex)"
         let values = [
             (state.inflation, SKColor.systemOrange),
             (state.unemployment, SKColor.systemBlue),
@@ -239,12 +293,12 @@ final class CockpitScene: SKScene {
             highlight.fillColor = color.withAlphaComponent(0.28)
             highlight.strokeColor = SKColor.white.withAlphaComponent(0.78)
             highlight.lineWidth = 1.5
-            addChild(highlight)
+            hoverLayer.addChild(highlight)
         }
-        if index > 0 {
+        if hoverIndex > 0 {
             let label = labelNode(quarterLabel, size: 10, color: SKColor.white.withAlphaComponent(0.68), alignment: .center)
             label.position = CGPoint(x: pointX, y: frame.minY - 22)
-            addChild(label)
+            hoverLayer.addChild(label)
         }
     }
 
@@ -260,6 +314,10 @@ final class CockpitScene: SKScene {
         let domainSegments = max(16, count - 1)
         let paddedWidth = max(1, frame.width - 18)
         return frame.minX + 9 + paddedWidth * CGFloat(index) / CGFloat(domainSegments)
+    }
+
+    private static func quantized(_ value: Double) -> Int {
+        Int((value * 1000).rounded())
     }
 
     private func bandRect(from lower: Double, to upper: Double, in frame: CGRect) -> CGRect {

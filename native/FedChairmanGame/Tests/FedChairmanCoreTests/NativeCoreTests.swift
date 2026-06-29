@@ -267,6 +267,80 @@ import Testing
     #expect(stressedWatch.riskLabel == "Raise score above 70")
 }
 
+@Test func trumpCheatActivatesNewsAndInflationCapDecay() {
+    var ui = UiState.default
+    ui.trumpCheatActivatedCareerQuarter = 4
+
+    #expect(activeInflationUpperBound(ui: ui, currentCareerQuarter: 4) == 8)
+    #expect(activeInflationUpperBound(ui: ui, currentCareerQuarter: 5) == 7.75)
+    #expect(activeInflationUpperBound(ui: ui, currentCareerQuarter: 20) == 4)
+
+    var session = makeInitialSession(seed: "trump-cheat")
+    session.status = .inProgress
+    session.ui = ui
+    session.totalCareerQuarters = 5
+
+    let briefing = buildCockpitBriefing(session: session)
+    #expect(briefing.kicker == "Cheat Event")
+    #expect(briefing.headline.contains("Trump elected"))
+    #expect(briefing.policyImplication.contains("7.75%"))
+
+    let watch = buildBoardWatch(session: session)
+    #expect(watch.inflationDetail.contains("cap 7.75%"))
+}
+
+@Test func trumpCheatChangesQuarterEnginePressureOverTime() throws {
+    let highInflation = MacroState(
+        quarterIndex: 0,
+        quartersRemaining: 16,
+        inflation: 5.8,
+        unemployment: 5.1,
+        fedFundsRate: 4.5,
+        outputGap: 0.35,
+        gdpGrowth: 1.9,
+        expectedInflation: 4.9,
+        credibility: 70,
+    )
+    let decision = createDecision(action: .hold, current: highInflation, timestamp: "test")
+
+    let normal = try advanceQuarter(
+        history: [highInflation],
+        decision: decision,
+        scenario: classicScenario,
+        activeShocks: [],
+        seed: "trump-engine-compare",
+    )
+
+    var ui = UiState.default
+    ui.trumpCheatActivatedCareerQuarter = 4
+    #expect(activeInflationUpperBound(ui: ui, currentCareerQuarter: 5) == 7.75)
+    #expect(activeInflationUpperBound(ui: ui, currentCareerQuarter: 20) == 4)
+
+    let earlyCheat = try advanceQuarter(
+        history: [highInflation],
+        decision: decision,
+        scenario: classicScenario,
+        activeShocks: [],
+        seed: "trump-engine-compare",
+        ui: ui,
+        careerQuarterIndex: 5,
+    )
+    let lateCheat = try advanceQuarter(
+        history: [highInflation],
+        decision: decision,
+        scenario: classicScenario,
+        activeShocks: [],
+        seed: "trump-engine-compare",
+        ui: ui,
+        careerQuarterIndex: 20,
+    )
+
+    #expect((earlyCheat.trace.credibilityDelta ?? 0) > (normal.trace.credibilityDelta ?? 0))
+    #expect(earlyCheat.nextState.expectedInflation > lateCheat.nextState.expectedInflation)
+    #expect((lateCheat.trace.credibilityDelta ?? 0) < (earlyCheat.trace.credibilityDelta ?? 0))
+    #expect((lateCheat.trace.credibilityDelta ?? 0) < 0)
+}
+
 @Test func cockpitLayoutMetricsRespondToWindowSize() {
     let compact = cockpitLayoutMetrics(width: 1180, height: 700)
     let standard = cockpitLayoutMetrics(width: 1360, height: 860)

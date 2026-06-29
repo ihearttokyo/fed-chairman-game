@@ -266,6 +266,7 @@ public struct UiState: Codable, Equatable, Sendable {
     public var soundEnabled: Bool
     public var reducedNoise: Bool
     public var soundVolume: Double
+    public var trumpCheatActivatedCareerQuarter: Int?
 
     public static let `default` = UiState(
         selectedDecision: nil,
@@ -274,6 +275,7 @@ public struct UiState: Codable, Equatable, Sendable {
         soundEnabled: false,
         reducedNoise: false,
         soundVolume: 0.25,
+        trumpCheatActivatedCareerQuarter: nil,
     )
 }
 

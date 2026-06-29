@@ -2,12 +2,15 @@ import AppKit
 import FedChairmanCore
 import SwiftUI
 
+// swiftlint:disable file_length
+
 @main
 struct FedChairmanGameNativeApp: App {
     @NSApplicationDelegateAdaptor(GameWindowDelegate.self) private var gameWindowDelegate
-    @StateObject private var store = GameSessionStore()
+    @StateObject private var store: GameSessionStore
 
     init() {
+        _store = StateObject(wrappedValue: fedChairmanSharedStore)
         PolicyShortcutDispatcher.shared.start()
     }
 
@@ -20,18 +23,12 @@ struct FedChairmanGameNativeApp: App {
         .windowStyle(.hiddenTitleBar)
         .commands {
             CommandMenu("Policy") {
-                Button("Raise 25 bps") {
-                    commitShortcut(.raise25)
+                ForEach(policyShortcutBindings, id: \.key) { binding in
+                    Button(binding.title) {
+                        commitShortcut(binding.action)
+                    }
+                    .keyboardShortcut(KeyEquivalent(Character(binding.key)), modifiers: [])
                 }
-                .keyboardShortcut("r", modifiers: [])
-                Button("Hold") {
-                    commitShortcut(.hold)
-                }
-                .keyboardShortcut("h", modifiers: [])
-                Button("Cut 25 bps") {
-                    commitShortcut(.cut25)
-                }
-                .keyboardShortcut("c", modifiers: [])
             }
         }
     }
@@ -48,15 +45,22 @@ struct FedChairmanGameNativeApp: App {
     }
 }
 
+// swiftlint:disable:next type_body_length
 struct NativeCockpitView: View {
     @EnvironmentObject private var store: GameSessionStore
     @State private var dockState = CockpitDockState()
     @State private var autoBriefingKey: String?
     @State private var customBps = ""
     @State private var decisionPulse = false
+    @State private var selectedPolicyAction: PolicyAction = .hold
     @State private var panelMessage: String?
     @State private var inspectedChartIndex: Int?
     @State private var didApplyValidationProgression = false
+    @State private var cheatConsoleOpen = false
+    @State private var cheatConsoleCommand = ""
+    @State private var cheatConsoleMessage = "Enter cheat code."
+    @State private var lastCheatConsoleToggle = Date.distantPast
+    @FocusState private var cheatConsoleFieldFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var session: GameSession {
@@ -77,6 +81,11 @@ struct NativeCockpitView: View {
 
     private var boardWatch: BoardWatch {
         buildBoardWatch(session: session)
+    }
+
+    private var inflationMetricTargetText: String {
+        let cap = activeInflationUpperBound(ui: session.ui, currentCareerQuarter: session.totalCareerQuarters)
+        return cap > 4 ? "cap \(String(format: "%.1f", cap))%" : "2.0%"
     }
 
     private var careerDecisions: [PolicyDecision] {
@@ -122,6 +131,7 @@ struct NativeCockpitView: View {
                 .padding(.top, cockpitContentTopInset(layout).cg)
 
                 debriefOverlay
+                cheatConsoleOverlay
                 Text(motionMode == .reduced ? "Reduced motion mode" : "Spring motion mode")
                     .font(.system(size: 1))
                     .foregroundStyle(.clear)
@@ -146,10 +156,14 @@ struct NativeCockpitView: View {
             else {
                 return
             }
+            selectedPolicyAction = action
             commit(action)
         }
         .onReceive(NotificationCenter.default.publisher(for: .closeCockpitOverlays)) { _ in
             closeOverlays()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .toggleCheatConsole)) { _ in
+            toggleCheatConsole()
         }
         .onChange(of: briefingKey) {
             autoPeekBriefing()
@@ -230,6 +244,7 @@ struct NativeCockpitView: View {
             SpriteKitChart(
                 history: session.careerHistory,
                 reducedMotion: reduceMotion || session.ui.reducedMotion,
+                inflationUpperBound: activeInflationUpperBound(ui: session.ui, currentCareerQuarter: session.totalCareerQuarters),
                 onInspectionIndexChanged: { inspectedChartIndex = $0 },
             )
             .frame(height: layout.chartHeight.cg)
@@ -270,7 +285,7 @@ struct NativeCockpitView: View {
                             Button("Commit") {
                                 commitCustom()
                             }
-                            .buttonStyle(PolicyButtonStyle(pulse: decisionPulse, width: max(68, layout.policyKeyWidth).cg, height: layout.policyKeyHeight.cg))
+                            .buttonStyle(PolicyButtonStyle(pulse: decisionPulse, selected: false, width: max(68, layout.policyKeyWidth).cg, height: layout.policyKeyHeight.cg))
                             .disabled(customDelta == nil)
                         }
                     }
@@ -290,7 +305,14 @@ struct NativeCockpitView: View {
     private func metricsGrid(layout: CockpitLayoutMetrics) -> some View {
         CommandPanel(padding: max(6, layout.panelPadding - 4).cg, tone: .instrument) {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: layout.metricsColumns), spacing: 8) {
-                MandateMetricCard(label: "Inflation", value: session.current.inflation, target: "2.0%", suffix: "%", color: .orange, layout: layout)
+                MandateMetricCard(
+                    label: "Inflation",
+                    value: session.current.inflation,
+                    target: inflationMetricTargetText,
+                    suffix: "%",
+                    color: .orange,
+                    layout: layout,
+                )
                 MandateMetricCard(label: "Unemployment", value: session.current.unemployment, target: "5.0%", suffix: "%", color: .blue, layout: layout)
                 MandateMetricCard(label: "Fed Funds", value: session.current.fedFundsRate, target: "policy", suffix: "%", color: .green, layout: layout)
                 MandateMetricCard(label: "Expectations", value: session.current.expectedInflation, target: "anchor", suffix: "%", color: .mint, layout: layout)
@@ -308,10 +330,16 @@ struct NativeCockpitView: View {
             HStack(spacing: layout.policyKeySpacing.cg) {
                 ForEach(actions, id: \.self) { action in
                     Button(policyActions[action]?.label ?? action.rawValue) {
+                        selectedPolicyAction = action
                         commit(action)
                     }
-                    .buttonStyle(PolicyButtonStyle(pulse: decisionPulse, width: layout.policyKeyWidth.cg, height: layout.policyKeyHeight.cg))
+                    .buttonStyle(PolicyButtonStyle(pulse: decisionPulse, selected: selectedPolicyAction == action, width: layout.policyKeyWidth.cg, height: layout.policyKeyHeight.cg))
                     .disabled(resultingRate(for: action) < 0 || resultingRate(for: action) > 20)
+                    .onHover { isHovering in
+                        if isHovering {
+                            selectedPolicyAction = action
+                        }
+                    }
                     .help(resultingRateHelp(for: action))
                 }
             }
@@ -464,11 +492,11 @@ struct NativeCockpitView: View {
     private func briefingPreviewHeight(_ layout: CockpitLayoutMetrics) -> Double {
         switch layout.mode {
         case .compact:
-            64
+            78
         case .standard:
-            90
+            116
         case .expanded:
-            102
+            130
         }
     }
 
@@ -486,13 +514,13 @@ struct NativeCockpitView: View {
                     }
                     Text(briefing.headline)
                         .font(.system(size: layout.mode == .compact ? 15 : 20, weight: .black, design: .rounded))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.78)
+                        .lineLimit(layout.mode == .compact ? 2 : 3)
+                        .minimumScaleFactor(0.86)
                     if layout.mode != .compact {
                         Text(briefing.body)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.white.opacity(0.62))
-                            .lineLimit(1)
+                            .lineLimit(2)
                     }
                 }
                 Spacer(minLength: 8)
@@ -515,9 +543,9 @@ struct NativeCockpitView: View {
             Text(body)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.white.opacity(0.68))
-                .lineLimit(1)
+                .lineLimit(2)
         }
-        .padding(.vertical, 5)
+        .padding(.vertical, 7)
         .padding(.horizontal, 8)
         .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 8))
     }
@@ -649,6 +677,44 @@ struct NativeCockpitView: View {
     private func closeOverlays() {
         dockState.closeAll()
         autoBriefingKey = nil
+        cheatConsoleOpen = false
+        cheatConsoleFieldFocused = false
+    }
+
+    private func toggleCheatConsole() {
+        let now = Date()
+        guard now.timeIntervalSince(lastCheatConsoleToggle) > 0.15 else {
+            return
+        }
+        lastCheatConsoleToggle = now
+        let shouldOpen = !cheatConsoleOpen
+        cheatConsoleOpen = shouldOpen
+        if shouldOpen {
+            cheatConsoleCommand = ""
+            cheatConsoleMessage = "Enter cheat code."
+            DispatchQueue.main.async {
+                cheatConsoleFieldFocused = true
+            }
+        } else {
+            cheatConsoleFieldFocused = false
+        }
+    }
+
+    private func runCheatConsoleCommand() {
+        let command = cheatConsoleCommand.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard command == "TRUMP" else {
+            cheatConsoleMessage = "Unknown code."
+            NSSound.beep()
+            return
+        }
+        store.activateTrumpCheat()
+        cheatConsoleMessage = "TRUMP event active."
+        dockState.open(.newspaper, pinned: true)
+        autoBriefingKey = briefingKey
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            cheatConsoleOpen = false
+            cheatConsoleFieldFocused = false
+        }
     }
 
     private func autoPeekBriefing() {
@@ -865,6 +931,18 @@ struct NativeCockpitView: View {
 }
 
 private extension NativeCockpitView {
+    var cheatConsoleOverlay: some View {
+        CheatConsoleOverlay(
+            isOpen: cheatConsoleOpen,
+            command: $cheatConsoleCommand,
+            message: cheatConsoleMessage,
+            motionMode: motionMode,
+            isCommandFieldFocused: $cheatConsoleFieldFocused,
+            close: toggleCheatConsole,
+            run: runCheatConsoleCommand,
+        )
+    }
+
     var debriefOverlay: some View {
         Group {
             if session.status == .termDebrief || session.status == .notReappointed || session.status == .retired {
@@ -1004,6 +1082,84 @@ private extension NativeCockpitView {
 private extension Notification.Name {
     static let policyShortcutAction = Notification.Name("FedChairmanPolicyShortcutAction")
     static let closeCockpitOverlays = Notification.Name("FedChairmanCloseCockpitOverlays")
+    static let toggleCheatConsole = Notification.Name("FedChairmanToggleCheatConsole")
+}
+
+private struct PolicyShortcutBinding {
+    var key: String
+    var action: PolicyAction
+
+    var title: String {
+        "\(key)  \(policyActions[action]?.label ?? action.rawValue)"
+    }
+}
+
+private let policyShortcutBindings: [PolicyShortcutBinding] = [
+    PolicyShortcutBinding(key: "1", action: .cut150),
+    PolicyShortcutBinding(key: "2", action: .cut100),
+    PolicyShortcutBinding(key: "3", action: .cut75),
+    PolicyShortcutBinding(key: "4", action: .cut50),
+    PolicyShortcutBinding(key: "5", action: .cut25),
+    PolicyShortcutBinding(key: "6", action: .hold),
+    PolicyShortcutBinding(key: "7", action: .raise25),
+    PolicyShortcutBinding(key: "8", action: .raise50),
+    PolicyShortcutBinding(key: "9", action: .raise75),
+    PolicyShortcutBinding(key: "0", action: .raise100),
+]
+
+private struct CheatConsoleOverlay: View {
+    var isOpen: Bool
+    @Binding var command: String
+    var message: String
+    var motionMode: CockpitMotionMode
+    @FocusState.Binding var isCommandFieldFocused: Bool
+    var close: () -> Void
+    var run: () -> Void
+
+    var body: some View {
+        Group {
+            if isOpen {
+                ZStack {
+                    Color.black.opacity(0.32)
+                        .ignoresSafeArea()
+                    CommandPanel {
+                        consoleBody
+                            .frame(width: 420, alignment: .leading)
+                    }
+                }
+                .accessibilityIdentifier("cheat-console")
+                .transition(motionMode == .reduced ? .opacity : .scale(scale: 0.92).combined(with: .opacity))
+            }
+        }
+        .animation(motionMode == .reduced ? nil : .bouncy(duration: 0.24, extraBounce: 0.12), value: isOpen)
+    }
+
+    private var consoleBody: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Console")
+                    .font(.system(size: 20, weight: .black, design: .rounded))
+                Spacer()
+                Button("Close", action: close)
+                    .buttonStyle(.borderless)
+            }
+            Text(message)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.68))
+            HStack(spacing: 8) {
+                Text("`")
+                    .font(.system(size: 18, weight: .black, design: .monospaced))
+                    .foregroundStyle(.green)
+                TextField("code", text: $command)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($isCommandFieldFocused)
+                    .accessibilityIdentifier("cheat-console-command-field")
+                    .onSubmit(run)
+                Button("Run", action: run)
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+    }
 }
 
 @MainActor
@@ -1026,6 +1182,10 @@ private final class PolicyShortcutDispatcher {
                 NotificationCenter.default.post(name: .closeCockpitOverlays, object: nil)
                 return nil
             }
+            if event.keyCode == 50 || event.charactersIgnoringModifiers == "`" {
+                NotificationCenter.default.post(name: .toggleCheatConsole, object: nil)
+                return nil
+            }
             guard let action = Self.action(for: event) else {
                 return event
             }
@@ -1034,17 +1194,19 @@ private final class PolicyShortcutDispatcher {
         }
     }
 
+    private static var isTextInputFocused: Bool {
+        guard let responder = NSApp.keyWindow?.firstResponder else {
+            return false
+        }
+        return responder is NSTextView || responder is NSTextField
+    }
+
     private static func action(for event: NSEvent) -> PolicyAction? {
         let modifiers = event.modifierFlags.intersection([.command, .control, .option])
         guard modifiers.isEmpty, let key = event.charactersIgnoringModifiers?.lowercased() else {
             return nil
         }
-        switch key {
-        case "r": return .raise25
-        case "h": return .hold
-        case "c": return .cut25
-        default: return nil
-        }
+        return policyShortcutBindings.first { $0.key == key }?.action
     }
 }
 

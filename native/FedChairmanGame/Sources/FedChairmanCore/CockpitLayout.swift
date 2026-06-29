@@ -29,6 +29,10 @@ public struct CockpitLayoutMetrics: Equatable, Sendable {
     public var settingsPanelWidth: Double
     public var dockPanelMaxHeight: Double
     public var compressedDensity: Bool
+
+    public var isCompactNotebookLayout: Bool {
+        mode == .compact || (mode == .standard && compressedDensity)
+    }
 }
 
 public func cockpitLayoutMode(width: Double, height: Double) -> CockpitLayoutMode {
@@ -47,7 +51,7 @@ public func cockpitLayoutMetrics(width: Double, height: Double) -> CockpitLayout
     let safeWidth = max(0, width - sideMargin * 2)
     let panelWidth = max(320, safeWidth - 28)
     let maxPanelHeight = max(172, min(height - 230, mode == .expanded ? 260 : 224))
-    let compactPanelHeight = max(118, min(height - 408, 176))
+    let compactPanelHeight = max(150, min(height - 408, 190))
     let standardDensityCompact = height < 900
 
     switch mode {
@@ -73,17 +77,17 @@ public func cockpitLayoutMetrics(width: Double, height: Double) -> CockpitLayout
             newspaperPanelWidth: panelWidth,
             helpPanelWidth: panelWidth,
             settingsPanelWidth: panelWidth,
-            dockPanelMaxHeight: min(132, compactPanelHeight),
+            dockPanelMaxHeight: compactPanelHeight,
             compressedDensity: true,
         )
     case .standard:
-        let spacing: Double = standardDensityCompact ? 10 : 12
+        let spacing: Double = standardDensityCompact ? 8 : 12
         let panelPadding: Double = standardDensityCompact ? 10 : 12
-        let chartHeight: Double = standardDensityCompact ? 140 : 178
+        let chartHeight: Double = standardDensityCompact ? 134 : 178
         let policyKeyHeight: Double = standardDensityCompact ? 34 : 40
         let policyKeySpacing: Double = standardDensityCompact ? 6 : 8
         let dockPanelMaxHeight: Double = standardDensityCompact
-            ? min(112, max(96, maxPanelHeight))
+            ? min(172, max(132, maxPanelHeight))
             : min(174, maxPanelHeight)
 
         return CockpitLayoutMetrics(

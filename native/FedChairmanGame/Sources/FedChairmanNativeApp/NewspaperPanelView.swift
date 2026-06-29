@@ -26,23 +26,21 @@ struct NewspaperPanelView: View {
         .background(panelFill)
         .clipShape(RoundedRectangle(cornerRadius: 18))
         .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.26)))
-        .shadow(color: .black.opacity(0.28), radius: 18, y: 10)
+        .shadow(color: .black.opacity(0.24), radius: 10, y: 6)
     }
 
     private var panelFill: some View {
         RoundedRectangle(cornerRadius: 18)
-            .fill(.ultraThinMaterial)
-            .overlay(
+            .fill(
                 LinearGradient(
                     colors: [
-                        Color.white.opacity(0.07),
-                        Color(red: 0.18, green: 0.16, blue: 0.12).opacity(0.16),
-                        Color.black.opacity(0.36),
+                        Color(red: 0.19, green: 0.22, blue: 0.25).opacity(0.74),
+                        Color(red: 0.14, green: 0.12, blue: 0.08).opacity(0.42),
+                        Color(red: 0.05, green: 0.06, blue: 0.07),
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing,
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 18)),
+                ),
             )
     }
 
@@ -87,13 +85,13 @@ struct NewspaperPanelView: View {
             Text(briefing.headline)
                 .font(.system(size: layout.mode == .compact ? 15 : 22, weight: .black, design: .rounded))
                 .foregroundStyle(.white)
-                .lineLimit(layout.mode == .compact ? 1 : 2)
+                .lineLimit(layout.mode == .compact ? 2 : 3)
                 .minimumScaleFactor(0.82)
             if layout.mode != .compact {
                 Text(briefing.body)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.72))
-                    .lineLimit(2)
+                    .lineLimit(3)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -107,7 +105,7 @@ struct NewspaperPanelView: View {
                 briefingChip("Watch", "Labor, credibility, lagged policy")
             }
         }
-        .frame(width: layout.mode == .compact ? 300 : 310, alignment: .topLeading)
+        .frame(width: layout.mode == .compact ? 360 : 390, alignment: .topLeading)
     }
 
     private func briefingChip(_ label: String, _ body: String) -> some View {
@@ -118,9 +116,9 @@ struct NewspaperPanelView: View {
             Text(body)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.white.opacity(0.78))
-                .lineLimit(1)
+                .lineLimit(2)
         }
-        .padding(layout.mode == .compact ? 7 : 9)
+        .padding(layout.mode == .compact ? 9 : 11)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.white.opacity(0.065), in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(.white.opacity(0.10)))
@@ -140,13 +138,19 @@ struct HelpDrawerView: View {
     }
 
     private var secondaryColumnCount: Int {
-        layout.mode == .compact ? 2 : 3
+        layout.isCompactNotebookLayout ? 1 : 3
+    }
+
+    private var primaryTopicColumns: Int {
+        layout.isCompactNotebookLayout ? 1 : 3
     }
 
     var body: some View {
         Group {
             if layout.mode == .compact {
                 compactBody
+            } else if layout.isCompactNotebookLayout {
+                compactDensityBody
             } else {
                 VStack(alignment: .leading, spacing: 12) {
                     drawerHeader(
@@ -181,38 +185,73 @@ struct HelpDrawerView: View {
         .background(drawerPanelFill(tint: .green))
         .clipShape(RoundedRectangle(cornerRadius: drawerCornerRadius))
         .overlay(RoundedRectangle(cornerRadius: drawerCornerRadius).stroke(.white.opacity(0.24)))
-        .shadow(color: .black.opacity(0.28), radius: 18, y: 10)
+        .shadow(color: .black.opacity(0.24), radius: 10, y: 6)
     }
 
     private var compactBody: some View {
-        HStack(alignment: .center, spacing: 10) {
-            VStack(alignment: .leading, spacing: 3) {
-                Label("Policy Guide", systemImage: "questionmark.circle.fill")
-                    .font(.caption2.weight(.black))
-                    .foregroundStyle(.green)
-                    .lineLimit(1)
-                Text("Policy Notebook")
-                    .font(.headline.weight(.black))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                Text("Balance inflation, labor, and policy lags.")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.62))
-                    .lineLimit(1)
-            }
-            .frame(width: 172, alignment: .leading)
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: 9) {
+                drawerHeader(
+                    systemName: "questionmark.circle.fill",
+                    eyebrow: "Policy Guide",
+                    title: "Policy Notebook",
+                    caption: "Balance inflation, labor, and policy lags.",
+                    tint: .green,
+                )
 
-            ForEach(primaryTopics.prefix(2)) { topic in
-                HelpPrimaryTopicTile(topic: topic, compact: true)
-            }
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(), spacing: 8, alignment: .top),
+                        GridItem(.flexible(), spacing: 8, alignment: .top),
+                    ],
+                    alignment: .leading,
+                    spacing: 8,
+                ) {
+                    ForEach(primaryTopics.prefix(2)) { topic in
+                        HelpPrimaryTopicTile(topic: topic, compact: true)
+                    }
+                }
 
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(secondaryTopics.prefix(2)) { topic in
-                    HelpTopicRow(topic: topic, compact: true)
+                VStack(alignment: .leading, spacing: 7) {
+                    ForEach(secondaryTopics.prefix(6)) { topic in
+                        HelpTopicRow(topic: topic, compact: false)
+                    }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .scrollIndicators(.never)
+    }
+
+    private var compactDensityBody: some View {
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: 12) {
+                drawerHeader(
+                    systemName: "questionmark.circle.fill",
+                    eyebrow: "Policy Guide",
+                    title: "Policy Notebook",
+                    caption: "Read the economy, pick a stance, then watch the lags.",
+                    tint: .green,
+                )
+
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: primaryTopicColumns),
+                    alignment: .leading,
+                    spacing: 10,
+                ) {
+                    ForEach(primaryTopics.prefix(4)) { topic in
+                        HelpPrimaryTopicTile(topic: topic, compact: false)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(secondaryTopics.prefix(8)) { topic in
+                        HelpTopicRow(topic: topic, compact: false)
+                    }
+                }
+            }
+            .padding(.horizontal, 2)
+        }
+        .scrollIndicators(.never)
     }
 }
 
@@ -241,7 +280,7 @@ struct SettingsDrawerView: View {
             .background(drawerPanelFill(tint: .cyan))
             .clipShape(RoundedRectangle(cornerRadius: drawerCornerRadius))
             .overlay(RoundedRectangle(cornerRadius: drawerCornerRadius).stroke(.white.opacity(0.24)))
-            .shadow(color: .black.opacity(0.28), radius: 18, y: 10)
+            .shadow(color: .black.opacity(0.24), radius: 10, y: 6)
     }
 
     @ViewBuilder
@@ -367,11 +406,11 @@ private struct HelpPrimaryTopicTile: View {
             Text(topic.title)
                 .font(.caption.weight(.black))
                 .foregroundStyle(.green)
-                .lineLimit(1)
+                .lineLimit(2)
             Text(topic.body)
                 .font(.caption2.weight(.medium))
                 .foregroundStyle(.white.opacity(0.74))
-                .lineLimit(compact ? 2 : 3)
+                .lineLimit(compact ? 4 : 3)
         }
         .padding(9)
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -394,11 +433,11 @@ private struct HelpTopicRow: View {
                 Text(topic.title)
                     .font(.caption2.weight(.black))
                     .foregroundStyle(.white.opacity(0.78))
-                    .lineLimit(1)
+                    .lineLimit(2)
                 Text(topic.body)
                     .font(.caption2)
                     .foregroundStyle(.white.opacity(0.62))
-                    .lineLimit(compact ? 1 : 2)
+                    .lineLimit(compact ? 2 : 3)
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -464,18 +503,16 @@ private func drawerHeader(systemName: String, eyebrow: String, title: String, ca
 
 private func drawerPanelFill(tint: Color) -> some View {
     RoundedRectangle(cornerRadius: drawerCornerRadius)
-        .fill(.ultraThinMaterial)
-        .overlay(
+        .fill(
             LinearGradient(
                 colors: [
-                    .white.opacity(0.07),
-                    tint.opacity(0.075),
-                    .black.opacity(0.38),
+                    .white.opacity(0.12),
+                    tint.opacity(0.12),
+                    Color(red: 0.04, green: 0.06, blue: 0.07),
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing,
-            )
-            .clipShape(RoundedRectangle(cornerRadius: drawerCornerRadius)),
+            ),
         )
 }
 

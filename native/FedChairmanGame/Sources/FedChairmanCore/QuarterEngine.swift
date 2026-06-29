@@ -8,9 +8,25 @@ private let outOfBandCredibilityDrift = -1.8
 private let rateMoveCredibilityCost = 0.75
 private let reappointmentGraceLimit = 2.4
 private let laggedPolicyActiveThreshold = 0.35
+private let trumpCheatMaxInflationTarget = 8.0
+private let trumpCheatMinInflationTarget = 4.0
+private let trumpCheatInflationDecayPerQuarter = 0.25
 
 private func emptyShockContrib() -> [ShockType: Double] {
     Dictionary(uniqueKeysWithValues: shockTypes.map { ($0, 0) })
+}
+
+private func trumpCheatEffectiveInflationTarget(
+    ui: UiState?,
+    currentCareerQuarter: Int,
+    normalTarget: Double,
+) -> Double {
+    guard let ui, let activatedQuarter = ui.trumpCheatActivatedCareerQuarter else {
+        return normalTarget
+    }
+    let elapsedQuarters = max(0, currentCareerQuarter - activatedQuarter)
+    let decayed = trumpCheatMaxInflationTarget - Double(elapsedQuarters) * trumpCheatInflationDecayPerQuarter
+    return clamp(decayed, trumpCheatMinInflationTarget, trumpCheatMaxInflationTarget)
 }
 
 private func shouldTrigger(shock: Shock, quarterIndex: Int, seed: String) -> Bool {
@@ -75,11 +91,19 @@ public func advanceQuarter(
     activeShocks: [ActiveShock],
     seed: String,
     termNumber: Int = 1,
+    ui: UiState? = nil,
+    careerQuarterIndex: Int? = nil,
 ) throws -> AdvanceResult {
     guard let previous = history.last else {
         throw NativeEngineError.missingHistory
     }
     let quarterIndex = previous.quarterIndex + 1
+    let targetCareerQuarter = careerQuarterIndex ?? quarterIndex
+    let effectiveInflationTarget = trumpCheatEffectiveInflationTarget(
+        ui: ui,
+        currentCareerQuarter: targetCareerQuarter,
+        normalTarget: scenario.targets.inflation,
+    )
     let shockState = nextActiveShocks(scenario: scenario, activeShocks: activeShocks, quarterIndex: quarterIndex, seed: seed)
     let shocks = shockContributions(activeShocks: shockState.active, scenario: scenario)
     let coefficients = scenario.coefficients
@@ -111,8 +135,8 @@ public func advanceQuarter(
         2,
         15,
     )
-    let inflationGap = previous.inflation - scenario.targets.inflation
-    let inflationInBand = abs(inflationGap) <= inflationCredibilityBand
+    let inflationGap = previous.inflation - effectiveInflationTarget
+    let inflationInBand = previous.inflation <= effectiveInflationTarget + inflationCredibilityBand
     let credibilityBaseDrift = inflationInBand ? normalCredibilityRecovery : outOfBandCredibilityDrift
     let credibilityRateMoveCost = abs(decision.rateChange) * rateMoveCredibilityCost
     let rightDirectionForHighInflation =
@@ -132,7 +156,7 @@ public func advanceQuarter(
         : 0
     let credibilityDelta = min(normalCredibilityRecovery, rawCredibilityDelta + credibilityReappointmentGrace)
     let credibility = clamp(previous.credibility + credibilityDelta, 0, 100)
-    let expectationsAnchor = scenario.targets.inflation + (100 - credibility) / 100
+    let expectationsAnchor = effectiveInflationTarget + (100 - credibility) / 100
     let expectedInflation = clamp(
         0.72 * previous.expectedInflation + 0.18 * previous.inflation + 0.1 * expectationsAnchor,
         0,
@@ -141,7 +165,7 @@ public func advanceQuarter(
     let inflation = clamp(
         0.55 * previous.inflation +
             0.3 * expectedInflation +
-            0.15 * scenario.targets.inflation +
+            0.15 * effectiveInflationTarget +
             coefficients.phillipsSlope * previous.outputGap +
             supplyShock -
             coefficients.inflationRateSensitivity * laggedGap +

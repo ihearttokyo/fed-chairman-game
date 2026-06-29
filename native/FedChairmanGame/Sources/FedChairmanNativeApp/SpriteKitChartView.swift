@@ -5,6 +5,7 @@ import SwiftUI
 struct SpriteKitChart: NSViewRepresentable {
     var history: [MacroState]
     var reducedMotion: Bool
+    var inflationUpperBound: Double
     var onInspectionIndexChanged: (Int?) -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -15,48 +16,51 @@ struct SpriteKitChart: NSViewRepresentable {
         let view = ChartTrackingView()
         view.allowsTransparency = true
         view.ignoresSiblingOrder = true
+        view.preferredFramesPerSecond = 30
+        view.shouldCullNonVisibleNodes = true
+        view.isAsynchronous = true
         view.setAccessibilityIdentifier("mandate-chart")
         view.setAccessibilityLabel("Interactive mandate chart")
         view.onBoundsChanged = {
             context.coordinator.render(into: view)
         }
         view.onMouseMoved = { point in
-            context.coordinator.hoverX = point.x
-            context.coordinator.updateInspectionIndex(for: point.x, viewSize: view.bounds.size)
-            context.coordinator.render(into: view)
+            if context.coordinator.updateInspectionIndex(for: point.x, viewSize: view.bounds.size) {
+                context.coordinator.render(into: view)
+            }
         }
         view.onMouseExited = {
-            context.coordinator.hoverX = nil
-            context.coordinator.setInspectionIndex(nil)
-            context.coordinator.render(into: view)
+            if context.coordinator.setInspectionIndex(nil) {
+                context.coordinator.render(into: view)
+            }
         }
         view.presentScene(CockpitScene(size: CGSize(width: 900, height: 320)))
         return view
     }
 
     func updateNSView(_ view: ChartTrackingView, context: Context) {
-        context.coordinator.update(history: history, reducedMotion: reducedMotion)
+        context.coordinator.update(history: history, reducedMotion: reducedMotion, inflationUpperBound: inflationUpperBound)
         context.coordinator.render(into: view)
     }
 
     @MainActor
     final class Coordinator {
         private let onInspectionIndexChanged: (Int?) -> Void
-        var hoverX: CGFloat?
         private var inspectionIndex: Int?
         private var history: [MacroState] = []
         private var reducedMotion = false
+        private var inflationUpperBound = 4.0
 
         init(onInspectionIndexChanged: @escaping (Int?) -> Void) {
             self.onInspectionIndexChanged = onInspectionIndexChanged
         }
 
-        func update(history: [MacroState], reducedMotion: Bool) {
+        func update(history: [MacroState], reducedMotion: Bool, inflationUpperBound: Double) {
             let historyChanged = self.history.count != history.count || self.history.last != history.last
             self.history = history
             self.reducedMotion = reducedMotion
+            self.inflationUpperBound = inflationUpperBound
             if historyChanged {
-                hoverX = nil
                 setInspectionIndex(nil)
             } else if let inspectionIndex, inspectionIndex >= history.count {
                 setInspectionIndex(history.isEmpty ? nil : history.count - 1)
@@ -67,31 +71,38 @@ struct SpriteKitChart: NSViewRepresentable {
             view.window?.acceptsMouseMovedEvents = true
             let scene = (view.scene as? CockpitScene) ?? CockpitScene(size: view.bounds.size)
             scene.size = view.bounds.size == .zero ? CGSize(width: 900, height: 320) : view.bounds.size
-            scene.render(history: history, reducedMotion: reducedMotion, hoverX: hoverX)
+            scene.render(history: history, reducedMotion: reducedMotion, inflationUpperBound: inflationUpperBound, hoverIndex: inspectionIndex)
             if view.scene !== scene {
                 view.presentScene(scene)
             }
         }
 
-        func updateInspectionIndex(for x: CGFloat, viewSize: CGSize) {
+        @discardableResult
+        func updateInspectionIndex(for x: CGFloat, viewSize: CGSize) -> Bool {
             let historyCount = history.count
             guard historyCount > 0 else {
                 setInspectionIndex(nil)
-                return
+                return false
             }
             let frame = CockpitScene.chartFrame(for: viewSize == .zero ? CGSize(width: 900, height: 320) : viewSize)
             let clampedX = min(frame.maxX, max(frame.minX, x))
             let progress = (clampedX - frame.minX) / max(1, frame.width)
             let index = min(historyCount - 1, max(0, Int(round(progress * CGFloat(max(1, historyCount - 1))))))
+            guard inspectionIndex != index else {
+                return false
+            }
             setInspectionIndex(index)
+            return true
         }
 
-        func setInspectionIndex(_ index: Int?) {
+        @discardableResult
+        func setInspectionIndex(_ index: Int?) -> Bool {
             guard inspectionIndex != index else {
-                return
+                return false
             }
             inspectionIndex = index
             onInspectionIndexChanged(index)
+            return true
         }
     }
 }

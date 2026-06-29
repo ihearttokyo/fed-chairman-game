@@ -16,7 +16,15 @@ private func gradeFor(score: Double) -> Grade {
     return .f
 }
 
-public func evaluateScore(history: [MacroState], scenario: ScenarioConfig) -> ScoreState {
+public func activeInflationUpperBound(ui: UiState, currentCareerQuarter: Int) -> Double {
+    guard let activatedQuarter = ui.trumpCheatActivatedCareerQuarter else {
+        return 4
+    }
+    let elapsedQuarters = max(0, currentCareerQuarter - activatedQuarter)
+    return max(4, 8 - Double(elapsedQuarters) * 0.25)
+}
+
+public func evaluateScore(history: [MacroState], scenario: ScenarioConfig, inflationUpperBound: Double = 4) -> ScoreState {
     let played = Array(history.dropFirst())
     let scored = played.isEmpty ? history : played
     let inflationGaps = scored.map { $0.inflation - scenario.targets.inflation }
@@ -38,7 +46,7 @@ public func evaluateScore(history: [MacroState], scenario: ScenarioConfig) -> Sc
         credibilityBonus
     let score = roundTo(clamp(rawScore, 0, 100), digits: 1)
     let final = history.last ?? scenario.startingState
-    let reappointed = score >= 70 && final.inflation <= 4 && final.unemployment <= 7
+    let reappointed = score >= 70 && final.inflation <= inflationUpperBound && final.unemployment <= 7
     let misses = [
         ("inflation drift", meanAbsInflationGap),
         ("unemployment gap", meanAbsUnemploymentGap),

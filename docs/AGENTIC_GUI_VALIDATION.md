@@ -43,11 +43,13 @@ Do not run `npm` or XCTest commands in a loop during visual repair. Lint, unit t
 8. Patch the highest-impact issue found.
 9. Repeat only the targeted scenario that proves the patch.
 10. Run lint/unit/build checks after the screenshot loop has produced a visually coherent app.
-11. Run the native XCTest UI suite once as the final regression gate if the desktop is clear enough for reliable interaction.
+11. Do not run the native XCTest UI suite by default. Use it only when Jared explicitly requests it, when the change is specifically an accessibility/XCUITest regression, or when a release-grade final gate is truly useful after screenshot validation is already clean.
 
 ## Screenshot Evidence
 
 Use `npm run test:gui` as the default desktop evidence gate. It builds a current local app bundle, launches it, creates timestamped responsive screenshots under `/tmp/fed-chairman-agentic-gui/`, and prints direct file paths for inspection or final reports.
+
+The capture harness validates that each PNG contains visible pixels. If macOS privacy state or the active desktop returns a black frame, the gate must fail instead of producing false visual evidence. Grant Screen Recording permission to the invoking terminal/app, or use Computer Use directly against the same app bundle and record that screenshot path/evidence in the final report.
 
 Use Computer Use against that same app build for the interactive playability pass: make at least one policy decision, open Newspaper, Help, and Settings, and visually inspect the resulting states.
 
@@ -61,7 +63,7 @@ scripts/agentic-gui-capture.sh --app "/Applications/Fed Chairman Game.app" --siz
 
 Computer-use screenshots are still preferred when available because they pair pixels with the accessibility tree and allow direct interaction with the running app.
 
-`npm run test:ui` remains available as an XCUITest regression guard, but it is deliberately not part of the default `npm run verify:desktop` path. Run `npm run verify:desktop:xcuitest` only when the desktop is clear and a deterministic accessibility regression pass is useful.
+`npm run test:ui` remains available as an XCUITest regression guard, but it is deliberately not part of the default `npm run verify:desktop` path and should be skipped for almost all visual/product iteration. Run `npm run verify:desktop:xcuitest` only on explicit request, for targeted accessibility/XCUITest work, or when the desktop is clear and a deterministic release/regression pass is useful after screenshots already look correct.
 
 ## Anti-Patterns
 

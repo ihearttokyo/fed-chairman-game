@@ -51,6 +51,8 @@ npm run test:ui
 
 `npm run test:gui` is the default desktop evidence gate. It builds a current local app bundle, launches it, captures provenance-backed screenshots at responsive sizes, then prints the screenshot paths that must be visually inspected before UI work is called complete. Use Computer Use for the interactive playability pass: make at least one policy decision and open Newspaper, Help, and Settings against that same app build.
 
+If the active macOS capture backend returns black screenshots, `test:gui` fails rather than treating those files as evidence. In that case, grant Screen Recording permission to the invoking app/terminal or use Computer Use directly and report that evidence path.
+
 `npm run test:ui` still runs the native XCUITest regression suite. Use it as a final clean-desktop guardrail when the app can run unobstructed, not as the primary visual QA loop.
 
 ## Build And Install

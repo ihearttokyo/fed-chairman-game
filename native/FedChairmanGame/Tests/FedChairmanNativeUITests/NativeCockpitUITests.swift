@@ -164,9 +164,7 @@ final class NativeCockpitUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Save"].waitForExistence(timeout: 1))
         app.buttons["Close newspaper panel"].click()
 
-        app.staticTexts["Mandate Dashboard"].click()
-        app.menuBars.menuBarItems["Policy"].click()
-        app.menuItems["Raise 25 bps"].click()
+        app.buttons["+25 bps"].click()
         XCTAssertTrue(app.buttons["Open newspaper panel"].waitForExistence(timeout: 2))
         XCTAssertFalse(panelElement("newspaper-panel", in: app).exists)
     }

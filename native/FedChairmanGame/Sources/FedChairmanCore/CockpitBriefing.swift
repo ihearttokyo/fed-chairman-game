@@ -26,6 +26,18 @@ public struct HelpTopic: Equatable, Sendable, Identifiable {
 
 public func buildCockpitBriefing(session: GameSession, scenario: ScenarioConfig = classicScenario) -> CockpitBriefing {
     let state = session.current
+    if session.ui.trumpCheatActivatedCareerQuarter != nil {
+        let inflationCap = activeInflationUpperBound(ui: session.ui, currentCareerQuarter: session.totalCareerQuarters)
+        return CockpitBriefing(
+            kicker: "Cheat Event",
+            headline: "Trump elected; Fed independence crisis hits the desk",
+            metadata: "Term \(session.termNumber) | Q\(state.quarterIndex) | CRITICAL",
+            severity: .critical,
+            body: "A televised loyalty ceremony and fascistic salute controversy have shattered the normal mandate frame.",
+            policyImplication: "Political pressure now tolerates inflation up to \(String(format: "%.2f", inflationCap))%, falling 0.25 pp each quarter.",
+            riskCalendar: "Watch credibility, institutional stress, and the shrinking inflation cap.",
+        )
+    }
     let inflationGap = state.inflation - scenario.targets.inflation
     let laborGap = state.unemployment - scenario.targets.unemployment
     let dominantShock = session.latestTriggeredShocks.first

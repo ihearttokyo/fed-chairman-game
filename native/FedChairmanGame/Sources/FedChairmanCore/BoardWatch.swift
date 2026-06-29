@@ -28,14 +28,19 @@ public func buildBoardWatch(session: GameSession, scenario: ScenarioConfig = cla
     let score = session.score
     let current = session.current
     let quartersRemaining = max(0, scenario.termQuarters - session.currentTermQuarter)
+    let inflationUpperBound = activeInflationUpperBound(ui: session.ui, currentCareerQuarter: session.totalCareerQuarters)
     let scorePass = score.score >= 70
-    let inflationPass = current.inflation <= 4
+    let inflationPass = current.inflation <= inflationUpperBound
     let laborPass = current.unemployment <= 7
     let gatesPassed = [scorePass, inflationPass, laborPass].count { $0 }
     let tone = boardWatchTone(
         status: session.status,
-        score: score,
-        current: current,
+        gates: BoardWatchGateState(
+            score: score,
+            inflation: current.inflation,
+            unemployment: current.unemployment,
+            inflationUpperBound: inflationUpperBound,
+        ),
         gatesPassed: gatesPassed,
         quartersRemaining: quartersRemaining,
     )
@@ -45,7 +50,7 @@ public func buildBoardWatch(session: GameSession, scenario: ScenarioConfig = cla
         gateLabel: "\(gatesPassed)/3 gates",
         scoreLabel: "\(formatBoardNumber(score.score, digits: 1)) \(score.grade.rawValue)",
         scoreDetail: "Score \(formatBoardNumber(score.score, digits: 1)) (\(score.grade.rawValue)), needs 70",
-        inflationDetail: "Inflation \(formatBoardPercent(current.inflation)), cap 4.00%",
+        inflationDetail: "Inflation \(formatBoardPercent(current.inflation)), cap \(formatBoardPercent(inflationUpperBound))",
         laborDetail: "Unemployment \(formatBoardPercent(current.unemployment)), cap 7.00%",
         credibilityDetail: "Credibility \(formatBoardNumber(current.credibility, digits: 0))",
         riskLabel: boardWatchRiskLabel(
@@ -62,8 +67,7 @@ public func buildBoardWatch(session: GameSession, scenario: ScenarioConfig = cla
 
 private func boardWatchTone(
     status: CareerStatus,
-    score: ScoreState,
-    current: MacroState,
+    gates: BoardWatchGateState,
     gatesPassed: Int,
     quartersRemaining: Int,
 ) -> BoardWatchTone {
@@ -76,11 +80,18 @@ private func boardWatchTone(
         if gatesPassed == 3 {
             return quartersRemaining <= 4 ? .watch : .onTrack
         }
-        if gatesPassed <= 1 || score.score < 60 || current.inflation > 4.75 || current.unemployment > 7.75 {
+        if gatesPassed <= 1 || gates.score.score < 60 || gates.inflation > gates.inflationUpperBound + 0.75 || gates.unemployment > 7.75 {
             return .danger
         }
         return .watch
     }
+}
+
+private struct BoardWatchGateState {
+    var score: ScoreState
+    var inflation: Double
+    var unemployment: Double
+    var inflationUpperBound: Double
 }
 
 private func boardWatchHeadline(status: CareerStatus, tone: BoardWatchTone, quartersRemaining: Int) -> String {

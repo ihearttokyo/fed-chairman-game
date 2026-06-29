@@ -28,11 +28,11 @@ struct DecisionTapeView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(feedback.mandateLine)
-                    .lineLimit(1)
+                    .lineLimit(2)
                 Text(feedback.credibilityLine)
-                    .lineLimit(1)
+                    .lineLimit(2)
                 Text(feedback.traceLine)
-                    .lineLimit(1)
+                    .lineLimit(2)
                     .foregroundStyle(.white.opacity(0.58))
             }
             .font(.caption.weight(.semibold))
@@ -59,7 +59,7 @@ struct DecisionTapeView: View {
             }
             .frame(width: 86, alignment: .trailing)
         }
-        .frame(height: 42)
+        .frame(minHeight: 48)
         .padding(.vertical, 5)
         .padding(.horizontal, 9)
         .background(background)

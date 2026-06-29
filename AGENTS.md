@@ -8,7 +8,7 @@
 
 - GUI validation must run against the latest intended build, not an older installed artifact. Before any screenshot or click validation, prove the app under test was built from the commit being validated or rebuild/install it from that commit. Record the app path, current git commit, manifest timestamp when available, and executable hash or bundle metadata in the validation notes. Screenshots from older artifacts are historical reference only and do not count as validation.
 
-- Do not confuse the native XCTest UI suite with an agentic GUI validation loop. XCTest/native UI tests are regression guards and final gates; they are not the primary debug signal for visual quality or gameplay usability. Never repeatedly rerun the same broad suite or the same Newspaper/Help/Settings click pattern hoping it will reveal new information.
+- Do not confuse the native XCTest UI suite with an agentic GUI validation loop. For almost all UI/gameplay work, default to screenshot-first computer-use iteration and skip `npm run test:ui` unless Jared explicitly asks for that suite, the change is specifically an accessibility/XCUITest regression, or a release-grade final gate is truly needed after the visual loop is already clean. XCTest/native UI tests are regression guards and rare final gates; they are not the primary debug signal for visual quality or gameplay usability. Never repeatedly rerun the same broad suite or the same Newspaper/Help/Settings click pattern hoping it will reveal new information.
 
 - Do not enter an `npm`/XCTest validation loop before screenshot-driven iteration. After a source change that affects UI, build the app artifact, capture and inspect fresh screenshots from that artifact, patch the visible defect, and only then run `npm run lint`, `npm test`, or the native UI suite as supporting/final gates. If a test fails during visual repair, inspect the screenshot or code path that explains the failure instead of rerunning the same command.
 
@@ -23,7 +23,7 @@
   6. Check compact, standard, and large window sizes when layout is touched.
   7. Inspect screenshots for occlusion, unreadable text, hidden controls, weak hierarchy, confusing affordances, stale/reset chart positions, and visual clutter.
   8. Before rerunning any validation path, name the new hypothesis or changed code that makes the rerun useful. If there is no new hypothesis or changed code, stop rerunning and inspect/patch instead.
-  9. Fix issues found, then repeat only the targeted scenario that proves the fix. Run the full XCTest/native UI suite once at the end as a regression gate, and skip/rerun it if another app window occludes the tested app.
+  9. Fix issues found, then repeat only the targeted scenario that proves the fix. Do not run the full XCTest/native UI suite by default; reserve it for explicit user requests, targeted accessibility/XCUITest work, or release-grade regression confidence after screenshot validation has already passed. If it is run and another app window occludes the tested app, skip or rerun once after clearing that condition instead of looping.
 
 - Keep XCTest/native UI tests, unit tests, lint, and build checks in the validation suite, but never use them as a replacement for direct visual inspection of the running game.
 

@@ -1,10 +1,16 @@
 import AppKit
+import FedChairmanCore
+import SwiftUI
+
+@MainActor
+let fedChairmanSharedStore = GameSessionStore()
 
 @MainActor
 final class GameWindowDelegate: NSObject, NSApplicationDelegate {
     private static let maxWindowOpenAttempts = 4
     private var windowRequestScheduled = false
     private var windowOpenAttempts = 0
+    private var fallbackWindow: NSWindow?
 
     func applicationWillFinishLaunching(_: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -47,13 +53,55 @@ final class GameWindowDelegate: NSObject, NSApplicationDelegate {
             NSRunningApplication.current.activate(options: [.activateAllWindows])
             Self.normalizeVisibleWindows()
             let requestSent = Self.requestNewWindow()
-            guard !requestSent || !Self.hasVisibleGameWindow(),
-                  windowOpenAttempts < Self.maxWindowOpenAttempts
-            else {
+            if Self.hasVisibleGameWindow() {
+                windowOpenAttempts = 0
                 return
             }
-            ensurePlayableWindow()
+            if requestSent, windowOpenAttempts < Self.maxWindowOpenAttempts {
+                ensurePlayableWindow()
+            } else {
+                openFallbackWindow()
+            }
         }
+    }
+
+    private func openFallbackWindow() {
+        if let fallbackWindow, fallbackWindow.isVisible {
+            fallbackWindow.makeKeyAndOrderFront(nil)
+            return
+        }
+        let hostingController = NSHostingController(
+            rootView: NativeCockpitView()
+                .environmentObject(fedChairmanSharedStore),
+        )
+        let window = NSWindow(
+            contentRect: CGRect(x: 0, y: 0, width: 1180, height: 700),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false,
+        )
+        window.title = "Fed Chairman Game"
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.minSize = CGSize(width: 1180, height: 700)
+        window.contentViewController = hostingController
+        if let visibleFrame = NSScreen.main?.visibleFrame {
+            window.setFrame(
+                CGRect(
+                    x: visibleFrame.midX - 590,
+                    y: visibleFrame.midY - 350,
+                    width: min(1180, visibleFrame.width - 40),
+                    height: min(700, visibleFrame.height - 40),
+                ),
+                display: true,
+                animate: false,
+            )
+        } else {
+            window.center()
+        }
+        window.makeKeyAndOrderFront(nil)
+        fallbackWindow = window
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private static func requestNewWindow() -> Bool {

@@ -13,7 +13,8 @@ SWIFTPM_EXECUTABLE="$BUILD_DIR/FedChairmanGameNative"
 SWIFTPM_RESOURCE_BUNDLE="$BUILD_DIR/FedChairmanGame_FedChairmanNativeApp.bundle"
 APP_ICON="$ROOT_DIR/App/AppIcon.icns"
 
-swift build -c release --package-path "$ROOT_DIR"
+read -r -a EXTRA_SWIFT_BUILD_FLAGS <<<"${FED_CHAIRMAN_SWIFT_BUILD_FLAGS:-}"
+swift build -c release "${EXTRA_SWIFT_BUILD_FLAGS[@]}" --package-path "$ROOT_DIR"
 
 rm -rf "$APP_STAGING_ROOT"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
