@@ -44,15 +44,22 @@ public func buildCockpitBriefing(session: GameSession, scenario: ScenarioConfig 
     let severity = briefingSeverity(inflationGap: inflationGap, laborGap: laborGap, credibility: state.credibility, hasShock: dominantShock != nil)
     let pressure = abs(inflationGap) >= abs(laborGap) ? "inflation" : "labor"
     let direction = policyDirection(inflationGap: inflationGap, laborGap: laborGap)
+    let briefSeed = "\(session.seed):t\(session.termNumber):q\(state.quarterIndex):\(dominantShock?.headlineKey ?? "baseline")"
 
     return CockpitBriefing(
-        kicker: dominantShock == nil ? "Quarterly Briefing" : "\(dominantShock!.type.rawValue.capitalized) Shock",
-        headline: briefingHeadline(inflationGap: inflationGap, laborGap: laborGap, credibility: state.credibility, pressure: pressure),
+        kicker: briefingKicker(shock: dominantShock, seed: briefSeed),
+        headline: briefingHeadline(inflationGap: inflationGap, laborGap: laborGap, credibility: state.credibility, pressure: pressure, seed: briefSeed),
         metadata: "Term \(session.termNumber) | Q\(state.quarterIndex) | \(severity.rawValue.uppercased())",
         severity: severity,
-        body: session.traces.last?.explanation ?? "Markets are reading the opening stance, current credibility, and early policy signal.",
+        body: briefingBody(
+            traceExplanation: session.traces.last?.explanation,
+            inflationGap: inflationGap,
+            laborGap: laborGap,
+            credibility: state.credibility,
+            seed: briefSeed,
+        ),
         policyImplication: direction,
-        riskCalendar: "Watch \(pressure), credibility \(String(format: "%.0f", state.credibility)), and lagged policy over the next quarter.",
+        riskCalendar: briefingRiskCalendar(pressure: pressure, credibility: state.credibility, seed: briefSeed),
     )
 }
 
@@ -164,20 +171,87 @@ private func briefingSeverity(inflationGap: Double, laborGap: Double, credibilit
     return .normal
 }
 
-private func briefingHeadline(inflationGap: Double, laborGap: Double, credibility: Double, pressure: String) -> String {
+private func briefingKicker(shock: Shock?, seed: String) -> String {
+    guard let shock else {
+        return deterministicChoice([
+            "Quarterly Briefing",
+            "Desk Open",
+            "Mandate Wire",
+            "Policy Morning",
+        ], seed: seed)
+    }
+    return deterministicChoice([
+        "\(shock.type.rawValue.capitalized) Shock",
+        "\(shock.type.rawValue.capitalized) Watch",
+        "Incoming \(shock.type.rawValue.capitalized) Pressure",
+    ], seed: seed)
+}
+
+private func briefingHeadline(inflationGap: Double, laborGap: Double, credibility: Double, pressure: String, seed: String) -> String {
     if credibility < 55 {
-        return "Credibility is becoming the binding policy constraint"
+        return deterministicChoice([
+            "Credibility is becoming the binding policy constraint",
+            "Markets are marking down the policy reaction function",
+            "The confidence buffer is thinning before the next vote",
+        ], seed: seed)
     }
     if laborGap >= 1.4 {
-        return "Labor-market weakness is becoming a reappointment risk"
+        return deterministicChoice([
+            "Labor-market weakness is becoming a reappointment risk",
+            "Hiring slack is moving to the center of the mandate",
+            "The labor side of the scorecard is flashing amber",
+        ], seed: seed)
     }
     if inflationGap >= 0.8 {
-        return "Inflation pressure is testing the policy path"
+        return deterministicChoice([
+            "Inflation pressure is testing the policy path",
+            "Price momentum is forcing a cleaner signal",
+            "Inflation is asking whether the desk will lean in",
+        ], seed: seed)
     }
     if inflationGap <= -0.8 {
-        return "Inflation is undershooting while demand cools"
+        return deterministicChoice([
+            "Inflation is undershooting while demand cools",
+            "Soft prices give the desk room to protect labor",
+            "The disinflation glide path may be turning too cold",
+        ], seed: seed)
     }
-    return "The \(pressure) side of the mandate is setting the tone"
+    return deterministicChoice([
+        "The \(pressure) side of the mandate is setting the tone",
+        "The desk opens with a narrow but manageable mandate gap",
+        "Markets see room for a measured first signal",
+        "Both sides of the mandate are still in play",
+    ], seed: seed)
+}
+
+private func briefingBody(traceExplanation: String?, inflationGap: Double, laborGap: Double, credibility: Double, seed: String) -> String {
+    if let traceExplanation {
+        return deterministicChoice([
+            traceExplanation,
+            "\(traceExplanation) The next vote should separate fresh data from lagged policy.",
+            "\(traceExplanation) Watch whether credibility absorbs the move or amplifies it.",
+        ], seed: seed)
+    }
+    let mandateLine = if abs(inflationGap) < 0.35, abs(laborGap) < 0.6 {
+        "The opening economy is close enough to target that over-steering is the main rookie mistake."
+    } else if abs(inflationGap) >= abs(laborGap) {
+        "Inflation is the louder miss, but the labor buffer still matters for the reappointment gate."
+    } else {
+        "Labor slack is the louder miss, but easing too quickly can spend credibility."
+    }
+    return deterministicChoice([
+        "\(mandateLine) Credibility starts near \(String(format: "%.0f", credibility)), giving you time to move gradually.",
+        "\(mandateLine) Start by testing a small move and reading the transmission tape next quarter.",
+        "\(mandateLine) The safest opening is a clear signal, not a dramatic one.",
+    ], seed: seed)
+}
+
+private func briefingRiskCalendar(pressure: String, credibility: Double, seed: String) -> String {
+    deterministicChoice([
+        "Watch \(pressure), credibility \(String(format: "%.0f", credibility)), and lagged policy over the next quarter.",
+        "Next read: \(pressure) trend, expectations, and whether credibility holds above \(String(format: "%.0f", credibility - 5)).",
+        "Risk desk: separate temporary \(pressure) noise from the four-quarter policy lag.",
+    ], seed: seed)
 }
 
 private func policyDirection(inflationGap: Double, laborGap: Double) -> String {
@@ -188,4 +262,15 @@ private func policyDirection(inflationGap: Double, laborGap: Double) -> String {
         return "Bias easier unless inflation expectations re-accelerate."
     }
     return "Hold or move gradually; avoid creating a new mandate miss."
+}
+
+private func deterministicChoice(_ options: [String], seed: String) -> String {
+    guard !options.isEmpty else {
+        return ""
+    }
+    var hash = 5381
+    for scalar in seed.unicodeScalars {
+        hash = ((hash << 5) &+ hash) &+ Int(scalar.value)
+    }
+    return options[abs(hash) % options.count]
 }

@@ -65,9 +65,10 @@ public func buildTermShockDeck(seed: String, termNumber: Int) -> [Shock] {
     var rng = SeededRng(seed: "\(seed):term-\(termNumber):shock-deck")
     let windows = [(3, 5), (7, 9), (11, 13), (14, 16)]
     let offset = Int(floor(rng.between(0, Double(shockTemplates.count))))
+    let firstTermShockScale = termNumber == 1 ? 0.72 : 1.0
     return windows.enumerated().map { index, window in
         let template = shockTemplates[(offset + index) % shockTemplates.count]
-        let magnitude = rng.between(template.magnitude.lowerBound, template.magnitude.upperBound)
+        let magnitude = rng.between(template.magnitude.lowerBound, template.magnitude.upperBound) * firstTermShockScale
         let persistence = pickQuarter(rng: &rng, min: template.persistence.lowerBound, max: template.persistence.upperBound)
         return Shock(
             id: "\(template.id)-t\(termNumber)-\(index + 1)",

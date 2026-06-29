@@ -72,6 +72,28 @@ import Testing
     #expect(buildTermShockDeck(seed: "classic-2026", termNumber: 3) != buildTermShockDeck(seed: "classic-2026", termNumber: 4))
 }
 
+@Test func firstTermShockDeckIsGentlerForNewPlayers() {
+    let firstTerm = buildTermShockDeck(seed: "classic-2026", termNumber: 1)
+    let laterTerm = buildTermShockDeck(seed: "classic-2026", termNumber: 2)
+
+    #expect(firstTerm.count == 4)
+    #expect(firstTerm.allSatisfy { abs($0.magnitude) <= 1.0 })
+    #expect(firstTerm.map { abs($0.magnitude) }.max() ?? 0 < laterTerm.map { abs($0.magnitude) }.max() ?? 0)
+}
+
+@Test func cockpitBriefingsVaryDeterministicallyAcrossSeeds() {
+    let headlines = Set((0 ..< 8).map { index in
+        let store = GameSessionStore()
+        store.start(seed: "briefing-variant-\(index)")
+        return buildCockpitBriefing(session: store.session).headline
+    })
+
+    #expect(headlines.count > 1)
+    let store = GameSessionStore()
+    store.start(seed: "briefing-stable")
+    #expect(buildCockpitBriefing(session: store.session) == buildCockpitBriefing(session: store.session))
+}
+
 @Test func saveFileDetectsTamperingAndRecomputesScores() throws {
     let store = GameSessionStore()
     store.start(seed: "save-file")
