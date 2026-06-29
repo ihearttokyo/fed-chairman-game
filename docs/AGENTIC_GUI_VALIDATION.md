@@ -24,6 +24,8 @@ Otherwise, stop running tests and inspect the app or code.
 
 Do not run `npm` or XCTest commands in a loop during visual repair. Lint, unit tests, packaging scripts, and UI suites are gates, not discovery tools. For UI/UX defects, the required discovery loop is: build the current app, capture a fresh screenshot from that build, inspect the pixels, patch the visible problem, and rerun only the targeted screenshot scenario that proves the patch. If an automated UI run fails, use its screenshot/artifact or the implicated source code to decide the next patch; do not rerun the same command unless code changed or a new hypothesis is named.
 
+When Jared explicitly asks for native XCUITest coverage, run one large-window suite pass by default. Do not run compact/standard/large responsive matrices, repeated full-suite retries, or targeted rerun loops unless Jared explicitly asks for that exact validation in the current task. If the large-window pass fails because of desktop focus, Codex occlusion, stale geometry assertions, or automation state, stop and report the blocker instead of patching tests and cycling again.
+
 ## Preferred Loop
 
 1. Verify artifact provenance for the app under test. Rebuild/install if the app is stale, ambiguous, or from a different commit.
@@ -38,7 +40,8 @@ Do not run `npm` or XCTest commands in a loop during visual repair. Lint, unit t
    - early, mid, and late quarters;
    - Newspaper open/close after progression;
    - Help and Settings only as workflow coverage;
-   - compact, standard, and large windows when responsive layout is touched.
+   - one large-window state by default.
+   Check compact, standard, and large responsive sizes only when Jared explicitly asks for responsive validation or the code change directly targets responsive layout.
 7. Save screenshots for each meaningful state with stable names.
 8. Patch the highest-impact issue found.
 9. Repeat only the targeted scenario that proves the patch.
@@ -47,7 +50,7 @@ Do not run `npm` or XCTest commands in a loop during visual repair. Lint, unit t
 
 ## Screenshot Evidence
 
-Use `npm run test:gui` as the default desktop evidence gate. It builds a current local app bundle, launches it, creates timestamped responsive screenshots under `/tmp/fed-chairman-agentic-gui/`, and prints direct file paths for inspection or final reports.
+Use `npm run test:gui` only when screenshot evidence from the harness is specifically useful and the desktop/screen-recording state is healthy. Prefer one targeted large-window capture for normal validation; do not use the harness to recreate a responsive screenshot matrix unless Jared asks for responsive coverage.
 
 The capture harness validates that each PNG contains visible pixels. If macOS privacy state or the active desktop returns a black frame, the gate must fail instead of producing false visual evidence. Grant Screen Recording permission to the invoking terminal/app, or use Computer Use directly against the same app bundle and record that screenshot path/evidence in the final report.
 
@@ -63,7 +66,7 @@ scripts/agentic-gui-capture.sh --app "/Applications/Fed Chairman Game.app" --siz
 
 Computer-use screenshots are still preferred when available because they pair pixels with the accessibility tree and allow direct interaction with the running app.
 
-`npm run test:ui` remains available as an XCUITest regression guard, but it is deliberately not part of the default `npm run verify:desktop` path and should be skipped for almost all visual/product iteration. Run `npm run verify:desktop:xcuitest` only on explicit request, for targeted accessibility/XCUITest work, or when the desktop is clear and a deterministic release/regression pass is useful after screenshots already look correct.
+`npm run test:ui` remains available as an XCUITest regression guard, but it is deliberately not part of the default validation path and should be skipped for almost all visual/product iteration. If Jared requests it, run one large-window pass unless the current task explicitly asks for responsive matrices or targeted reruns.
 
 ## Anti-Patterns
 
