@@ -889,6 +889,10 @@ struct NativeCockpitView: View {
         guard parts.count == 2,
               let width = Double(parts[0]),
               let height = Double(parts[1]),
+              width.isFinite,
+              height.isFinite,
+              width >= 320,
+              height >= 260,
               let window = NSApp.windows.first(where: { $0.canBecomeKey })
         else {
             return

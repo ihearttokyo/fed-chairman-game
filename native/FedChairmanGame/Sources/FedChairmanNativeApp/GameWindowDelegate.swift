@@ -86,12 +86,14 @@ final class GameWindowDelegate: NSObject, NSApplicationDelegate {
         window.minSize = CGSize(width: 1180, height: 700)
         window.contentViewController = hostingController
         if let visibleFrame = NSScreen.main?.visibleFrame {
+            let targetWidth = max(320.0, visibleFrame.width - 40)
+            let targetHeight = max(260.0, visibleFrame.height - 40)
             window.setFrame(
                 CGRect(
                     x: visibleFrame.midX - 590,
                     y: visibleFrame.midY - 350,
-                    width: min(1180, visibleFrame.width - 40),
-                    height: min(700, visibleFrame.height - 40),
+                    width: min(1180, targetWidth),
+                    height: min(700, targetHeight),
                 ),
                 display: true,
                 animate: false,
@@ -118,9 +120,13 @@ final class GameWindowDelegate: NSObject, NSApplicationDelegate {
         for window in NSApp.windows where window.isVisible && window.canBecomeKey {
             if let visibleFrame = NSScreen.main?.visibleFrame {
                 let testWindowSize = preferredUITestWindowSize()
+                let safeVisibleWidth = max(320.0, visibleFrame.width - 40)
+                let safeVisibleHeight = max(260.0, visibleFrame.height - 40)
                 let restoredFrameIsOversized = window.frame.width > visibleFrame.width - 80 || window.frame.height > visibleFrame.height - 80
-                let width = min(testWindowSize?.width ?? (restoredFrameIsOversized ? 1180 : max(window.frame.width, 1180)), visibleFrame.width - 40)
-                let height = min(testWindowSize?.height ?? (restoredFrameIsOversized ? 700 : max(window.frame.height, 700)), visibleFrame.height - 40)
+                let requestedWidth = testWindowSize?.width ?? (restoredFrameIsOversized ? 1180 : max(window.frame.width, 1180))
+                let requestedHeight = testWindowSize?.height ?? (restoredFrameIsOversized ? 700 : max(window.frame.height, 700))
+                let width = min(max(320, requestedWidth), safeVisibleWidth)
+                let height = min(max(260, requestedHeight), safeVisibleHeight)
                 let frame = CGRect(
                     x: visibleFrame.midX - width / 2,
                     y: visibleFrame.midY - height / 2,
@@ -140,7 +146,11 @@ final class GameWindowDelegate: NSObject, NSApplicationDelegate {
         let parts = rawSize.lowercased().split(separator: "x")
         guard parts.count == 2,
               let width = Double(parts[0]),
-              let height = Double(parts[1])
+              let height = Double(parts[1]),
+              width.isFinite,
+              height.isFinite,
+              width > 0,
+              height > 0
         else {
             return nil
         }
