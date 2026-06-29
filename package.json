@@ -11,6 +11,7 @@
     "test:fast": "scripts/native-validation.sh fast",
     "test:gui": "scripts/agentic-gui-verify.sh",
     "test:ui": "scripts/native-validation.sh ui-final",
+    "test:ui:preflight": "scripts/native-validation.sh ui-preflight",
     "test:ui:prepare": "scripts/native-validation.sh ui-prepare",
     "test:ui:one": "scripts/native-validation.sh ui-one",
     "test:ui:final": "scripts/native-validation.sh ui-final",

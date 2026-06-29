@@ -46,6 +46,7 @@ npm run typecheck
 npm run lint
 npm test
 npm run test:gui
+npm run test:ui:preflight
 npm run test:ui:prepare
 npm run test:ui:one -- FedChairmanGameNativeUITests/NativeCockpitUITests/testLaunchStartsWithDockPanelsClosedAndPrimarySurfacesClear
 npm run test:ui:final
@@ -57,7 +58,11 @@ npm run test:ui:final
 
 If the active macOS capture backend returns black screenshots, `test:gui` fails rather than treating those files as evidence. In that case, grant Screen Recording permission to the invoking app/terminal or use Computer Use directly and report that evidence path.
 
-`npm run test:ui` and `npm run test:ui:final` run the guarded native XCUITest final gate. They do not run raw `xcodebuild test`; they use the repo validation ladder, reusable DerivedData, `test-without-building`, and one large-window smoke test. Use `npm run test:ui:prepare` before `npm run test:ui:one -- <Target/Class/testMethod>` when a single targeted UI regression is explicitly useful.
+`npm run test:ui` and `npm run test:ui:final` run the guarded native XCUITest final gate. They do not run raw `xcodebuild test`; they use the repo validation ladder, reusable DerivedData, `test-without-building`, and one large-window smoke test.
+
+Run `npm run test:ui:preflight` before `npm run test:ui:prepare`, `npm run test:ui:one -- ...`, or `npm run test:ui:final` so known desktop/XCUITest blockers are surfaced before building UI test products or launching UI tests.
+If preflight fails, report the failure and do not continue with the UI ladder on that run.
+Use `npm run test:ui:prepare` before `npm run test:ui:one -- <Target/Class/testMethod>` when a single targeted UI regression is explicitly useful.
 
 ## Build And Install
 

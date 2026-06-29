@@ -33,12 +33,14 @@ Use the repo-owned ladder instead of raw `xcodebuild test`:
 ```bash
 npm run test:fast
 npm run test:gui
+npm run test:ui:preflight
 npm run test:ui:prepare
 npm run test:ui:one -- FedChairmanGameNativeUITests/NativeCockpitUITests/testLaunchStartsWithDockPanelsClosedAndPrimarySurfacesClear
 npm run test:ui:final
 ```
 
-`test:fast` is the inner loop: Swift build plus Swift unit tests. `test:gui` is the screenshot/computer-use evidence path. `test:ui:prepare` runs `build-for-testing` into reusable DerivedData. `test:ui:one` runs exactly one named UI test with `test-without-building` and `-only-testing`. `test:ui:final` is the explicit large-window final gate and is guarded against repeated runs for the same workspace fingerprint.
+`test:fast` is the inner loop: Swift build plus Swift unit tests. `test:gui` is the screenshot/computer-use evidence path. `test:ui:preflight` runs cheap Xcode/UI metadata checks and environment diagnostics before preparing or running XCUITests. `test:ui:prepare` runs `build-for-testing` into reusable DerivedData. `test:ui:one` runs exactly one named UI test with `test-without-building` and `-only-testing`. `test:ui:final` is the explicit large-window final gate and is guarded against repeated runs for the same workspace fingerprint.
+If `test:ui:preflight` reports FAIL, report the hard blocker and stop the XCUITest ladder for that run.
 
 Do not invoke raw `xcodebuild test` for UI validation. If a second `test:ui:final` is blocked, report the prior result and the guard message. Override only when Jared explicitly asks for another pass.
 

@@ -24,6 +24,7 @@ npm run lint
 npm test
 npm run test:fast
 npm run test:gui
+npm run test:ui:preflight
 ```
 
 The native package can also be driven directly:
@@ -43,10 +44,13 @@ The internal target and scheme still use `FedChairmanGameNative` as a stable bui
 Use the root validation ladder for native UI tests. Do not run raw `xcodebuild test` for XCUITest:
 
 ```bash
+npm run test:ui:preflight
 npm run test:ui:prepare
 npm run test:ui:one -- FedChairmanGameNativeUITests/NativeCockpitUITests/testLaunchStartsWithDockPanelsClosedAndPrimarySurfacesClear
 npm run test:ui:final
 ```
+
+If `npm run test:ui:preflight` fails, stop here, report the blockers, and do not continue to `test:ui:prepare`, `test:ui:one`, or `test:ui:final` until they are resolved.
 
 ## Packaging
 
