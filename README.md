@@ -60,7 +60,7 @@ If the active macOS capture backend returns black screenshots, `test:gui` fails 
 
 `npm run test:ui` and `npm run test:ui:final` run the guarded native XCUITest final gate. They do not run raw `xcodebuild test`; they use the repo validation ladder, reusable DerivedData, `test-without-building`, and one large-window smoke test.
 
-Run `npm run test:ui:preflight` before `npm run test:ui:prepare`, `npm run test:ui:one -- ...`, or `npm run test:ui:final` so known desktop/XCUITest blockers are surfaced before building UI test products or launching UI tests.
+Run `npm run test:ui:preflight` before `npm run test:ui:prepare`, `npm run test:ui:one -- ...`, or `npm run test:ui:final` so known desktop/XCUITest blockers are surfaced before building UI test products or launching UI tests. For the default macOS destination, CoreSimulator/simctl noise is warning-only because the app does not need an iOS simulator.
 If preflight fails, report the failure and do not continue with the UI ladder on that run.
 Use `npm run test:ui:prepare` before `npm run test:ui:one -- <Target/Class/testMethod>` when a single targeted UI regression is explicitly useful.
 

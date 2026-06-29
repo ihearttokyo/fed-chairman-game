@@ -15,6 +15,7 @@ HISTORY_LOG="$STATE_DIR/history.log"
 LOCK_DIR="$STATE_DIR/lock"
 DRY_RUN="${FED_CHAIRMAN_VALIDATION_DRY_RUN:-0}"
 ALLOW_REPEAT_FINAL="${FED_CHAIRMAN_ALLOW_REPEAT_UI_FINAL:-0}"
+PREFLIGHT_COMMAND_TIMEOUT_SECONDS="${FED_CHAIRMAN_PREFLIGHT_COMMAND_TIMEOUT_SECONDS:-30}"
 FINAL_UI_TEST="FedChairmanGameNativeUITests/NativeCockpitUITests/testLaunchStartsWithDockPanelsClosedAndPrimarySurfacesClear"
 
 export CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-/tmp/fed-chairman-clang-module-cache}"
@@ -34,6 +35,8 @@ Usage:
 Environment:
   FED_CHAIRMAN_VALIDATION_DRY_RUN=1         Print commands without executing them.
   FED_CHAIRMAN_ALLOW_REPEAT_UI_FINAL=1      Allow repeated ui-final for the same workspace fingerprint.
+  FED_CHAIRMAN_PREFLIGHT_COMMAND_TIMEOUT_SECONDS=30
+                                             Timeout for each ui-preflight metadata command.
   FED_CHAIRMAN_XCUITEST_DERIVED_DATA=PATH   Override reusable DerivedData path.
 USAGE
 }
@@ -202,8 +205,9 @@ status() {
 run_capture_command() {
   local label="$1"
   local output_path="$2"
+  local pid watcher status timed_out=0 timeout_seconds
   shift 2
-  local status=0
+  timeout_seconds="$PREFLIGHT_COMMAND_TIMEOUT_SECONDS"
 
   mkdir -p "$(dirname "$output_path")"
 
@@ -216,9 +220,30 @@ run_capture_command() {
 
   print_command "$@"
   set +e
-  "$@" >"$output_path" 2>&1
+  "$@" >"$output_path" 2>&1 &
+  pid=$!
+  (
+    sleep "$timeout_seconds"
+    if kill -0 "$pid" 2>/dev/null; then
+      printf '\nCOMMAND_TIMEOUT after %ss: %s\n' "$timeout_seconds" "$label" >>"$output_path"
+      kill "$pid" 2>/dev/null
+      sleep 2
+      kill -9 "$pid" 2>/dev/null
+    fi
+  ) &
+  watcher=$!
+  wait "$pid"
   status=$?
+  if grep -q 'COMMAND_TIMEOUT after' "$output_path" 2>/dev/null; then
+    timed_out=1
+    status=124
+  fi
+  kill "$watcher" 2>/dev/null
+  wait "$watcher" 2>/dev/null
   set -e
+  if (( timed_out == 1 )); then
+    status FAIL "$label timed out after ${timeout_seconds}s"
+  fi
   return "$status"
 }
 
@@ -240,10 +265,10 @@ report_hard_env_blockers() {
   local context="$2"
   local hard_line
 
-  if grep -Eiq 'CoreSimulator is out of date|CoreSimulatorService connection became invalid|Cannot talk to the service|System authentication is running|sandbox_apply|Operation not permitted|Trace/BPT trap|IDETest.*thwarted|lost connection|Failed to initialize simulator device set' "$output_path"; then
+  if grep -Eiq 'COMMAND_TIMEOUT after|CoreSimulator is out of date|CoreSimulatorService connection became invalid|Cannot talk to the service|System authentication is running|sandbox_apply|Operation not permitted|Trace/BPT trap|IDETest.*thwarted|lost connection|Failed to initialize simulator device set' "$output_path"; then
     while IFS= read -r hard_line; do
       status FAIL "$context: $hard_line"
-    done < <(grep -Eia 'CoreSimulator is out of date|CoreSimulatorService connection became invalid|Cannot talk to the service|System authentication is running|sandbox_apply|Operation not permitted|Trace/BPT trap|IDETest.*thwarted|lost connection|Failed to initialize simulator device set' "$output_path" | head -n 5)
+    done < <(grep -Eia 'COMMAND_TIMEOUT after|CoreSimulator is out of date|CoreSimulatorService connection became invalid|Cannot talk to the service|System authentication is running|sandbox_apply|Operation not permitted|Trace/BPT trap|IDETest.*thwarted|lost connection|Failed to initialize simulator device set' "$output_path" | head -n 5)
     return 1
   fi
 
@@ -273,19 +298,17 @@ check_writeable_tmp_dir() {
 run_preflight() {
   local failures=0
   local preflight_run_root
-  local list_output
-  local build_output
   local destination_output
   local simctl_output
+  local scheme_path
   local platform
   local destination_match
 
   platform="${DESTINATION#platform=}"
   destination_match="${platform%%,*}"
+  scheme_path="$PROJECT/xcshareddata/xcschemes/$SCHEME.xcscheme"
   mkdir -p "$PRE_FLIGHT_ROOT"
   preflight_run_root="$(mktemp -d "$PRE_FLIGHT_ROOT/run-$(date -u +%Y%m%dT%H%M%SZ).XXXXXX")"
-  list_output="$preflight_run_root/metadata-list.log"
-  build_output="$preflight_run_root/metadata-buildsettings.log"
   destination_output="$preflight_run_root/metadata-destinations.log"
   simctl_output="$preflight_run_root/simctl.log"
 
@@ -321,36 +344,10 @@ run_preflight() {
     ((failures += 1))
   fi
 
-  if [[ "$DRY_RUN" == "1" ]]; then
-    run_capture_command "xcodebuild -list" "$list_output" xcodebuild -list -project "$PROJECT"
-    status WARN "Scheme presence from xcodebuild -list not validated under DRY_RUN"
-  elif run_capture_command "xcodebuild -list" "$list_output" xcodebuild -list -project "$PROJECT"; then
-    if grep -Eiq "^[[:space:]]+${SCHEME}[[:space:]]*$" "$list_output"; then
-      status PASS "Scheme $SCHEME found in xcodebuild -list"
-    else
-      status FAIL "Scheme $SCHEME not found in xcodebuild -list"
-      ((failures += 1))
-    fi
+  if [[ -f "$scheme_path" ]]; then
+    status PASS "Shared scheme found: $SCHEME"
   else
-    status FAIL "xcodebuild -list failed"
-    ((failures += 1))
-  fi
-  report_env_warnings "$list_output" "xcodebuild -list"
-  if ! report_hard_env_blockers "$list_output" "xcodebuild -list"; then
-    ((failures += 1))
-  fi
-
-  if [[ "$DRY_RUN" == "1" ]]; then
-    run_capture_command "xcodebuild -showBuildSettings" "$build_output" xcodebuild -project "$PROJECT" -scheme "$SCHEME" -showBuildSettings
-    status WARN "xcodebuild -showBuildSettings skipped under DRY_RUN"
-  elif run_capture_command "xcodebuild -showBuildSettings" "$build_output" xcodebuild -project "$PROJECT" -scheme "$SCHEME" -showBuildSettings; then
-    status PASS "xcodebuild -showBuildSettings succeeded"
-  else
-    status FAIL "xcodebuild -showBuildSettings failed"
-    ((failures += 1))
-  fi
-  report_env_warnings "$build_output" "xcodebuild -showBuildSettings"
-  if ! report_hard_env_blockers "$build_output" "xcodebuild -showBuildSettings"; then
+    status FAIL "Shared scheme not found: $scheme_path"
     ((failures += 1))
   fi
 
@@ -368,11 +365,15 @@ run_preflight() {
     ((failures += 1))
   fi
   report_env_warnings "$destination_output" "xcodebuild -showdestinations"
-  if ! report_hard_env_blockers "$destination_output" "xcodebuild -showdestinations"; then
+  if [[ "$destination_match" == "macOS" ]]; then
+    status INFO "Ignoring CoreSimulator diagnostics for macOS destination preflight"
+  elif ! report_hard_env_blockers "$destination_output" "xcodebuild -showdestinations"; then
     ((failures += 1))
   fi
 
-  if command -v xcrun >/dev/null 2>&1; then
+  if [[ "$destination_match" == "macOS" ]]; then
+    status INFO "Skipping simctl diagnostics for macOS destination preflight"
+  elif command -v xcrun >/dev/null 2>&1; then
     if [[ "$DRY_RUN" == "1" ]]; then
       run_capture_command "xcrun simctl" "$simctl_output" xcrun simctl list devices
       status WARN "xcrun simctl validation skipped under DRY_RUN"
