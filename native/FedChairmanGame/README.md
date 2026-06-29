@@ -1,57 +1,89 @@
-# Fed Chairman Game Native Target
+# Fed Chairman Game Native App
 
-This directory is the native macOS migration target for Fed Chairman Game.
+This directory contains the shipped product surface: a native macOS game built with SwiftUI, SpriteKit, and AppKit.
 
-## Direction
+## Current Shape
 
-- Stack: SwiftUI for app structure and controls, SpriteKit for the animated 2D cockpit graph and instrument motion.
-- Art direction: premium command desk, with tactile native controls and original generated UI art.
-- Migration strategy: native-first beta. The old React/Tauri source has been removed from the release tree; root build scripts, CI, and beta packaging target this native app.
+- `Sources/FedChairmanCore/`: deterministic macro model, scoring, saves, exports, briefings, debriefs, and cockpit state models.
+- `Sources/FedChairmanNativeApp/`: SwiftUI/SpriteKit macOS cockpit, panels, menu commands, file import/export, sound, keyboard dispatch, and launch behavior.
+- `Tests/FedChairmanCoreTests/`: fast engine and model contract tests.
+- `Tests/FedChairmanNativeUITests/`: native macOS XCUITest regression coverage.
+- `Assets.xcassets/`, `App/`, and `SpriteAtlases/`: original native app icon and cockpit art inputs.
+- `scripts/`: local development, release-candidate, and production packaging.
 
-## Current Build
+The release tree is intentionally native-only. Browser, WebView, local-server, Tauri, and web packaging paths are not part of the product.
 
-The local machine now has full Xcode selected globally:
+## Tooling
 
-- `xcode-select -p` points to `/Applications/Xcode.app/Contents/Developer`.
-- `xcodebuild -version` reports Xcode 26.5.
-- `swiftformat`, `swiftlint`, `xcbeautify`, and `xcodegen` are installed globally through Homebrew.
-- `swift test`, `swift build`, `swiftformat Sources Tests --swift-version 6.1 --lint`, and `swiftlint lint --strict` are the current native verification commands.
-- `project.yml` is the source of truth for the generated Xcode project. Run `xcodegen generate` before Xcode build/test work when the project spec changes.
-- `xcodebuild test -project FedChairmanGameNative.xcodeproj -scheme FedChairmanGameNative -destination 'platform=macOS'` runs the core tests plus the real native macOS UI tests.
-- `scripts/package-native-dev-app.sh` builds an ad-hoc signed development `.app` bundle from SwiftPM, stages it outside the file-provider-backed repo, and can be copied into `/Applications/Fed Chairman Game.app`.
-- `scripts/package-native-release-candidate.sh --install` runs the native formatting/lint/unit/UI-test gates, creates an Xcode archive, stages an ad-hoc signed local release-candidate `.app`, writes text/JSON manifests, and installs it into `/Applications`.
-- `scripts/package-native-production.sh` is the Developer ID/notarization path. It requires Apple signing credentials, archives with hardened runtime, notarizes with `notarytool`, staples the ticket to the `.app`, verifies Gatekeeper acceptance, and emits a production manifest without keeping DMG/ZIP deliverables.
-- The current installed native development app is `/Applications/Fed Chairman Game.app`, bundle id `local.fed-chairman-game`. Internal Xcode target and scheme names still use `FedChairmanGameNative` to preserve migration/build continuity.
+The root `package.json` exposes compatibility shims for the native commands. You can run checks from the repo root:
 
-## Production Signing
+```bash
+npm run native:generate
+npm run typecheck
+npm run lint
+npm test
+npm run test:gui
+```
 
-The native Xcode target has hardened runtime enabled and uses `Config/FedChairmanGameNative.entitlements` so production signing is explicit and auditable. The entitlements file is intentionally empty until the app genuinely needs a capability.
+The native package can also be driven directly:
 
-For outside-Mac-App-Store beta distribution, configure one of these credential paths before running `scripts/package-native-production.sh`:
+```bash
+xcodegen generate
+swift build
+swift test
+swiftformat Sources Tests --swift-version 6.1 --lint
+swiftlint lint --strict
+xcodebuild test -project FedChairmanGameNative.xcodeproj -scheme FedChairmanGameNative -destination 'platform=macOS'
+```
 
-- `FED_CHAIRMAN_DEVELOPMENT_TEAM`: Apple Developer Team ID.
-- `FED_CHAIRMAN_DEVELOPER_ID_IDENTITY`: optional signing identity override; defaults to `Developer ID Application`.
-- `FED_CHAIRMAN_NOTARY_KEYCHAIN_PROFILE`: preferred `notarytool` keychain profile.
-- Or: `FED_CHAIRMAN_NOTARY_APPLE_ID`, `FED_CHAIRMAN_NOTARY_PASSWORD`, and `FED_CHAIRMAN_NOTARY_TEAM_ID`.
+`project.yml` is the source of truth for the generated Xcode project. Regenerate the project after changing target structure, resources, build settings, or test targets.
 
-The production script creates a temporary ZIP only for Apple notarization upload, deletes it by default, and keeps the release surface focused on the stapled `.app` plus manifest. Set `FED_CHAIRMAN_KEEP_NOTARY_UPLOAD=1` only when debugging notarization failures.
+The internal target and scheme still use `FedChairmanGameNative` as a stable build identifier. The installed product name is `Fed Chairman Game`.
 
-## Native Parity Targets
+## Packaging
 
-- Preserve the 16-quarter Classic Monetary Policy Mode, reappointment gate, full-career timeline, custom bps, and credibility grace mechanics.
-- Preserve `.fedchair-save.json` envelope compatibility with canonical payload digest validation.
-- Keep policy controls fixed in the viewport; briefing/help/settings overlays must never push layout or trigger scroll after a rate click.
-- Put the mandate dashboard first, then the fixed policy lever, then inflation/unemployment/fed funds/expectations/credibility indicators, then the quarter review.
-- Treat labor-market and macro alerts as dynamic newspaper copy only: they open from the bottom-right Newspaper dock button, auto-peek after decisions, retract without moving layout, and render as fully opaque native briefing panels with original newspaper art.
-- Move static policy questions, watch items, educational notes, output-gap explanations, and other reference text into the Help dock panel.
-- Replace web/CSS motion with native SwiftUI spring/bouncy transitions and SpriteKit instrument pulses: dock buttons squash/rebound, closing panels visually absorb back into the icon, and the dock keeps Newspaper, Help, and Settings mutually exclusive so one open tool never leaves stale panels behind.
-- Use generated icon-first native dock controls for Newspaper, Help, and Settings; add short native click feedback when reduced-noise is off; avoid repeating "Classic Monetary Policy Mode" on the active play screen.
-- Keep native keyboard shortcuts available through the Policy menu: `R` for +25 bps, `H` for Hold, and `C` for -25 bps.
-- Keep the primary visual surface in the current premium command-desk direction: mahogany/library warmth, Bloomberg-terminal density, a taller full-width graph with right-side y-axis labels, mouse hover readouts, liquid-glass dock tools, and keyboard-like rate buttons.
+Local development app:
 
-## Known Incomplete Items
+```bash
+scripts/package-native-dev-app.sh
+```
 
-- This is not yet a notarized or App Store-ready release app bundle. The local `/Applications` app is an ad-hoc signed development build.
-- Production Developer ID signing and notarization automation is present, but it has not been executed successfully because local Apple Developer ID/notary credentials have not been configured in this environment.
-- Final visual variant validation is still pending, but the old top/nub web briefing variant is no longer the chosen native direction and the Web/Tauri source is no longer in the release tree.
-- The previous Stable Cockpit Overlay web implementation remains incomplete against the product requirement because it is not native macOS graphics; it should be treated as reference behavior only, not as completed product UI.
+Local release candidate:
+
+```bash
+scripts/package-native-release-candidate.sh
+scripts/package-native-release-candidate.sh --install
+```
+
+Production signing and notarization:
+
+```bash
+scripts/package-native-production.sh
+```
+
+Production packaging requires Apple credentials:
+
+- `FED_CHAIRMAN_DEVELOPMENT_TEAM`
+- `FED_CHAIRMAN_DEVELOPER_ID_IDENTITY`, optional
+- `FED_CHAIRMAN_NOTARY_KEYCHAIN_PROFILE`, preferred
+- Or `FED_CHAIRMAN_NOTARY_APPLE_ID`, `FED_CHAIRMAN_NOTARY_PASSWORD`, and `FED_CHAIRMAN_NOTARY_TEAM_ID`
+
+The production path creates a temporary ZIP only for Apple notarization upload and deletes it by default. Set `FED_CHAIRMAN_KEEP_NOTARY_UPLOAD=1` only when debugging notarization failures.
+
+## Validation Expectations
+
+Use fast code checks for core/model changes:
+
+```bash
+npm run typecheck
+npm run lint
+npm test
+```
+
+For UI, layout, chart, dock, settings, briefing, or gameplay changes, follow the repo root `AGENTS.md` and `docs/AGENTIC_GUI_VALIDATION.md`: build the current app, verify artifact provenance, inspect real screenshots or Computer Use state, interact through meaningful gameplay paths, then run supporting code checks.
+
+Use `npm run test:ui` only when a clean-desktop XCUITest regression pass is specifically useful or explicitly requested.
+
+## Source Control Hygiene
+
+Do not commit generated app bundles, archives, release manifests, notarization logs, `.xcresult` bundles, `.DS_Store` files, or SwiftPM build output. The source-controlled product is the Swift package, XcodeGen spec, assets, scripts, tests, and docs.

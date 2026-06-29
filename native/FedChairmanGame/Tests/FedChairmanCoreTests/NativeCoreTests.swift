@@ -10,7 +10,7 @@ import Testing
     #expect(classicScenario.targets.unemployment == 5)
 }
 
-@Test func holdDecisionMatchesTypeScriptGoldenQuarterOne() throws {
+@Test func holdDecisionMatchesNativeGoldenQuarterOne() throws {
     let scenario = classicScenario
     let decision = createDecision(action: .hold, current: scenario.startingState, timestamp: "test")
     let result = try advanceQuarter(
