@@ -281,6 +281,9 @@ enum NativeImageLoader {
                 .appendingPathComponent("FedChairmanGame_FedChairmanNativeApp.bundle")
                 .appendingPathComponent("\(name).png"),
         ].compactMap(\.self)
+        if let image = candidateURLs.lazy.compactMap(NSImage.init(contentsOf:)).first {
+            return image
+        }
         #if SWIFT_PACKAGE
             if let packageURL = Bundle.module.url(forResource: name, withExtension: "png"),
                let image = NSImage(contentsOf: packageURL)
@@ -288,6 +291,6 @@ enum NativeImageLoader {
                 return image
             }
         #endif
-        return candidateURLs.lazy.compactMap(NSImage.init(contentsOf:)).first
+        return nil
     }
 }
