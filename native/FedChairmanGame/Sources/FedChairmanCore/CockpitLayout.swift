@@ -83,7 +83,7 @@ public func cockpitLayoutMetrics(width: Double, height: Double) -> CockpitLayout
     case .standard:
         let spacing: Double = standardDensityCompact ? 8 : 12
         let panelPadding: Double = standardDensityCompact ? 10 : 12
-        let chartHeight: Double = standardDensityCompact ? 134 : 178
+        let chartHeight: Double = standardDensityCompact ? 118 : 162
         let policyKeyHeight: Double = standardDensityCompact ? 34 : 40
         let policyKeySpacing: Double = standardDensityCompact ? 6 : 8
         let dockPanelMaxHeight: Double = standardDensityCompact
@@ -117,11 +117,11 @@ public func cockpitLayoutMetrics(width: Double, height: Double) -> CockpitLayout
     case .expanded:
         return CockpitLayoutMetrics(
             mode: mode,
-            spacing: 14,
-            panelPadding: 14,
-            chartHeight: 206,
+            spacing: 10,
+            panelPadding: 12,
+            chartHeight: 136,
             policyKeyWidth: 78,
-            policyKeyHeight: 42,
+            policyKeyHeight: 38,
             policyKeySpacing: 9,
             customFieldWidth: 96,
             metricsColumns: 5,

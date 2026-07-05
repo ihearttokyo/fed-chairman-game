@@ -15,11 +15,11 @@ final class NativeCockpitUITests: XCTestCase {
         }
         app.terminate()
         app.launch()
-        if !app.staticTexts["Policy Lever"].waitForExistence(timeout: 3) {
+        if !app.staticTexts["Policy Decision Center"].waitForExistence(timeout: 3) {
             app.menuBars.menuBarItems["File"].click()
             app.menuItems["New Fed Chairman Game Window"].click()
         }
-        XCTAssertTrue(app.staticTexts["Policy Lever"].waitForExistence(timeout: 6))
+        XCTAssertTrue(app.staticTexts["Policy Decision Center"].waitForExistence(timeout: 6))
         app.activate()
         waitForWindow(in: app, toSettleAt: windowSize ?? "1180x700")
         return app
@@ -121,20 +121,22 @@ final class NativeCockpitUITests: XCTestCase {
     }
 
     @MainActor
-    func testPolicyLeverDoesNotShiftAfterRateDecisionAndBriefingStaysClosed() {
+    func testPolicyDecisionCenterDoesNotShiftAfterRateDecisionAndBriefingStaysClosed() {
         let app = launchApp()
         defer { app.terminate() }
-        let policyLever = app.staticTexts["Policy Lever"]
+        let decisionCenter = app.staticTexts["Policy Decision Center"]
         let dashboard = app.staticTexts["Mandate Dashboard"]
         XCTAssertTrue(dashboard.exists)
 
-        let leverBefore = policyLever.frame
+        let centerBefore = decisionCenter.frame
         let dashboardBefore = dashboard.frame
         app.buttons["+25 bps"].click()
+        XCTAssertTrue(panelElement("policy-preview-ready", in: app).waitForExistence(timeout: 2))
+        app.buttons["Commit"].click()
 
-        let leverAfter = app.staticTexts["Policy Lever"].frame
+        let centerAfter = app.staticTexts["Policy Decision Center"].frame
         let dashboardAfter = app.staticTexts["Mandate Dashboard"].frame
-        XCTAssertLessThanOrEqual(abs(leverBefore.minY - leverAfter.minY), 4)
+        XCTAssertLessThanOrEqual(abs(centerBefore.minY - centerAfter.minY), 4)
         XCTAssertLessThanOrEqual(abs(dashboardBefore.minY - dashboardAfter.minY), 4)
         let decisionTape = app.descendants(matching: .any)["decision-tape"]
         XCTAssertTrue(decisionTape.waitForExistence(timeout: 2))
@@ -165,6 +167,7 @@ final class NativeCockpitUITests: XCTestCase {
         app.buttons["Close newspaper panel"].click()
 
         app.buttons["+25 bps"].click()
+        XCTAssertTrue(panelElement("policy-preview-ready", in: app).waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["Open newspaper panel"].waitForExistence(timeout: 2))
         XCTAssertFalse(panelElement("newspaper-panel", in: app).exists)
     }
@@ -198,13 +201,13 @@ final class NativeCockpitUITests: XCTestCase {
         XCTAssertFalse(panelElement("settings-panel", in: app).exists)
 
         let dashboard = panelElement("mandate-dashboard", in: app)
-        let policyLever = panelElement("policy-lever", in: app)
+        let decisionCenter = panelElement("policy-decision-center", in: app)
         let metrics = panelElement("macro-metrics", in: app)
         let dockCluster = panelElement("dock-button-cluster", in: app)
         let boardWatch = panelElement("board-watch", in: app)
         let decisionTape = panelElement("decision-tape", in: app)
         XCTAssertTrue(dashboard.waitForExistence(timeout: 2))
-        XCTAssertTrue(policyLever.waitForExistence(timeout: 2))
+        XCTAssertTrue(decisionCenter.waitForExistence(timeout: 2))
         XCTAssertTrue(metrics.waitForExistence(timeout: 2))
         XCTAssertTrue(decisionTape.waitForExistence(timeout: 2))
         XCTAssertFalse(panelElement("quarter-review", in: app).exists)
@@ -212,7 +215,7 @@ final class NativeCockpitUITests: XCTestCase {
         XCTAssertTrue(boardWatch.waitForExistence(timeout: 2))
         XCTAssertTrue(boardWatch.label.contains("Board Watch"))
         XCTAssertTrue(boardWatch.label.contains("3/3 gates"))
-        assertNoOverlap(dockCluster.frame, "Dock button cluster", policyLever.frame, "Policy Lever")
+        assertNoOverlap(dockCluster.frame, "Dock button cluster", decisionCenter.frame, "Policy Decision Center")
     }
 
     @MainActor
@@ -239,6 +242,8 @@ final class NativeCockpitUITests: XCTestCase {
 
         app.activate()
         app.buttons["+25 bps"].click()
+        XCTAssertTrue(panelElement("policy-preview-ready", in: app).waitForExistence(timeout: 2))
+        app.buttons["Commit"].click()
         XCTAssertTrue(app.buttons["Open newspaper panel"].waitForExistence(timeout: 2))
         XCTAssertFalse(panelElement("newspaper-panel", in: app).exists)
         XCTAssertTrue(panelElement("decision-tape", in: app).waitForExistence(timeout: 2))
@@ -280,8 +285,8 @@ final class NativeCockpitUITests: XCTestCase {
             let app = launchApp(windowSize: size)
             defer { app.terminate() }
 
-            let policyLever = panelElement("policy-lever", in: app)
-            XCTAssertTrue(policyLever.waitForExistence(timeout: 2))
+            let decisionCenter = panelElement("policy-decision-center", in: app)
+            XCTAssertTrue(decisionCenter.waitForExistence(timeout: 2))
             let policyButtons = ["-150 bps", "-100 bps", "-75 bps", "-50 bps", "-25 bps", "Hold", "+25 bps", "+50 bps", "+75 bps", "+100 bps", "+150 bps"]
                 .map { app.buttons[$0] }
 
@@ -294,7 +299,7 @@ final class NativeCockpitUITests: XCTestCase {
                 app.buttons[buttonLabel].click()
                 let panel = panelElement(panelIdentifier, in: app)
                 XCTAssertTrue(panel.waitForExistence(timeout: 2))
-                assertNoOverlap(panel.frame, panelIdentifier, policyLever.frame, "Policy Lever")
+                assertNoOverlap(panel.frame, panelIdentifier, decisionCenter.frame, "Policy Decision Center")
                 for button in policyButtons {
                     assertNoOverlap(panel.frame, panelIdentifier, button.frame, button.label)
                 }
@@ -311,11 +316,11 @@ final class NativeCockpitUITests: XCTestCase {
         app.buttons["Open newspaper panel"].click()
         let newspaperPanel = panelElement("newspaper-panel", in: app)
         XCTAssertTrue(newspaperPanel.waitForExistence(timeout: 2))
-        let policyLever = panelElement("policy-lever", in: app)
+        let decisionCenter = panelElement("policy-decision-center", in: app)
         let dashboard = panelElement("mandate-dashboard", in: app)
-        assertElement(policyLever, staysInside: windowFrame)
+        assertElement(decisionCenter, staysInside: windowFrame)
         assertElement(dashboard, staysInside: windowFrame)
-        assertNoOverlap(newspaperPanel.frame, "Newspaper panel", policyLever.frame, "Policy Lever")
+        assertNoOverlap(newspaperPanel.frame, "Newspaper panel", decisionCenter.frame, "Policy Decision Center")
         assertNoOverlap(newspaperPanel.frame, "Newspaper panel", dashboard.frame, "Mandate Dashboard")
 
         closePanelsWithEscape(in: app)
@@ -351,6 +356,8 @@ final class NativeCockpitUITests: XCTestCase {
         let app = launchApp(windowSize: "1360x860")
         defer { app.terminate() }
         app.buttons["+25 bps"].click()
+        XCTAssertTrue(panelElement("policy-preview-ready", in: app).waitForExistence(timeout: 2))
+        app.buttons["Commit"].click()
         XCTAssertTrue(app.buttons["Open newspaper panel"].waitForExistence(timeout: 2))
         XCTAssertFalse(app.descendants(matching: .any)["newspaper-panel"].exists)
         try captureVisualSmoke(app, name: "1360x860-after-decision")

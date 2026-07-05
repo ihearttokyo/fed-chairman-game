@@ -494,3 +494,98 @@ import Testing
     #expect(termTwo.primaryLabel == "T2 Q1")
     #expect(termTwo.secondaryLabel == "Career Q17 | 15 left in term")
 }
+
+@Test func termSnapshotIsDeterministicAndDoesNotMutateSession() throws {
+    let store = GameSessionStore()
+    store.start(seed: "snapshot-determinism")
+    try store.commit(action: .raise25)
+    let original = store.session
+
+    let first = buildTermSnapshot(session: store.session)
+    let second = buildTermSnapshot(session: store.session)
+
+    #expect(first == second)
+    #expect(store.session == original)
+    #expect(first.latestMetrics.inflation == original.current.inflation)
+    #expect(first.latestMetrics.unemployment == original.current.unemployment)
+    #expect(first.latestMetrics.fedFundsRate == original.current.fedFundsRate)
+}
+
+@Test func riskDriversRankKnownPolicyStates() throws {
+    let baseline = makeInitialSession(seed: "risk-baseline")
+    #expect(buildTermSnapshot(session: baseline).riskDrivers.first?.kind == .inflationGap)
+
+    var inflationRisk = baseline
+    inflationRisk.current.inflation = 4.8
+    inflationRisk.current.expectedInflation = 3.6
+    inflationRisk.current.unemployment = 4.7
+    inflationRisk.current.credibility = 82
+    #expect(buildTermSnapshot(session: inflationRisk).riskDrivers.first?.kind == .inflationGap)
+
+    var laborRisk = baseline
+    laborRisk.current.inflation = 2.1
+    laborRisk.current.unemployment = 7.4
+    laborRisk.current.credibility = 82
+    #expect(buildTermSnapshot(session: laborRisk).riskDrivers.first?.kind == .laborGap)
+
+    var lowCredibility = baseline
+    lowCredibility.current.inflation = 2.1
+    lowCredibility.current.unemployment = 5.0
+    lowCredibility.current.credibility = 48
+    #expect(buildTermSnapshot(session: lowCredibility).riskDrivers.first?.kind == .credibility)
+
+    let store = GameSessionStore()
+    store.start(seed: "risk-lag-pressure")
+    try store.commit(action: .raise150)
+    try store.commit(action: .raise150)
+    #expect(buildTermSnapshot(session: store.session).riskDrivers.first?.kind == .laggedPolicy)
+}
+
+@Test func policyPreviewSignsAndNoMutation() throws {
+    let store = GameSessionStore()
+    store.start(seed: "policy-preview")
+    let original = store.session
+
+    let cut = try #require(buildPolicyPreview(session: store.session, action: .cut50))
+    let hold = try #require(buildPolicyPreview(session: store.session, action: .hold))
+    let hike = try #require(buildPolicyPreview(session: store.session, action: .raise50))
+    let custom = try #require(buildPolicyPreview(session: store.session, customBasisPoints: 75))
+
+    #expect(cut.inflationPressure > 0)
+    #expect(cut.unemploymentPressure < 0)
+    #expect(hold.moveLabel == "Hold")
+    #expect(hold.estimatedInflationPressure == .steady)
+    #expect(hike.inflationPressure < 0)
+    #expect(hike.unemploymentPressure > 0)
+    #expect(custom.resultingFedFundsRate == 4.75)
+    #expect(store.session == original)
+}
+
+@Test func commitAfterPreviewMatchesCurrentCommitPath() throws {
+    let previewStore = GameSessionStore()
+    previewStore.start(seed: "preview-commit-match")
+    let preview = try #require(buildPolicyPreview(session: previewStore.session, action: .raise25))
+    #expect(preview.resultingFedFundsRate == 4.25)
+    try previewStore.commit(action: .raise25)
+
+    let directStore = GameSessionStore()
+    directStore.start(seed: "preview-commit-match")
+    try directStore.commit(action: .raise25)
+
+    #expect(previewStore.session.current == directStore.session.current)
+    #expect(previewStore.session.traces == directStore.session.traces)
+    #expect(previewStore.session.decisions.map(\.action) == directStore.session.decisions.map(\.action))
+    #expect(previewStore.session.decisions.map(\.rateChange) == directStore.session.decisions.map(\.rateChange))
+}
+
+@Test func invalidCustomBpsOutsideV1RangeIsNotPreviewableOrCommitted() {
+    let store = GameSessionStore()
+    store.start(seed: "custom-bps-v1-range")
+    let original = store.session
+
+    #expect(buildPolicyPreview(session: store.session, customBasisPoints: -151) == nil)
+    #expect(buildPolicyPreview(session: store.session, customBasisPoints: 151) == nil)
+    #expect(store.session == original)
+    #expect(buildPolicyPreview(session: original, customBasisPoints: -150) != nil)
+    #expect(buildPolicyPreview(session: original, customBasisPoints: 150) != nil)
+}

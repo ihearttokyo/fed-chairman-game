@@ -25,7 +25,7 @@ struct FedChairmanGameNativeApp: App {
             CommandMenu("Policy") {
                 ForEach(policyShortcutBindings, id: \.key) { binding in
                     Button(binding.title) {
-                        commitShortcut(binding.action)
+                        dispatchPolicyShortcut(binding.action)
                     }
                     .keyboardShortcut(KeyEquivalent(Character(binding.key)), modifiers: [])
                 }
@@ -33,15 +33,11 @@ struct FedChairmanGameNativeApp: App {
         }
     }
 
-    private func commitShortcut(_ action: PolicyAction) {
+    private func dispatchPolicyShortcut(_ action: PolicyAction) {
         if store.session.status == .notStarted {
             store.start()
         }
-        do {
-            try store.commit(action: action)
-        } catch {
-            NSSound.beep()
-        }
+        NotificationCenter.default.post(name: .policyShortcutAction, object: action.rawValue)
     }
 }
 
@@ -52,7 +48,7 @@ struct NativeCockpitView: View {
     @State private var autoBriefingKey: String?
     @State private var customBps = ""
     @State private var decisionPulse = false
-    @State private var selectedPolicyAction: PolicyAction = .hold
+    @State private var pendingPolicySelection: PendingPolicySelection?
     @State private var panelMessage: String?
     @State private var inspectedChartIndex: Int?
     @State private var didApplyValidationProgression = false
@@ -61,6 +57,7 @@ struct NativeCockpitView: View {
     @State private var cheatConsoleMessage = "Enter cheat code."
     @State private var lastCheatConsoleToggle = Date.distantPast
     @FocusState private var cheatConsoleFieldFocused: Bool
+    @AppStorage("FedChairman.fastCommit") private var fastCommit = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var session: GameSession {
@@ -122,7 +119,7 @@ struct NativeCockpitView: View {
                     dockPanels(layout: layout)
                     metricsGrid(layout: layout)
                     dashboard(layout: layout)
-                    policyLever(layout: layout)
+                    policyDecisionCenter(layout: layout)
                     if shouldShowQuarterReview(layout: layout) {
                         quarterReview(layout: layout)
                     }
@@ -156,11 +153,16 @@ struct NativeCockpitView: View {
             else {
                 return
             }
-            selectedPolicyAction = action
-            commit(action)
+            handlePolicyShortcut(action)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .commitPendingPolicySelection)) { _ in
+            commitPendingPolicySelection()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .clearPendingPolicySelection)) { _ in
+            clearPolicySelectionOrCloseOverlays()
         }
         .onReceive(NotificationCenter.default.publisher(for: .closeCockpitOverlays)) { _ in
-            closeOverlays()
+            clearPolicySelectionOrCloseOverlays()
         }
         .onReceive(NotificationCenter.default.publisher(for: .toggleCheatConsole)) { _ in
             toggleCheatConsole()
@@ -255,51 +257,18 @@ struct NativeCockpitView: View {
         .accessibilityIdentifier("mandate-dashboard")
     }
 
-    private func policyLever(layout: CockpitLayoutMetrics) -> some View {
-        CommandPanel(padding: layout.panelPadding.cg, tone: .keyboard) {
-            VStack(spacing: max(5, layout.spacing - 1).cg) {
-                HStack {
-                    Text("Policy Lever")
-                        .font(.system(size: layout.mode == .compact ? 17 : 20, weight: .black, design: .rounded))
-                    Spacer()
-                    Text("Fed funds \(session.current.fedFundsRate, format: .number.precision(.fractionLength(2)))%")
-                        .font(.system(size: layout.mode == .compact ? 14 : 16, weight: .bold, design: .rounded))
-                        .foregroundStyle(.green)
-                        .padding(.vertical, layout.mode == .compact ? 4 : 5)
-                        .padding(.horizontal, layout.mode == .compact ? 8 : 10)
-                        .background(.green.opacity(0.10), in: Capsule())
-                        .overlay(Capsule().stroke(.green.opacity(0.22)))
-                }
-                HStack(alignment: .top, spacing: layout.policyKeySpacing.cg) {
-                    policyActionCluster(title: "CUT", actions: cutActions, layout: layout)
-                    policyActionCluster(title: "HOLD", actions: [.hold], layout: layout)
-                    policyActionCluster(title: "RAISE", actions: raiseActions, layout: layout)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("CUSTOM")
-                            .font(.caption2.weight(.black))
-                            .foregroundStyle(.white.opacity(0.46))
-                        HStack(spacing: 6) {
-                            TextField("bps", text: $customBps)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: layout.customFieldWidth.cg)
-                            Button("Commit") {
-                                commitCustom()
-                            }
-                            .buttonStyle(PolicyButtonStyle(pulse: decisionPulse, selected: false, width: max(68, layout.policyKeyWidth).cg, height: layout.policyKeyHeight.cg))
-                            .disabled(customDelta == nil)
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                if layout.mode == .compact, session.current.quarterIndex == 0 {
-                    CompactDecisionPrompt(feedback: decisionFeedback)
-                } else {
-                    DecisionTapeView(feedback: decisionFeedback, pulse: decisionPulse, motionMode: motionMode)
-                }
-            }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("policy-lever")
+    private func policyDecisionCenter(layout: CockpitLayoutMetrics) -> some View {
+        PolicyDecisionCenter(
+            session: session,
+            pendingSelection: pendingPolicySelection,
+            customBps: $customBps,
+            decisionPulse: decisionPulse,
+            motionMode: motionMode,
+            layout: layout,
+            selectAction: handlePolicyButton,
+            commit: commitPendingPolicySelection,
+            clear: clearPendingPolicySelection,
+        )
     }
 
     private func metricsGrid(layout: CockpitLayoutMetrics) -> some View {
@@ -320,30 +289,6 @@ struct NativeCockpitView: View {
             }
         }
         .accessibilityIdentifier("macro-metrics")
-    }
-
-    private func policyActionCluster(title: String, actions: [PolicyAction], layout: CockpitLayoutMetrics) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption2.weight(.black))
-                .foregroundStyle(title == "CUT" ? .cyan.opacity(0.78) : title == "RAISE" ? .orange.opacity(0.78) : .green.opacity(0.78))
-            HStack(spacing: layout.policyKeySpacing.cg) {
-                ForEach(actions, id: \.self) { action in
-                    Button(policyActions[action]?.label ?? action.rawValue) {
-                        selectedPolicyAction = action
-                        commit(action)
-                    }
-                    .buttonStyle(PolicyButtonStyle(pulse: decisionPulse, selected: selectedPolicyAction == action, width: layout.policyKeyWidth.cg, height: layout.policyKeyHeight.cg))
-                    .disabled(resultingRate(for: action) < 0 || resultingRate(for: action) > 20)
-                    .onHover { isHovering in
-                        if isHovering {
-                            selectedPolicyAction = action
-                        }
-                    }
-                    .help(resultingRateHelp(for: action))
-                }
-            }
-        }
     }
 
     private func quarterReview(layout: CockpitLayoutMetrics) -> some View {
@@ -494,9 +439,9 @@ struct NativeCockpitView: View {
         case .compact:
             78
         case .standard:
-            116
+            104
         case .expanded:
-            130
+            100
         }
     }
 
@@ -624,6 +569,7 @@ struct NativeCockpitView: View {
                     .accessibilityLabel("Policy Notebook")
             } else {
                 SettingsDrawerView(
+                    fastCommit: $fastCommit,
                     reducedMotion: Binding(
                         get: { session.ui.reducedMotion },
                         set: { store.setReducedMotion($0) },
@@ -681,6 +627,14 @@ struct NativeCockpitView: View {
         cheatConsoleFieldFocused = false
     }
 
+    private func clearPolicySelectionOrCloseOverlays() {
+        if pendingPolicySelection != nil || !customBps.isEmpty {
+            clearPendingPolicySelection()
+        } else {
+            closeOverlays()
+        }
+    }
+
     private func toggleCheatConsole() {
         let now = Date()
         guard now.timeIntervalSince(lastCheatConsoleToggle) > 0.15 else {
@@ -730,8 +684,12 @@ struct NativeCockpitView: View {
     }
 
     private func commit(_ action: PolicyAction) {
+        guard session.status == .inProgress else {
+            return
+        }
         do {
             try store.commit(action: action)
+            clearPendingPolicySelection()
             pulse()
             playPolicyClick()
         } catch {
@@ -739,13 +697,81 @@ struct NativeCockpitView: View {
         }
     }
 
+    private func handlePolicyButton(_ action: PolicyAction) {
+        guard session.status == .inProgress else {
+            return
+        }
+        if fastCommit {
+            if action == .custom {
+                commitCustom()
+            } else {
+                commit(action)
+            }
+        } else {
+            selectPendingPolicyAction(action)
+        }
+    }
+
+    private func handlePolicyShortcut(_ action: PolicyAction) {
+        guard session.status == .inProgress else {
+            return
+        }
+        if fastCommit {
+            commit(action)
+        } else {
+            selectPendingPolicyAction(action)
+        }
+    }
+
+    private func selectPendingPolicyAction(_ action: PolicyAction) {
+        let delta = action == .custom ? customDelta : policyActions[action]?.delta
+        guard let delta else {
+            NSSound.beep()
+            return
+        }
+        let resultingRate = session.current.fedFundsRate + delta
+        guard resultingRate >= 0, resultingRate <= 20 else {
+            NSSound.beep()
+            return
+        }
+        let customBasisPoints = action == .custom ? Int((delta * 100).rounded()) : nil
+        pendingPolicySelection = PendingPolicySelection(action: action, customBasisPoints: customBasisPoints)
+    }
+
+    private func clearPendingPolicySelection() {
+        pendingPolicySelection = nil
+        customBps = ""
+    }
+
+    private func commitPendingPolicySelection() {
+        guard session.status == .inProgress else {
+            return
+        }
+        guard let pendingPolicySelection else {
+            NSSound.beep()
+            return
+        }
+        if pendingPolicySelection.action == .custom {
+            commitCustom(rateChange: pendingPolicySelection.rateChange)
+        } else {
+            commit(pendingPolicySelection.action)
+        }
+    }
+
     private func commitCustom() {
         guard let customDelta else {
             return
         }
+        commitCustom(rateChange: customDelta)
+    }
+
+    private func commitCustom(rateChange: Double) {
+        guard session.status == .inProgress else {
+            return
+        }
         do {
-            try store.commitCustom(rateChange: customDelta)
-            customBps = ""
+            try store.commitCustom(rateChange: rateChange)
+            clearPendingPolicySelection()
             pulse()
             playPolicyClick()
         } catch {
@@ -908,24 +934,8 @@ struct NativeCockpitView: View {
         window.setFrame(frame, display: true, animate: false)
     }
 
-    private var cutActions: [PolicyAction] {
-        [.cut150, .cut100, .cut75, .cut50, .cut25]
-    }
-
-    private var raiseActions: [PolicyAction] {
-        [.raise25, .raise50, .raise75, .raise100, .raise150]
-    }
-
-    private func resultingRate(for action: PolicyAction) -> Double {
-        session.current.fedFundsRate + (policyActions[action]?.delta ?? 0)
-    }
-
-    private func resultingRateHelp(for action: PolicyAction) -> String {
-        String(format: "Resulting fed funds rate %.2f percent", resultingRate(for: action))
-    }
-
     private var customDelta: Double? {
-        guard let bps = Int(customBps.trimmingCharacters(in: .whitespacesAndNewlines)), abs(bps) <= 300 else {
+        guard let bps = Int(customBps.trimmingCharacters(in: .whitespacesAndNewlines)), abs(bps) <= 150 else {
             return nil
         }
         let delta = Double(bps) / 100
@@ -1085,6 +1095,8 @@ private extension NativeCockpitView {
 
 private extension Notification.Name {
     static let policyShortcutAction = Notification.Name("FedChairmanPolicyShortcutAction")
+    static let commitPendingPolicySelection = Notification.Name("FedChairmanCommitPendingPolicySelection")
+    static let clearPendingPolicySelection = Notification.Name("FedChairmanClearPendingPolicySelection")
     static let closeCockpitOverlays = Notification.Name("FedChairmanCloseCockpitOverlays")
     static let toggleCheatConsole = Notification.Name("FedChairmanToggleCheatConsole")
 }
@@ -1188,6 +1200,13 @@ private final class PolicyShortcutDispatcher {
             }
             if event.keyCode == 50 || event.charactersIgnoringModifiers == "`" {
                 NotificationCenter.default.post(name: .toggleCheatConsole, object: nil)
+                return nil
+            }
+            guard !Self.isTextInputFocused else {
+                return event
+            }
+            if event.keyCode == 36 || event.keyCode == 76 {
+                NotificationCenter.default.post(name: .commitPendingPolicySelection, object: nil)
                 return nil
             }
             guard let action = Self.action(for: event) else {

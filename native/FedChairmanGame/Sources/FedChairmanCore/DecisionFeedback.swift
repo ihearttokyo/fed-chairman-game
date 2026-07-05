@@ -55,7 +55,7 @@ private func openingDecisionFeedback(current: MacroState, scenario: ScenarioConf
         ratePath: "Fed funds \(formatDecisionPercent(current.fedFundsRate))",
         mandateLine: "Inflation \(formatSignedDecision(current.inflation - scenario.targets.inflation)) pp, labor \(formatSignedDecision(current.unemployment - scenario.targets.unemployment)) pp",
         credibilityLine: "Credibility \(String(format: "%.0f", current.credibility)); keep inflation anchored to build trust",
-        traceLine: "One click commits, advances one quarter, and writes the trace.",
+        traceLine: "Preview a move, then commit to advance one quarter and write the trace.",
         tone: .stabilizing,
         intensity: 0,
     )

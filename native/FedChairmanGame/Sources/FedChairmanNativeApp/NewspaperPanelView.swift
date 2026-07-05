@@ -256,6 +256,7 @@ struct HelpDrawerView: View {
 }
 
 struct SettingsDrawerView: View {
+    @Binding var fastCommit: Bool
     @Binding var reducedMotion: Bool
     @Binding var soundEnabled: Bool
     @Binding var reducedNoise: Bool
@@ -310,6 +311,7 @@ struct SettingsDrawerView: View {
             .frame(width: 112, alignment: .leading)
 
             HStack(spacing: 7) {
+                compactToggle("Fast commit", isOn: $fastCommit)
                 compactToggle("Motion", isOn: $reducedMotion)
                 compactToggle("Sound", isOn: $soundEnabled)
                 compactToggle("Noise", isOn: $reducedNoise)
@@ -338,6 +340,13 @@ struct SettingsDrawerView: View {
             )
 
             HStack(alignment: .top, spacing: 8) {
+                SettingsToggleTile(
+                    title: "Fast commit",
+                    subtitle: "Numbers commit",
+                    systemName: "return",
+                    tint: .green,
+                    isOn: $fastCommit,
+                )
                 SettingsToggleTile(
                     title: "Motion",
                     subtitle: "Quieter transitions",
@@ -394,6 +403,8 @@ struct SettingsDrawerView: View {
             .controlSize(.mini)
             .font(.caption2.weight(.bold))
             .foregroundStyle(.white.opacity(0.82))
+            .accessibilityLabel(title)
+            .accessibilityIdentifier("settings-toggle-\(settingsIdentifierSlug(title))")
     }
 }
 
@@ -476,7 +487,15 @@ private struct SettingsToggleTile: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.white.opacity(0.065), in: RoundedRectangle(cornerRadius: 11))
         .overlay(RoundedRectangle(cornerRadius: 11).stroke(.white.opacity(0.10)))
+        .accessibilityLabel(title)
+        .accessibilityIdentifier("settings-toggle-\(settingsIdentifierSlug(title))")
     }
+}
+
+private func settingsIdentifierSlug(_ value: String) -> String {
+    value
+        .lowercased()
+        .replacingOccurrences(of: " ", with: "-")
 }
 
 private func drawerHeader(systemName: String, eyebrow: String, title: String, caption: String, tint: Color) -> some View {
