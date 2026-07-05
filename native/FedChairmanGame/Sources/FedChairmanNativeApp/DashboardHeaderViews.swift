@@ -130,6 +130,116 @@ struct ChartInspectionStrip: View {
     }
 }
 
+struct MandateInsightBand: View {
+    var focus: MandateChartFocus
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text("CHART READ")
+                .font(.caption2.weight(.black))
+                .foregroundStyle(.green)
+            Text(focus.insightHeadline)
+                .font(.caption.weight(.black))
+                .foregroundStyle(.white.opacity(0.88))
+                .lineLimit(1)
+            Text(focus.insightDetail)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.58))
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            Text("Targets: INF 2.0% | U 5.0%")
+                .font(.caption2.weight(.black))
+                .foregroundStyle(.white.opacity(0.52))
+                .lineLimit(1)
+        }
+        .padding(.vertical, 7)
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white.opacity(0.052), in: RoundedRectangle(cornerRadius: 9))
+        .overlay(RoundedRectangle(cornerRadius: 9).stroke(.white.opacity(0.12)))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(focus.accessibilityLabel)
+        .accessibilityIdentifier("mandate-chart-insight-band")
+    }
+}
+
+struct CurrentValueRailView: View {
+    var focus: MandateChartFocus
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("CURRENT")
+                .font(.caption2.weight(.black))
+                .foregroundStyle(.white.opacity(0.52))
+            ForEach(focus.railItems) { item in
+                railRow(item)
+            }
+        }
+        .padding(10)
+        .frame(width: 214, alignment: .topLeading)
+        .frame(maxHeight: .infinity, alignment: .topLeading)
+        .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(.white.opacity(0.12)))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("current-value-rail")
+    }
+
+    private func railRow(_ item: MandateChartRailItem) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(item.label.uppercased())
+                    .font(.caption2.weight(.black))
+                    .foregroundStyle(metricColor(item.metric))
+                Spacer()
+                Text(item.value)
+                    .font(.caption.weight(.black))
+                    .foregroundStyle(.white.opacity(0.88))
+                    .monospacedDigit()
+            }
+            HStack {
+                Text(item.target)
+                Spacer()
+                Text(item.gap)
+                    .foregroundStyle(stateColor(item.state))
+            }
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.white.opacity(0.52))
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 8)
+        .background(stateColor(item.state).opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(stateColor(item.state).opacity(0.16)))
+    }
+
+    private func metricColor(_ metric: MandateChartRailItem.Metric) -> Color {
+        switch metric {
+        case .inflation:
+            .orange
+        case .unemployment:
+            .blue
+        case .fedFunds:
+            .green
+        case .credibility:
+            .yellow
+        }
+    }
+
+    private func stateColor(_ state: SemanticState) -> Color {
+        switch state {
+        case .onTrack:
+            .green
+        case .atRisk:
+            .orange
+        case .critical:
+            .red
+        case .disabled:
+            .gray
+        case .neutral:
+            .white.opacity(0.55)
+        }
+    }
+}
+
 struct MandateBadge: View {
     var label: String
     var value: Double

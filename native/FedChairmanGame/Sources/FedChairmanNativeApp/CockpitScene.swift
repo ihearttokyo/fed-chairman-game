@@ -52,6 +52,7 @@ final class CockpitScene: SKScene {
             configureDomain(for: history)
             addGrid(in: frame, to: staticLayer)
             addBands(in: frame, inflationUpperBound: inflationUpperBound, to: staticLayer)
+            addTargetLines(in: frame, to: staticLayer)
             addAxisLabels(in: frame, to: staticLayer)
             addLegend(in: frame, to: staticLayer)
             addSeries(history: history, keyPath: \.inflation, label: "INF", color: SKColor.systemOrange, to: staticLayer)
@@ -148,6 +149,29 @@ final class CockpitScene: SKScene {
         laborBand.fillColor = SKColor.systemBlue.withAlphaComponent(0.065)
         laborBand.strokeColor = .clear
         layer.addChild(laborBand)
+    }
+
+    private func addTargetLines(in frame: CGRect, to layer: SKNode) {
+        let targets: [(String, Double, SKColor, CGFloat)] = [
+            ("Inflation target 2.0%", 2.0, .systemOrange, 6),
+            ("Labor target 5.0%", 5.0, .systemBlue, 6),
+        ]
+
+        for target in targets {
+            let y = yPosition(target.1, in: frame)
+            let line = SKShapeNode()
+            let path = CGMutablePath()
+            path.move(to: CGPoint(x: frame.minX, y: y))
+            path.addLine(to: CGPoint(x: frame.maxX, y: y))
+            line.path = path
+            line.strokeColor = target.2.withAlphaComponent(0.22)
+            line.lineWidth = 1.2
+            layer.addChild(line)
+
+            let label = labelNode(target.0, size: 9, color: target.2.withAlphaComponent(0.82), alignment: .left)
+            label.position = CGPoint(x: frame.minX + target.3, y: y + 5)
+            layer.addChild(label)
+        }
     }
 
     private func addAxisLabels(in frame: CGRect, to layer: SKNode) {

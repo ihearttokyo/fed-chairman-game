@@ -495,6 +495,23 @@ import Testing
     #expect(termTwo.secondaryLabel == "Career Q17 | 15 left in term")
 }
 
+@Test func mandateChartFocusExposesRailTargetsAndRiskInsight() throws {
+    let store = GameSessionStore()
+    store.start(seed: "mandate-chart-focus")
+    try store.commit(action: .raise25)
+
+    let snapshot = buildTermSnapshot(session: store.session)
+    let focus = buildMandateChartFocus(snapshot: snapshot)
+
+    #expect(focus.railItems.map(\.metric) == [.inflation, .unemployment, .fedFunds])
+    #expect(focus.railItems[0].target == "Target 2.0%")
+    #expect(focus.railItems[1].target == "Target 5.0%")
+    #expect(focus.railItems[2].target == "Policy rate")
+    #expect(focus.insightHeadline == snapshot.riskDrivers.first?.title)
+    #expect(focus.accessibilityLabel.contains("Inflation"))
+    #expect(focus.accessibilityLabel.contains("Unemployment"))
+}
+
 @Test func termSnapshotIsDeterministicAndDoesNotMutateSession() throws {
     let store = GameSessionStore()
     store.start(seed: "snapshot-determinism")

@@ -64,8 +64,12 @@ struct NativeCockpitView: View {
         store.session
     }
 
+    private var termSnapshot: TermSnapshot {
+        buildTermSnapshot(session: session)
+    }
+
     private var briefing: CockpitBriefing {
-        buildCockpitBriefing(session: session)
+        termSnapshot.briefing
     }
 
     private var debrief: NativeDebrief {
@@ -73,11 +77,11 @@ struct NativeCockpitView: View {
     }
 
     private var decisionFeedback: DecisionFeedback {
-        buildDecisionFeedback(session: session)
+        termSnapshot.decisionFeedback
     }
 
     private var boardWatch: BoardWatch {
-        buildBoardWatch(session: session)
+        termSnapshot.boardWatch
     }
 
     private var inflationMetricTargetText: String {
@@ -90,11 +94,18 @@ struct NativeCockpitView: View {
     }
 
     private var chartInspection: ChartInspection? {
-        buildChartInspection(
+        if inspectedChartIndex == nil {
+            return termSnapshot.chartInspection
+        }
+        return buildChartInspection(
             history: session.careerHistory,
             decisions: careerDecisions,
             selectedIndex: inspectedChartIndex,
         )
+    }
+
+    private var mandateChartFocus: MandateChartFocus {
+        buildMandateChartFocus(snapshot: termSnapshot)
     }
 
     private var briefingVisible: Bool {
@@ -242,19 +253,31 @@ struct NativeCockpitView: View {
                     compact: false,
                 )
                 .padding(.bottom, 6)
+                MandateInsightBand(focus: mandateChartFocus)
+                    .padding(.bottom, 6)
             }
-            SpriteKitChart(
-                history: session.careerHistory,
-                reducedMotion: reduceMotion || session.ui.reducedMotion,
-                inflationUpperBound: activeInflationUpperBound(ui: session.ui, currentCareerQuarter: session.totalCareerQuarters),
-                onInspectionIndexChanged: { inspectedChartIndex = $0 },
-            )
-            .frame(height: layout.chartHeight.cg)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.16)))
-            .shadow(color: .black.opacity(0.28), radius: 10, y: 6)
+            HStack(alignment: .top, spacing: 10) {
+                mandateChart
+                    .frame(height: layout.chartHeight.cg)
+                if layout.mode != .compact {
+                    CurrentValueRailView(focus: mandateChartFocus)
+                        .frame(height: layout.chartHeight.cg)
+                }
+            }
         }
         .accessibilityIdentifier("mandate-dashboard")
+    }
+
+    private var mandateChart: some View {
+        SpriteKitChart(
+            history: session.careerHistory,
+            reducedMotion: reduceMotion || session.ui.reducedMotion,
+            inflationUpperBound: activeInflationUpperBound(ui: session.ui, currentCareerQuarter: session.totalCareerQuarters),
+            onInspectionIndexChanged: { inspectedChartIndex = $0 },
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.16)))
+        .shadow(color: .black.opacity(0.28), radius: 10, y: 6)
     }
 
     private func policyDecisionCenter(layout: CockpitLayoutMetrics) -> some View {
