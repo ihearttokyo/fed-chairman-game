@@ -299,7 +299,7 @@ struct SettingsDrawerView: View {
                 Text("PREFERENCES")
                     .font(.caption2.weight(.black))
                     .foregroundStyle(.cyan)
-                Text("Desk Setup")
+                Text("Preferences")
                     .font(.headline.weight(.black))
                 if let panelMessage {
                     Text(panelMessage)
@@ -334,7 +334,7 @@ struct SettingsDrawerView: View {
             drawerHeader(
                 systemName: "slider.horizontal.3",
                 eyebrow: "Preferences",
-                title: "Desk Setup",
+                title: "Preferences",
                 caption: "Tune feel, audio, and portable records without leaving the cockpit.",
                 tint: .cyan,
             )

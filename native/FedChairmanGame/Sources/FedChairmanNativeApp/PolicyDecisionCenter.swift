@@ -61,19 +61,38 @@ struct PolicyDecisionCenter: View {
         CommandPanel(padding: layout.panelPadding.cg, tone: .keyboard) {
             VStack(spacing: max(5, layout.spacing - 1).cg) {
                 header
-                HStack(alignment: .top, spacing: layout.policyKeySpacing.cg) {
-                    actionCluster(title: "CUT", actions: cutActions, tint: .cyan)
-                    actionCluster(title: "HOLD", actions: [.hold], tint: .green)
-                    actionCluster(title: "RAISE", actions: raiseActions, tint: .orange)
-                    customControl
-                    previewPanel
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                decisionControls
                 DecisionTapeView(feedback: buildDecisionFeedback(session: session), pulse: decisionPulse, motionMode: motionMode)
             }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("policy-decision-center")
+    }
+
+    private var decisionControls: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: layout.policyKeySpacing.cg) {
+                actionControls
+                customControl
+                previewPanel
+            }
+            VStack(alignment: .leading, spacing: max(7, layout.policyKeySpacing).cg) {
+                actionControls
+                HStack(alignment: .top, spacing: layout.policyKeySpacing.cg) {
+                    customControl
+                    previewPanel
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var actionControls: some View {
+        HStack(alignment: .top, spacing: layout.policyKeySpacing.cg) {
+            actionCluster(title: "CUT", actions: cutActions, tint: .cyan)
+            actionCluster(title: "HOLD", actions: [.hold], tint: .green)
+            actionCluster(title: "RAISE", actions: raiseActions, tint: .orange)
+        }
     }
 
     private var header: some View {

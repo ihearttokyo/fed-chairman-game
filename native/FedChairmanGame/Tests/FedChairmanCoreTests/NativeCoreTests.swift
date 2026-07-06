@@ -512,6 +512,25 @@ import Testing
     #expect(focus.accessibilityLabel.contains("Unemployment"))
 }
 
+@Test func mandateChartFocusKeepsSnapshotDrivenHierarchyAccessible() {
+    var stressed = makeInitialSession(seed: "mandate-hierarchy")
+    stressed.current.inflation = 4.2
+    stressed.current.unemployment = 7.3
+    stressed.current.fedFundsRate = 5.5
+    stressed.current.credibility = 57
+
+    let snapshot = buildTermSnapshot(session: stressed)
+    let focus = buildMandateChartFocus(snapshot: snapshot)
+
+    #expect(focus.insightHeadline == snapshot.riskDrivers[0].title)
+    #expect(focus.insightDetail == snapshot.riskDrivers[0].detail)
+    #expect(focus.railItems.map(\.label) == ["Inflation", "Unemployment", "Fed funds"])
+    #expect(focus.railItems.map(\.state).contains(.critical))
+    #expect(focus.accessibilityLabel.contains(focus.insightHeadline))
+    #expect(focus.accessibilityLabel.contains("gap +2.20 pp"))
+    #expect(focus.accessibilityLabel.contains("gap +2.30 pp"))
+}
+
 @Test func termSnapshotIsDeterministicAndDoesNotMutateSession() throws {
     let store = GameSessionStore()
     store.start(seed: "snapshot-determinism")
@@ -526,6 +545,30 @@ import Testing
     #expect(first.latestMetrics.inflation == original.current.inflation)
     #expect(first.latestMetrics.unemployment == original.current.unemployment)
     #expect(first.latestMetrics.fedFundsRate == original.current.fedFundsRate)
+}
+
+@Test func termSnapshotCarriesStableHierarchyModelsFromSingleSession() throws {
+    let store = GameSessionStore()
+    store.start(seed: "snapshot-hierarchy")
+    try store.commit(action: .raise25)
+
+    let snapshot = buildTermSnapshot(session: store.session)
+
+    #expect(snapshot.sourceSessionId == store.session.sessionId)
+    #expect(snapshot.status == store.session.status)
+    #expect(snapshot.termNumber == store.session.termNumber)
+    #expect(snapshot.currentTermQuarter == store.session.currentTermQuarter)
+    #expect(snapshot.totalCareerQuarters == store.session.totalCareerQuarters)
+    #expect(snapshot.boardWatch == buildBoardWatch(session: store.session))
+    #expect(snapshot.briefing == buildCockpitBriefing(session: store.session))
+    #expect(snapshot.decisionFeedback == buildDecisionFeedback(session: store.session))
+    #expect(snapshot.chartInspection == buildChartInspection(
+        history: store.session.careerHistory,
+        decisions: store.session.completedTerms.flatMap(\.decisions) + store.session.decisions,
+    ))
+    #expect(snapshot.riskDrivers == buildRiskDrivers(session: store.session))
+    #expect(snapshot.semanticState != .disabled)
+    #expect(snapshot.chartInspection?.policy == "+25 bps")
 }
 
 @Test func riskDriversRankKnownPolicyStates() throws {

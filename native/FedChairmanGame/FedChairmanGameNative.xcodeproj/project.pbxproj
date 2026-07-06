@@ -11,9 +11,12 @@
 		0F9328BE1BFF024C3C8F00B8 /* CockpitBriefing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BC3F395ED099AB164087281 /* CockpitBriefing.swift */; };
 		11F966C0244D2B4F40210C88 /* SaveFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D866892B30770AAE57EF8F0 /* SaveFile.swift */; };
 		1466F63939CF2AFD8792C888 /* Exporters.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA4869025CFC6023D4B2644E /* Exporters.swift */; };
+		17B0BC30A137236736066603 /* PolicyDecisionCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC524EAFCFC1D01EA3F08733 /* PolicyDecisionCenter.swift */; };
 		1989648DA89F07E744647C4B /* DecisionFeedback.swift in Sources */ = {isa = PBXBuildFile; fileRef = C60FADB5B32CFB2276F7F43E /* DecisionFeedback.swift */; };
+		1C8247C5251B0B42685F1839 /* CockpitModeRailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 499A06E830EE525B8199F2CD /* CockpitModeRailView.swift */; };
 		299E353DE924D94505001CAD /* Math.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D7DA86CA1FDDF61A031939C /* Math.swift */; };
 		2E6C147FC63C258F68FC3DB2 /* RNG.swift in Sources */ = {isa = PBXBuildFile; fileRef = 604F1C55FA0096B36F6FB545 /* RNG.swift */; };
+		38A3560B1D9A18E9E5D3BC6E /* CockpitModeContentViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9DE35099E58E9C5F7014385 /* CockpitModeContentViews.swift */; };
 		40F232907996F42AD82FDF03 /* Scenario.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF3E8F5BB1ADE8F3E4ED50A8 /* Scenario.swift */; };
 		474F620DD469879554339703 /* DashboardHeaderViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A733E9778DB283810A3A4D54 /* DashboardHeaderViews.swift */; };
 		4ACA206FFF9E8E4D1CB24979 /* QuarterEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B31DF8FD32D66D173FBF6F2 /* QuarterEngine.swift */; };
@@ -22,8 +25,11 @@
 		660921A4562AD17F8BAA333D /* ScoreEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AA0B96605446211F06F00AB /* ScoreEngine.swift */; };
 		7079517EA92B412D27EFB962 /* DecisionTapeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 921A2808C0EF9D40F532F557 /* DecisionTapeView.swift */; };
 		7661D2C3E41C582075B1DCCB /* SpriteKitChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84C66124875713982223746C /* SpriteKitChartView.swift */; };
+		7895E90BB9DE24DC207C43A8 /* PolicyPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF73F86EE6470E2757B9505E /* PolicyPreview.swift */; };
 		7EAEF3A753A1FC0A4F76FD9F /* FedChairmanGameNativeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2BD4434B1C9E9252E0D70C4 /* FedChairmanGameNativeApp.swift */; };
+		873CEA0FF500B1596382F208 /* CockpitModeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ED010D33177E4B26CBD79C6 /* CockpitModeTests.swift */; };
 		89967EBB30B08D1C967E34B3 /* BoardWatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE0BF42C6BA7EF56DC50A641 /* BoardWatch.swift */; };
+		918011C118C8B67E52530C7C /* CockpitMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36AFD7E550642A658F22CFAA /* CockpitMode.swift */; };
 		922C6DE6CBBBD1D75CA50C31 /* GameWindowDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEF12800CF5FA543FBA51FE8 /* GameWindowDelegate.swift */; };
 		94047D2A06962A23CF098ECE /* help-icon.png in Resources */ = {isa = PBXBuildFile; fileRef = 7BCDAD9783A374785230349D /* help-icon.png */; };
 		97AC4D4C4C2A0CA849CCBB74 /* FedChairmanCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 17C83FC7F565800C79C166EC /* FedChairmanCore.framework */; };
@@ -36,6 +42,7 @@
 		C7FF83D88FDD599CA149B64D /* newspaper-icon.png in Resources */ = {isa = PBXBuildFile; fileRef = 7C4FB415E397196676756418 /* newspaper-icon.png */; };
 		CA2F02DC9900705EB9B58AF6 /* NativeCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95B1AE1F4BB8ABD10797876F /* NativeCoreTests.swift */; };
 		CB5BA068AE2A6C23575F0656 /* newspaper-panel.png in Resources */ = {isa = PBXBuildFile; fileRef = FACEC3E1855A65BAE122E1EE /* newspaper-panel.png */; };
+		D11F8E0B94A47E30771B94DE /* TermSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93411181975BFFA80F7A0868 /* TermSnapshot.swift */; };
 		D12F7356B5829C45B9A0F667 /* Debrief.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0417E7B5D00741CF334D1AB /* Debrief.swift */; };
 		D62CC6B5B2FB2EA021015669 /* NativeCockpitUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFBCAA122BD855A6C74CE16F /* NativeCockpitUITests.swift */; };
 		E0C3BE2E33C994C40C0D4760 /* ChartInspection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56875BFDA7E392687606A030 /* ChartInspection.swift */; };
@@ -98,9 +105,12 @@
 /* Begin PBXFileReference section */
 		0B31DF8FD32D66D173FBF6F2 /* QuarterEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuarterEngine.swift; sourceTree = "<group>"; };
 		0BA666F6572698F6758EBD47 /* CockpitScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CockpitScene.swift; sourceTree = "<group>"; };
+		0ED010D33177E4B26CBD79C6 /* CockpitModeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CockpitModeTests.swift; sourceTree = "<group>"; };
 		17C83FC7F565800C79C166EC /* FedChairmanCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = FedChairmanCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		1911500DD10AAAECB75190B8 /* Policy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Policy.swift; sourceTree = "<group>"; };
+		36AFD7E550642A658F22CFAA /* CockpitMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CockpitMode.swift; sourceTree = "<group>"; };
 		3F3B17FDAE8C3294C61856C4 /* GameSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameSessionStore.swift; sourceTree = "<group>"; };
+		499A06E830EE525B8199F2CD /* CockpitModeRailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CockpitModeRailView.swift; sourceTree = "<group>"; };
 		4AA0B96605446211F06F00AB /* ScoreEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreEngine.swift; sourceTree = "<group>"; };
 		4D7DA86CA1FDDF61A031939C /* Math.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Math.swift; sourceTree = "<group>"; };
 		524CE25DC2AC7A7834ADD227 /* Transmission.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transmission.swift; sourceTree = "<group>"; };
@@ -117,6 +127,7 @@
 		8E83AF212D60E0425F56EBCC /* Types.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Types.swift; sourceTree = "<group>"; };
 		9090AA571B47C4B8516DDFF6 /* FedChairmanCoreTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FedChairmanCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		921A2808C0EF9D40F532F557 /* DecisionTapeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DecisionTapeView.swift; sourceTree = "<group>"; };
+		93411181975BFFA80F7A0868 /* TermSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TermSnapshot.swift; sourceTree = "<group>"; };
 		95B1AE1F4BB8ABD10797876F /* NativeCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCoreTests.swift; sourceTree = "<group>"; };
 		A210E0A85C438D22E0D12969 /* CockpitChromeViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CockpitChromeViews.swift; sourceTree = "<group>"; };
 		A733E9778DB283810A3A4D54 /* DashboardHeaderViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardHeaderViews.swift; sourceTree = "<group>"; };
@@ -125,13 +136,16 @@
 		C2BD4434B1C9E9252E0D70C4 /* FedChairmanGameNativeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FedChairmanGameNativeApp.swift; sourceTree = "<group>"; };
 		C60FADB5B32CFB2276F7F43E /* DecisionFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DecisionFeedback.swift; sourceTree = "<group>"; };
 		CE0BF42C6BA7EF56DC50A641 /* BoardWatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardWatch.swift; sourceTree = "<group>"; };
+		D9DE35099E58E9C5F7014385 /* CockpitModeContentViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CockpitModeContentViews.swift; sourceTree = "<group>"; };
 		DEF12800CF5FA543FBA51FE8 /* GameWindowDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameWindowDelegate.swift; sourceTree = "<group>"; };
 		EA4869025CFC6023D4B2644E /* Exporters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Exporters.swift; sourceTree = "<group>"; };
 		EEFE2D87EB9CD4B35D08AE5E /* NewspaperPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewspaperPanelView.swift; sourceTree = "<group>"; };
+		EF73F86EE6470E2757B9505E /* PolicyPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PolicyPreview.swift; sourceTree = "<group>"; };
 		F3585686B6ADE1C3E02281BE /* settings-icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "settings-icon.png"; sourceTree = "<group>"; };
 		F58D246AD7ADE80BE1F85C79 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F72FA50075368EF6BF5AA0BD /* FedChairmanGameNativeUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FedChairmanGameNativeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		FACEC3E1855A65BAE122E1EE /* newspaper-panel.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "newspaper-panel.png"; sourceTree = "<group>"; };
+		FC524EAFCFC1D01EA3F08733 /* PolicyDecisionCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PolicyDecisionCenter.swift; sourceTree = "<group>"; };
 		FF3E8F5BB1ADE8F3E4ED50A8 /* Scenario.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Scenario.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -172,17 +186,20 @@
 				7BC3F395ED099AB164087281 /* CockpitBriefing.swift */,
 				6071C1EA951BEE67E4EEE939 /* CockpitDock.swift */,
 				6C071E8AD4FC615D8AA22626 /* CockpitLayout.swift */,
+				36AFD7E550642A658F22CFAA /* CockpitMode.swift */,
 				C0417E7B5D00741CF334D1AB /* Debrief.swift */,
 				C60FADB5B32CFB2276F7F43E /* DecisionFeedback.swift */,
 				EA4869025CFC6023D4B2644E /* Exporters.swift */,
 				3F3B17FDAE8C3294C61856C4 /* GameSessionStore.swift */,
 				4D7DA86CA1FDDF61A031939C /* Math.swift */,
 				1911500DD10AAAECB75190B8 /* Policy.swift */,
+				EF73F86EE6470E2757B9505E /* PolicyPreview.swift */,
 				0B31DF8FD32D66D173FBF6F2 /* QuarterEngine.swift */,
 				604F1C55FA0096B36F6FB545 /* RNG.swift */,
 				6D866892B30770AAE57EF8F0 /* SaveFile.swift */,
 				FF3E8F5BB1ADE8F3E4ED50A8 /* Scenario.swift */,
 				4AA0B96605446211F06F00AB /* ScoreEngine.swift */,
+				93411181975BFFA80F7A0868 /* TermSnapshot.swift */,
 				524CE25DC2AC7A7834ADD227 /* Transmission.swift */,
 				8E83AF212D60E0425F56EBCC /* Types.swift */,
 			);
@@ -203,12 +220,15 @@
 			isa = PBXGroup;
 			children = (
 				A210E0A85C438D22E0D12969 /* CockpitChromeViews.swift */,
+				D9DE35099E58E9C5F7014385 /* CockpitModeContentViews.swift */,
+				499A06E830EE525B8199F2CD /* CockpitModeRailView.swift */,
 				0BA666F6572698F6758EBD47 /* CockpitScene.swift */,
 				A733E9778DB283810A3A4D54 /* DashboardHeaderViews.swift */,
 				921A2808C0EF9D40F532F557 /* DecisionTapeView.swift */,
 				C2BD4434B1C9E9252E0D70C4 /* FedChairmanGameNativeApp.swift */,
 				DEF12800CF5FA543FBA51FE8 /* GameWindowDelegate.swift */,
 				EEFE2D87EB9CD4B35D08AE5E /* NewspaperPanelView.swift */,
+				FC524EAFCFC1D01EA3F08733 /* PolicyDecisionCenter.swift */,
 				84C66124875713982223746C /* SpriteKitChartView.swift */,
 				F33B0CA3A9DF281197659565 /* Resources */,
 			);
@@ -227,6 +247,7 @@
 		C62421C09CB4F7CFA83861A5 /* FedChairmanCoreTests */ = {
 			isa = PBXGroup;
 			children = (
+				0ED010D33177E4B26CBD79C6 /* CockpitModeTests.swift */,
 				95B1AE1F4BB8ABD10797876F /* NativeCoreTests.swift */,
 			);
 			path = FedChairmanCoreTests;
@@ -408,12 +429,15 @@
 			buildActionMask = 2147483647;
 			files = (
 				4F9311292D2068A1E0A7F2DD /* CockpitChromeViews.swift in Sources */,
+				38A3560B1D9A18E9E5D3BC6E /* CockpitModeContentViews.swift in Sources */,
+				1C8247C5251B0B42685F1839 /* CockpitModeRailView.swift in Sources */,
 				02F7EB7CCEA746512D1D471F /* CockpitScene.swift in Sources */,
 				474F620DD469879554339703 /* DashboardHeaderViews.swift in Sources */,
 				7079517EA92B412D27EFB962 /* DecisionTapeView.swift in Sources */,
 				7EAEF3A753A1FC0A4F76FD9F /* FedChairmanGameNativeApp.swift in Sources */,
 				922C6DE6CBBBD1D75CA50C31 /* GameWindowDelegate.swift in Sources */,
 				F87A33FFB210451117D4CB3F /* NewspaperPanelView.swift in Sources */,
+				17B0BC30A137236736066603 /* PolicyDecisionCenter.swift in Sources */,
 				7661D2C3E41C582075B1DCCB /* SpriteKitChartView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -435,17 +459,20 @@
 				0F9328BE1BFF024C3C8F00B8 /* CockpitBriefing.swift in Sources */,
 				AD13677C1A58B4C2446C12F1 /* CockpitDock.swift in Sources */,
 				FD6152C3DD70C5EF0C8EE256 /* CockpitLayout.swift in Sources */,
+				918011C118C8B67E52530C7C /* CockpitMode.swift in Sources */,
 				D12F7356B5829C45B9A0F667 /* Debrief.swift in Sources */,
 				1989648DA89F07E744647C4B /* DecisionFeedback.swift in Sources */,
 				1466F63939CF2AFD8792C888 /* Exporters.swift in Sources */,
 				9E9A015AE5A29EF5EABDEF06 /* GameSessionStore.swift in Sources */,
 				299E353DE924D94505001CAD /* Math.swift in Sources */,
 				A6A0B4C2833A5679FE6AE59E /* Policy.swift in Sources */,
+				7895E90BB9DE24DC207C43A8 /* PolicyPreview.swift in Sources */,
 				4ACA206FFF9E8E4D1CB24979 /* QuarterEngine.swift in Sources */,
 				2E6C147FC63C258F68FC3DB2 /* RNG.swift in Sources */,
 				11F966C0244D2B4F40210C88 /* SaveFile.swift in Sources */,
 				40F232907996F42AD82FDF03 /* Scenario.swift in Sources */,
 				660921A4562AD17F8BAA333D /* ScoreEngine.swift in Sources */,
+				D11F8E0B94A47E30771B94DE /* TermSnapshot.swift in Sources */,
 				F9E644C3DAF90BF3C4BFBDAA /* Transmission.swift in Sources */,
 				F0F661FE9F590BA7CE8F756C /* Types.swift in Sources */,
 			);
@@ -455,6 +482,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				873CEA0FF500B1596382F208 /* CockpitModeTests.swift in Sources */,
 				CA2F02DC9900705EB9B58AF6 /* NativeCoreTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

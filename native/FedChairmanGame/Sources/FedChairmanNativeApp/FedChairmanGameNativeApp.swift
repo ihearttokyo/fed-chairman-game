@@ -45,6 +45,7 @@ struct FedChairmanGameNativeApp: App {
 struct NativeCockpitView: View {
     @EnvironmentObject private var store: GameSessionStore
     @State private var dockState = CockpitDockState()
+    @State private var selectedMode: CockpitMode = .overview
     @State private var autoBriefingKey: String?
     @State private var customBps = ""
     @State private var decisionPulse = false
@@ -125,14 +126,20 @@ struct NativeCockpitView: View {
             let layout = cockpitLayoutMetrics(width: proxy.size.width, height: proxy.size.height)
             ZStack(alignment: .top) {
                 CommandDeskBackground()
-                VStack(spacing: layout.spacing.cg) {
-                    statusRail(layout: layout)
-                    dockPanels(layout: layout)
-                    metricsGrid(layout: layout)
-                    dashboard(layout: layout)
-                    policyDecisionCenter(layout: layout)
-                    if shouldShowQuarterReview(layout: layout) {
-                        quarterReview(layout: layout)
+                VStack(spacing: layout.mode == .compact ? 8 : layout.spacing.cg) {
+                    if layout.mode == .compact {
+                        CockpitModeRailView(selectedMode: $selectedMode, layout: layout)
+                        statusRail(layout: layout)
+                        modeBody(layout: layout)
+                    } else {
+                        HStack(alignment: .top, spacing: 12) {
+                            CockpitModeRailView(selectedMode: $selectedMode, layout: layout)
+                            VStack(spacing: layout.spacing.cg) {
+                                statusRail(layout: layout)
+                                modeBody(layout: layout)
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
                     }
                 }
                 .padding(layout.panelPadding.cg)
@@ -221,6 +228,127 @@ struct NativeCockpitView: View {
         .foregroundStyle(.white.opacity(0.82))
         .frame(maxWidth: .infinity, alignment: .leading)
         .frame(height: (layout.mode == .compact ? 50 : max(58, layout.dockTrayHeight)).cg)
+    }
+
+    @ViewBuilder
+    private func modeBody(layout: CockpitLayoutMetrics) -> some View {
+        switch selectedMode {
+        case .overview:
+            overviewMode(layout: layout)
+        case .briefing:
+            briefingMode(layout: layout)
+        case .mandate:
+            mandateMode(layout: layout)
+        case .policy:
+            policyMode(layout: layout)
+        case .preferences:
+            preferencesMode(layout: layout)
+        case .history:
+            historyMode(layout: layout)
+        }
+    }
+
+    @ViewBuilder
+    private func overviewMode(layout: CockpitLayoutMetrics) -> some View {
+        dockPanels(layout: layout)
+        metricsGrid(layout: layout)
+        PriorityRiskPanel(snapshot: termSnapshot, maxDrivers: layout.mode == .compact ? 2 : 3)
+        policyDecisionCenter(layout: layout)
+        if shouldShowQuarterReview(layout: layout) {
+            quarterReview(layout: layout)
+        }
+    }
+
+    @ViewBuilder
+    private func briefingMode(layout: CockpitLayoutMetrics) -> some View {
+        if layout.mode == .compact {
+            BriefingSummaryPanel(snapshot: termSnapshot) {
+                selectedMode = .policy
+            }
+            PriorityRiskPanel(snapshot: termSnapshot)
+            policyDecisionCenter(layout: layout)
+        } else {
+            HStack(alignment: .top, spacing: 10) {
+                BriefingSummaryPanel(snapshot: termSnapshot) {
+                    selectedMode = .policy
+                }
+                PriorityRiskPanel(snapshot: termSnapshot)
+            }
+            policyDecisionCenter(layout: layout)
+        }
+    }
+
+    @ViewBuilder
+    private func mandateMode(layout: CockpitLayoutMetrics) -> some View {
+        metricsGrid(layout: layout)
+        MandateFocusContainer(snapshot: termSnapshot, title: "Mandate Dashboard") {
+            HStack(alignment: .top, spacing: 10) {
+                mandateChart
+                    .frame(height: (layout.chartHeight + (layout.mode == .expanded ? 64 : 36)).cg)
+                if layout.mode != .compact {
+                    CurrentValueRailView(focus: mandateChartFocus)
+                        .frame(height: (layout.chartHeight + (layout.mode == .expanded ? 64 : 36)).cg)
+                }
+            }
+            MandateInsightBand(focus: mandateChartFocus)
+        }
+        policyDecisionCenter(layout: layout)
+    }
+
+    @ViewBuilder
+    private func policyMode(layout: CockpitLayoutMetrics) -> some View {
+        if layout.mode != .compact {
+            HStack(alignment: .top, spacing: 10) {
+                PriorityRiskPanel(snapshot: termSnapshot, maxDrivers: 2)
+                    .frame(maxWidth: 360)
+                BriefingSummaryPanel(snapshot: termSnapshot)
+            }
+        }
+        policyDecisionCenter(layout: layout)
+        if shouldShowQuarterReview(layout: layout) {
+            quarterReview(layout: layout)
+        }
+    }
+
+    @ViewBuilder
+    private func preferencesMode(layout: CockpitLayoutMetrics) -> some View {
+        SettingsDrawerView(
+            fastCommit: $fastCommit,
+            reducedMotion: Binding(
+                get: { session.ui.reducedMotion },
+                set: { store.setReducedMotion($0) },
+            ),
+            soundEnabled: Binding(
+                get: { session.ui.soundEnabled },
+                set: { store.setSoundEnabled($0) },
+            ),
+            reducedNoise: Binding(
+                get: { session.ui.reducedNoise },
+                set: { store.setReducedNoise($0) },
+            ),
+            panelMessage: panelMessage,
+            layout: layout,
+            save: savePortableSession,
+            load: loadPortableSession,
+            exportCsv: exportCsv,
+            exportJson: exportJson,
+            exportMarkdown: exportMarkdown,
+        )
+        .frame(height: (layout.mode == .expanded ? 246 : 214).cg, alignment: .top)
+        .accessibilityIdentifier("preferences-mode-panel")
+        HistorySummaryStub(snapshot: termSnapshot)
+        policyDecisionCenter(layout: layout)
+    }
+
+    @ViewBuilder
+    private func historyMode(layout: CockpitLayoutMetrics) -> some View {
+        HistorySummaryStub(snapshot: termSnapshot)
+        if shouldShowQuarterReview(layout: layout) {
+            quarterReview(layout: layout)
+        } else {
+            dashboard(layout: layout)
+        }
+        policyDecisionCenter(layout: layout)
     }
 
     private func dashboard(layout: CockpitLayoutMetrics) -> some View {
