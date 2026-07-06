@@ -173,44 +173,35 @@ struct PolicyDecisionCenter: View {
 
     private var previewPanel: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text("PREVIEW")
-                .font(.caption2.weight(.black))
-                .foregroundStyle(.white.opacity(0.48))
             if let preview {
-                Text("\(preview.moveLabel) to \(preview.resultingFedFundsRate, format: .number.precision(.fractionLength(2)))%")
-                    .font(.system(size: 14, weight: .black, design: .rounded))
-                    .foregroundStyle(.white)
-                previewRow("Inflation", preview.estimatedInflationPressure.displayLabel)
-                previewRow("Labor", preview.estimatedUnemploymentPressure.displayLabel)
-                previewRow("Credibility", preview.credibilityCost == 0 ? "None" : String(format: "%.2f pts", preview.credibilityCost))
-                previewRow("Mandate", preview.mandateGapDirection.displayLabel)
-                previewRow("Confidence", preview.confidence.displayLabel)
+                HStack(alignment: .center, spacing: 12) {
+                    previewHeader(preview)
+                    Spacer(minLength: 8)
+                    decisionButtons
+                }
+                previewMetrics(preview)
                 Text(preview.primaryDriver)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.62))
-                    .lineLimit(2)
+                    .lineLimit(1)
             } else {
+                Text("PREVIEW")
+                    .font(.caption2.weight(.black))
+                    .foregroundStyle(.white.opacity(0.48))
                 Text("Select a move to stage a non-mutating estimate before committing.")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.62))
                     .lineLimit(3)
-            }
-            HStack(spacing: 8) {
-                Button("Commit", action: commit)
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!canCommit)
-                    .keyboardShortcut(.return, modifiers: [])
-                    .accessibilityLabel(canCommit ? "Commit selected policy move" : "Commit selected policy move disabled")
-                    .accessibilityIdentifier(canCommit ? "policy-commit" : "policy-commit-disabled")
-                Button("Clear", action: clear)
-                    .buttonStyle(.bordered)
-                    .disabled(pendingSelection == nil && customBps.isEmpty)
-                    .accessibilityLabel(pendingSelection == nil && customBps.isEmpty ? "Clear policy selection disabled" : "Clear policy selection")
-                    .accessibilityIdentifier(pendingSelection == nil && customBps.isEmpty ? "policy-clear-disabled" : "policy-clear")
+                decisionButtons
             }
         }
-        .padding(8)
-        .frame(minWidth: layout.mode == .compact ? 250 : 320, maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .frame(
+            minWidth: layout.mode == .compact ? 250 : 320,
+            idealWidth: layout.mode == .compact ? 300 : 360,
+            maxWidth: layout.mode == .compact ? .infinity : 380,
+            alignment: .leading,
+        )
         .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.13)))
         .accessibilityElement(children: .contain)
@@ -218,15 +209,103 @@ struct PolicyDecisionCenter: View {
         .accessibilityIdentifier(preview == nil ? "policy-preview-empty" : "policy-preview-ready")
     }
 
-    private func previewRow(_ label: String, _ value: String) -> some View {
-        HStack {
-            Text(label)
+    private func previewHeader(_ preview: PolicyPreview) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("STAGED MOVE")
+                .font(.caption2.weight(.black))
                 .foregroundStyle(.white.opacity(0.48))
-            Spacer()
-            Text(value)
-                .foregroundStyle(.white.opacity(0.82))
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(preview.moveLabel)
+                    .font(.system(size: 18, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Text("to")
+                    .font(.caption2.weight(.black))
+                    .foregroundStyle(.white.opacity(0.46))
+            }
+            Text("\(preview.resultingFedFundsRate, format: .number.precision(.fractionLength(2)))%")
+                .font(.system(size: 16, weight: .black, design: .rounded))
+                .foregroundStyle(.green)
+                .monospacedDigit()
         }
-        .font(.caption2.weight(.bold))
+    }
+
+    private func previewMetrics(_ preview: PolicyPreview) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) {
+                previewTile("Inflation", preview.estimatedInflationPressure.displayLabel, tint: .orange)
+                previewTile("Labor", preview.estimatedUnemploymentPressure.displayLabel, tint: .blue)
+                previewTile("Mandate", preview.mandateGapDirection.displayLabel, tint: .green)
+                previewTile("Credibility", credibilitySignalLabel(for: preview), tint: .yellow)
+                previewTile("Read", preview.confidence.displayLabel, tint: .cyan)
+            }
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(minimum: 104), spacing: 6, alignment: .leading),
+                    GridItem(.flexible(minimum: 104), spacing: 6, alignment: .leading),
+                ],
+                alignment: .leading,
+                spacing: 6,
+            ) {
+                previewTile("Inflation", preview.estimatedInflationPressure.displayLabel, tint: .orange)
+                previewTile("Labor", preview.estimatedUnemploymentPressure.displayLabel, tint: .blue)
+                previewTile("Mandate", preview.mandateGapDirection.displayLabel, tint: .green)
+                previewTile("Credibility", credibilitySignalLabel(for: preview), tint: .yellow)
+                previewTile("Read", preview.confidence.displayLabel, tint: .cyan)
+            }
+        }
+    }
+
+    private func previewTile(_ label: String, _ value: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label.uppercased())
+                .font(.system(size: 8, weight: .black, design: .rounded))
+                .foregroundStyle(tint.opacity(0.72))
+                .lineLimit(1)
+            Text(value)
+                .font(.caption.weight(.black))
+                .foregroundStyle(.white.opacity(0.84))
+                .lineLimit(2)
+                .minimumScaleFactor(0.82)
+        }
+        .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+        .padding(.vertical, 5)
+        .padding(.horizontal, 7)
+        .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
+        .overlay(RoundedRectangle(cornerRadius: 7).stroke(tint.opacity(0.16)))
+    }
+
+    private var decisionButtons: some View {
+        HStack(spacing: 10) {
+            Button("Commit", action: commit)
+                .buttonStyle(.borderedProminent)
+                .disabled(!canCommit)
+                .controlSize(.regular)
+                .frame(minWidth: 112)
+                .keyboardShortcut(.return, modifiers: [])
+                .accessibilityLabel(canCommit ? "Commit selected policy move" : "Commit selected policy move disabled")
+                .accessibilityIdentifier(canCommit ? "policy-commit" : "policy-commit-disabled")
+            Button("Clear", action: clear)
+                .buttonStyle(.bordered)
+                .disabled(pendingSelection == nil && customBps.isEmpty)
+                .controlSize(.regular)
+                .accessibilityLabel(pendingSelection == nil && customBps.isEmpty ? "Clear policy selection disabled" : "Clear policy selection")
+                .accessibilityIdentifier(pendingSelection == nil && customBps.isEmpty ? "policy-clear-disabled" : "policy-clear")
+        }
+    }
+
+    private func credibilitySignalLabel(for preview: PolicyPreview) -> String {
+        if preview.credibilityCost <= 0 {
+            return "No added policy signal burden"
+        }
+        if preview.credibilityCost < 0.5 {
+            return "Small signal burden"
+        }
+        if preview.credibilityCost < 1 {
+            return "Moderate signal burden"
+        }
+        return "Large signal burden"
     }
 
     private func isValid(action: PolicyAction) -> Bool {
@@ -276,11 +355,11 @@ private extension PolicyPreviewPressure {
     var displayLabel: String {
         switch self {
         case .lower:
-            "Lower"
+            "Lower pressure"
         case .steady:
-            "Steady"
+            "Little change"
         case .higher:
-            "Higher"
+            "Higher pressure"
         }
     }
 }
@@ -289,11 +368,11 @@ private extension PolicyPreviewMandateGapDirection {
     var displayLabel: String {
         switch self {
         case .narrowing:
-            "Narrowing"
+            "Gap narrows"
         case .mixed:
-            "Mixed"
+            "Mixed tradeoff"
         case .widening:
-            "Widening"
+            "Gap widens"
         case .littleChanged:
             "Little changed"
         }
@@ -304,11 +383,11 @@ private extension PolicyPreviewConfidence {
     var displayLabel: String {
         switch self {
         case .high:
-            "High"
+            "Cleaner read"
         case .medium:
-            "Medium"
+            "Lagged read"
         case .low:
-            "Low"
+            "Noisy read"
         }
     }
 }

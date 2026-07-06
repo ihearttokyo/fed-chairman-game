@@ -441,7 +441,8 @@ import Testing
     #expect(feedback.moveLabel == "+25 bps")
     #expect(feedback.ratePath == "4.00% -> 4.25%")
     #expect(feedback.mandateLine.contains("inflation"))
-    #expect(feedback.credibilityLine.contains("rate cost"))
+    #expect(feedback.credibilityLine.contains("policy signal"))
+    #expect(!feedback.credibilityLine.contains("rate cost"))
     #expect(feedback.traceLine.contains("neutral"))
     #expect(feedback.intensity >= 0)
 

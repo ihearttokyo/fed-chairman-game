@@ -33,7 +33,11 @@ public func buildDecisionFeedback(session: GameSession, scenario: ScenarioConfig
         moveLabel: policyMoveText(decision),
         ratePath: "\(formatDecisionPercent(decision.resultingFedFundsRate - decision.rateChange)) -> \(formatDecisionPercent(decision.resultingFedFundsRate))",
         mandateLine: "\(formatSignedDecision(mandateDelta)) pp total miss; inflation \(formatSignedDecision(current.inflation - scenario.targets.inflation)) pp, labor \(formatSignedDecision(current.unemployment - scenario.targets.unemployment)) pp",
-        credibilityLine: "Credibility \(formatSignedDecision(credibilityDelta)) pts; base \(formatSignedDecision(trace.credibilityBaseDrift ?? 0)), rate cost \(formatSignedDecision(trace.credibilityRateMoveCost ?? 0)), grace \(formatSignedDecision(trace.credibilityReappointmentGrace ?? 0))",
+        credibilityLine: credibilitySignalLine(
+            delta: credibilityDelta,
+            baseDrift: trace.credibilityBaseDrift ?? 0,
+            policyBurden: trace.credibilityRateMoveCost ?? 0,
+        ),
         traceLine: "Lag \(formatSignedDecision(trace.laggedPolicyGap)) pp, shocks \(formatSignedDecision(trace.shockContrib.values.reduce(0, +))) pp, neutral \(formatDecisionPercent(trace.neutralRate))",
         tone: tone,
         intensity: decisionFeedbackIntensity(mandateDelta: mandateDelta, credibilityDelta: credibilityDelta, trace: trace),
@@ -86,6 +90,21 @@ private func decisionFeedbackTone(mandateDelta: Double, credibilityDelta: Double
 private func decisionFeedbackIntensity(mandateDelta: Double, credibilityDelta: Double, trace: EngineTrace) -> Int {
     let raw = abs(mandateDelta) * 42 + max(0, -credibilityDelta) * 8 + abs(trace.laggedPolicyGap) * 18 + abs(trace.shockContrib.values.reduce(0, +)) * 14
     return Int(min(100, max(0, raw.rounded())))
+}
+
+private func credibilitySignalLine(delta: Double, baseDrift: Double, policyBurden: Double) -> String {
+    let direction = if delta > 0.05 {
+        "trust building"
+    } else if delta < -0.05 {
+        "trust under pressure"
+    } else {
+        "trust steady"
+    }
+
+    let burdenLine = policyBurden > 0.05
+        ? "; policy signal burden \(formatSignedDecision(-policyBurden))"
+        : "; policy signal clean"
+    return "Credibility \(formatSignedDecision(delta)) pts, \(direction)\(burdenLine); anchor drift \(formatSignedDecision(baseDrift))"
 }
 
 private func formatDecisionPercent(_ value: Double) -> String {
