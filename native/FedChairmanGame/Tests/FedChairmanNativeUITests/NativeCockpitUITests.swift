@@ -157,13 +157,10 @@ final class NativeCockpitUITests: XCTestCase {
         let helpPanel = app.staticTexts["Policy Notebook"]
         XCTAssertTrue(helpPanel.waitForExistence(timeout: 2))
 
-        app.buttons["Open settings panel"].click()
-        XCTAssertTrue(app.buttons["Save"].waitForExistence(timeout: 2))
-        XCTAssertFalse(helpPanel.waitForExistence(timeout: 1))
-
         app.buttons["Open newspaper panel"].click()
         XCTAssertTrue(app.staticTexts["THE MANDATE DESK"].waitForExistence(timeout: 2))
-        XCTAssertFalse(app.buttons["Save"].waitForExistence(timeout: 1))
+        XCTAssertFalse(helpPanel.waitForExistence(timeout: 1))
+
         app.buttons["Close newspaper panel"].click()
 
         app.buttons["+25 bps"].click()
@@ -179,7 +176,7 @@ final class NativeCockpitUITests: XCTestCase {
         let windowFrame = app.windows.firstMatch.frame
         XCTAssertFalse(windowFrame.isEmpty)
 
-        for button in [newspaperButton(in: app), app.buttons["Open help panel"], app.buttons["Open settings panel"]] {
+        for button in [newspaperButton(in: app), app.buttons["Open help panel"]] {
             XCTAssertTrue(button.waitForExistence(timeout: 2), "\(button.label) should exist")
             let frame = button.frame
             XCTAssertGreaterThanOrEqual(frame.minX, windowFrame.minX + 8, "\(button.label) should not clip left")
@@ -198,7 +195,6 @@ final class NativeCockpitUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Open newspaper panel"].waitForExistence(timeout: 2))
         XCTAssertFalse(panelElement("newspaper-panel", in: app).exists)
         XCTAssertFalse(panelElement("help-panel", in: app).exists)
-        XCTAssertFalse(panelElement("settings-panel", in: app).exists)
 
         let dashboard = panelElement("mandate-dashboard", in: app)
         let decisionCenter = panelElement("policy-decision-center", in: app)
@@ -227,7 +223,7 @@ final class NativeCockpitUITests: XCTestCase {
 
         let policyButtons = ["-150 bps", "-100 bps", "-75 bps", "-50 bps", "-25 bps", "Hold", "+25 bps", "+50 bps", "+75 bps", "+100 bps", "+150 bps"]
             .map { app.buttons[$0] }
-        let dockButtons = [newspaperButton(in: app), app.buttons["Open help panel"], app.buttons["Open settings panel"]]
+        let dockButtons = [newspaperButton(in: app), app.buttons["Open help panel"]]
         let dockFrames = dockButtons.map { button -> (CGRect, String) in
             XCTAssertTrue(button.waitForExistence(timeout: 2), "\(button.label) should exist")
             return (button.frame, button.label)
@@ -260,7 +256,6 @@ final class NativeCockpitUITests: XCTestCase {
 
             assertElement(newspaperButton(in: app), staysInside: windowFrame)
             assertElement(app.buttons["Open help panel"], staysInside: windowFrame)
-            assertElement(app.buttons["Open settings panel"], staysInside: windowFrame)
 
             app.buttons["Open newspaper panel"].click()
             let newspaperPanel = panelElement("newspaper-panel", in: app)
@@ -270,12 +265,6 @@ final class NativeCockpitUITests: XCTestCase {
             app.buttons["Open help panel"].click()
             let helpPanel = panelElement("help-panel", in: app)
             assertElement(helpPanel, staysInside: windowFrame)
-            app.buttons["Open settings panel"].click()
-            let settingsPanel = panelElement("settings-panel", in: app)
-            assertElement(settingsPanel, staysInside: windowFrame)
-            for label in ["Save", "Load", "CSV", "JSON", "Markdown"] {
-                assertElement(app.buttons[label], staysInside: settingsPanel.frame)
-            }
         }
     }
 
@@ -293,7 +282,6 @@ final class NativeCockpitUITests: XCTestCase {
             let panelCases = [
                 ("Open newspaper panel", "newspaper-panel"),
                 ("Open help panel", "help-panel"),
-                ("Open settings panel", "settings-panel"),
             ]
             for (buttonLabel, panelIdentifier) in panelCases {
                 app.buttons[buttonLabel].click()
@@ -346,9 +334,6 @@ final class NativeCockpitUITests: XCTestCase {
                 app.buttons["Open help panel"].click()
                 XCTAssertTrue(app.staticTexts["Policy Notebook"].waitForExistence(timeout: 2))
                 try captureVisualSmoke(app, name: "\(size)-help")
-                app.buttons["Open settings panel"].click()
-                XCTAssertTrue(app.buttons["Save"].waitForExistence(timeout: 2))
-                try captureVisualSmoke(app, name: "\(size)-settings")
             }
             app.terminate()
         }

@@ -119,10 +119,7 @@ public func buildPolicyPreview(session: GameSession, input: PolicyPreviewInput) 
         return nil
     }
 
-    let inflationGap = current.inflation - activeInflationUpperBound(
-        ui: session.ui,
-        currentCareerQuarter: session.totalCareerQuarters,
-    )
+    let inflationGap = current.inflation - scenario.targets.inflation
     let unemploymentGap = current.unemployment - scenario.targets.unemployment
     let laggedGap = previewLaggedPolicyGap(history: session.history, scenario: scenario)
     let neutralRate = scenario.coefficients.realNeutralRate + current.expectedInflation

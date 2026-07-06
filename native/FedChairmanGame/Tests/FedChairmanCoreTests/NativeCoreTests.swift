@@ -47,7 +47,7 @@ import Testing
     #expect(store.session.decisions.first?.resultingFedFundsRate == 4.37)
 }
 
-@Test func reappointmentGraceAppliesOnlyForInflationRestoringPolicy() throws {
+@Test func targetRestoringPolicyDefendsCredibilityWithoutPoliticalGrace() throws {
     var overheated = classicScenario.startingState
     overheated.inflation = 4.2
     overheated.unemployment = 5
@@ -56,13 +56,13 @@ import Testing
     let hike = createDecision(action: .raise50, current: overheated, timestamp: "test")
     let cut = createDecision(action: .cut50, current: overheated, timestamp: "test")
 
-    let termTwoHike = try advanceQuarter(history: [overheated], decision: hike, scenario: classicScenario, activeShocks: [], seed: "unit-seed", termNumber: 2)
+    let targetRestoringHike = try advanceQuarter(history: [overheated], decision: hike, scenario: classicScenario, activeShocks: [], seed: "unit-seed", termNumber: 2)
     let termOneHike = try advanceQuarter(history: [overheated], decision: hike, scenario: classicScenario, activeShocks: [], seed: "unit-seed", termNumber: 1)
     let wrongWayCut = try advanceQuarter(history: [overheated], decision: cut, scenario: classicScenario, activeShocks: [], seed: "unit-seed", termNumber: 2)
 
-    #expect((termTwoHike.trace.credibilityReappointmentGrace ?? 0) > 0)
-    #expect((termTwoHike.trace.credibilityDelta ?? 0) > 0)
-    #expect((termTwoHike.trace.credibilityDelta ?? 0) <= 0.6)
+    #expect(targetRestoringHike.trace.credibilityReappointmentGrace == 0)
+    #expect((targetRestoringHike.trace.credibilityDelta ?? 0) > (wrongWayCut.trace.credibilityDelta ?? 0))
+    #expect(targetRestoringHike.trace.credibilityDelta == termOneHike.trace.credibilityDelta)
     #expect(termOneHike.trace.credibilityReappointmentGrace == 0)
     #expect(wrongWayCut.trace.credibilityReappointmentGrace == 0)
 }
@@ -222,16 +222,15 @@ import Testing
 
 @Test func cockpitDockStateTogglesExclusivelyAndPlacesPanelDeterministically() {
     var state = CockpitDockState()
+    state.toggle(.newspaper)
     state.toggle(.help)
-    state.toggle(.settings)
 
-    #expect(state.openPanels == [.settings])
-    #expect(!state.isOpen(.help))
-    #expect(state.isOpen(.settings))
+    #expect(state.openPanels == [.help])
+    #expect(state.isOpen(.help))
     #expect(!state.isOpen(.newspaper))
 
     let placements = state.cascadePlacements()
-    #expect(placements.map(\.panel) == [.settings])
+    #expect(placements.map(\.panel) == [.help])
     #expect(placements[0].xOffset == 0)
     #expect(placements[0].yOffset == 0)
 
@@ -239,7 +238,7 @@ import Testing
     #expect(state.openPanels == [.newspaper])
     #expect(state.pinnedBriefing)
     #expect(state.isOpen(.newspaper))
-    #expect(!state.isOpen(.settings))
+    #expect(!state.isOpen(.help))
     state.closeAll()
     #expect(state.openPanels.isEmpty)
     #expect(!state.pinnedBriefing)
@@ -289,29 +288,22 @@ import Testing
     #expect(stressedWatch.riskLabel == "Raise score above 70")
 }
 
-@Test func trumpCheatActivatesNewsAndInflationCapDecay() {
-    var ui = UiState.default
-    ui.trumpCheatActivatedCareerQuarter = 4
-
-    #expect(activeInflationUpperBound(ui: ui, currentCareerQuarter: 4) == 8)
-    #expect(activeInflationUpperBound(ui: ui, currentCareerQuarter: 5) == 7.75)
-    #expect(activeInflationUpperBound(ui: ui, currentCareerQuarter: 20) == 4)
-
-    var session = makeInitialSession(seed: "trump-cheat")
+@Test func fixedTwoPercentInflationTargetShapesBriefingAndBoardWatch() {
+    var session = makeInitialSession(seed: "fixed-target")
     session.status = .inProgress
-    session.ui = ui
-    session.totalCareerQuarters = 5
+    session.current.inflation = 4.4
+    session.score = evaluateScore(history: [session.current], scenario: classicScenario)
 
     let briefing = buildCockpitBriefing(session: session)
-    #expect(briefing.kicker == "Cheat Event")
-    #expect(briefing.headline.contains("Trump elected"))
-    #expect(briefing.policyImplication.contains("7.75%"))
+    #expect(briefing.kicker != "Cheat Event")
+    #expect(briefing.policyImplication.localizedCaseInsensitiveContains("tighter"))
 
     let watch = buildBoardWatch(session: session)
-    #expect(watch.inflationDetail.contains("cap 7.75%"))
+    #expect(watch.inflationDetail.contains("renewal gate 4.00%"))
+    #expect(watch.riskLabel == "Cool inflation below the renewal gate")
 }
 
-@Test func trumpCheatChangesQuarterEnginePressureOverTime() throws {
+@Test func credibilityIsSymmetricAroundTwoPercentTargetAndDefendsForcefulMoves() throws {
     let highInflation = MacroState(
         quarterIndex: 0,
         quartersRemaining: 16,
@@ -330,37 +322,39 @@ import Testing
         decision: decision,
         scenario: classicScenario,
         activeShocks: [],
-        seed: "trump-engine-compare",
+        seed: "credibility-engine-compare",
     )
 
-    var ui = UiState.default
-    ui.trumpCheatActivatedCareerQuarter = 4
-    #expect(activeInflationUpperBound(ui: ui, currentCareerQuarter: 5) == 7.75)
-    #expect(activeInflationUpperBound(ui: ui, currentCareerQuarter: 20) == 4)
-
-    let earlyCheat = try advanceQuarter(
+    let defendingHike = try advanceQuarter(
         history: [highInflation],
-        decision: decision,
+        decision: createDecision(action: .raise150, current: highInflation, timestamp: "test"),
         scenario: classicScenario,
         activeShocks: [],
-        seed: "trump-engine-compare",
-        ui: ui,
-        careerQuarterIndex: 5,
-    )
-    let lateCheat = try advanceQuarter(
-        history: [highInflation],
-        decision: decision,
-        scenario: classicScenario,
-        activeShocks: [],
-        seed: "trump-engine-compare",
-        ui: ui,
-        careerQuarterIndex: 20,
+        seed: "credibility-engine-compare",
     )
 
-    #expect((earlyCheat.trace.credibilityDelta ?? 0) > (normal.trace.credibilityDelta ?? 0))
-    #expect(earlyCheat.nextState.expectedInflation > lateCheat.nextState.expectedInflation)
-    #expect((lateCheat.trace.credibilityDelta ?? 0) < (earlyCheat.trace.credibilityDelta ?? 0))
-    #expect((lateCheat.trace.credibilityDelta ?? 0) < 0)
+    let lowInflation = MacroState(
+        quarterIndex: 0,
+        quartersRemaining: 16,
+        inflation: 0.2,
+        unemployment: 6.2,
+        fedFundsRate: 4.5,
+        outputGap: -0.25,
+        gdpGrowth: 1.2,
+        expectedInflation: 1.1,
+        credibility: 70,
+    )
+    let lowMiss = try advanceQuarter(
+        history: [lowInflation],
+        decision: createDecision(action: .hold, current: lowInflation, timestamp: "test"),
+        scenario: classicScenario,
+        activeShocks: [],
+        seed: "credibility-engine-low",
+    )
+
+    #expect((normal.trace.credibilityDelta ?? 0) < 0)
+    #expect((defendingHike.trace.credibilityDelta ?? 0) >= (normal.trace.credibilityDelta ?? 0))
+    #expect((lowMiss.trace.credibilityDelta ?? 0) < 0)
 }
 
 @Test func cockpitLayoutMetricsRespondToWindowSize() {

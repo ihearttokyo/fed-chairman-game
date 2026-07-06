@@ -42,7 +42,7 @@ public final class GameSessionStore: ObservableObject {
         let termScore = evaluateScore(
             history: termHistory,
             scenario: scenario,
-            inflationUpperBound: activeInflationUpperBound(ui: session.ui, currentCareerQuarter: session.totalCareerQuarters),
+            inflationUpperBound: reappointmentInflationUpperBound,
         )
         session.status = .inProgress
         session.termNumber += 1
@@ -89,18 +89,6 @@ public final class GameSessionStore: ObservableObject {
 
     public func setSoundVolume(_ value: Double) {
         session.ui.soundVolume = min(1, max(0, value))
-    }
-
-    public func activateTrumpCheat() {
-        guard session.ui.trumpCheatActivatedCareerQuarter == nil else {
-            return
-        }
-        session.ui.trumpCheatActivatedCareerQuarter = session.totalCareerQuarters
-        session.score = evaluateScore(
-            history: session.history,
-            scenario: classicScenario,
-            inflationUpperBound: activeInflationUpperBound(ui: session.ui, currentCareerQuarter: session.totalCareerQuarters),
-        )
     }
 
     public static func makeInitialSession(seed: String = "classic-2026") -> GameSession {
@@ -177,7 +165,7 @@ public final class GameSessionStore: ObservableObject {
         let score = evaluateScore(
             history: history,
             scenario: scenario,
-            inflationUpperBound: activeInflationUpperBound(ui: session.ui, currentCareerQuarter: session.totalCareerQuarters + 1),
+            inflationUpperBound: reappointmentInflationUpperBound,
         )
         let careerScore = try evaluateScore(history: careerHistory, scenario: getScenario(id: session.scenarioId))
         let termSummary = completedTerm

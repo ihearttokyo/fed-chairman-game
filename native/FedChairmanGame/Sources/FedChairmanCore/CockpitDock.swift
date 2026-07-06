@@ -3,7 +3,6 @@ import Foundation
 public enum CockpitDockPanel: String, Codable, CaseIterable, Identifiable, Sendable {
     case newspaper
     case help
-    case settings
 
     public var id: String {
         rawValue
@@ -13,7 +12,6 @@ public enum CockpitDockPanel: String, Codable, CaseIterable, Identifiable, Senda
         switch self {
         case .newspaper: "Newspaper"
         case .help: "Help"
-        case .settings: "Settings"
         }
     }
 
@@ -21,7 +19,6 @@ public enum CockpitDockPanel: String, Codable, CaseIterable, Identifiable, Senda
         switch self {
         case .newspaper: "newspaper-icon"
         case .help: "help-icon"
-        case .settings: "settings-icon"
         }
     }
 }
@@ -103,13 +100,6 @@ public struct CockpitDockState: Equatable, Sendable {
                     yOffset: Double(index) * -18,
                 )
             }
-    }
-
-    private mutating func appendIfNeeded(_ panel: CockpitDockPanel) {
-        guard !openPanels.contains(panel) else {
-            return
-        }
-        openPanels.append(panel)
     }
 }
 

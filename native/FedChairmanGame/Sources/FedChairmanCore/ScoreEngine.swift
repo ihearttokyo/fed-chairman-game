@@ -16,15 +16,13 @@ private func gradeFor(score: Double) -> Grade {
     return .f
 }
 
-public func activeInflationUpperBound(ui: UiState, currentCareerQuarter: Int) -> Double {
-    guard let activatedQuarter = ui.trumpCheatActivatedCareerQuarter else {
-        return 4
-    }
-    let elapsedQuarters = max(0, currentCareerQuarter - activatedQuarter)
-    return max(4, 8 - Double(elapsedQuarters) * 0.25)
-}
+public let reappointmentInflationUpperBound = 4.0
 
-public func evaluateScore(history: [MacroState], scenario: ScenarioConfig, inflationUpperBound: Double = 4) -> ScoreState {
+public func evaluateScore(
+    history: [MacroState],
+    scenario: ScenarioConfig,
+    inflationUpperBound: Double = reappointmentInflationUpperBound,
+) -> ScoreState {
     let played = Array(history.dropFirst())
     let scored = played.isEmpty ? history : played
     let inflationGaps = scored.map { $0.inflation - scenario.targets.inflation }

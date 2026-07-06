@@ -256,7 +256,6 @@ struct HelpDrawerView: View {
 }
 
 struct SettingsDrawerView: View {
-    @Binding var fastCommit: Bool
     @Binding var reducedMotion: Bool
     @Binding var soundEnabled: Bool
     @Binding var reducedNoise: Bool
@@ -311,7 +310,6 @@ struct SettingsDrawerView: View {
             .frame(width: 112, alignment: .leading)
 
             HStack(spacing: 7) {
-                compactToggle("Fast commit", isOn: $fastCommit)
                 compactToggle("Motion", isOn: $reducedMotion)
                 compactToggle("Sound", isOn: $soundEnabled)
                 compactToggle("Noise", isOn: $reducedNoise)
@@ -340,13 +338,6 @@ struct SettingsDrawerView: View {
             )
 
             HStack(alignment: .top, spacing: 8) {
-                SettingsToggleTile(
-                    title: "Fast commit",
-                    subtitle: "Numbers commit",
-                    systemName: "return",
-                    tint: .green,
-                    isOn: $fastCommit,
-                )
                 SettingsToggleTile(
                     title: "Motion",
                     subtitle: "Quieter transitions",

@@ -45,7 +45,7 @@ struct FedChairmanGameNativeApp: App {
 struct NativeCockpitView: View {
     @EnvironmentObject private var store: GameSessionStore
     @State private var dockState = CockpitDockState()
-    @State private var selectedMode: CockpitMode = .overview
+    @State private var selectedMode: CockpitMode = .desk
     @State private var autoBriefingKey: String?
     @State private var customBps = ""
     @State private var decisionPulse = false
@@ -53,12 +53,6 @@ struct NativeCockpitView: View {
     @State private var panelMessage: String?
     @State private var inspectedChartIndex: Int?
     @State private var didApplyValidationProgression = false
-    @State private var cheatConsoleOpen = false
-    @State private var cheatConsoleCommand = ""
-    @State private var cheatConsoleMessage = "Enter cheat code."
-    @State private var lastCheatConsoleToggle = Date.distantPast
-    @FocusState private var cheatConsoleFieldFocused: Bool
-    @AppStorage("FedChairman.fastCommit") private var fastCommit = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var session: GameSession {
@@ -86,8 +80,7 @@ struct NativeCockpitView: View {
     }
 
     private var inflationMetricTargetText: String {
-        let cap = activeInflationUpperBound(ui: session.ui, currentCareerQuarter: session.totalCareerQuarters)
-        return cap > 4 ? "cap \(String(format: "%.1f", cap))%" : "2.0%"
+        "2.0%"
     }
 
     private var careerDecisions: [PolicyDecision] {
@@ -146,7 +139,6 @@ struct NativeCockpitView: View {
                 .padding(.top, cockpitContentTopInset(layout).cg)
 
                 debriefOverlay
-                cheatConsoleOverlay
                 Text(motionMode == .reduced ? "Reduced motion mode" : "Spring motion mode")
                     .font(.system(size: 1))
                     .foregroundStyle(.clear)
@@ -181,9 +173,6 @@ struct NativeCockpitView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .closeCockpitOverlays)) { _ in
             clearPolicySelectionOrCloseOverlays()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .toggleCheatConsole)) { _ in
-            toggleCheatConsole()
         }
         .onChange(of: briefingKey) {
             autoPeekBriefing()
@@ -233,26 +222,19 @@ struct NativeCockpitView: View {
     @ViewBuilder
     private func modeBody(layout: CockpitLayoutMetrics) -> some View {
         switch selectedMode {
-        case .overview:
-            overviewMode(layout: layout)
-        case .briefing:
-            briefingMode(layout: layout)
-        case .mandate:
-            mandateMode(layout: layout)
-        case .policy:
-            policyMode(layout: layout)
-        case .preferences:
-            preferencesMode(layout: layout)
-        case .history:
-            historyMode(layout: layout)
+        case .desk:
+            deskMode(layout: layout)
+        case .charts:
+            chartsMode(layout: layout)
+        case .records:
+            recordsMode(layout: layout)
         }
     }
 
     @ViewBuilder
-    private func overviewMode(layout: CockpitLayoutMetrics) -> some View {
+    private func deskMode(layout: CockpitLayoutMetrics) -> some View {
         dockPanels(layout: layout)
-        metricsGrid(layout: layout)
-        PriorityRiskPanel(snapshot: termSnapshot, maxDrivers: layout.mode == .compact ? 2 : 3)
+        dashboard(layout: layout)
         policyDecisionCenter(layout: layout)
         if shouldShowQuarterReview(layout: layout) {
             quarterReview(layout: layout)
@@ -260,95 +242,79 @@ struct NativeCockpitView: View {
     }
 
     @ViewBuilder
-    private func briefingMode(layout: CockpitLayoutMetrics) -> some View {
-        if layout.mode == .compact {
-            BriefingSummaryPanel(snapshot: termSnapshot) {
-                selectedMode = .policy
-            }
-            PriorityRiskPanel(snapshot: termSnapshot)
-            policyDecisionCenter(layout: layout)
-        } else {
-            HStack(alignment: .top, spacing: 10) {
-                BriefingSummaryPanel(snapshot: termSnapshot) {
-                    selectedMode = .policy
-                }
-                PriorityRiskPanel(snapshot: termSnapshot)
-            }
-            policyDecisionCenter(layout: layout)
-        }
-    }
-
-    @ViewBuilder
-    private func mandateMode(layout: CockpitLayoutMetrics) -> some View {
+    private func chartsMode(layout: CockpitLayoutMetrics) -> some View {
         metricsGrid(layout: layout)
         MandateFocusContainer(snapshot: termSnapshot, title: "Mandate Dashboard") {
             HStack(alignment: .top, spacing: 10) {
                 mandateChart
+                    .frame(maxWidth: .infinity)
                     .frame(height: (layout.chartHeight + (layout.mode == .expanded ? 64 : 36)).cg)
                 if layout.mode != .compact {
                     CurrentValueRailView(focus: mandateChartFocus)
+                        .frame(width: 220)
                         .frame(height: (layout.chartHeight + (layout.mode == .expanded ? 64 : 36)).cg)
                 }
             }
             MandateInsightBand(focus: mandateChartFocus)
         }
-        policyDecisionCenter(layout: layout)
     }
 
     @ViewBuilder
-    private func policyMode(layout: CockpitLayoutMetrics) -> some View {
-        if layout.mode != .compact {
+    private func recordsMode(layout: CockpitLayoutMetrics) -> some View {
+        if layout.mode == .compact {
+            SettingsDrawerView(
+                reducedMotion: Binding(
+                    get: { session.ui.reducedMotion },
+                    set: { store.setReducedMotion($0) },
+                ),
+                soundEnabled: Binding(
+                    get: { session.ui.soundEnabled },
+                    set: { store.setSoundEnabled($0) },
+                ),
+                reducedNoise: Binding(
+                    get: { session.ui.reducedNoise },
+                    set: { store.setReducedNoise($0) },
+                ),
+                panelMessage: panelMessage,
+                layout: layout,
+                save: savePortableSession,
+                load: loadPortableSession,
+                exportCsv: exportCsv,
+                exportJson: exportJson,
+                exportMarkdown: exportMarkdown,
+            )
+            .frame(height: 184.cg, alignment: .top)
+            HistorySummaryStub(snapshot: termSnapshot)
+        } else {
             HStack(alignment: .top, spacing: 10) {
-                PriorityRiskPanel(snapshot: termSnapshot, maxDrivers: 2)
-                    .frame(maxWidth: 360)
-                BriefingSummaryPanel(snapshot: termSnapshot)
+                SettingsDrawerView(
+                    reducedMotion: Binding(
+                        get: { session.ui.reducedMotion },
+                        set: { store.setReducedMotion($0) },
+                    ),
+                    soundEnabled: Binding(
+                        get: { session.ui.soundEnabled },
+                        set: { store.setSoundEnabled($0) },
+                    ),
+                    reducedNoise: Binding(
+                        get: { session.ui.reducedNoise },
+                        set: { store.setReducedNoise($0) },
+                    ),
+                    panelMessage: panelMessage,
+                    layout: layout,
+                    save: savePortableSession,
+                    load: loadPortableSession,
+                    exportCsv: exportCsv,
+                    exportJson: exportJson,
+                    exportMarkdown: exportMarkdown,
+                )
+                .frame(height: (layout.mode == .expanded ? 246 : 214).cg, alignment: .top)
+                HistorySummaryStub(snapshot: termSnapshot)
             }
         }
-        policyDecisionCenter(layout: layout)
         if shouldShowQuarterReview(layout: layout) {
             quarterReview(layout: layout)
         }
-    }
-
-    @ViewBuilder
-    private func preferencesMode(layout: CockpitLayoutMetrics) -> some View {
-        SettingsDrawerView(
-            fastCommit: $fastCommit,
-            reducedMotion: Binding(
-                get: { session.ui.reducedMotion },
-                set: { store.setReducedMotion($0) },
-            ),
-            soundEnabled: Binding(
-                get: { session.ui.soundEnabled },
-                set: { store.setSoundEnabled($0) },
-            ),
-            reducedNoise: Binding(
-                get: { session.ui.reducedNoise },
-                set: { store.setReducedNoise($0) },
-            ),
-            panelMessage: panelMessage,
-            layout: layout,
-            save: savePortableSession,
-            load: loadPortableSession,
-            exportCsv: exportCsv,
-            exportJson: exportJson,
-            exportMarkdown: exportMarkdown,
-        )
-        .frame(height: (layout.mode == .expanded ? 246 : 214).cg, alignment: .top)
-        .accessibilityIdentifier("preferences-mode-panel")
-        HistorySummaryStub(snapshot: termSnapshot)
-        policyDecisionCenter(layout: layout)
-    }
-
-    @ViewBuilder
-    private func historyMode(layout: CockpitLayoutMetrics) -> some View {
-        HistorySummaryStub(snapshot: termSnapshot)
-        if shouldShowQuarterReview(layout: layout) {
-            quarterReview(layout: layout)
-        } else {
-            dashboard(layout: layout)
-        }
-        policyDecisionCenter(layout: layout)
     }
 
     private func dashboard(layout: CockpitLayoutMetrics) -> some View {
@@ -374,21 +340,13 @@ struct NativeCockpitView: View {
                 }
             }
             .padding(.bottom, layout.mode == .compact ? 3 : 6)
-            if layout.mode != .compact {
-                ChartInspectionStrip(
-                    inspection: chartInspection,
-                    isInspecting: inspectedChartIndex != nil,
-                    compact: false,
-                )
-                .padding(.bottom, 6)
-                MandateInsightBand(focus: mandateChartFocus)
-                    .padding(.bottom, 6)
-            }
             HStack(alignment: .top, spacing: 10) {
                 mandateChart
+                    .frame(maxWidth: .infinity)
                     .frame(height: layout.chartHeight.cg)
                 if layout.mode != .compact {
                     CurrentValueRailView(focus: mandateChartFocus)
+                        .frame(width: 220)
                         .frame(height: layout.chartHeight.cg)
                 }
             }
@@ -400,7 +358,7 @@ struct NativeCockpitView: View {
         SpriteKitChart(
             history: session.careerHistory,
             reducedMotion: reduceMotion || session.ui.reducedMotion,
-            inflationUpperBound: activeInflationUpperBound(ui: session.ui, currentCareerQuarter: session.totalCareerQuarters),
+            inflationUpperBound: 2.5,
             onInspectionIndexChanged: { inspectedChartIndex = $0 },
         )
         .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -702,8 +660,6 @@ struct NativeCockpitView: View {
             layout.newspaperPanelWidth.cg
         case .help:
             layout.helpPanelWidth.cg
-        case .settings:
-            layout.settingsPanelWidth.cg
         }
     }
 
@@ -714,35 +670,10 @@ struct NativeCockpitView: View {
                 NewspaperPanelView(briefing: briefing, layout: layout)
                     .accessibilityElement(children: .contain)
                     .accessibilityLabel(panel.title)
-            } else if panel == .help {
+            } else {
                 HelpDrawerView(topics: buildHelpTopics(session: session), layout: layout)
                     .accessibilityElement(children: .contain)
                     .accessibilityLabel("Policy Notebook")
-            } else {
-                SettingsDrawerView(
-                    fastCommit: $fastCommit,
-                    reducedMotion: Binding(
-                        get: { session.ui.reducedMotion },
-                        set: { store.setReducedMotion($0) },
-                    ),
-                    soundEnabled: Binding(
-                        get: { session.ui.soundEnabled },
-                        set: { store.setSoundEnabled($0) },
-                    ),
-                    reducedNoise: Binding(
-                        get: { session.ui.reducedNoise },
-                        set: { store.setReducedNoise($0) },
-                    ),
-                    panelMessage: panelMessage,
-                    layout: layout,
-                    save: savePortableSession,
-                    load: loadPortableSession,
-                    exportCsv: exportCsv,
-                    exportJson: exportJson,
-                    exportMarkdown: exportMarkdown,
-                )
-                .accessibilityElement(children: .contain)
-                .accessibilityLabel(panel.title)
             }
         }
         .frame(
@@ -750,7 +681,6 @@ struct NativeCockpitView: View {
             height: maxHeight.cg,
             alignment: .top,
         )
-        .clipped()
         .accessibilityIdentifier("\(panel.rawValue)-panel")
     }
 
@@ -774,8 +704,6 @@ struct NativeCockpitView: View {
     private func closeOverlays() {
         dockState.closeAll()
         autoBriefingKey = nil
-        cheatConsoleOpen = false
-        cheatConsoleFieldFocused = false
     }
 
     private func clearPolicySelectionOrCloseOverlays() {
@@ -783,42 +711,6 @@ struct NativeCockpitView: View {
             clearPendingPolicySelection()
         } else {
             closeOverlays()
-        }
-    }
-
-    private func toggleCheatConsole() {
-        let now = Date()
-        guard now.timeIntervalSince(lastCheatConsoleToggle) > 0.15 else {
-            return
-        }
-        lastCheatConsoleToggle = now
-        let shouldOpen = !cheatConsoleOpen
-        cheatConsoleOpen = shouldOpen
-        if shouldOpen {
-            cheatConsoleCommand = ""
-            cheatConsoleMessage = "Enter cheat code."
-            DispatchQueue.main.async {
-                cheatConsoleFieldFocused = true
-            }
-        } else {
-            cheatConsoleFieldFocused = false
-        }
-    }
-
-    private func runCheatConsoleCommand() {
-        let command = cheatConsoleCommand.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        guard command == "TRUMP" else {
-            cheatConsoleMessage = "Unknown code."
-            NSSound.beep()
-            return
-        }
-        store.activateTrumpCheat()
-        cheatConsoleMessage = "TRUMP event active."
-        dockState.open(.newspaper, pinned: true)
-        autoBriefingKey = briefingKey
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            cheatConsoleOpen = false
-            cheatConsoleFieldFocused = false
         }
     }
 
@@ -852,26 +744,14 @@ struct NativeCockpitView: View {
         guard session.status == .inProgress else {
             return
         }
-        if fastCommit {
-            if action == .custom {
-                commitCustom()
-            } else {
-                commit(action)
-            }
-        } else {
-            selectPendingPolicyAction(action)
-        }
+        selectPendingPolicyAction(action)
     }
 
     private func handlePolicyShortcut(_ action: PolicyAction) {
         guard session.status == .inProgress else {
             return
         }
-        if fastCommit {
-            commit(action)
-        } else {
-            selectPendingPolicyAction(action)
-        }
+        selectPendingPolicyAction(action)
     }
 
     private func selectPendingPolicyAction(_ action: PolicyAction) {
@@ -1096,18 +976,6 @@ struct NativeCockpitView: View {
 }
 
 private extension NativeCockpitView {
-    var cheatConsoleOverlay: some View {
-        CheatConsoleOverlay(
-            isOpen: cheatConsoleOpen,
-            command: $cheatConsoleCommand,
-            message: cheatConsoleMessage,
-            motionMode: motionMode,
-            isCommandFieldFocused: $cheatConsoleFieldFocused,
-            close: toggleCheatConsole,
-            run: runCheatConsoleCommand,
-        )
-    }
-
     var debriefOverlay: some View {
         Group {
             if session.status == .termDebrief || session.status == .notReappointed || session.status == .retired {
@@ -1249,7 +1117,6 @@ private extension Notification.Name {
     static let commitPendingPolicySelection = Notification.Name("FedChairmanCommitPendingPolicySelection")
     static let clearPendingPolicySelection = Notification.Name("FedChairmanClearPendingPolicySelection")
     static let closeCockpitOverlays = Notification.Name("FedChairmanCloseCockpitOverlays")
-    static let toggleCheatConsole = Notification.Name("FedChairmanToggleCheatConsole")
 }
 
 private struct PolicyShortcutBinding {
@@ -1274,61 +1141,6 @@ private let policyShortcutBindings: [PolicyShortcutBinding] = [
     PolicyShortcutBinding(key: "0", action: .raise100),
 ]
 
-private struct CheatConsoleOverlay: View {
-    var isOpen: Bool
-    @Binding var command: String
-    var message: String
-    var motionMode: CockpitMotionMode
-    @FocusState.Binding var isCommandFieldFocused: Bool
-    var close: () -> Void
-    var run: () -> Void
-
-    var body: some View {
-        Group {
-            if isOpen {
-                ZStack {
-                    Color.black.opacity(0.32)
-                        .ignoresSafeArea()
-                    CommandPanel {
-                        consoleBody
-                            .frame(width: 420, alignment: .leading)
-                    }
-                }
-                .accessibilityIdentifier("cheat-console")
-                .transition(motionMode == .reduced ? .opacity : .scale(scale: 0.92).combined(with: .opacity))
-            }
-        }
-        .animation(motionMode == .reduced ? nil : .bouncy(duration: 0.24, extraBounce: 0.12), value: isOpen)
-    }
-
-    private var consoleBody: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Console")
-                    .font(.system(size: 20, weight: .black, design: .rounded))
-                Spacer()
-                Button("Close", action: close)
-                    .buttonStyle(.borderless)
-            }
-            Text(message)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.68))
-            HStack(spacing: 8) {
-                Text("`")
-                    .font(.system(size: 18, weight: .black, design: .monospaced))
-                    .foregroundStyle(.green)
-                TextField("code", text: $command)
-                    .textFieldStyle(.roundedBorder)
-                    .focused($isCommandFieldFocused)
-                    .accessibilityIdentifier("cheat-console-command-field")
-                    .onSubmit(run)
-                Button("Run", action: run)
-                    .buttonStyle(.borderedProminent)
-            }
-        }
-    }
-}
-
 @MainActor
 private final class PolicyShortcutDispatcher {
     static let shared = PolicyShortcutDispatcher()
@@ -1347,10 +1159,6 @@ private final class PolicyShortcutDispatcher {
             }
             if event.keyCode == 53 {
                 NotificationCenter.default.post(name: .closeCockpitOverlays, object: nil)
-                return nil
-            }
-            if event.keyCode == 50 || event.charactersIgnoringModifiers == "`" {
-                NotificationCenter.default.post(name: .toggleCheatConsole, object: nil)
                 return nil
             }
             guard !Self.isTextInputFocused else {

@@ -6,7 +6,7 @@
   "scripts": {
     "native:generate": "cd native/FedChairmanGame && xcodegen generate",
     "typecheck": "cd native/FedChairmanGame && swift build",
-    "lint": "cd native/FedChairmanGame && swiftformat Sources Tests --swift-version 6.1 --lint && swiftlint lint --strict",
+    "lint": "cd native/FedChairmanGame && swiftformat Sources Tests --swift-version 6.1 --lint && swiftlint lint --strict --no-cache",
     "test": "cd native/FedChairmanGame && swift test",
     "test:fast": "scripts/native-validation.sh fast",
     "test:gui": "scripts/agentic-gui-verify.sh",

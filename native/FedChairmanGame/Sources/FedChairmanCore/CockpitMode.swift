@@ -1,12 +1,9 @@
 import Foundation
 
 public enum CockpitMode: String, Codable, CaseIterable, Equatable, Sendable, Identifiable {
-    case overview
-    case briefing
-    case mandate
-    case policy
-    case preferences
-    case history
+    case desk
+    case charts
+    case records
 
     public var id: String {
         rawValue
@@ -14,52 +11,34 @@ public enum CockpitMode: String, Codable, CaseIterable, Equatable, Sendable, Ide
 
     public var title: String {
         switch self {
-        case .overview:
-            "Overview"
-        case .briefing:
-            "Briefing"
-        case .mandate:
-            "Mandate"
-        case .policy:
-            "Policy"
-        case .preferences:
-            "Preferences"
-        case .history:
-            "History"
+        case .desk:
+            "Desk"
+        case .charts:
+            "Charts"
+        case .records:
+            "Records"
         }
     }
 
     public var shortTitle: String {
         switch self {
-        case .overview:
+        case .desk:
             "Desk"
-        case .briefing:
-            "Brief"
-        case .mandate:
+        case .charts:
             "Chart"
-        case .policy:
-            "Policy"
-        case .preferences:
-            "Prefs"
-        case .history:
-            "History"
+        case .records:
+            "Records"
         }
     }
 
     public var subtitle: String {
         switch self {
-        case .overview:
-            "Full cockpit"
-        case .briefing:
-            "Risk read"
-        case .mandate:
-            "Chart focus"
-        case .policy:
-            "Decision desk"
-        case .preferences:
-            "Setup/export"
-        case .history:
-            "Career trail"
+        case .desk:
+            "Briefing, chart, policy"
+        case .charts:
+            "Mandate detail"
+        case .records:
+            "History and preferences"
         }
     }
 

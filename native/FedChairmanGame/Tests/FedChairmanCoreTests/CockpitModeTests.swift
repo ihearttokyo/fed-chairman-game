@@ -16,6 +16,6 @@ import Testing
     let encoded = try JSONEncoder().encode(CockpitMode.allCases)
     let encodedText = try #require(String(data: encoded, encoding: .utf8))
 
-    #expect(encodedText == "[\"overview\",\"briefing\",\"mandate\",\"policy\",\"preferences\",\"history\"]")
+    #expect(encodedText == "[\"desk\",\"charts\",\"records\"]")
     #expect(try JSONDecoder().decode([CockpitMode].self, from: encoded) == CockpitMode.allCases)
 }

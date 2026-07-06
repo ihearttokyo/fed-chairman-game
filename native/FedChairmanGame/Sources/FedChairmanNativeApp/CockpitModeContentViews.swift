@@ -31,48 +31,6 @@ struct PriorityRiskPanel: View {
     }
 }
 
-struct BriefingSummaryPanel: View {
-    var snapshot: TermSnapshot
-    var onGoToPolicy: (() -> Void)?
-
-    var body: some View {
-        CommandPanel(tone: .glass) {
-            VStack(alignment: .leading, spacing: 12) {
-                ModePanelHeader(
-                    eyebrow: snapshot.briefing.kicker,
-                    title: snapshot.briefing.headline,
-                    detail: snapshot.briefing.metadata,
-                    state: semanticState(for: snapshot.briefing.severity),
-                )
-
-                Text(snapshot.briefing.body)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.72))
-                    .fixedSize(horizontal: false, vertical: true)
-
-                VStack(alignment: .leading, spacing: 6) {
-                    LabeledModeLine(label: "Policy bias", text: snapshot.briefing.policyImplication, tint: .green)
-                    LabeledModeLine(label: "Risk calendar", text: snapshot.briefing.riskCalendar, tint: .orange)
-                    LabeledModeLine(label: "Board gate", text: snapshot.boardWatch.scoreDetail, tint: stateColor(snapshot.semanticState))
-                }
-
-                if let onGoToPolicy {
-                    Button(action: onGoToPolicy) {
-                        Label("Go to Policy", systemImage: "arrow.right.circle.fill")
-                            .font(.caption.weight(.black))
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.green)
-                    .accessibilityIdentifier("briefing-go-to-policy")
-                }
-            }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("briefing-summary-panel")
-    }
-}
-
 struct MandateFocusContainer<Content: View>: View {
     var snapshot: TermSnapshot
     var title: String = "Mandate Focus"

@@ -82,9 +82,8 @@ public func recomputeSessionScores(_ session: GameSession) throws -> GameSession
             reappointed: score.reappointed,
         )
     }
-    let currentInflationUpperBound = activeInflationUpperBound(ui: session.ui, currentCareerQuarter: session.totalCareerQuarters)
     let currentTermScore: ScoreState = if session.status == .inProgress || session.status == .notStarted {
-        evaluateScore(history: session.history, scenario: scenario, inflationUpperBound: currentInflationUpperBound)
+        evaluateScore(history: session.history, scenario: scenario, inflationUpperBound: reappointmentInflationUpperBound)
     } else {
         completedTerms.last?.score ?? evaluateScore(history: session.history, scenario: scenario)
     }

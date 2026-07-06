@@ -105,17 +105,11 @@ private struct CockpitModeButtonStyle: ButtonStyle {
 private extension CockpitMode {
     var systemImageName: String {
         switch self {
-        case .overview:
+        case .desk:
             "gauge.with.dots.needle.67percent"
-        case .briefing:
-            "newspaper"
-        case .mandate:
+        case .charts:
             "chart.xyaxis.line"
-        case .policy:
-            "slider.horizontal.3"
-        case .preferences:
-            "gearshape"
-        case .history:
+        case .records:
             "clock.arrow.circlepath"
         }
     }

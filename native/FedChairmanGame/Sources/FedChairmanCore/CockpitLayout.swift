@@ -26,7 +26,6 @@ public struct CockpitLayoutMetrics: Equatable, Sendable {
     public var dockVerticalOffset: Double
     public var newspaperPanelWidth: Double
     public var helpPanelWidth: Double
-    public var settingsPanelWidth: Double
     public var dockPanelMaxHeight: Double
     public var compressedDensity: Bool
 
@@ -60,7 +59,7 @@ public func cockpitLayoutMetrics(width: Double, height: Double) -> CockpitLayout
             mode: mode,
             spacing: 6,
             panelPadding: 7,
-            chartHeight: 92,
+            chartHeight: 130,
             policyKeyWidth: 64,
             policyKeyHeight: 32,
             policyKeySpacing: 6,
@@ -76,14 +75,13 @@ public func cockpitLayoutMetrics(width: Double, height: Double) -> CockpitLayout
             dockVerticalOffset: 0,
             newspaperPanelWidth: panelWidth,
             helpPanelWidth: panelWidth,
-            settingsPanelWidth: panelWidth,
             dockPanelMaxHeight: compactPanelHeight,
             compressedDensity: true,
         )
     case .standard:
         let spacing: Double = standardDensityCompact ? 8 : 12
         let panelPadding: Double = standardDensityCompact ? 10 : 12
-        let chartHeight: Double = standardDensityCompact ? 118 : 162
+        let chartHeight: Double = standardDensityCompact ? 170 : 210
         let policyKeyHeight: Double = standardDensityCompact ? 34 : 40
         let policyKeySpacing: Double = standardDensityCompact ? 6 : 8
         let dockPanelMaxHeight: Double = standardDensityCompact
@@ -110,7 +108,6 @@ public func cockpitLayoutMetrics(width: Double, height: Double) -> CockpitLayout
             dockVerticalOffset: 0,
             newspaperPanelWidth: panelWidth,
             helpPanelWidth: panelWidth,
-            settingsPanelWidth: min(760, panelWidth),
             dockPanelMaxHeight: dockPanelMaxHeight,
             compressedDensity: standardDensityCompact,
         )
@@ -119,7 +116,7 @@ public func cockpitLayoutMetrics(width: Double, height: Double) -> CockpitLayout
             mode: mode,
             spacing: 10,
             panelPadding: 12,
-            chartHeight: 136,
+            chartHeight: 260,
             policyKeyWidth: 78,
             policyKeyHeight: 38,
             policyKeySpacing: 9,
@@ -135,7 +132,6 @@ public func cockpitLayoutMetrics(width: Double, height: Double) -> CockpitLayout
             dockVerticalOffset: 0,
             newspaperPanelWidth: panelWidth,
             helpPanelWidth: panelWidth,
-            settingsPanelWidth: min(820, panelWidth),
             dockPanelMaxHeight: min(214, maxPanelHeight),
             compressedDensity: false,
         )

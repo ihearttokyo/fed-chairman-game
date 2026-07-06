@@ -28,7 +28,7 @@ public func buildBoardWatch(session: GameSession, scenario: ScenarioConfig = cla
     let score = session.score
     let current = session.current
     let quartersRemaining = max(0, scenario.termQuarters - session.currentTermQuarter)
-    let inflationUpperBound = activeInflationUpperBound(ui: session.ui, currentCareerQuarter: session.totalCareerQuarters)
+    let inflationUpperBound = reappointmentInflationUpperBound
     let scorePass = score.score >= 70
     let inflationPass = current.inflation <= inflationUpperBound
     let laborPass = current.unemployment <= 7
@@ -50,8 +50,8 @@ public func buildBoardWatch(session: GameSession, scenario: ScenarioConfig = cla
         gateLabel: "\(gatesPassed)/3 gates",
         scoreLabel: "\(formatBoardNumber(score.score, digits: 1)) \(score.grade.rawValue)",
         scoreDetail: "Score \(formatBoardNumber(score.score, digits: 1)) (\(score.grade.rawValue)), needs 70",
-        inflationDetail: "Inflation \(formatBoardPercent(current.inflation)), cap \(formatBoardPercent(inflationUpperBound))",
-        laborDetail: "Unemployment \(formatBoardPercent(current.unemployment)), cap 7.00%",
+        inflationDetail: "Inflation \(formatBoardPercent(current.inflation)), renewal gate \(formatBoardPercent(inflationUpperBound))",
+        laborDetail: "Unemployment \(formatBoardPercent(current.unemployment)), renewal gate 7.00%",
         credibilityDetail: "Credibility \(formatBoardNumber(current.credibility, digits: 0))",
         riskLabel: boardWatchRiskLabel(
             scorePass: scorePass,
@@ -129,7 +129,7 @@ private func boardWatchRiskLabel(
         return "Raise score above 70"
     }
     if !inflationPass {
-        return "Cool inflation below 4.0%"
+        return "Cool inflation below the renewal gate"
     }
     if !laborPass {
         return "Ease labor stress below 7.0%"
