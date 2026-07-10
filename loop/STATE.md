@@ -69,19 +69,22 @@ artifacts:
     gui_capture: scripts/agentic-gui-capture.sh
     native_validation: scripts/native-validation.sh
 
-iteration: 1
+iteration: 2
 phase: package-validated
 current_artifact: loop/ACCEPTANCE.md
-current_criterion: AC-004
-last_action: "Repaired policy preview layout and credibility wording; validated with typecheck, tests, lint, install, and one large-window computer-use playtest."
-next_action: "Continue with AC-004/AC-005: make post-commit quarter review visible in Desk without duplicating Records/Decision Tape."
+current_criterion: AC-017
+last_action: "Completed and visually validated AC-004/AC-005/AC-006: stable Desk interpretation, compact Decision Tape receipt, and detailed Records history."
+next_action: "Research and repair AC-017/AC-019 engine-preview coherence, beginning with labor-shock sign and shared credibility behavior."
 halt_cause: null
 halt_scan: []
 stuck_counters: {}
 final_verify:
   status: partial_package_pass
   transcript: loop/VERIFY.md
-oracle_change_notes: []
+oracle_change_notes:
+  - "2026-07-10: reopened AC-019 after audit showed clearer credibility copy still describes preview behavior that diverges from the commit engine."
+  - "2026-07-10: reopened AC-024 because the package manifest cannot bind a dirty installed artifact to a clean Git commit; current evidence names the limitation explicitly."
+  - "2026-07-10: AC-021 conflicts with the newer selection-first design that removed Fast commit; preserve the row pending an explicit authority decision rather than silently restoring or deleting it."
 
 pressure_objects:
   - id: P-001
@@ -133,6 +136,7 @@ pressure_objects:
 pressure_ledger:
   - "2026-07-06: seeded P-001..P-005 during loopgen composition."
   - "2026-07-06: P-001 and P-002 satisfied for this package by current-build provenance and no-XCUITest validation; remain active until full goal final-verify."
+  - "2026-07-10: P-004 partially paid by distinct Desk receipt/interpretation/Records roles; P-001 remains open because installed dirty-build provenance is documented but not commit-bound."
 pressure_consulted:
   - iteration: 1
     rows:
@@ -154,3 +158,21 @@ pressure_consulted:
       P-004: "Clarified existing preview/tape surfaces instead of adding another explanation panel."
       P-005: "Ran screenshot-first computer-use validation against the installed app."
     result: "AC-001, AC-002, AC-003, AC-019, AC-024, and AC-025 moved to PASS_PENDING_FINAL."
+  - iteration: 2
+    rows:
+      P-001: "Requires reinstall/provenance before accepting Desk screenshots."
+      P-002: "Keeps validation on screenshot-first GUI evidence, not XCUITest."
+      P-004: "Selects a clarification/de-duplication move on existing Desk surfaces."
+      P-005: "Requires computer-use validation because this is a cockpit layout change."
+    criterion: AC-004
+    failing_evidence: "Post-commit quarter review is not visible in the default large-window Desk screenshot; the only immediate consequence is the dense Decision Tape receipt."
+    hypothesis: "Use the already-visible briefing band as a post-vote quarter review when transmission evidence exists, reserving Decision Tape for receipt and Records for history."
+    edit_surface: "FedChairmanGameNativeApp.swift, DashboardHeaderViews.swift, loop artifacts"
+    rollback: "Revert the Desk briefing/review layout if post-commit screenshot becomes more crowded or hides primary controls."
+  - iteration: 2
+    rows:
+      P-001: "Recorded HEAD a4e1033, two-file dirty diff fingerprint, installed app path, manifest timestamp, and executable hash without claiming a clean-commit build."
+      P-002: "Skipped XCUITest and any responsive matrix; used one 1600x1000 targeted playtest sequence."
+      P-004: "Removed the duplicate lower Desk review, reduced Decision Tape to a receipt, and retained detailed review in Records."
+      P-005: "Installed twice only because the first visual pass found a concrete panel-height defect; reran the targeted scenario after that code change."
+    result: "AC-004, AC-005, and AC-006 moved to PASS_PENDING_FINAL; AC-019 and AC-024 reopened based on stronger-model audit findings."

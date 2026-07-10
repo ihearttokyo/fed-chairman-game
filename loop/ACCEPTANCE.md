@@ -58,10 +58,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: fresh screenshot immediately after first commit in large-window Desk mode.
   pass_evidence: post-commit quarter review fits in the visible cockpit or has an obvious, usable scroll/route.
   fail_evidence: quarter review is pushed off the bottom and the consequence is easy to miss.
-  status: `OPEN`
+  status: `PASS_PENDING_FINAL`
   depends_on: []
   reopen_condition: cockpit layout, desk copy, or post-commit feedback changes.
-  last_verification: not run.
+  last_verification: "2026-07-10: latest installed dirty-source build at 1600x1000 showed a full-height Latest Quarter interpretation immediately after Q1 and Q2, above the dashboard with no clipping."
 
 - id: `AC-005`
   statement: Post-commit feedback does not duplicate Decision Tape, Records, and Desk content without a clear purpose.
@@ -70,10 +70,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: source inspection plus post-commit Desk and Records screenshots.
   pass_evidence: each surface has a distinct role: immediate receipt, historical record, or strategic interpretation.
   fail_evidence: the same quarter summary appears in multiple places with no added value.
-  status: `OPEN`
+  status: `PASS_PENDING_FINAL`
   depends_on: [`AC-004`]
   reopen_condition: decision tape, records, or desk summary changes.
-  last_verification: not run.
+  last_verification: "2026-07-10: source plus current-build Desk and Records screenshots confirm distinct roles: Desk interprets the latest result, Decision Tape receipts the action, and Records carries the detailed transmission/history view."
 
 - id: `AC-006`
   statement: Decision Tape is an efficient receipt, not a dense competing briefing.
@@ -82,10 +82,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: screenshot after two committed quarters.
   pass_evidence: tape entries are scannable and make recent decisions obvious.
   fail_evidence: tape text is dense, redundant, or visually competes with the main decision loop.
-  status: `OPEN`
+  status: `PASS_PENDING_FINAL`
   depends_on: [`AC-005`]
   reopen_condition: decision tape changes.
-  last_verification: not run.
+  last_verification: "2026-07-10: current-build Q2 Desk screenshot shows a compact Hold receipt with rate path and one mandate line; credibility, trace, and pressure-meter briefing content no longer competes inside Decision Tape."
 
 - id: `AC-007`
   statement: Early-game chart points and traces remain legible through Q1-Q3.
@@ -238,10 +238,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: source inspection plus preview/commit screenshots.
   pass_evidence: credibility copy explains signal, confidence, or institutional trust in context.
   fail_evidence: normal hikes show opaque "credibility cost" with no reason.
-  status: `PASS_PENDING_FINAL`
+  status: `OPEN`
   depends_on: [`AC-002`, `AC-017`]
   reopen_condition: credibility model or copy changes.
-  last_verification: "2026-07-06: DecisionFeedback now says policy signal/anchor drift/trust building instead of rate cost; selected-move preview says credibility signal burden instead of credibility cost."
+  last_verification: "2026-07-10: reopened after stronger-model audit found preview credibility burden diverges from the committed engine rule for ordinary moves; copy is clearer, but the underlying channel is not yet behaviorally aligned."
 
 - id: `AC-020`
   statement: Early game has enough meaningful variation to feel alive without scripted or fake shocks.
@@ -298,10 +298,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: validation notes in `loop/VERIFY.md` include commit, app path, and executable hash or bundle metadata.
   pass_evidence: GUI evidence names the current commit and installed artifact metadata.
   fail_evidence: screenshots are accepted without proving they came from the intended build.
-  status: `PASS_PENDING_FINAL`
+  status: `OPEN`
   depends_on: []
   reopen_condition: every GUI validation run.
-  last_verification: "2026-07-06: validation notes recorded current git commit, /Applications path, bundle metadata, and executable sha256 64f1fc446ba4cd567ecb4146b3f7289033ba29986a6ba0c0d168730cb8a928e1."
+  last_verification: "2026-07-10: reopened because package manifests record the executable hash but not the dirty source fingerprint or a clean commit. Current evidence records HEAD, diff fingerprint, app path, manifest time, and executable hash without falsely calling the dirty artifact a pure commit build."
 
 - id: `AC-025`
   statement: The loop does not re-enter broad XCUITest or repeated GUI-suite loops as a substitute for player validation.
@@ -313,7 +313,7 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   status: `PASS_PENDING_FINAL`
   depends_on: []
   reopen_condition: every validation run.
-  last_verification: "2026-07-06: no raw xcodebuild UI test, npm run test:ui, or broad XCUITest suite was run; validation used code checks plus one large-window computer-use pass."
+  last_verification: "2026-07-10: no raw xcodebuild UI test, npm run test:ui, broad XCUITest suite, or responsive matrix was run; validation used code checks plus one targeted 1600x1000 accessibility/screenshot playtest sequence."
 
 - id: `AC-026`
   statement: Final report is evidence-first and names skipped checks, residual risks, branch/commit, dirty files, and unpushed commits.

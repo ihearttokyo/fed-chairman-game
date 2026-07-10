@@ -50,6 +50,7 @@ struct NativeCockpitView: View {
     @State private var customBps = ""
     @State private var decisionPulse = false
     @State private var pendingPolicySelection: PendingPolicySelection?
+    @State private var quarterInterpretationDecisionID: String?
     @State private var panelMessage: String?
     @State private var inspectedChartIndex: Int?
     @State private var didApplyValidationProgression = false
@@ -177,6 +178,11 @@ struct NativeCockpitView: View {
         .onChange(of: briefingKey) {
             autoPeekBriefing()
         }
+        .onChange(of: selectedMode) {
+            if selectedMode != .desk {
+                closeOverlays()
+            }
+        }
         .onExitCommand {
             closeOverlays()
         }
@@ -236,9 +242,6 @@ struct NativeCockpitView: View {
         dockPanels(layout: layout)
         dashboard(layout: layout)
         policyDecisionCenter(layout: layout)
-        if shouldShowQuarterReview(layout: layout) {
-            quarterReview(layout: layout)
-        }
     }
 
     @ViewBuilder
@@ -532,7 +535,7 @@ struct NativeCockpitView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .transition(motionMode == .reduced ? .opacity : .move(edge: .top).combined(with: .opacity))
             } else {
-                briefingPreview(layout: layout)
+                deskTopPreview(layout: layout)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .transition(.opacity)
             }
@@ -551,6 +554,65 @@ struct NativeCockpitView: View {
             104
         case .expanded:
             100
+        }
+    }
+
+    @ViewBuilder
+    private func deskTopPreview(layout: CockpitLayoutMetrics) -> some View {
+        if pendingPolicySelection == nil,
+           quarterInterpretationDecisionID == session.decisions.last?.id,
+           let transmission = buildTransmissionBriefing(session: session)
+        {
+            latestQuarterInterpretationPreview(transmission: transmission, layout: layout)
+        } else {
+            briefingPreview(layout: layout)
+        }
+    }
+
+    private func latestQuarterInterpretationPreview(transmission: TransmissionBriefing, layout: CockpitLayoutMetrics) -> some View {
+        CommandPanel(padding: max(6, layout.panelPadding - 2).cg, tone: .instrument) {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 14) {
+                    latestQuarterInterpretationHeader(transmission)
+                        .frame(width: layout.mode == .compact ? 190 : 230, alignment: .leading)
+                    Divider()
+                        .frame(height: 36)
+                        .overlay(.white.opacity(0.16))
+                    Text(transmission.receipt.verdict)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.70))
+                        .lineLimit(2)
+                    Spacer(minLength: 0)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    latestQuarterInterpretationHeader(transmission)
+                    Text(transmission.receipt.verdict)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.70))
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxHeight: .infinity, alignment: .center)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("desk-quarter-review-preview")
+    }
+
+    private func latestQuarterInterpretationHeader(_ transmission: TransmissionBriefing) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 8) {
+                Text("LATEST QUARTER")
+                    .font(.caption2.weight(.black))
+                    .foregroundStyle(trendColor(transmission.receipt.tone))
+                Text("Q\(session.current.quarterIndex) result")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.46))
+            }
+            Text(transmission.receipt.headline)
+                .font(.system(size: 16, weight: .black, design: .rounded))
+                .foregroundStyle(.white.opacity(0.92))
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
         }
     }
 
@@ -608,17 +670,18 @@ struct NativeCockpitView: View {
         let compact = true
         return HStack(spacing: compact ? 6 : 10) {
             ForEach(CockpitDockPanel.allCases) { panel in
+                let isVisible = selectedMode == .desk && dockState.isOpen(panel, briefingVisible: briefingVisible)
                 Button {
                     toggle(panel)
                 } label: {
                     DockIcon(panel: panel, compact: compact)
                 }
                 .buttonStyle(DockButtonStyle(
-                    isOpen: dockState.isOpen(panel, briefingVisible: briefingVisible),
+                    isOpen: isVisible,
                     width: layout.dockButtonWidth.cg,
                     height: layout.dockButtonHeight.cg,
                 ))
-                .accessibilityLabel("\(dockState.isOpen(panel, briefingVisible: briefingVisible) ? "Close" : "Open") \(panel.title.lowercased()) panel")
+                .accessibilityLabel("\(isVisible ? "Close" : "Open") \(panel.title.lowercased()) panel")
                 .accessibilityIdentifier("dock-\(panel.rawValue)")
             }
         }
@@ -686,7 +749,12 @@ struct NativeCockpitView: View {
 
     private func toggle(_ panel: CockpitDockPanel) {
         playDockClick()
-        dockState.toggle(panel)
+        if selectedMode == .desk {
+            dockState.toggle(panel)
+        } else {
+            selectedMode = .desk
+            dockState.open(panel, pinned: panel == .newspaper)
+        }
         if panel == .newspaper, !dockState.isOpen(.newspaper) {
             autoBriefingKey = nil
         }
@@ -732,9 +800,7 @@ struct NativeCockpitView: View {
         }
         do {
             try store.commit(action: action)
-            clearPendingPolicySelection()
-            pulse()
-            playPolicyClick()
+            finishPolicyCommit()
         } catch {
             NSSound.beep()
         }
@@ -802,12 +868,18 @@ struct NativeCockpitView: View {
         }
         do {
             try store.commitCustom(rateChange: rateChange)
-            clearPendingPolicySelection()
-            pulse()
-            playPolicyClick()
+            finishPolicyCommit()
         } catch {
             NSSound.beep()
         }
+    }
+
+    private func finishPolicyCommit() {
+        quarterInterpretationDecisionID = session.decisions.last?.id
+        clearPendingPolicySelection()
+        closeOverlays()
+        pulse()
+        playPolicyClick()
     }
 
     private func playPolicyClick() {

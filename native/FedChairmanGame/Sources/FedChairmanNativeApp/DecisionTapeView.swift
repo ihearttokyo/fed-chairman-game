@@ -7,9 +7,9 @@ struct DecisionTapeView: View {
     var motionMode: CockpitMotionMode
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(feedback.headline.uppercased())
+                Text(receiptHeading)
                     .font(.caption2.weight(.black))
                     .foregroundStyle(toneColor)
                 Text(feedback.moveLabel)
@@ -26,38 +26,16 @@ struct DecisionTapeView: View {
                 .frame(height: 32)
                 .overlay(.white.opacity(0.18))
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(feedback.headline)
+                    .font(.caption2.weight(.black))
+                    .foregroundStyle(toneColor)
                 Text(feedback.mandateLine)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.72))
                     .lineLimit(2)
-                Text(feedback.credibilityLine)
-                    .lineLimit(2)
-                Text(feedback.traceLine)
-                    .lineLimit(2)
-                    .foregroundStyle(.white.opacity(0.58))
             }
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.white.opacity(0.74))
             .frame(maxWidth: .infinity, alignment: .leading)
-
-            VStack(alignment: .trailing, spacing: 5) {
-                HStack(spacing: 4) {
-                    Text(pressureLabel)
-                        .font(.caption2.weight(.black))
-                        .foregroundStyle(toneColor)
-                    Text("\(feedback.intensity)%")
-                        .font(.caption2.monospacedDigit().weight(.black))
-                        .foregroundStyle(.white.opacity(0.72))
-                }
-                pressureMeter
-                HStack(spacing: 2) {
-                    Text("calm")
-                    Spacer(minLength: 0)
-                    Text("stress")
-                }
-                .font(.system(size: 8, weight: .bold, design: .rounded))
-                .foregroundStyle(.white.opacity(0.38))
-            }
-            .frame(width: 86, alignment: .trailing)
         }
         .frame(minHeight: 48)
         .padding(.vertical, 5)
@@ -89,34 +67,8 @@ struct DecisionTapeView: View {
         "Decision tape. \(feedback.headline). \(feedback.moveLabel). \(feedback.ratePath). \(feedback.mandateLine)."
     }
 
-    private var pressureMeter: some View {
-        ZStack(alignment: .leading) {
-            HStack(spacing: 2) {
-                ForEach(0 ..< 5, id: \.self) { index in
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(index < pressureSegments ? toneColor.opacity(0.88) : Color.white.opacity(0.12))
-                }
-            }
-            .frame(width: 82, height: 8)
-            RoundedRectangle(cornerRadius: 2)
-                .stroke(.white.opacity(0.16), lineWidth: 1)
-                .frame(width: 82, height: 8)
-        }
-    }
-
-    private var pressureSegments: Int {
-        max(1, min(5, Int(ceil(Double(feedback.intensity) / 20.0))))
-    }
-
-    private var pressureLabel: String {
-        switch feedback.intensity {
-        case 0 ..< 35:
-            "Low"
-        case 35 ..< 70:
-            "Watch"
-        default:
-            "High"
-        }
+    private var receiptHeading: String {
+        feedback.headline == "Awaiting first vote" ? feedback.headline.uppercased() : "LATEST DECISION"
     }
 
     private var toneColor: Color {
