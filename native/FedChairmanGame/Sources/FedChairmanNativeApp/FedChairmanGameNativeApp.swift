@@ -29,6 +29,15 @@ struct FedChairmanGameNativeApp: App {
                     }
                     .keyboardShortcut(KeyEquivalent(Character(binding.key)), modifiers: [])
                 }
+                Divider()
+                Button("Commit Staged Move") {
+                    NotificationCenter.default.post(name: .commitPendingPolicySelection, object: nil)
+                }
+                .keyboardShortcut(.return, modifiers: [])
+                Button("Clear Staged Move") {
+                    NotificationCenter.default.post(name: .clearPendingPolicySelection, object: nil)
+                }
+                .keyboardShortcut(.escape, modifiers: [])
             }
         }
     }
