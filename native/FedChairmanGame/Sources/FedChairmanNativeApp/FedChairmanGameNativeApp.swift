@@ -39,6 +39,27 @@ struct FedChairmanGameNativeApp: App {
                 }
                 .keyboardShortcut(.escape, modifiers: [])
             }
+            CommandMenu("Navigate") {
+                Button("Show Desk") {
+                    NotificationCenter.default.post(name: .selectCockpitMode, object: CockpitMode.desk.rawValue)
+                }
+                .keyboardShortcut("1", modifiers: .command)
+                Button("Show Charts") {
+                    NotificationCenter.default.post(name: .selectCockpitMode, object: CockpitMode.charts.rawValue)
+                }
+                .keyboardShortcut("2", modifiers: .command)
+                Button("Show Records") {
+                    NotificationCenter.default.post(name: .selectCockpitMode, object: CockpitMode.records.rawValue)
+                }
+                .keyboardShortcut("3", modifiers: .command)
+                Divider()
+                Button("Toggle Newspaper") {
+                    NotificationCenter.default.post(name: .toggleCockpitDockPanel, object: CockpitDockPanel.newspaper.rawValue)
+                }
+                Button("Toggle Policy Notebook") {
+                    NotificationCenter.default.post(name: .toggleCockpitDockPanel, object: CockpitDockPanel.help.rawValue)
+                }
+            }
         }
     }
 
@@ -184,6 +205,22 @@ struct NativeCockpitView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .closeCockpitOverlays)) { _ in
             clearPolicySelectionOrCloseOverlays()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .selectCockpitMode)) { notification in
+            guard let rawMode = notification.object as? String,
+                  let mode = CockpitMode(rawValue: rawMode)
+            else {
+                return
+            }
+            selectedMode = mode
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .toggleCockpitDockPanel)) { notification in
+            guard let rawPanel = notification.object as? String,
+                  let panel = CockpitDockPanel(rawValue: rawPanel)
+            else {
+                return
+            }
+            toggle(panel)
         }
         .onChange(of: briefingKey) {
             autoPeekBriefing()
@@ -1221,6 +1258,8 @@ private extension Notification.Name {
     static let commitPendingPolicySelection = Notification.Name("FedChairmanCommitPendingPolicySelection")
     static let clearPendingPolicySelection = Notification.Name("FedChairmanClearPendingPolicySelection")
     static let closeCockpitOverlays = Notification.Name("FedChairmanCloseCockpitOverlays")
+    static let selectCockpitMode = Notification.Name("FedChairmanSelectCockpitMode")
+    static let toggleCockpitDockPanel = Notification.Name("FedChairmanToggleCockpitDockPanel")
 }
 
 private struct PolicyShortcutBinding {
