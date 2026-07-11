@@ -19,6 +19,7 @@
 		38A3560B1D9A18E9E5D3BC6E /* CockpitModeContentViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9DE35099E58E9C5F7014385 /* CockpitModeContentViews.swift */; };
 		40F232907996F42AD82FDF03 /* Scenario.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF3E8F5BB1ADE8F3E4ED50A8 /* Scenario.swift */; };
 		474F620DD469879554339703 /* DashboardHeaderViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A733E9778DB283810A3A4D54 /* DashboardHeaderViews.swift */; };
+		47674AA7E3496B9DD2310AC8 /* ShockChannels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6A86C9A1F359407D4B1CBDB /* ShockChannels.swift */; };
 		4ACA206FFF9E8E4D1CB24979 /* QuarterEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B31DF8FD32D66D173FBF6F2 /* QuarterEngine.swift */; };
 		4F9311292D2068A1E0A7F2DD /* CockpitChromeViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A210E0A85C438D22E0D12969 /* CockpitChromeViews.swift */; };
 		56382B296CFEAA5A2B9FB6B0 /* FedChairmanCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 17C83FC7F565800C79C166EC /* FedChairmanCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -135,6 +136,7 @@
 		C0417E7B5D00741CF334D1AB /* Debrief.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Debrief.swift; sourceTree = "<group>"; };
 		C2BD4434B1C9E9252E0D70C4 /* FedChairmanGameNativeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FedChairmanGameNativeApp.swift; sourceTree = "<group>"; };
 		C60FADB5B32CFB2276F7F43E /* DecisionFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DecisionFeedback.swift; sourceTree = "<group>"; };
+		C6A86C9A1F359407D4B1CBDB /* ShockChannels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShockChannels.swift; sourceTree = "<group>"; };
 		CE0BF42C6BA7EF56DC50A641 /* BoardWatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardWatch.swift; sourceTree = "<group>"; };
 		D9DE35099E58E9C5F7014385 /* CockpitModeContentViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CockpitModeContentViews.swift; sourceTree = "<group>"; };
 		DEF12800CF5FA543FBA51FE8 /* GameWindowDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameWindowDelegate.swift; sourceTree = "<group>"; };
@@ -199,6 +201,7 @@
 				6D866892B30770AAE57EF8F0 /* SaveFile.swift */,
 				FF3E8F5BB1ADE8F3E4ED50A8 /* Scenario.swift */,
 				4AA0B96605446211F06F00AB /* ScoreEngine.swift */,
+				C6A86C9A1F359407D4B1CBDB /* ShockChannels.swift */,
 				93411181975BFFA80F7A0868 /* TermSnapshot.swift */,
 				524CE25DC2AC7A7834ADD227 /* Transmission.swift */,
 				8E83AF212D60E0425F56EBCC /* Types.swift */,
@@ -472,6 +475,7 @@
 				11F966C0244D2B4F40210C88 /* SaveFile.swift in Sources */,
 				40F232907996F42AD82FDF03 /* Scenario.swift in Sources */,
 				660921A4562AD17F8BAA333D /* ScoreEngine.swift in Sources */,
+				47674AA7E3496B9DD2310AC8 /* ShockChannels.swift in Sources */,
 				D11F8E0B94A47E30771B94DE /* TermSnapshot.swift in Sources */,
 				F9E644C3DAF90BF3C4BFBDAA /* Transmission.swift in Sources */,
 				F0F661FE9F590BA7CE8F756C /* Types.swift in Sources */,
