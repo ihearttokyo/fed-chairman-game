@@ -60,6 +60,25 @@ struct FedChairmanGameNativeApp: App {
                     NotificationCenter.default.post(name: .toggleCockpitDockPanel, object: CockpitDockPanel.help.rawValue)
                 }
             }
+            CommandMenu("Career") {
+                Button("Save Portable Career") {
+                    NotificationCenter.default.post(name: .savePortableSession, object: nil)
+                }
+                .keyboardShortcut("s", modifiers: .command)
+                Button("Load Portable Career") {
+                    NotificationCenter.default.post(name: .loadPortableSession, object: nil)
+                }
+                Divider()
+                Button("Export Career as CSV") {
+                    NotificationCenter.default.post(name: .exportCareerCsv, object: nil)
+                }
+                Button("Export Career as JSON") {
+                    NotificationCenter.default.post(name: .exportCareerJson, object: nil)
+                }
+                Button("Export Career as Markdown") {
+                    NotificationCenter.default.post(name: .exportCareerMarkdown, object: nil)
+                }
+            }
         }
     }
 
@@ -221,6 +240,21 @@ struct NativeCockpitView: View {
                 return
             }
             toggle(panel)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .savePortableSession)) { _ in
+            savePortableSession()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .loadPortableSession)) { _ in
+            loadPortableSession()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .exportCareerCsv)) { _ in
+            exportCsv()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .exportCareerJson)) { _ in
+            exportJson()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .exportCareerMarkdown)) { _ in
+            exportMarkdown()
         }
         .onChange(of: briefingKey) {
             autoPeekBriefing()
@@ -1260,6 +1294,11 @@ private extension Notification.Name {
     static let closeCockpitOverlays = Notification.Name("FedChairmanCloseCockpitOverlays")
     static let selectCockpitMode = Notification.Name("FedChairmanSelectCockpitMode")
     static let toggleCockpitDockPanel = Notification.Name("FedChairmanToggleCockpitDockPanel")
+    static let savePortableSession = Notification.Name("FedChairmanSavePortableSession")
+    static let loadPortableSession = Notification.Name("FedChairmanLoadPortableSession")
+    static let exportCareerCsv = Notification.Name("FedChairmanExportCareerCsv")
+    static let exportCareerJson = Notification.Name("FedChairmanExportCareerJson")
+    static let exportCareerMarkdown = Notification.Name("FedChairmanExportCareerMarkdown")
 }
 
 private struct PolicyShortcutBinding {
