@@ -213,7 +213,11 @@ private func activeShockSummary(_ activeShocks: [ActiveShock]) -> String {
     }
     let first = ordered[0]
     let suffix = ordered.count == 1 ? "" : " plus \(ordered.count - 1) more"
-    return "\(first.type.rawValue.capitalized) shock \(formatSnapshotSigned(first.magnitude)) with \(first.remaining) qtr remaining\(suffix)."
+    let futureQuarters = max(0, first.remaining - 1)
+    if futureQuarters == 0 {
+        return "\(first.type.rawValue.capitalized) shock \(formatSnapshotSigned(first.magnitude)) is dissipating before next quarter\(suffix)."
+    }
+    return "\(first.type.rawValue.capitalized) shock \(formatSnapshotSigned(first.magnitude)) with \(futureQuarters) future qtr remaining\(suffix)."
 }
 
 private func riskDriverTieBreak(_ kind: RiskDriver.Kind) -> Int {

@@ -1,4 +1,5 @@
 @testable import FedChairmanCore
+import Foundation
 import Testing
 
 @Test func startingScenarioMatchesClassicMode() {
@@ -43,8 +44,8 @@ import Testing
 
     #expect(store.session.current.quarterIndex == 1)
     #expect(store.session.decisions.first?.action == .custom)
-    #expect(store.session.decisions.first?.rateChange == 0.37)
-    #expect(store.session.decisions.first?.resultingFedFundsRate == 4.37)
+    expectApproximately(store.session.decisions.first?.rateChange, 0.37)
+    expectApproximately(store.session.decisions.first?.resultingFedFundsRate, 4.37)
 }
 
 @Test func targetRestoringPolicyDefendsCredibilityWithoutPoliticalGrace() throws {
@@ -62,7 +63,7 @@ import Testing
 
     #expect(targetRestoringHike.trace.credibilityReappointmentGrace == 0)
     #expect((targetRestoringHike.trace.credibilityDelta ?? 0) > (wrongWayCut.trace.credibilityDelta ?? 0))
-    #expect(targetRestoringHike.trace.credibilityDelta == termOneHike.trace.credibilityDelta)
+    expectApproximately(targetRestoringHike.trace.credibilityDelta, termOneHike.trace.credibilityDelta ?? .nan)
     #expect(termOneHike.trace.credibilityReappointmentGrace == 0)
     #expect(wrongWayCut.trace.credibilityReappointmentGrace == 0)
 }
@@ -101,6 +102,8 @@ import Testing
     let saveText = try createSaveFile(session: store.session)
     let loaded = try parseSaveFile(saveText)
     #expect(loaded.currentTermQuarter == 1)
+    #expect(loaded.engineModelVersion == GameSession.currentEngineModelVersion)
+    #expect(saveText.contains("\"engineModelVersion\""))
 
     let tampered = saveText.replacingOccurrences(of: "\"inflation\" : 2.05", with: "\"inflation\" : 3.05")
     do {
@@ -108,6 +111,29 @@ import Testing
         Issue.record("Tampered save parsed successfully.")
     } catch let error as NativeEngineError {
         #expect(error == .tamperedSaveFile)
+    }
+}
+
+@Test func legacyOrMismatchedEngineModelsAreRejectedAfterIntegrityVerification() throws {
+    let store = GameSessionStore()
+    store.start(seed: "legacy-engine-model")
+
+    for version in [nil, "classic-macro-future"] as [String?] {
+        var incompatible = store.session
+        incompatible.engineModelVersion = version
+        // A valid legacy digest still rejects the absent model; a changed model is likewise unsupported.
+        let digest = try digestPayload(incompatible)
+        let envelope = SaveFileEnvelope(
+            version: 1,
+            payload: incompatible,
+            digest: digest,
+        )
+        let encodedEnvelope = try JSONEncoder().encode(envelope)
+        let text = String(data: encodedEnvelope, encoding: .utf8) ?? ""
+
+        try expectUnsupportedSaveFile { _ = try parseSaveFile(text) }
+        try expectUnsupportedSaveFile { try GameSessionStore().load(session: incompatible) }
+        try expectUnsupportedSaveFile { _ = try createSaveFile(session: incompatible) }
     }
 }
 
@@ -357,6 +383,191 @@ import Testing
     #expect((lowMiss.trace.credibilityDelta ?? 0) < 0)
 }
 
+@Test func weakCredibilityExpectationsAnchorSymmetricallyAroundTarget() throws {
+    var highState = classicScenario.startingState
+    highState.inflation = 3.5
+    highState.expectedInflation = 2.8
+    highState.fedFundsRate = 4.3
+    highState.credibility = 40
+
+    var lowState = highState
+    lowState.inflation = 0.5
+    lowState.expectedInflation = 1.2
+    lowState.fedFundsRate = 2.7
+
+    let high = try advanceQuarter(
+        history: [highState],
+        decision: createDecision(action: .hold, current: highState, timestamp: "test"),
+        scenario: classicScenario,
+        activeShocks: [],
+        seed: "mirrored-expectations",
+    )
+    let low = try advanceQuarter(
+        history: [lowState],
+        decision: createDecision(action: .hold, current: lowState, timestamp: "test"),
+        scenario: classicScenario,
+        activeShocks: [],
+        seed: "mirrored-expectations",
+    )
+
+    expectApproximately(high.nextState.credibility, low.nextState.credibility)
+    #expect(high.nextState.expectedInflation > classicScenario.targets.inflation)
+    #expect(low.nextState.expectedInflation < classicScenario.targets.inflation)
+    #expect(abs(high.nextState.expectedInflation + low.nextState.expectedInflation - 2 * classicScenario.targets.inflation) < 0.000_001)
+}
+
+@Test func firstQuarterPolicyMoveOnlyEntersMacroOutcomesThroughLaggedHistory() throws {
+    let opening = classicScenario.startingState
+    let hold = try advanceQuarter(
+        history: [opening],
+        decision: createDecision(action: .hold, current: opening, timestamp: "test"),
+        scenario: classicScenario,
+        activeShocks: [],
+        seed: "first-quarter-lag-parity",
+    )
+    let hike = try advanceQuarter(
+        history: [opening],
+        decision: createDecision(action: .raise150, current: opening, timestamp: "test"),
+        scenario: classicScenario,
+        activeShocks: [],
+        seed: "first-quarter-lag-parity",
+    )
+
+    expectApproximately(hike.nextState.inflation, hold.nextState.inflation)
+    expectApproximately(hike.nextState.unemployment, hold.nextState.unemployment)
+    expectApproximately(hike.nextState.outputGap, hold.nextState.outputGap)
+    expectApproximately(hike.nextState.gdpGrowth, hold.nextState.gdpGrowth)
+    expectApproximately(hike.nextState.expectedInflation, hold.nextState.expectedInflation)
+    #expect(hike.nextState.credibility != hold.nextState.credibility)
+    #expect(hike.nextState.fedFundsRate != hold.nextState.fedFundsRate)
+
+    let holdAgain = try advanceQuarter(
+        history: [opening, hold.nextState],
+        decision: createDecision(action: .hold, current: hold.nextState, timestamp: "test"),
+        scenario: classicScenario,
+        activeShocks: hold.activeShocks,
+        seed: "first-quarter-lag-parity",
+    )
+    let hikeThenHold = try advanceQuarter(
+        history: [opening, hike.nextState],
+        decision: createDecision(action: .hold, current: hike.nextState, timestamp: "test"),
+        scenario: classicScenario,
+        activeShocks: hike.activeShocks,
+        seed: "first-quarter-lag-parity",
+    )
+
+    #expect(hikeThenHold.trace.laggedPolicyGap > holdAgain.trace.laggedPolicyGap)
+    #expect(hikeThenHold.nextState.outputGap < holdAgain.nextState.outputGap)
+}
+
+@Test func laborHeatLowersUnemploymentWithoutDirectPriceOrActivityEffects() throws {
+    let noShock = try advanceOpeningQuarter(scenario: scenarioWithShock(nil), seed: "labor-channel")
+    let laborShock = Shock(id: "labor", quarter: .fixed(1), type: .labor, magnitude: 1, persistence: 1, headlineKey: "labor")
+    let heated = try advanceOpeningQuarter(scenario: scenarioWithShock(laborShock), seed: "labor-channel")
+
+    #expect(heated.nextState.unemployment < noShock.nextState.unemployment)
+    expectApproximately(heated.nextState.outputGap, noShock.nextState.outputGap)
+    expectApproximately(heated.nextState.gdpGrowth, noShock.nextState.gdpGrowth)
+    expectApproximately(heated.nextState.inflation, noShock.nextState.inflation)
+}
+
+@Test func financialTighteningStillDragsActivityAndRaisesUnemployment() throws {
+    let noShock = try advanceOpeningQuarter(scenario: scenarioWithShock(nil), seed: "financial-channel")
+    let financialShock = Shock(id: "financial", quarter: .fixed(1), type: .financial, magnitude: -1, persistence: 1, headlineKey: "financial")
+    let tightened = try advanceOpeningQuarter(scenario: scenarioWithShock(financialShock), seed: "financial-channel")
+
+    #expect(tightened.nextState.outputGap < noShock.nextState.outputGap)
+    #expect(tightened.nextState.gdpGrowth < noShock.nextState.gdpGrowth)
+    #expect(tightened.nextState.unemployment > noShock.nextState.unemployment)
+}
+
+@Test func supplyShockRaisesInflationWithoutDirectOutputOrLaborChange() throws {
+    let noShock = try advanceOpeningQuarter(scenario: scenarioWithShock(nil), seed: "supply-channel")
+    let supplyShock = Shock(id: "supply", quarter: .fixed(1), type: .supply, magnitude: 1, persistence: 1, headlineKey: "supply")
+    let constrained = try advanceOpeningQuarter(scenario: scenarioWithShock(supplyShock), seed: "supply-channel")
+
+    #expect(constrained.nextState.inflation > noShock.nextState.inflation)
+    expectApproximately(constrained.nextState.outputGap, noShock.nextState.outputGap)
+    expectApproximately(constrained.nextState.gdpGrowth, noShock.nextState.gdpGrowth)
+    expectApproximately(constrained.nextState.unemployment, noShock.nextState.unemployment)
+}
+
+@Test func demandSoftnessLowersActivityAndRaisesUnemploymentWithoutDirectInflation() throws {
+    let noShock = try advanceOpeningQuarter(scenario: scenarioWithShock(nil), seed: "demand-channel")
+    let demandShock = Shock(id: "demand", quarter: .fixed(1), type: .demand, magnitude: -1, persistence: 1, headlineKey: "demand")
+    let softened = try advanceOpeningQuarter(scenario: scenarioWithShock(demandShock), seed: "demand-channel")
+
+    #expect(softened.nextState.outputGap < noShock.nextState.outputGap)
+    #expect(softened.nextState.gdpGrowth < noShock.nextState.gdpGrowth)
+    #expect(softened.nextState.unemployment > noShock.nextState.unemployment)
+    expectApproximately(softened.nextState.inflation, noShock.nextState.inflation)
+}
+
+@Test func activeShockPersistenceContributesForExactlyItsDeclaredLifecycle() throws {
+    let shock = Shock(id: "persistent", quarter: .fixed(1), type: .supply, magnitude: 1, persistence: 2, headlineKey: "supply")
+    let scenario = scenarioWithShock(shock)
+    let opening = classicScenario.startingState
+    let first = try advanceOpeningQuarter(scenario: scenario, seed: "shock-lifecycle")
+    let second = try advanceQuarter(
+        history: [opening, first.nextState],
+        decision: createDecision(action: .hold, current: first.nextState, timestamp: "test"),
+        scenario: scenario,
+        activeShocks: first.activeShocks,
+        seed: "shock-lifecycle",
+    )
+    let third = try advanceQuarter(
+        history: [opening, first.nextState, second.nextState],
+        decision: createDecision(action: .hold, current: second.nextState, timestamp: "test"),
+        scenario: scenario,
+        activeShocks: second.activeShocks,
+        seed: "shock-lifecycle",
+    )
+
+    #expect(abs((first.trace.shockContrib[ShockType.supply.rawValue] ?? .nan) - 1) < 0.000_001)
+    #expect(abs((second.trace.shockContrib[ShockType.supply.rawValue] ?? .nan) - classicScenario.coefficients.shockDecay) < 0.000_001)
+    #expect(abs(third.trace.shockContrib[ShockType.supply.rawValue] ?? .nan) < 0.000_001)
+    #expect(first.activeShocks.first?.remaining == 2)
+    #expect(second.activeShocks.first?.remaining == 1)
+    #expect(third.activeShocks.isEmpty)
+}
+
+@Test func mixedShockChannelsStayDistinctInPlayerExplanations() throws {
+    let contributions = [
+        ShockType.demand.rawValue: -1.0,
+        ShockType.supply.rawValue: 1.0,
+    ]
+    let channels = shockChannels(traceContributions: contributions)
+    let summary = shockChannelSummary(channels)
+    #expect(summary.contains("demand drag"))
+    #expect(summary.contains("price pressure"))
+    #expect(channels.totalIntensity > 1.9)
+
+    let store = GameSessionStore()
+    store.start(seed: "mixed-shock-copy")
+    try store.commit(action: .hold)
+    var session = store.session
+    session.traces[session.traces.count - 1].shockContrib = contributions
+
+    let feedback = buildDecisionFeedback(session: session)
+    #expect(feedback.traceLine.contains("demand drag"))
+    #expect(feedback.traceLine.contains("price pressure"))
+    #expect(!feedback.traceLine.contains("shocks +0.00"))
+
+    let transmission = try #require(buildTransmissionBriefing(session: session))
+    #expect(transmission.steps[1].driver.contains("demand drag"))
+    #expect(transmission.steps[1].driver.contains("price pressure"))
+}
+
+@Test func activeShockSummaryCountsOnlyFutureQuarterEffects() {
+    var session = makeInitialSession(seed: "shock-summary-future")
+    session.status = .inProgress
+    let shock = Shock(id: "ending", quarter: .fixed(1), type: .energy, magnitude: 0.5, persistence: 1, headlineKey: "energy")
+    session.activeShocks = [ActiveShock(shock: shock, startedQuarter: 1, remaining: 1)]
+
+    let activeDriver = buildTermSnapshot(session: session).riskDrivers.first { $0.kind == .activeShocks }
+    #expect(activeDriver?.detail.contains("dissipating before next quarter") == true)
+}
+
 @Test func cockpitLayoutMetricsRespondToWindowSize() {
     let compact = cockpitLayoutMetrics(width: 1180, height: 700)
     let standard = cockpitLayoutMetrics(width: 1360, height: 860)
@@ -604,23 +815,121 @@ import Testing
     let cut = try #require(buildPolicyPreview(session: store.session, action: .cut50))
     let hold = try #require(buildPolicyPreview(session: store.session, action: .hold))
     let hike = try #require(buildPolicyPreview(session: store.session, action: .raise50))
+    let emergencyHike = try #require(buildPolicyPreview(session: store.session, action: .raise150))
     let custom = try #require(buildPolicyPreview(session: store.session, customBasisPoints: 75))
 
     #expect(cut.inflationPressure > 0)
     #expect(cut.unemploymentPressure < 0)
+    #expect(cut.horizonQuarters == 4)
     #expect(hold.moveLabel == "Hold")
     #expect(hold.estimatedInflationPressure == .steady)
+    #expect(hold.estimatedUnemploymentPressure == .steady)
+    #expect(hold.estimatedCredibilityEffect == .steady)
+    #expect(hold.inflationPressure == 0)
+    #expect(hold.unemploymentPressure == 0)
+    #expect(hold.credibilityEffect == 0)
+    #expect(hold.credibilityCost == 0)
     #expect(hike.inflationPressure < 0)
     #expect(hike.unemploymentPressure > 0)
+    #expect(emergencyHike.credibilityEffect < 0)
+    #expect(emergencyHike.estimatedCredibilityEffect == .lower)
+    #expect(emergencyHike.credibilityCost == -emergencyHike.credibilityEffect)
     #expect(custom.resultingFedFundsRate == 4.75)
     #expect(store.session == original)
+
+    let oracleCandidate = try policyPreviewOracleEndForTest(session: original, input: .action(.raise50), horizon: hike.horizonQuarters)
+    let oracleBaseline = try policyPreviewOracleEndForTest(session: original, input: .action(.hold), horizon: hike.horizonQuarters)
+    expectApproximately(hike.inflationPressure, roundTo(oracleCandidate.inflation - oracleBaseline.inflation))
+    expectApproximately(hike.unemploymentPressure, roundTo(oracleCandidate.unemployment - oracleBaseline.unemployment))
+    expectApproximately(hike.credibilityEffect, roundTo(oracleCandidate.credibility - oracleBaseline.credibility))
+
+    let finalQuarterStore = GameSessionStore(session: original)
+    for _ in 0 ..< 15 {
+        try finalQuarterStore.commit(action: .hold)
+    }
+    var finalQuarter = finalQuarterStore.session
+    finalQuarter.current.quartersRemaining = 16
+    finalQuarter.history[finalQuarter.history.count - 1].quartersRemaining = 16
+    let capped = try #require(buildPolicyPreview(session: finalQuarter, action: .raise50))
+    #expect(capped.horizonQuarters == 1)
+}
+
+@Test func policyPreviewUsesEndStateTargetDistancesForMandateDirection() {
+    let targets = classicScenario.targets
+    var baseline = classicScenario.startingState
+    baseline.inflation = 2.2
+    baseline.unemployment = 5.4
+
+    var targetCrossingOvershoot = baseline
+    targetCrossingOvershoot.inflation = 1.6
+    targetCrossingOvershoot.unemployment = 5.6
+    #expect(previewMandateGapDirection(candidate: targetCrossingOvershoot, baseline: baseline, targets: targets) == .widening)
+
+    baseline.inflation = 3
+    baseline.unemployment = 5.1
+    var mixed = baseline
+    mixed.inflation = 2.5
+    mixed.unemployment = 5.6
+    #expect(previewMandateGapDirection(candidate: mixed, baseline: baseline, targets: targets) == .mixed)
+
+    baseline.unemployment = 6
+    var narrowing = baseline
+    narrowing.inflation = 2.5
+    narrowing.unemployment = 5.3
+    #expect(previewMandateGapDirection(candidate: narrowing, baseline: baseline, targets: targets) == .narrowing)
+
+    #expect(previewMandateGapDirection(candidate: baseline, baseline: baseline, targets: targets) == .littleChanged)
+}
+
+@Test func policyPreviewRejectsInconsistentOrMalformedTermState() throws {
+    let store = GameSessionStore()
+    store.start(seed: "preview-history-validation")
+    try store.commit(action: .hold)
+    try store.commit(action: .hold)
+
+    var inconsistentCurrent = store.session
+    inconsistentCurrent.current.inflation += 0.1
+    #expect(buildPolicyPreview(session: inconsistentCurrent, action: .hold) == nil)
+
+    var noncontiguousHistory = store.session
+    noncontiguousHistory.history.remove(at: 1)
+    #expect(buildPolicyPreview(session: noncontiguousHistory, action: .hold) == nil)
+
+    var mismatchedQuarterMetadata = store.session
+    mismatchedQuarterMetadata.currentTermQuarter += 1
+    #expect(buildPolicyPreview(session: mismatchedQuarterMetadata, action: .hold) == nil)
+
+    var mismatchedTermMetadata = store.session
+    mismatchedTermMetadata.termNumber = 2
+    #expect(buildPolicyPreview(session: mismatchedTermMetadata, action: .hold) == nil)
+
+    var invalidTermNumber = store.session
+    invalidTermNumber.termNumber = 0
+    #expect(buildPolicyPreview(session: invalidTermNumber, action: .hold) == nil)
+
+    let completeTerm = GameSessionStore(session: store.session)
+    for _ in 0 ..< 14 {
+        try completeTerm.commit(action: .hold)
+    }
+    var impossibleTermState = completeTerm.session
+    impossibleTermState.status = .inProgress
+    #expect(impossibleTermState.current.quarterIndex == classicScenario.termQuarters)
+    #expect(buildPolicyPreview(session: impossibleTermState, action: .hold) == nil)
+
+    let nextTerm = GameSessionStore(session: completeTerm.session)
+    if nextTerm.session.score.reappointed {
+        try nextTerm.continueNextTerm()
+        #expect(nextTerm.session.termNumber == 2)
+        #expect(nextTerm.session.completedTerms.count == 1)
+        #expect(buildPolicyPreview(session: nextTerm.session, action: .hold) != nil)
+    }
 }
 
 @Test func commitAfterPreviewMatchesCurrentCommitPath() throws {
     let previewStore = GameSessionStore()
     previewStore.start(seed: "preview-commit-match")
     let preview = try #require(buildPolicyPreview(session: previewStore.session, action: .raise25))
-    #expect(preview.resultingFedFundsRate == 4.25)
+    expectApproximately(preview.resultingFedFundsRate, 4.25)
     try previewStore.commit(action: .raise25)
 
     let directStore = GameSessionStore()
@@ -633,7 +942,7 @@ import Testing
     #expect(previewStore.session.decisions.map(\.rateChange) == directStore.session.decisions.map(\.rateChange))
 }
 
-@Test func invalidCustomBpsOutsideV1RangeIsNotPreviewableOrCommitted() {
+@Test func invalidCustomBpsOutsideV1RangeIsNotPreviewableOrCommitted() throws {
     let store = GameSessionStore()
     store.start(seed: "custom-bps-v1-range")
     let original = store.session
@@ -643,4 +952,90 @@ import Testing
     #expect(store.session == original)
     #expect(buildPolicyPreview(session: original, customBasisPoints: -150) != nil)
     #expect(buildPolicyPreview(session: original, customBasisPoints: 150) != nil)
+
+    try expectInvalidPolicyMove { try store.commitCustom(rateChange: -1.51) }
+    #expect(store.session == original)
+    try expectInvalidPolicyMove { try store.commitCustom(rateChange: 1.51) }
+    #expect(store.session == original)
+    try expectInvalidPolicyMove { try store.commitCustom(rateChange: 0.251) }
+    #expect(store.session == original)
+    try expectInvalidPolicyMove { try store.commit(action: .custom) }
+    #expect(store.session == original)
+
+    let upperEndpoint = GameSessionStore(session: original)
+    try upperEndpoint.commitCustom(rateChange: 1.5)
+    expectApproximately(upperEndpoint.session.decisions.first?.rateChange, 1.5)
+    let tolerantUpperEndpoint = GameSessionStore(session: original)
+    try tolerantUpperEndpoint.commitCustom(rateChange: 1.500_000_000_000_000_2)
+    expectApproximately(tolerantUpperEndpoint.session.decisions.first?.rateChange, 1.5)
+    let lowerEndpoint = GameSessionStore(session: original)
+    try lowerEndpoint.commitCustom(rateChange: -1.5)
+    expectApproximately(lowerEndpoint.session.decisions.first?.rateChange, -1.5)
+    let tolerantLowerEndpoint = GameSessionStore(session: original)
+    try tolerantLowerEndpoint.commitCustom(rateChange: -1.500_000_000_000_000_2)
+    expectApproximately(tolerantLowerEndpoint.session.decisions.first?.rateChange, -1.5)
+}
+
+private func scenarioWithShock(_ shock: Shock?) -> ScenarioConfig {
+    var scenario = classicScenario
+    scenario.shockDeck = shock.map { [$0] } ?? []
+    return scenario
+}
+
+private func advanceOpeningQuarter(scenario: ScenarioConfig, seed: String) throws -> AdvanceResult {
+    let opening = scenario.startingState
+    return try advanceQuarter(
+        history: [opening],
+        decision: createDecision(action: .hold, current: opening, timestamp: "test"),
+        scenario: scenario,
+        activeShocks: [],
+        seed: seed,
+    )
+}
+
+private func policyPreviewOracleEndForTest(
+    session: GameSession,
+    input: PolicyPreviewInput,
+    horizon: Int,
+) throws -> MacroState {
+    let store = GameSessionStore(session: session)
+    if input.action == .custom {
+        try store.commitCustom(rateChange: input.rateChange ?? .nan)
+    } else {
+        try store.commit(action: input.action)
+    }
+    for _ in 1 ..< horizon {
+        try store.commit(action: .hold)
+    }
+    return store.session.current
+}
+
+private func expectInvalidPolicyMove(_ operation: () throws -> Void) throws {
+    do {
+        try operation()
+        Issue.record("Expected invalidPolicyMove.")
+    } catch let error as NativeEngineError {
+        #expect(error == .invalidPolicyMove)
+    }
+}
+
+private func expectUnsupportedSaveFile(_ operation: () throws -> Void) throws {
+    do {
+        try operation()
+        Issue.record("Expected unsupportedSaveFile.")
+    } catch let error as NativeEngineError {
+        #expect(error == .unsupportedSaveFile)
+    }
+}
+
+private func expectApproximately(_ actual: Double, _ expected: Double, tolerance: Double = 0.000_001) {
+    #expect(abs(actual - expected) < tolerance)
+}
+
+private func expectApproximately(_ actual: Double?, _ expected: Double, tolerance: Double = 0.000_001) {
+    guard let actual else {
+        Issue.record("Expected a numeric value.")
+        return
+    }
+    expectApproximately(actual, expected, tolerance: tolerance)
 }

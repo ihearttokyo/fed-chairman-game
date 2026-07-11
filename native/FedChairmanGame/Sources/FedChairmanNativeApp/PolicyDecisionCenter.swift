@@ -47,14 +47,28 @@ struct PolicyDecisionCenter: View {
     }
 
     private var preview: PolicyPreview? {
-        guard let pendingSelection else {
+        guard let pendingSelection, stagedSelectionMatchesInput else {
             return nil
         }
         return buildPolicyPreview(session: session, input: pendingSelection.previewInput)
     }
 
-    private var canCommit: Bool {
-        pendingSelection != nil
+    private var stagedSelectionMatchesInput: Bool {
+        guard let pendingSelection else {
+            return false
+        }
+        guard pendingSelection.action == .custom else {
+            return true
+        }
+        guard
+            let basisPoints = Int(customBps.trimmingCharacters(in: .whitespacesAndNewlines)),
+            PolicyPreviewInput.customBasisPointRange.contains(basisPoints),
+            basisPoints == pendingSelection.customBasisPoints
+        else {
+            return false
+        }
+        let resultingRate = session.current.fedFundsRate + Double(basisPoints) / 100
+        return resultingRate >= 0 && resultingRate <= 20
     }
 
     var body: some View {
@@ -172,27 +186,30 @@ struct PolicyDecisionCenter: View {
     }
 
     private var previewPanel: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            if let preview {
+        let renderedPreview = preview
+        return VStack(alignment: .leading, spacing: 5) {
+            if let preview = renderedPreview {
                 HStack(alignment: .center, spacing: 12) {
                     previewHeader(preview)
                     Spacer(minLength: 8)
-                    decisionButtons
+                    decisionButtons(canCommit: true)
                 }
                 previewMetrics(preview)
-                Text(preview.primaryDriver)
+                Text("\(preview.primaryDriver). Selected rate maintained vs hold for \(preview.horizonQuarters) quarters.")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.62))
-                    .lineLimit(1)
+                    .lineLimit(2)
             } else {
                 Text("PREVIEW")
                     .font(.caption2.weight(.black))
                     .foregroundStyle(.white.opacity(0.48))
-                Text("Select a move to stage a non-mutating estimate before committing.")
+                Text(pendingSelection?.action == .custom
+                    ? "Custom input changed. Select Preview again before committing."
+                    : "Select a move to stage a non-mutating directional read before committing.")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.62))
                     .lineLimit(3)
-                decisionButtons
+                decisionButtons(canCommit: false)
             }
         }
         .padding(10)
@@ -205,13 +222,13 @@ struct PolicyDecisionCenter: View {
         .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.13)))
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(previewAccessibilityLabel)
-        .accessibilityIdentifier(preview == nil ? "policy-preview-empty" : "policy-preview-ready")
+        .accessibilityLabel(previewAccessibilityLabel(renderedPreview))
+        .accessibilityIdentifier(renderedPreview == nil ? "policy-preview-empty" : "policy-preview-ready")
     }
 
     private func previewHeader(_ preview: PolicyPreview) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text("STAGED MOVE")
+            Text("\(preview.horizonQuarters)-QUARTER DIRECTIONAL READ")
                 .font(.caption2.weight(.black))
                 .foregroundStyle(.white.opacity(0.48))
             HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -235,7 +252,7 @@ struct PolicyDecisionCenter: View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 6) {
                 previewTile("Inflation", preview.estimatedInflationPressure.displayLabel, tint: .orange)
-                previewTile("Labor", preview.estimatedUnemploymentPressure.displayLabel, tint: .blue)
+                previewTile("Unemployment", preview.estimatedUnemploymentPressure.displayLabel, tint: .blue)
                 previewTile("Mandate", preview.mandateGapDirection.displayLabel, tint: .green)
                 previewTile("Credibility", credibilitySignalLabel(for: preview), tint: .yellow)
                 previewTile("Read", preview.confidence.displayLabel, tint: .cyan)
@@ -249,7 +266,7 @@ struct PolicyDecisionCenter: View {
                 spacing: 6,
             ) {
                 previewTile("Inflation", preview.estimatedInflationPressure.displayLabel, tint: .orange)
-                previewTile("Labor", preview.estimatedUnemploymentPressure.displayLabel, tint: .blue)
+                previewTile("Unemployment", preview.estimatedUnemploymentPressure.displayLabel, tint: .blue)
                 previewTile("Mandate", preview.mandateGapDirection.displayLabel, tint: .green)
                 previewTile("Credibility", credibilitySignalLabel(for: preview), tint: .yellow)
                 previewTile("Read", preview.confidence.displayLabel, tint: .cyan)
@@ -276,7 +293,7 @@ struct PolicyDecisionCenter: View {
         .overlay(RoundedRectangle(cornerRadius: 7).stroke(tint.opacity(0.16)))
     }
 
-    private var decisionButtons: some View {
+    private func decisionButtons(canCommit: Bool) -> some View {
         HStack(spacing: 10) {
             Button("Commit", action: commit)
                 .buttonStyle(.borderedProminent)
@@ -296,16 +313,14 @@ struct PolicyDecisionCenter: View {
     }
 
     private func credibilitySignalLabel(for preview: PolicyPreview) -> String {
-        if preview.credibilityCost <= 0 {
-            return "No added policy signal burden"
+        switch preview.estimatedCredibilityEffect {
+        case .higher:
+            "Stronger vs hold"
+        case .steady:
+            "Near hold"
+        case .lower:
+            "Weaker vs hold"
         }
-        if preview.credibilityCost < 0.5 {
-            return "Small signal burden"
-        }
-        if preview.credibilityCost < 1 {
-            return "Moderate signal burden"
-        }
-        return "Large signal burden"
     }
 
     private func isValid(action: PolicyAction) -> Bool {
@@ -334,11 +349,11 @@ struct PolicyDecisionCenter: View {
         return "policy-action-\(action.rawValue)-available"
     }
 
-    private var previewAccessibilityLabel: String {
+    private func previewAccessibilityLabel(_ preview: PolicyPreview?) -> String {
         guard let preview else {
-            return "Policy preview empty. Select a move to stage a non-mutating estimate before committing."
+            return "Policy preview empty. Select or refresh a move to stage a non-mutating directional read before committing."
         }
-        return "Policy preview ready. \(preview.moveLabel) to \(String(format: "%.2f", preview.resultingFedFundsRate)) percent. \(preview.primaryDriver)"
+        return "Policy preview ready. \(preview.moveLabel) to \(String(format: "%.2f", preview.resultingFedFundsRate)) percent. \(preview.horizonQuarters)-quarter directional read, selected rate maintained versus hold. \(preview.primaryDriver)"
     }
 
     private var customDelta: Double? {

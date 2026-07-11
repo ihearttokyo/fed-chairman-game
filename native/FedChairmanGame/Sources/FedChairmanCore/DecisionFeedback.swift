@@ -27,6 +27,7 @@ public func buildDecisionFeedback(session: GameSession, scenario: ScenarioConfig
     let mandateDelta = currentMandateGap - previousMandateGap
     let credibilityDelta = current.credibility - previous.credibility
     let tone = decisionFeedbackTone(mandateDelta: mandateDelta, credibilityDelta: credibilityDelta)
+    let shockChannels = shockChannels(traceContributions: trace.shockContrib)
 
     return DecisionFeedback(
         headline: mandateDelta <= 0 ? "Mandate gap improved" : "Mandate gap widened",
@@ -38,7 +39,7 @@ public func buildDecisionFeedback(session: GameSession, scenario: ScenarioConfig
             baseDrift: trace.credibilityBaseDrift ?? 0,
             policyBurden: trace.credibilityRateMoveCost ?? 0,
         ),
-        traceLine: "Lag \(formatSignedDecision(trace.laggedPolicyGap)) pp, shocks \(formatSignedDecision(trace.shockContrib.values.reduce(0, +))) pp, neutral \(formatDecisionPercent(trace.neutralRate))",
+        traceLine: "Lag \(formatSignedDecision(trace.laggedPolicyGap)) pp; \(shockChannelSummary(shockChannels)); neutral \(formatDecisionPercent(trace.neutralRate))",
         tone: tone,
         intensity: decisionFeedbackIntensity(mandateDelta: mandateDelta, credibilityDelta: credibilityDelta, trace: trace),
     )
@@ -88,7 +89,8 @@ private func decisionFeedbackTone(mandateDelta: Double, credibilityDelta: Double
 }
 
 private func decisionFeedbackIntensity(mandateDelta: Double, credibilityDelta: Double, trace: EngineTrace) -> Int {
-    let raw = abs(mandateDelta) * 42 + max(0, -credibilityDelta) * 8 + abs(trace.laggedPolicyGap) * 18 + abs(trace.shockContrib.values.reduce(0, +)) * 14
+    let shockIntensity = shockChannels(traceContributions: trace.shockContrib).totalIntensity
+    let raw = abs(mandateDelta) * 42 + max(0, -credibilityDelta) * 8 + abs(trace.laggedPolicyGap) * 18 + shockIntensity * 14
     return Int(min(100, max(0, raw.rounded())))
 }
 

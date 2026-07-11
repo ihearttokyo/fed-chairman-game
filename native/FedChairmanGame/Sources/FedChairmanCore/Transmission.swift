@@ -133,8 +133,8 @@ private func formatMagnitude(_ value: Double) -> String {
     String(format: "%.2f", abs(value))
 }
 
-private func shockPressure(_ trace: EngineTrace) -> Double {
-    trace.shockContrib.values.reduce(0, +)
+private func traceShockChannels(_ trace: EngineTrace) -> ShockChannels {
+    shockChannels(traceContributions: trace.shockContrib)
 }
 
 private func dominantShockLabel(_ trace: EngineTrace) -> String {
@@ -205,12 +205,13 @@ private func rateTransmission(decision: PolicyDecision, trace: EngineTrace, scen
 }
 
 private func demandTransmission(previous: MacroState, current: MacroState, trace: EngineTrace) -> TransmissionStep {
-    let shocks = shockPressure(trace)
+    let channels = traceShockChannels(trace)
+    let shockIntensity = channels.totalIntensity
     let trend: TransmissionTrend = if trace.laggedPolicyGap > 0.35 {
         .cooling
     } else if trace.laggedPolicyGap < -0.35 {
         .heating
-    } else if abs(shocks) > 0.35 {
+    } else if shockIntensity > 0.35 {
         .stress
     } else {
         .stabilizing
@@ -222,24 +223,24 @@ private func demandTransmission(previous: MacroState, current: MacroState, trace
     } else {
         "Momentum leads the quarter"
     }
-    let shockLine = abs(shocks) > 0.05 ? "net shock pressure \(formatSigned(shocks))" : "limited shock pressure"
+    let shockLine = shockChannelSummary(channels)
     return TransmissionStep(
         month: "Month 2",
         channel: "Demand lag",
         title: channel,
-        stance: trace.laggedPolicyGap > 0.35 ? "Demand cooling" : trace.laggedPolicyGap < -0.35 ? "Demand heating" : abs(shocks) > 0.35 ? "Shock led" : "Momentum steady",
-        intensity: clampIntensity(max(abs(trace.laggedPolicyGap) / 1.1, abs(shocks) / 1.2) * 100),
-        intensityLabel: abs(shocks) > abs(trace.laggedPolicyGap) ? "Shock pressure" : "Lag pressure",
-        driver: "Transmission driver: lag \(formatSigned(trace.laggedPolicyGap)) pp, shocks \(formatSigned(shocks))",
+        stance: trace.laggedPolicyGap > 0.35 ? "Demand cooling" : trace.laggedPolicyGap < -0.35 ? "Demand heating" : shockIntensity > 0.35 ? "Shock led" : "Momentum steady",
+        intensity: clampIntensity(max(abs(trace.laggedPolicyGap) / 1.1, shockIntensity / 1.2) * 100),
+        intensityLabel: shockIntensity > abs(trace.laggedPolicyGap) ? "Shock intensity" : "Lag pressure",
+        driver: "Transmission driver: lag \(formatSigned(trace.laggedPolicyGap)) pp; \(shockLine)",
         value: "\(formatSigned(trace.laggedPolicyGap)) pp lag",
         comparison: "Output gap: \(formatSigned(previous.outputGap)) -> \(formatSigned(current.outputGap)) pp",
         basis: "Uses the prior quarter, current quarter, lagged policy gap, and shock contribution trace.",
-        detail: "Policy works through the lagged gap while \(shockLine) shifts output and hiring.",
+        detail: "Policy works through the lagged gap while the separate shock channels shift prices, output, or hiring.",
         trend: trend,
         evidence: [
             "Output \(formatSigned(current.outputGap - previous.outputGap)) pp",
             "GDP \(formatSigned(trace.gdpDelta)) pp",
-            "Shocks \(formatSigned(shocks))",
+            "Shock intensity \(formatMagnitude(shockIntensity))",
         ],
         signals: [
             trace.laggedPolicyGap > 0.35 ? "Lag: restrictive" : trace.laggedPolicyGap < -0.35 ? "Lag: easy" : "Lag: near neutral",
@@ -324,7 +325,8 @@ private func causalChain(
     scenario: ScenarioConfig,
 ) -> [TransmissionCausalLink] {
     let neutralGap = decision.resultingFedFundsRate - trace.neutralRate
-    let shocks = shockPressure(trace)
+    let channels = traceShockChannels(trace)
+    let shockIntensity = channels.totalIntensity
     let outputDelta = current.outputGap - previous.outputGap
     let inflationGap = current.inflation - scenario.targets.inflation
     let unemploymentGap = current.unemployment - scenario.targets.unemployment
@@ -339,8 +341,8 @@ private func causalChain(
         ),
         TransmissionCausalLink(
             label: "Lag plus shocks",
-            text: "That signal meets a \(formatSigned(trace.laggedPolicyGap)) pp lag and \(formatSigned(shocks)) shock pressure, moving output \(formatSigned(outputDelta)) pp.",
-            tone: abs(shocks) > abs(trace.laggedPolicyGap) && abs(shocks) > 0.25 ? .stress : outputDelta > 0.05 ? .heating : outputDelta < -0.05 ? .cooling : .stabilizing,
+            text: "That signal meets a \(formatSigned(trace.laggedPolicyGap)) pp lag and \(shockChannelSummary(channels)), moving output \(formatSigned(outputDelta)) pp.",
+            tone: shockIntensity > abs(trace.laggedPolicyGap) && shockIntensity > 0.25 ? .stress : outputDelta > 0.05 ? .heating : outputDelta < -0.05 ? .cooling : .stabilizing,
         ),
         TransmissionCausalLink(
             label: "Mandate read-through",
@@ -356,7 +358,7 @@ private func transmissionChanges(previous: MacroState, current: MacroState, deci
     let outputDelta = current.outputGap - previous.outputGap
     let credibilityDelta = current.credibility - previous.credibility
     let expectationsDelta = current.expectedInflation - previous.expectedInflation
-    let shocks = shockPressure(trace)
+    let channels = traceShockChannels(trace)
     return [
         TransmissionChange(
             label: "Inflation",
@@ -379,7 +381,7 @@ private func transmissionChanges(previous: MacroState, current: MacroState, deci
             previous: "\(formatSigned(previous.outputGap)) pp",
             current: "\(formatSigned(current.outputGap)) pp",
             delta: "\(formatSigned(outputDelta)) pp",
-            reason: "Lagged policy gap \(formatSigned(trace.laggedPolicyGap)) pp; shocks \(formatSigned(shocks)).",
+            reason: "Lagged policy gap \(formatSigned(trace.laggedPolicyGap)) pp; \(shockChannelSummary(channels)).",
             tone: outputDelta > 0.05 ? .heating : outputDelta < -0.05 ? .cooling : .stabilizing,
         ),
         TransmissionChange(
@@ -405,10 +407,11 @@ private func transmissionReceipt(
     let previousMiss = abs(previous.inflation - scenario.targets.inflation) + abs(previous.unemployment - scenario.targets.unemployment)
     let currentMiss = abs(inflationGap) + abs(laborGap)
     let mandateMove = currentMiss - previousMiss
-    let shocks = shockPressure(trace)
+    let channels = traceShockChannels(trace)
+    let shockIntensity = channels.totalIntensity
     let tone: TransmissionTrend = if mandateMove < -0.08 {
         .stabilizing
-    } else if mandateMove > 0.08 || abs(shocks) > 0.65 {
+    } else if mandateMove > 0.08 || shockIntensity > 0.65 {
         .stress
     } else if trace.laggedPolicyGap > 0.35 {
         .cooling
@@ -427,8 +430,8 @@ private func transmissionReceipt(
     let policyEcho = policyDirection == "hold"
         ? "The hold kept the target at \(formatPercent(decision.resultingFedFundsRate)) while the lag registered \(formatSigned(trace.laggedPolicyGap)) pp."
         : "The \(policyDirection) moved \(formatSigned(decision.rateChange)) pp to \(formatPercent(decision.resultingFedFundsRate)); the current lag registered \(formatSigned(trace.laggedPolicyGap)) pp."
-    let nextWatch = if abs(shocks) > abs(trace.laggedPolicyGap), abs(shocks) > 0.25 {
-        "Watch shock pressure next: net shocks were \(formatSigned(shocks)) this quarter."
+    let nextWatch = if shockIntensity > abs(trace.laggedPolicyGap), shockIntensity > 0.25 {
+        "Watch shock channels next: \(shockChannelSummary(channels))."
     } else if abs(decision.rateChange) >= 0.75 {
         "Watch for overshoot risk: a large move can keep transmitting into the next quarter."
     } else if abs(inflationGap) > abs(laborGap) {
@@ -451,7 +454,8 @@ private func decisionMemo(
     let currentInflationGap = current.inflation - scenario.targets.inflation
     let currentLaborGap = current.unemployment - scenario.targets.unemployment
     let outputDelta = current.outputGap - previous.outputGap
-    let shocks = shockPressure(trace)
+    let channels = traceShockChannels(trace)
+    let shockIntensity = channels.totalIntensity
     let needsCooling = previousInflationGap > 0.15 || previousLaborGap < -0.25
     let needsHeating = previousInflationGap < -0.15 || previousLaborGap > 0.25
     let pressureTone: TransmissionTrend = needsCooling ? .cooling : needsHeating ? .heating : .stabilizing
@@ -464,8 +468,8 @@ private func decisionMemo(
     let tradeoff = decision.rateChange == 0
         ? "The hold let the \(formatSigned(trace.laggedPolicyGap)) pp lag carry the quarter while output moved \(formatSigned(outputDelta)) pp."
         : "The \(actionLabel) impulse met a \(formatSigned(trace.laggedPolicyGap)) pp policy lag while output moved \(formatSigned(outputDelta)) pp."
-    let risk = if abs(shocks) > abs(trace.laggedPolicyGap) && abs(shocks) > 0.25 {
-        "Main risk: net shocks at \(formatSigned(shocks)) can swamp the latest rate signal."
+    let risk = if shockIntensity > abs(trace.laggedPolicyGap) && shockIntensity > 0.25 {
+        "Main risk: \(shockChannelSummary(channels)) can swamp the latest rate signal."
     } else if abs(currentInflationGap) >= abs(currentLaborGap) {
         "Main risk: inflation remains \(formatSigned(currentInflationGap)) pp from target after the decision."
     } else {

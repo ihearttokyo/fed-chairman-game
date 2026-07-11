@@ -174,18 +174,13 @@ private func finalImpulse(_ trace: EngineTrace?) -> String {
     guard let trace else {
         return "No final model trace was recorded."
     }
-    let shockPressure = trace.shockContrib.values.reduce(0, +)
+    let channels = shockChannels(traceContributions: trace.shockContrib)
     let policy = trace.laggedPolicyGap > 0.35
         ? "restrictive lag was cooling demand"
         : trace.laggedPolicyGap < -0.35
         ? "easy lag was supporting demand"
         : "policy lag was near neutral"
-    let shocks = abs(shockPressure) < 0.08
-        ? "net shocks were muted"
-        : shockPressure > 0
-        ? "net shocks leaned inflationary"
-        : "net shocks leaned disinflationary"
-    return "Final quarter: \(policy); \(shocks) (\(formatSigned(shockPressure)) pp)."
+    return "Final quarter: \(policy); \(shockChannelSummary(channels))."
 }
 
 private func buildCareerLedger(_ session: GameSession) -> [CareerLedgerEntry] {

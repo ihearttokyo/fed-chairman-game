@@ -849,6 +849,15 @@ struct NativeCockpitView: View {
             return
         }
         if pendingPolicySelection.action == .custom {
+            guard
+                let basisPoints = Int(customBps.trimmingCharacters(in: .whitespacesAndNewlines)),
+                PolicyPreviewInput.customBasisPointRange.contains(basisPoints),
+                basisPoints == pendingPolicySelection.customBasisPoints,
+                customDelta != nil
+            else {
+                NSSound.beep()
+                return
+            }
             commitCustom(rateChange: pendingPolicySelection.rateChange)
         } else {
             commit(pendingPolicySelection.action)

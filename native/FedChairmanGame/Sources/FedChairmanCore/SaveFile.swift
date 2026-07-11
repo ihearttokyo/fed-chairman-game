@@ -62,7 +62,7 @@ private func sha256Hex(_ input: String) -> String {
     return digest.map { String(format: "%02x", $0) }.joined()
 }
 
-private func digestPayload(_ payload: GameSession) throws -> String {
+func digestPayload(_ payload: GameSession) throws -> String {
     let canonical = try CanonicalJSON.stringify(jsonObject(payload))
     return sha256Hex("\(saveFileNamespace):\(canonical)")
 }
@@ -97,6 +97,10 @@ public func recomputeSessionScores(_ session: GameSession) throws -> GameSession
 
 public func createSaveFile(session: GameSession) throws -> String {
     let payload = try recomputeSessionScores(session)
+    // Save envelope v1 and its digest remain compatible; mechanics versions gate resume behavior separately.
+    guard payload.engineModelVersion == GameSession.currentEngineModelVersion else {
+        throw NativeEngineError.unsupportedSaveFile
+    }
     let envelope = try SaveFileEnvelope(version: saveFileVersion, payload: payload, digest: digestPayload(payload))
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -113,6 +117,10 @@ public func parseSaveFile(_ text: String) throws -> GameSession {
     }
     guard try digestPayload(envelope.payload) == envelope.digest else {
         throw NativeEngineError.tamperedSaveFile
+    }
+    // Verify integrity before reporting an unsupported legacy or future mechanics model.
+    guard envelope.payload.engineModelVersion == GameSession.currentEngineModelVersion else {
+        throw NativeEngineError.unsupportedSaveFile
     }
     return try recomputeSessionScores(envelope.payload)
 }

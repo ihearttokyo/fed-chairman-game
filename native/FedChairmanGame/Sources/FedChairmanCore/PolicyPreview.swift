@@ -39,10 +39,19 @@ public struct PolicyPreviewInput: Equatable, Sendable {
     }
 
     public static func customRateChange(_ rateChange: Double) -> PolicyPreviewInput? {
-        let basisPoints = Int((rateChange * 100).rounded())
-        guard abs(rateChange * 100 - Double(basisPoints)) <= 0.000_000_001 else {
+        let scaledBasisPoints = rateChange * 100
+        guard scaledBasisPoints.isFinite else {
             return nil
         }
+        let roundedBasisPoints = scaledBasisPoints.rounded()
+        guard
+            abs(scaledBasisPoints - roundedBasisPoints) <= 0.000_000_001,
+            roundedBasisPoints >= Double(customBasisPointRange.lowerBound),
+            roundedBasisPoints <= Double(customBasisPointRange.upperBound)
+        else {
+            return nil
+        }
+        let basisPoints = Int(roundedBasisPoints)
         return customBasisPoints(basisPoints)
     }
 
@@ -70,12 +79,19 @@ public struct PolicyPreview: Equatable, Sendable {
         estimatedUnemploymentPressureValue
     }
 
+    public var credibilityEffect: Double {
+        estimatedCredibilityEffectValue
+    }
+
     public var moveLabel: String
     public var resultingFedFundsRate: Double
     public var estimatedInflationPressure: PolicyPreviewPressure
     public var estimatedUnemploymentPressure: PolicyPreviewPressure
     public var estimatedInflationPressureValue: Double
     public var estimatedUnemploymentPressureValue: Double
+    public var horizonQuarters: Int
+    public var estimatedCredibilityEffect: PolicyPreviewPressure
+    public var estimatedCredibilityEffectValue: Double
     public var credibilityCost: Double
     public var mandateGapDirection: PolicyPreviewMandateGapDirection
     public var confidence: PolicyPreviewConfidence
@@ -92,6 +108,9 @@ public struct PolicyPreview: Equatable, Sendable {
         mandateGapDirection: PolicyPreviewMandateGapDirection,
         confidence: PolicyPreviewConfidence,
         primaryDriver: String,
+        horizonQuarters: Int = 0,
+        estimatedCredibilityEffect: PolicyPreviewPressure = .steady,
+        estimatedCredibilityEffectValue: Double = 0,
     ) {
         self.moveLabel = moveLabel
         self.resultingFedFundsRate = resultingFedFundsRate
@@ -99,6 +118,9 @@ public struct PolicyPreview: Equatable, Sendable {
         self.estimatedUnemploymentPressure = estimatedUnemploymentPressure
         self.estimatedInflationPressureValue = estimatedInflationPressureValue
         self.estimatedUnemploymentPressureValue = estimatedUnemploymentPressureValue
+        self.horizonQuarters = horizonQuarters
+        self.estimatedCredibilityEffect = estimatedCredibilityEffect
+        self.estimatedCredibilityEffectValue = estimatedCredibilityEffectValue
         self.credibilityCost = credibilityCost
         self.mandateGapDirection = mandateGapDirection
         self.confidence = confidence
@@ -113,28 +135,44 @@ public func buildPolicyPreview(session: GameSession, input: PolicyPreviewInput) 
     guard let scenario = try? getTermScenario(id: session.scenarioId, seed: session.seed, termNumber: session.termNumber) else {
         return nil
     }
-    let current = session.current
+    guard let current = canonicalPreviewCurrent(session: session, termQuarters: scenario.termQuarters) else {
+        return nil
+    }
     let resultingRate = roundTo(current.fedFundsRate + rateChange)
-    guard resultingRate >= 0, resultingRate <= 20 else {
+    let horizonQuarters = min(4, scenario.termQuarters - current.quarterIndex)
+    guard resultingRate >= 0, resultingRate <= 20, horizonQuarters > 0 else {
+        return nil
+    }
+
+    guard
+        let candidate = try? projectPolicyPath(
+            session: session,
+            input: input,
+            scenario: scenario,
+            horizonQuarters: horizonQuarters,
+        ),
+        let baseline = try? projectPolicyPath(
+            session: session,
+            input: .action(.hold),
+            scenario: scenario,
+            horizonQuarters: horizonQuarters,
+        )
+    else {
         return nil
     }
 
     let inflationGap = current.inflation - scenario.targets.inflation
     let unemploymentGap = current.unemployment - scenario.targets.unemployment
-    let laggedGap = previewLaggedPolicyGap(history: session.history, scenario: scenario)
+    let laggedGap = baseline.traces.first?.laggedPolicyGap ?? 0
     let neutralRate = scenario.coefficients.realNeutralRate + current.expectedInflation
     let policyGap = resultingRate - neutralRate
-    let shockPressure = previewShockPressure(activeShocks: session.activeShocks, scenario: scenario)
-    let inflationImpulse = -scenario.coefficients.inflationRateSensitivity * rateChange -
-        0.05 * laggedGap +
-        0.18 * shockPressure.supply +
-        0.08 * shockPressure.demand
-    let unemploymentImpulse = scenario.coefficients.okunCoefficient * scenario.coefficients.rateSensitivity *
-        rateChange +
-        0.04 * laggedGap +
-        0.14 * shockPressure.labor -
-        0.06 * shockPressure.demand
-    let credibilityCost = roundTo(abs(rateChange) * 0.75)
+    let shockPressure = baseline.traces.reduce(0.0) { maximum, trace in
+        max(maximum, trace.shockContrib.values.reduce(0.0) { $0 + abs($1) })
+    }
+    let inflationImpulse = roundTo(candidate.endState.inflation - baseline.endState.inflation)
+    let unemploymentImpulse = roundTo(candidate.endState.unemployment - baseline.endState.unemployment)
+    let credibilityEffect = roundTo(candidate.endState.credibility - baseline.endState.credibility)
+    let credibilityCost = roundTo(max(0, -credibilityEffect))
     let moveLabel = input.action == .custom
         ? "Custom \(formatRateChangeBps(rateChange))"
         : policyActions[input.action]?.label ?? formatRateChangeBps(rateChange)
@@ -144,24 +182,26 @@ public func buildPolicyPreview(session: GameSession, input: PolicyPreviewInput) 
         resultingFedFundsRate: resultingRate,
         estimatedInflationPressure: previewPressure(inflationImpulse),
         estimatedUnemploymentPressure: previewPressure(unemploymentImpulse),
-        estimatedInflationPressureValue: roundTo(inflationImpulse),
-        estimatedUnemploymentPressureValue: roundTo(unemploymentImpulse),
+        estimatedInflationPressureValue: inflationImpulse,
+        estimatedUnemploymentPressureValue: unemploymentImpulse,
         credibilityCost: credibilityCost,
         mandateGapDirection: previewMandateGapDirection(
-            inflationGap: inflationGap,
-            unemploymentGap: unemploymentGap,
-            inflationImpulse: inflationImpulse,
-            unemploymentImpulse: unemploymentImpulse,
+            candidate: candidate.endState,
+            baseline: baseline.endState,
+            targets: scenario.targets,
         ),
-        confidence: previewConfidence(laggedGap: laggedGap, shockPressure: shockPressure.total),
+        confidence: previewConfidence(laggedGap: laggedGap, shockPressure: shockPressure),
         primaryDriver: previewPrimaryDriver(context: PolicyPreviewDriverContext(
             rateChange: rateChange,
             policyGap: policyGap,
             laggedGap: laggedGap,
-            shockPressure: shockPressure.total,
+            shockPressure: shockPressure,
             inflationGap: inflationGap,
             unemploymentGap: unemploymentGap,
         )),
+        horizonQuarters: horizonQuarters,
+        estimatedCredibilityEffect: previewPressure(credibilityEffect),
+        estimatedCredibilityEffectValue: credibilityEffect,
     )
 }
 
@@ -187,16 +227,20 @@ private func previewPressure(_ value: Double) -> PolicyPreviewPressure {
     return .steady
 }
 
-private func previewMandateGapDirection(
-    inflationGap: Double,
-    unemploymentGap: Double,
-    inflationImpulse: Double,
-    unemploymentImpulse: Double,
+func previewMandateGapDirection(
+    candidate: MacroState,
+    baseline: MacroState,
+    targets: MandateTargets,
 ) -> PolicyPreviewMandateGapDirection {
-    let inflationImproves = abs(inflationGap) > 0.25 && inflationGap.sign != inflationImpulse.sign && abs(inflationImpulse) > 0.04
-    let laborImproves = abs(unemploymentGap) > 0.25 && unemploymentGap.sign != unemploymentImpulse.sign && abs(unemploymentImpulse) > 0.04
-    let inflationWorsens = abs(inflationGap) > 0.25 && inflationGap.sign == inflationImpulse.sign && abs(inflationImpulse) > 0.04
-    let laborWorsens = abs(unemploymentGap) > 0.25 && unemploymentGap.sign == unemploymentImpulse.sign && abs(unemploymentImpulse) > 0.04
+    let materialDistanceChange = 0.04
+    let inflationDistanceChange = abs(candidate.inflation - targets.inflation) -
+        abs(baseline.inflation - targets.inflation)
+    let unemploymentDistanceChange = abs(candidate.unemployment - targets.unemployment) -
+        abs(baseline.unemployment - targets.unemployment)
+    let inflationImproves = inflationDistanceChange < -materialDistanceChange
+    let laborImproves = unemploymentDistanceChange < -materialDistanceChange
+    let inflationWorsens = inflationDistanceChange > materialDistanceChange
+    let laborWorsens = unemploymentDistanceChange > materialDistanceChange
 
     if inflationImproves || laborImproves, !(inflationWorsens || laborWorsens) {
         return .narrowing
@@ -208,6 +252,24 @@ private func previewMandateGapDirection(
         return .mixed
     }
     return .littleChanged
+}
+
+private func canonicalPreviewCurrent(session: GameSession, termQuarters: Int) -> MacroState? {
+    guard
+        termQuarters > 0,
+        let current = session.history.last,
+        session.current == current,
+        current.quarterIndex >= 0,
+        current.quarterIndex < termQuarters,
+        session.currentTermQuarter == current.quarterIndex,
+        session.termNumber >= 1,
+        session.completedTerms.count == session.termNumber - 1,
+        session.history.count == current.quarterIndex + 1,
+        session.history.enumerated().allSatisfy({ index, state in state.quarterIndex == index })
+    else {
+        return nil
+    }
+    return current
 }
 
 private func previewConfidence(laggedGap: Double, shockPressure: Double) -> PolicyPreviewConfidence {
@@ -230,6 +292,54 @@ private struct PolicyPreviewDriverContext {
     var unemploymentGap: Double
 }
 
+private struct PolicyProjection {
+    var endState: MacroState
+    var traces: [EngineTrace]
+}
+
+private func projectPolicyPath(
+    session: GameSession,
+    input: PolicyPreviewInput,
+    scenario: ScenarioConfig,
+    horizonQuarters: Int,
+) throws -> PolicyProjection {
+    var history = session.history
+    var activeShocks = session.activeShocks
+    var traces: [EngineTrace] = []
+    let seed = "\(session.seed):term-\(session.termNumber)"
+
+    for offset in 0 ..< horizonQuarters {
+        guard let current = history.last else {
+            throw NativeEngineError.missingHistory
+        }
+        let action = offset == 0 ? input.action : .hold
+        let decision = createDecision(
+            action: action,
+            current: current,
+            timestamp: "preview",
+            customRateChange: action == .custom ? input.rateChange : nil,
+        )
+        let advanced = try advanceQuarter(
+            history: history,
+            decision: decision,
+            scenario: scenario,
+            activeShocks: activeShocks,
+            seed: seed,
+            termNumber: session.termNumber,
+            ui: session.ui,
+            careerQuarterIndex: session.totalCareerQuarters + offset + 1,
+        )
+        history.append(advanced.nextState)
+        activeShocks = advanced.activeShocks
+        traces.append(advanced.trace)
+    }
+
+    guard let endState = history.last else {
+        throw NativeEngineError.missingHistory
+    }
+    return PolicyProjection(endState: endState, traces: traces)
+}
+
 private func previewPrimaryDriver(context: PolicyPreviewDriverContext) -> String {
     if abs(context.shockPressure) > max(abs(context.rateChange), abs(context.laggedGap), 0.45) {
         return "Active shocks"
@@ -247,50 +357,4 @@ private func previewPrimaryDriver(context: PolicyPreviewDriverContext) -> String
         return context.policyGap > 0 ? "Restrictive stance" : "Easy stance"
     }
     return "Near-neutral stance"
-}
-
-private func previewLaggedPolicyGap(history: [MacroState], scenario: ScenarioConfig) -> Double {
-    let weights = [0.1, 0.25, 0.4, 0.25]
-    let recent = history.suffix(4).reversed()
-    guard !recent.isEmpty else {
-        return 0
-    }
-    var weighted = 0.0
-    var weightTotal = 0.0
-    for (index, state) in recent.enumerated() {
-        let weight = weights[index]
-        let neutralRate = scenario.coefficients.realNeutralRate + state.expectedInflation
-        weighted += (state.fedFundsRate - neutralRate) * weight
-        weightTotal += weight
-    }
-    return weighted / weightTotal
-}
-
-private func previewShockPressure(
-    activeShocks: [ActiveShock],
-    scenario: ScenarioConfig,
-) -> (demand: Double, supply: Double, labor: Double, total: Double) {
-    var demand = 0.0
-    var supply = 0.0
-    var labor = 0.0
-    for shock in activeShocks {
-        let age = shock.persistence - shock.remaining
-        let decayed = shock.magnitude * pow(scenario.coefficients.shockDecay, Double(max(0, age)))
-        switch shock.type {
-        case .demand:
-            demand += decayed
-        case .confidence:
-            demand += 0.45 * decayed
-        case .supply:
-            supply += decayed
-        case .energy:
-            supply += 0.55 * decayed
-        case .labor:
-            labor += 0.35 * max(0, decayed)
-        case .financial:
-            demand -= abs(min(0, decayed)) * 0.8
-            labor += abs(min(0, decayed)) * 0.2
-        }
-    }
-    return (demand, supply, labor, abs(demand) + abs(supply) + abs(labor))
 }

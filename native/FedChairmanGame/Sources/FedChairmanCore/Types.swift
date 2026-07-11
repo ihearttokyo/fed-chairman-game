@@ -278,6 +278,8 @@ public struct UiState: Codable, Equatable, Sendable {
 }
 
 public struct GameSession: Codable, Equatable, Sendable {
+    public static let currentEngineModelVersion = "classic-macro-v1"
+
     public var sessionId: String
     public var mode: GameMode
     public var scenarioId: String
@@ -297,4 +299,6 @@ public struct GameSession: Codable, Equatable, Sendable {
     public var latestTriggeredShocks: [Shock]
     public var score: ScoreState
     public var ui: UiState
+    /// Optional so legacy envelopes decode cleanly and can be rejected after digest verification.
+    public var engineModelVersion: String?
 }

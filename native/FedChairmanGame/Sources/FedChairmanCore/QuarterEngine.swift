@@ -87,28 +87,28 @@ public func advanceQuarter(
     let neutralRate = coefficients.realNeutralRate + previous.expectedInflation
     let currentPolicyGap = decision.resultingFedFundsRate - neutralRate
     let laggedGap = laggedPolicyGap(history: history, scenario: scenario)
-    let demandShock = (shocks[.demand] ?? 0) + 0.45 * (shocks[.confidence] ?? 0)
-    let financialStress = abs(min(0, shocks[.financial] ?? 0)) * 0.8
-    let supplyShock = (shocks[.supply] ?? 0) + (shocks[.energy] ?? 0) * 0.55
-    let laborShock = max(0, shocks[.labor] ?? 0) * 0.35 + abs(min(0, shocks[.financial] ?? 0)) * 0.2
+    let shockChannels = shockChannels(contributions: shocks)
     let noise = deterministicNoise(seed: seed, quarterIndex: quarterIndex, salt: "macro", scale: coefficients.noiseScale)
 
     let outputGap = clamp(
         0.58 * previous.outputGap -
             coefficients.rateSensitivity * laggedGap +
-            demandShock -
-            financialStress +
+            shockChannels.demand -
+            shockChannels.financialActivityDrag +
             noise,
         -8,
         8,
     )
     let gdpGrowth = clamp(
-        coefficients.trendGrowth + 0.65 * outputGap + demandShock * 0.35 - financialStress * 0.45,
+        coefficients.trendGrowth + 0.65 * outputGap + shockChannels.demand * 0.35 - shockChannels.financialActivityDrag * 0.45,
         -9,
         9,
     )
     let unemployment = clamp(
-        previous.unemployment - coefficients.okunCoefficient * (gdpGrowth - coefficients.trendGrowth) + laborShock,
+        previous.unemployment -
+            coefficients.okunCoefficient * (gdpGrowth - coefficients.trendGrowth) -
+            shockChannels.laborTightness +
+            shockChannels.financialLaborStress,
         2,
         15,
     )
@@ -137,7 +137,8 @@ public func advanceQuarter(
         normalCredibilityRecovery,
     )
     let credibility = clamp(previous.credibility + credibilityDelta, 0, 100)
-    let expectationsAnchor = inflationTarget + (100 - credibility) / 100
+    let expectationsDirection = inflationGap == 0 ? 0 : (inflationGap > 0 ? 1.0 : -1.0)
+    let expectationsAnchor = inflationTarget + expectationsDirection * (100 - previous.credibility) / 100
     let expectedInflation = clamp(
         0.72 * previous.expectedInflation + 0.18 * previous.inflation + 0.1 * expectationsAnchor,
         0,
@@ -148,7 +149,7 @@ public func advanceQuarter(
             0.3 * expectedInflation +
             0.15 * inflationTarget +
             coefficients.phillipsSlope * previous.outputGap +
-            supplyShock -
+            shockChannels.priceSupply -
             coefficients.inflationRateSensitivity * laggedGap +
             noise,
         -2,

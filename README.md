@@ -10,7 +10,7 @@ This project is independent and is not affiliated with, sponsored by, or endorse
 
 - Native macOS app built with SwiftUI and SpriteKit.
 - Classic Monetary Policy Mode only: fixed four-year, 16-quarter terms.
-- One-click rate decisions plus validated custom basis-point moves.
+- Preview-first rate decisions plus validated custom basis-point moves.
 - Deterministic seeded shocks, credibility, policy lags, scorecards, and reappointment debriefs.
 - Full-career chart history that appends across terms.
 - Portable `.fedchair-save.json` saves with tamper-evident SHA-256 digests.
@@ -54,7 +54,7 @@ npm run test:ui:final
 
 `npm run test:fast` is the cheap inner loop: Swift build plus Swift unit tests.
 
-`npm run test:gui` is the default desktop evidence gate. It builds a current local app bundle, launches it, captures provenance-backed screenshots at responsive sizes, then prints the screenshot paths that must be visually inspected before UI work is called complete. Use Computer Use for the interactive playability pass: make at least one policy decision and open Newspaper, Help, and Settings against that same app build.
+`npm run test:gui` is the default desktop evidence gate. It builds a current local app bundle, launches it, and captures provenance-backed screenshots that must be visually inspected before UI work is called complete. Normal product work uses one large window; responsive-size matrices are reserved for changes that directly target responsive layout. Use Computer Use for the interactive playability pass against that same app build.
 
 If the active macOS capture backend returns black screenshots, `test:gui` fails rather than treating those files as evidence. In that case, grant Screen Recording permission to the invoking app/terminal or use Computer Use directly and report that evidence path.
 
@@ -146,4 +146,5 @@ Supporting docs:
 
 - `ASSET_PROVENANCE.md`
 - `CLEANROOM.md`
+- `docs/ECONOMIC_MODEL_RATIONALE.md`
 - `THIRD_PARTY_NOTICES.md`

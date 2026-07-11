@@ -69,12 +69,12 @@ artifacts:
     gui_capture: scripts/agentic-gui-capture.sh
     native_validation: scripts/native-validation.sh
 
-iteration: 2
-phase: package-validated
+iteration: 3
+phase: code-validated
 current_artifact: loop/ACCEPTANCE.md
 current_criterion: AC-017
-last_action: "Completed and visually validated AC-004/AC-005/AC-006: stable Desk interpretation, compact Decision Tape receipt, and detailed Records history."
-next_action: "Research and repair AC-017/AC-019 engine-preview coherence, beginning with labor-shock sign and shared credibility behavior."
+last_action: "Implemented and code-validated the AC-017/AC-019 mechanics package: engine-derived four-quarter preview, symmetric expectations anchoring, corrected shock channels, model-versioned saves, honest trace copy, and guarded custom commits."
+next_action: "Commit the code-validated package, install that clean commit, and run one large-window multi-quarter computer-use playtest before changing acceptance statuses."
 halt_cause: null
 halt_scan: []
 stuck_counters: {}
@@ -176,3 +176,12 @@ pressure_consulted:
       P-004: "Removed the duplicate lower Desk review, reduced Decision Tape to a receipt, and retained detailed review in Records."
       P-005: "Installed twice only because the first visual pass found a concrete panel-height defect; reran the targeted scenario after that code change."
     result: "AC-004, AC-005, and AC-006 moved to PASS_PENDING_FINAL; AC-019 and AC-024 reopened based on stronger-model audit findings."
+  - iteration: 3
+    rows:
+      P-003: "Requires engine-derived rather than hand-estimated preview behavior, grounded shock signs, and symmetric credibility/expectations behavior."
+      P-005: "Requires a current-build one-window playtest after the model and preview UI compile and unit gates pass."
+    criterion: AC-017
+    failing_evidence: "PolicyPreview applies the staged move immediately while QuarterEngine transmits through historical policy gaps; labor-market-heats-up raises unemployment; preview credibility burden differs from the commit rule; custom commit accepts a wider domain than preview."
+    hypothesis: "Counterfactual candidate-versus-hold projections through QuarterEngine over its four-quarter lag window will make preview direction, shock lifecycle, and credibility behavior match commits without promising exact forecasts. Splitting labor tightness from financial stress and enforcing the shared +/-150 bps domain will remove arbitrary penalties and bypasses."
+    edit_surface: "QuarterEngine.swift, PolicyPreview.swift, GameSessionStore.swift, Policy.swift, PolicyDecisionCenter.swift, FedChairmanGameNativeApp.swift, focused core tests."
+    rollback: "Revert the package if hold is not neutral versus its baseline, preview mutates session state, mirrored credibility cases are asymmetric, shock counterfactuals violate documented channels, or the staged custom UI can commit an unpreviewed value."

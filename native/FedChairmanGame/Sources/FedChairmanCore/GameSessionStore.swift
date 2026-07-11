@@ -15,6 +15,9 @@ public final class GameSessionStore: ObservableObject {
     }
 
     public func commit(action: PolicyAction) throws {
+        guard action != .custom else {
+            throw NativeEngineError.invalidPolicyMove
+        }
         guard let next = try advancedSession(session: session, action: action) else {
             return
         }
@@ -22,11 +25,10 @@ public final class GameSessionStore: ObservableObject {
     }
 
     public func commitCustom(rateChange: Double) throws {
-        let bps = (rateChange * 100).rounded()
-        guard abs(bps) <= 300, abs(rateChange * 100 - bps) <= 0.000_000_001 else {
-            return
+        guard let input = PolicyPreviewInput.customRateChange(rateChange), let canonicalRateChange = input.rateChange else {
+            throw NativeEngineError.invalidPolicyMove
         }
-        guard let next = try advancedSession(session: session, action: .custom, customRateChange: bps / 100) else {
+        guard let next = try advancedSession(session: session, action: .custom, customRateChange: canonicalRateChange) else {
             return
         }
         session = next
@@ -72,6 +74,9 @@ public final class GameSessionStore: ObservableObject {
     }
 
     public func load(session loadedSession: GameSession) throws {
+        guard loadedSession.engineModelVersion == GameSession.currentEngineModelVersion else {
+            throw NativeEngineError.unsupportedSaveFile
+        }
         session = try recomputeSessionScores(loadedSession)
     }
 
@@ -115,6 +120,7 @@ public final class GameSessionStore: ObservableObject {
             latestTriggeredShocks: [],
             score: score,
             ui: .default,
+            engineModelVersion: GameSession.currentEngineModelVersion,
         )
     }
 
