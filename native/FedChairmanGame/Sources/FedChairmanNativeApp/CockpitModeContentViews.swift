@@ -72,7 +72,7 @@ struct MandateFocusContainer<Content: View>: View {
     }
 }
 
-struct HistorySummaryStub: View {
+struct TermHistorySummaryView: View {
     var snapshot: TermSnapshot
 
     var body: some View {
@@ -94,7 +94,7 @@ struct HistorySummaryStub: View {
             }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("history-summary-stub")
+        .accessibilityIdentifier("term-history-summary")
     }
 
     private var historyTitle: String {

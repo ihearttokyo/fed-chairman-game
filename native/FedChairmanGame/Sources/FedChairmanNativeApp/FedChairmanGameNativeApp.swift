@@ -54,6 +54,7 @@ struct NativeCockpitView: View {
     @State private var panelMessage: String?
     @State private var inspectedChartIndex: Int?
     @State private var didApplyValidationProgression = false
+    @AppStorage("fastCommitEnabled") private var fastCommitEnabled = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var session: GameSession {
@@ -143,7 +144,7 @@ struct NativeCockpitView: View {
                 Text(motionMode == .reduced ? "Reduced motion mode" : "Spring motion mode")
                     .font(.system(size: 1))
                     .foregroundStyle(.clear)
-                    .accessibilityLabel("motion-mode-\(motionMode == .reduced ? "reduced" : "spring")")
+                    .accessibilityLabel(motionMode == .reduced ? "Reduced motion is on" : "Reduced motion is off")
                     .accessibilityIdentifier("motion-mode-\(motionMode == .reduced ? "reduced" : "spring")")
                     .frame(width: 1, height: 1)
             }
@@ -278,6 +279,7 @@ struct NativeCockpitView: View {
                     get: { session.ui.reducedNoise },
                     set: { store.setReducedNoise($0) },
                 ),
+                fastCommitEnabled: $fastCommitEnabled,
                 panelMessage: panelMessage,
                 layout: layout,
                 save: savePortableSession,
@@ -287,7 +289,7 @@ struct NativeCockpitView: View {
                 exportMarkdown: exportMarkdown,
             )
             .frame(height: 184.cg, alignment: .top)
-            HistorySummaryStub(snapshot: termSnapshot)
+            TermHistorySummaryView(snapshot: termSnapshot)
         } else {
             HStack(alignment: .top, spacing: 10) {
                 SettingsDrawerView(
@@ -303,6 +305,7 @@ struct NativeCockpitView: View {
                         get: { session.ui.reducedNoise },
                         set: { store.setReducedNoise($0) },
                     ),
+                    fastCommitEnabled: $fastCommitEnabled,
                     panelMessage: panelMessage,
                     layout: layout,
                     save: savePortableSession,
@@ -312,7 +315,7 @@ struct NativeCockpitView: View {
                     exportMarkdown: exportMarkdown,
                 )
                 .frame(height: (layout.mode == .expanded ? 246 : 214).cg, alignment: .top)
-                HistorySummaryStub(snapshot: termSnapshot)
+                TermHistorySummaryView(snapshot: termSnapshot)
             }
         }
         if shouldShowQuarterReview(layout: layout) {
@@ -553,7 +556,7 @@ struct NativeCockpitView: View {
         case .standard:
             104
         case .expanded:
-            100
+            112
         }
     }
 
@@ -660,6 +663,7 @@ struct NativeCockpitView: View {
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.white.opacity(0.68))
                 .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.vertical, 7)
         .padding(.horizontal, 8)
@@ -717,18 +721,8 @@ struct NativeCockpitView: View {
             .accessibilityHidden(true)
     }
 
-    private func dockPanelWidth(_ panel: CockpitDockPanel, layout: CockpitLayoutMetrics) -> CGFloat {
-        switch panel {
-        case .newspaper:
-            layout.newspaperPanelWidth.cg
-        case .help:
-            layout.helpPanelWidth.cg
-        }
-    }
-
     private func dockPanel(_ panel: CockpitDockPanel, layout: CockpitLayoutMetrics, maxHeight: Double) -> some View {
-        let panelInset = (layout.mode == .compact ? 8 : 12).cg
-        return Group {
+        Group {
             if panel == .newspaper {
                 NewspaperPanelView(briefing: briefing, layout: layout)
                     .accessibilityElement(children: .contain)
@@ -739,11 +733,8 @@ struct NativeCockpitView: View {
                     .accessibilityLabel("Policy Notebook")
             }
         }
-        .frame(
-            width: max(240.cg, dockPanelWidth(panel, layout: layout) - (panelInset * 2)),
-            height: maxHeight.cg,
-            alignment: .top,
-        )
+        .frame(maxWidth: .infinity, alignment: .top)
+        .frame(height: maxHeight.cg, alignment: .top)
         .accessibilityIdentifier("\(panel.rawValue)-panel")
     }
 
@@ -817,7 +808,11 @@ struct NativeCockpitView: View {
         guard session.status == .inProgress else {
             return
         }
-        selectPendingPolicyAction(action)
+        if fastCommitEnabled, action != .custom {
+            commit(action)
+        } else {
+            selectPendingPolicyAction(action)
+        }
     }
 
     private func selectPendingPolicyAction(_ action: PolicyAction) {
@@ -864,13 +859,6 @@ struct NativeCockpitView: View {
         }
     }
 
-    private func commitCustom() {
-        guard let customDelta else {
-            return
-        }
-        commitCustom(rateChange: customDelta)
-    }
-
     private func commitCustom(rateChange: Double) {
         guard session.status == .inProgress else {
             return
@@ -903,8 +891,9 @@ struct NativeCockpitView: View {
     private func savePortableSession() {
         do {
             let text = try createSaveFile(session: session)
-            try saveText(text, suggestedName: "fed-chairman-career.fedchair-save.json")
-            panelMessage = "Portable save written."
+            panelMessage = try saveText(text, suggestedName: "fed-chairman-career.fedchair-save.json")
+                ? "Portable save written."
+                : "Save canceled."
         } catch {
             panelMessage = "Save failed: \(error.localizedDescription)"
             NSSound.beep()
@@ -912,13 +901,22 @@ struct NativeCockpitView: View {
     }
 
     private func loadPortableSession() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.json]
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        panel.message = "Choose a Fed Chairman portable save file."
-        guard panel.runModal() == .OK, let url = panel.url else {
-            return
+        let url: URL
+        if isValidationTestMode,
+           let testPath = ProcessInfo.processInfo.environment["FED_CHAIRMAN_TEST_LOAD_PATH"]
+        {
+            url = URL(fileURLWithPath: testPath)
+        } else {
+            let panel = NSOpenPanel()
+            panel.allowedContentTypes = [.json]
+            panel.allowsMultipleSelection = false
+            panel.canChooseDirectories = false
+            panel.message = "Choose a Fed Chairman portable save file."
+            guard panel.runModal() == .OK, let selectedURL = panel.url else {
+                panelMessage = "Load canceled."
+                return
+            }
+            url = selectedURL
         }
         do {
             let text = try String(contentsOf: url, encoding: .utf8)
@@ -933,8 +931,9 @@ struct NativeCockpitView: View {
 
     private func exportCsv() {
         do {
-            try saveText(sessionToCsv(session), suggestedName: "fed-chairman-career.csv")
-            panelMessage = "CSV export written."
+            panelMessage = try saveText(sessionToCsv(session), suggestedName: "fed-chairman-career.csv")
+                ? "CSV export written."
+                : "CSV export canceled."
         } catch {
             panelMessage = "CSV export failed: \(error.localizedDescription)"
             NSSound.beep()
@@ -943,8 +942,9 @@ struct NativeCockpitView: View {
 
     private func exportJson() {
         do {
-            try saveText(sessionToJson(session), suggestedName: "fed-chairman-career.json")
-            panelMessage = "JSON export written."
+            panelMessage = try saveText(sessionToJson(session), suggestedName: "fed-chairman-career.json")
+                ? "JSON export written."
+                : "JSON export canceled."
         } catch {
             panelMessage = "JSON export failed: \(error.localizedDescription)"
             NSSound.beep()
@@ -953,22 +953,36 @@ struct NativeCockpitView: View {
 
     private func exportMarkdown() {
         do {
-            try saveText(sessionToMarkdown(session), suggestedName: "fed-chairman-career.md")
-            panelMessage = "Markdown export written."
+            panelMessage = try saveText(sessionToMarkdown(session), suggestedName: "fed-chairman-career.md")
+                ? "Markdown export written."
+                : "Markdown export canceled."
         } catch {
             panelMessage = "Markdown export failed: \(error.localizedDescription)"
             NSSound.beep()
         }
     }
 
-    private func saveText(_ text: String, suggestedName: String) throws {
+    private func saveText(_ text: String, suggestedName: String) throws -> Bool {
+        if isValidationTestMode,
+           let directory = ProcessInfo.processInfo.environment["FED_CHAIRMAN_TEST_EXPORT_DIR"]
+        {
+            let url = URL(fileURLWithPath: directory, isDirectory: true).appendingPathComponent(suggestedName)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try text.write(to: url, atomically: true, encoding: .utf8)
+            return true
+        }
         let panel = NSSavePanel()
         panel.nameFieldStringValue = suggestedName
         panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let url = panel.url else {
-            return
+            return false
         }
         try text.write(to: url, atomically: true, encoding: .utf8)
+        return true
+    }
+
+    private var isValidationTestMode: Bool {
+        ProcessInfo.processInfo.environment["FED_CHAIRMAN_TEST_MODE"] == "1"
     }
 
     private func pulse() {

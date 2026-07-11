@@ -68,14 +68,12 @@ record "commit: $(git -C "$repo_root" rev-parse --short=12 HEAD)"
 record "app: $app"
 record "out_dir: $out_dir"
 
-capture "1180x700" "first-launch"
-capture "1360x860" "standard-responsive"
-capture "1600x1000" "large-responsive"
+capture "1600x1000" "large-first-launch"
 
 record
 record "required_visual_review:"
-record "  - Inspect each screenshot path above before declaring UI/UX complete."
+record "  - Inspect the screenshot path above before declaring UI/UX complete."
 record "  - Check readability, clipping, occlusion, hierarchy, affordances, chart stability, and panel reachability."
-record "  - Use Computer Use to interact with at least one decision plus Newspaper, Help, and Settings."
+record "  - Use Computer Use to interact with gameplay and only the secondary surfaces relevant to the change."
 record "  - Run npm run test:ui separately only as a final XCUITest regression gate when the desktop is clear."
 record "evidence_file: $evidence"

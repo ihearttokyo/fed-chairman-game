@@ -12,6 +12,8 @@ EXECUTABLE_NAME="Fed Chairman Game"
 SWIFTPM_EXECUTABLE="$BUILD_DIR/FedChairmanGameNative"
 SWIFTPM_RESOURCE_BUNDLE="$BUILD_DIR/FedChairmanGame_FedChairmanNativeApp.bundle"
 APP_ICON="$ROOT_DIR/App/AppIcon.icns"
+REPO_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
+SOURCE_PROVENANCE_SCRIPT="$ROOT_DIR/scripts/source-provenance.sh"
 
 if [[ -n "${FED_CHAIRMAN_SWIFT_BUILD_FLAGS:-}" ]]; then
   EXTRA_SWIFT_BUILD_FLAGS=()
@@ -30,6 +32,10 @@ fi
 if [[ -f "$APP_ICON" ]]; then
   ditto --norsrc "$APP_ICON" "$RESOURCES_DIR/AppIcon.icns"
 fi
+
+# shellcheck source=source-provenance.sh
+source "$SOURCE_PROVENANCE_SCRIPT"
+collect_source_provenance "$REPO_ROOT"
 
 cat > "$CONTENTS_DIR/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -79,4 +85,21 @@ clean_xattrs
 codesign --force --deep --sign - "$APP_DIR" >/dev/null
 clean_xattrs
 codesign --force --deep --sign - "$APP_DIR" >/dev/null
+EXECUTABLE_SHA="$(shasum -a 256 "$MACOS_DIR/$EXECUTABLE_NAME" | awk '{print $1}')"
+python3 - "$APP_STAGING_ROOT/build-provenance.json" "$SOURCE_GIT_HEAD" "$SOURCE_DIRTY" "$SOURCE_FINGERPRINT" "$SOURCE_GIT_STATUS_SHORT" "$EXECUTABLE_SHA" <<'PY'
+import json
+import sys
+
+path, git_head, dirty, fingerprint, status, executable_sha = sys.argv[1:]
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump({
+        "sourceGitHead": git_head,
+        "sourceDirty": dirty == "true",
+        "sourceFingerprint": fingerprint,
+        "sourceGitStatusShort": status,
+        "builtFromCleanCommit": dirty == "false",
+        "executableSha256": executable_sha,
+    }, handle, indent=2)
+    handle.write("\n")
+PY
 echo "$APP_DIR"

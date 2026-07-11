@@ -216,7 +216,7 @@ struct PolicyDecisionCenter: View {
         .frame(
             minWidth: layout.mode == .compact ? 250 : 320,
             idealWidth: layout.mode == .compact ? 300 : 360,
-            maxWidth: layout.mode == .compact ? .infinity : 380,
+            maxWidth: .infinity,
             alignment: .leading,
         )
         .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 8))

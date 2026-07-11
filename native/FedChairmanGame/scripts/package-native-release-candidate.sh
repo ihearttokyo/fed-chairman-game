@@ -12,6 +12,7 @@ ARCHIVE_PATH="$RELEASE_ROOT/FedChairmanGameNative.xcarchive"
 APP_OUTPUT="$RELEASE_ROOT/$APP_NAME"
 MANIFEST="$RELEASE_ROOT/release-manifest.txt"
 JSON_MANIFEST="$RELEASE_ROOT/release-manifest.json"
+SOURCE_PROVENANCE_SCRIPT="$ROOT_DIR/scripts/source-provenance.sh"
 INSTALL_APP=false
 RUN_XCUITEST=false
 
@@ -54,6 +55,10 @@ swift test
 if [[ "$RUN_XCUITEST" == true ]]; then
   "$REPO_ROOT/scripts/native-validation.sh" ui-final
 fi
+
+# shellcheck source=source-provenance.sh
+source "$SOURCE_PROVENANCE_SCRIPT"
+collect_source_provenance "$REPO_ROOT"
 
 rm -rf "$ARCHIVE_PATH" "$APP_OUTPUT" "$RELEASE_ROOT/$LEGACY_APP_NAME"
 xcodebuild archive \
@@ -103,6 +108,9 @@ Category: $CATEGORY
 Archive: $ARCHIVE_PATH
 App: $APP_OUTPUT
 Executable SHA-256: $EXECUTABLE_SHA
+Source Git HEAD: $SOURCE_GIT_HEAD
+Source dirty: $SOURCE_DIRTY
+Source fingerprint: $SOURCE_FINGERPRINT
 Signing: ad-hoc local signing for development/beta smoke only
 Hardened runtime: disabled for ad-hoc local launch compatibility
 Notarization: not notarized
@@ -110,11 +118,11 @@ XCUITest gate: $([[ "$RUN_XCUITEST" == true ]] && echo "run" || echo "skipped")
 Gatekeeper assessment: $SPCTL_RESULT
 MANIFEST_TEXT
 
-python3 - "$JSON_MANIFEST" "$CREATED_AT" "$BUNDLE_ID" "$DISPLAY_NAME" "$VERSION" "$BUILD" "$CATEGORY" "$ARCHIVE_PATH" "$APP_OUTPUT" "$EXECUTABLE_SHA" "$SPCTL_RESULT" "$RUN_XCUITEST" <<'PY'
+python3 - "$JSON_MANIFEST" "$CREATED_AT" "$BUNDLE_ID" "$DISPLAY_NAME" "$VERSION" "$BUILD" "$CATEGORY" "$ARCHIVE_PATH" "$APP_OUTPUT" "$EXECUTABLE_SHA" "$SPCTL_RESULT" "$RUN_XCUITEST" "$SOURCE_GIT_HEAD" "$SOURCE_DIRTY" "$SOURCE_FINGERPRINT" "$SOURCE_GIT_STATUS_SHORT" <<'PY'
 import json
 import sys
 
-manifest_path, created_at, bundle_id, display_name, version, build, category, archive, app, executable_sha, spctl_result, run_xcuitest = sys.argv[1:]
+manifest_path, created_at, bundle_id, display_name, version, build, category, archive, app, executable_sha, spctl_result, run_xcuitest, source_git_head, source_dirty, source_fingerprint, source_git_status = sys.argv[1:]
 payload = {
     "product": "Fed Chairman Game",
     "createdAt": created_at,
@@ -126,6 +134,11 @@ payload = {
     "archivePath": archive,
     "appPath": app,
     "executableSha256": executable_sha,
+    "sourceGitHead": source_git_head,
+    "sourceDirty": source_dirty == "true",
+    "sourceFingerprint": source_fingerprint,
+    "sourceGitStatusShort": source_git_status,
+    "builtFromCleanCommit": source_dirty == "false",
     "signing": "ad-hoc local signing for development/beta smoke only",
     "hardenedRuntime": False,
     "notarized": False,
@@ -146,7 +159,9 @@ if [[ "$INSTALL_APP" == true ]]; then
   osascript -e 'tell application id "local.fed-chairman-game.native" to quit' >/dev/null 2>&1 || true
   rm -rf "/Applications/$APP_NAME"
   rm -rf "/Applications/$LEGACY_APP_NAME"
+  rm -f "/Applications/Fed Chairman Game.release-manifest.json" "/Applications/Fed Chairman Game.production-manifest.json"
   ditto --norsrc "$APP_OUTPUT" "/Applications/$APP_NAME"
+  ditto --norsrc "$JSON_MANIFEST" "/Applications/Fed Chairman Game.release-manifest.json"
   codesign --verify --deep --strict --verbose=2 "/Applications/$APP_NAME"
 fi
 

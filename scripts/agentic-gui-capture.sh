@@ -46,6 +46,57 @@ executable_sha="missing"
 if [[ -x "$executable" ]]; then
   executable_sha="$(shasum -a 256 "$executable" | awk '{print $1}')"
 fi
+provenance_candidates=()
+for candidate in \
+  "$app/Contents/Resources/build-provenance.json" \
+  "$(dirname "$app")/build-provenance.json" \
+  "${app%.app}.release-manifest.json" \
+  "$(dirname "$app")/release-manifest.json" \
+  "${app%.app}.production-manifest.json" \
+  "$(dirname "$app")/production-manifest.json"
+do
+  if [[ -f "$candidate" ]]; then
+    provenance_candidates+=("$candidate")
+  fi
+done
+if [[ ${#provenance_candidates[@]} -eq 0 ]]; then
+  echo "No artifact provenance manifest found for: $app" >&2
+  exit 1
+fi
+if [[ ${#provenance_candidates[@]} -ne 1 ]]; then
+  echo "Ambiguous artifact provenance: found multiple manifests for $app" >&2
+  printf '  %s\n' "${provenance_candidates[@]}" >&2
+  exit 1
+fi
+provenance_manifest="${provenance_candidates[0]}"
+IFS=$'\t' read -r artifact_git_head artifact_dirty artifact_fingerprint artifact_executable_sha < <(
+  python3 - "$provenance_manifest" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    payload = json.load(handle)
+print("\t".join([
+    str(payload.get("sourceGitHead", "unknown")),
+    str(payload.get("sourceDirty", True)).lower(),
+    str(payload.get("sourceFingerprint", "unknown")),
+    str(payload.get("executableSha256", "missing")),
+]))
+PY
+)
+if [[ "$artifact_executable_sha" != "$executable_sha" ]]; then
+  echo "Artifact provenance hash does not match the app executable." >&2
+  exit 1
+fi
+if [[ -n "$repo_root" ]]; then
+  # shellcheck source=../native/FedChairmanGame/scripts/source-provenance.sh
+  source "$repo_root/native/FedChairmanGame/scripts/source-provenance.sh"
+  collect_source_provenance "$repo_root"
+  if [[ "$artifact_fingerprint" != "$SOURCE_FINGERPRINT" ]]; then
+    echo "Artifact build-input fingerprint does not match the current app source tree." >&2
+    exit 1
+  fi
+fi
 bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist" 2>/dev/null || echo unknown)"
 bundle_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist" 2>/dev/null || echo unknown)"
 bundle_build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info.plist" 2>/dev/null || echo unknown)"
@@ -158,20 +209,13 @@ cg_info="$(window_info)"
 IFS=, read -r window_id actual_x actual_y actual_width actual_height <<<"$cg_info"
 
 capture_mode="window"
-if [[ -n "$window_id" ]]; then
-  if ! screencapture -x -l"$window_id" "$path" 2>/dev/null; then
-    capture_mode="rect"
-    if ! screencapture -x -R"${actual_x},${actual_y},${actual_width},${actual_height}" "$path" 2>/dev/null; then
-      capture_mode="fullscreen"
-      screencapture -x "$path"
-    fi
-  fi
-else
-  capture_mode="rect"
-  if ! screencapture -x -R"${actual_x},${actual_y},${actual_width},${actual_height}" "$path" 2>/dev/null; then
-    capture_mode="fullscreen"
-    screencapture -x "$path"
-  fi
+if [[ -z "$window_id" ]]; then
+  echo "The intended app window has no captureable window id." >&2
+  exit 1
+fi
+if ! screencapture -x -l"$window_id" "$path" 2>/dev/null; then
+  echo "Could not capture the intended Fed Chairman Game window." >&2
+  exit 1
 fi
 
 if ! screenshot_has_visible_pixels; then
@@ -189,6 +233,10 @@ artifact_provenance:
   build: $bundle_build
   app_modified: $app_modified
   executable_sha256: $executable_sha
+  provenance_manifest: $provenance_manifest
+  artifact_source_commit: $artifact_git_head
+  artifact_source_dirty: $artifact_dirty
+  artifact_source_fingerprint: $artifact_fingerprint
   capture_mode: $capture_mode
 screenshot:
 EOF

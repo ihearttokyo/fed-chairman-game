@@ -590,10 +590,9 @@ import Testing
     #expect(compact.dockVerticalOffset == 0)
     #expect(standard.dockVerticalOffset == 0)
     #expect(expanded.dockVerticalOffset == 0)
-    #expect(compact.newspaperPanelWidth <= 1148)
-    #expect(standard.newspaperPanelWidth <= 1312)
-    #expect(expanded.newspaperPanelWidth <= 1552)
     #expect(compact.dockPanelMaxHeight <= 530)
+    #expect(standard.dockPanelMaxHeight <= 224)
+    #expect(expanded.dockPanelMaxHeight <= 260)
 }
 
 @Test func nativeDebriefBuildsRichTermGateContent() throws {

@@ -35,14 +35,12 @@
 		94047D2A06962A23CF098ECE /* help-icon.png in Resources */ = {isa = PBXBuildFile; fileRef = 7BCDAD9783A374785230349D /* help-icon.png */; };
 		97AC4D4C4C2A0CA849CCBB74 /* FedChairmanCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 17C83FC7F565800C79C166EC /* FedChairmanCore.framework */; };
 		9E9A015AE5A29EF5EABDEF06 /* GameSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F3B17FDAE8C3294C61856C4 /* GameSessionStore.swift */; };
-		A2D37C27C9D644B4C7CE84C2 /* settings-icon.png in Resources */ = {isa = PBXBuildFile; fileRef = F3585686B6ADE1C3E02281BE /* settings-icon.png */; };
 		A6A0B4C2833A5679FE6AE59E /* Policy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1911500DD10AAAECB75190B8 /* Policy.swift */; };
 		AD13677C1A58B4C2446C12F1 /* CockpitDock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6071C1EA951BEE67E4EEE939 /* CockpitDock.swift */; };
 		B63B4A4C84857F99BF0AC8C4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F58D246AD7ADE80BE1F85C79 /* Assets.xcassets */; };
 		C6A7B9579B50308E8874BB7B /* FedChairmanCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 17C83FC7F565800C79C166EC /* FedChairmanCore.framework */; };
 		C7FF83D88FDD599CA149B64D /* newspaper-icon.png in Resources */ = {isa = PBXBuildFile; fileRef = 7C4FB415E397196676756418 /* newspaper-icon.png */; };
 		CA2F02DC9900705EB9B58AF6 /* NativeCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95B1AE1F4BB8ABD10797876F /* NativeCoreTests.swift */; };
-		CB5BA068AE2A6C23575F0656 /* newspaper-panel.png in Resources */ = {isa = PBXBuildFile; fileRef = FACEC3E1855A65BAE122E1EE /* newspaper-panel.png */; };
 		D11F8E0B94A47E30771B94DE /* TermSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93411181975BFFA80F7A0868 /* TermSnapshot.swift */; };
 		D12F7356B5829C45B9A0F667 /* Debrief.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0417E7B5D00741CF334D1AB /* Debrief.swift */; };
 		D62CC6B5B2FB2EA021015669 /* NativeCockpitUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFBCAA122BD855A6C74CE16F /* NativeCockpitUITests.swift */; };
@@ -143,10 +141,8 @@
 		EA4869025CFC6023D4B2644E /* Exporters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Exporters.swift; sourceTree = "<group>"; };
 		EEFE2D87EB9CD4B35D08AE5E /* NewspaperPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewspaperPanelView.swift; sourceTree = "<group>"; };
 		EF73F86EE6470E2757B9505E /* PolicyPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PolicyPreview.swift; sourceTree = "<group>"; };
-		F3585686B6ADE1C3E02281BE /* settings-icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "settings-icon.png"; sourceTree = "<group>"; };
 		F58D246AD7ADE80BE1F85C79 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F72FA50075368EF6BF5AA0BD /* FedChairmanGameNativeUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FedChairmanGameNativeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		FACEC3E1855A65BAE122E1EE /* newspaper-panel.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "newspaper-panel.png"; sourceTree = "<group>"; };
 		FC524EAFCFC1D01EA3F08733 /* PolicyDecisionCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PolicyDecisionCenter.swift; sourceTree = "<group>"; };
 		FF3E8F5BB1ADE8F3E4ED50A8 /* Scenario.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Scenario.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -269,8 +265,6 @@
 			children = (
 				7BCDAD9783A374785230349D /* help-icon.png */,
 				7C4FB415E397196676756418 /* newspaper-icon.png */,
-				FACEC3E1855A65BAE122E1EE /* newspaper-panel.png */,
-				F3585686B6ADE1C3E02281BE /* settings-icon.png */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -419,8 +413,6 @@
 				B63B4A4C84857F99BF0AC8C4 /* Assets.xcassets in Resources */,
 				94047D2A06962A23CF098ECE /* help-icon.png in Resources */,
 				C7FF83D88FDD599CA149B64D /* newspaper-icon.png in Resources */,
-				CB5BA068AE2A6C23575F0656 /* newspaper-panel.png in Resources */,
-				A2D37C27C9D644B4C7CE84C2 /* settings-icon.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

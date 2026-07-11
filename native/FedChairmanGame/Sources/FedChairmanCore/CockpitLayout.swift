@@ -24,8 +24,6 @@ public struct CockpitLayoutMetrics: Equatable, Sendable {
     public var dockOuterPadding: Double
     public var dockBottomLift: Double
     public var dockVerticalOffset: Double
-    public var newspaperPanelWidth: Double
-    public var helpPanelWidth: Double
     public var dockPanelMaxHeight: Double
     public var compressedDensity: Bool
 
@@ -46,9 +44,6 @@ public func cockpitLayoutMode(width: Double, height: Double) -> CockpitLayoutMod
 
 public func cockpitLayoutMetrics(width: Double, height: Double) -> CockpitLayoutMetrics {
     let mode = cockpitLayoutMode(width: width, height: height)
-    let sideMargin = mode == .compact ? 18.0 : 26.0
-    let safeWidth = max(0, width - sideMargin * 2)
-    let panelWidth = max(320, safeWidth - 28)
     let maxPanelHeight = max(172, min(height - 230, mode == .expanded ? 260 : 224))
     let compactPanelHeight = max(150, min(height - 408, 190))
     let standardDensityCompact = height < 900
@@ -73,8 +68,6 @@ public func cockpitLayoutMetrics(width: Double, height: Double) -> CockpitLayout
             dockOuterPadding: 16,
             dockBottomLift: 0,
             dockVerticalOffset: 0,
-            newspaperPanelWidth: panelWidth,
-            helpPanelWidth: panelWidth,
             dockPanelMaxHeight: compactPanelHeight,
             compressedDensity: true,
         )
@@ -106,8 +99,6 @@ public func cockpitLayoutMetrics(width: Double, height: Double) -> CockpitLayout
             dockOuterPadding: 20,
             dockBottomLift: 0,
             dockVerticalOffset: 0,
-            newspaperPanelWidth: panelWidth,
-            helpPanelWidth: panelWidth,
             dockPanelMaxHeight: dockPanelMaxHeight,
             compressedDensity: standardDensityCompact,
         )
@@ -130,8 +121,6 @@ public func cockpitLayoutMetrics(width: Double, height: Double) -> CockpitLayout
             dockOuterPadding: 22,
             dockBottomLift: 0,
             dockVerticalOffset: 0,
-            newspaperPanelWidth: panelWidth,
-            helpPanelWidth: panelWidth,
             dockPanelMaxHeight: min(214, maxPanelHeight),
             compressedDensity: false,
         )

@@ -339,30 +339,3 @@ struct CompactQuarterReview: View {
         }
     }
 }
-
-struct CompactDecisionPrompt: View {
-    var feedback: DecisionFeedback
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Text(feedback.headline.uppercased())
-                .font(.caption2.weight(.black))
-                .foregroundStyle(.green)
-            Text(feedback.moveLabel)
-                .font(.caption.weight(.black))
-                .lineLimit(1)
-            Text(feedback.mandateLine)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.64))
-                .lineLimit(1)
-            Spacer(minLength: 0)
-        }
-        .frame(height: 30)
-        .padding(.horizontal, 9)
-        .background(.green.opacity(0.10), in: RoundedRectangle(cornerRadius: 9))
-        .overlay(RoundedRectangle(cornerRadius: 9).stroke(.green.opacity(0.22)))
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Decision prompt. \(feedback.headline). \(feedback.moveLabel). \(feedback.mandateLine).")
-        .accessibilityIdentifier("decision-tape")
-    }
-}

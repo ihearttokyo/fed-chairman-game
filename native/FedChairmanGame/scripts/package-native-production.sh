@@ -13,6 +13,7 @@ APP_OUTPUT="$RELEASE_ROOT/$APP_NAME"
 MANIFEST="$RELEASE_ROOT/production-manifest.json"
 NOTARY_LOG="$RELEASE_ROOT/notary-log.json"
 CODESIGN_DETAILS="$RELEASE_ROOT/codesign-details.txt"
+SOURCE_PROVENANCE_SCRIPT="$ROOT_DIR/scripts/source-provenance.sh"
 INSTALL_APP=false
 SKIP_TESTS=false
 RUN_XCUITEST=false
@@ -90,6 +91,10 @@ if [[ "$SKIP_TESTS" != true ]]; then
   fi
 fi
 
+# shellcheck source=source-provenance.sh
+source "$SOURCE_PROVENANCE_SCRIPT"
+collect_source_provenance "$REPO_ROOT"
+
 rm -rf "$ARCHIVE_PATH" "$APP_OUTPUT" "$RELEASE_ROOT/$LEGACY_APP_NAME" "$MANIFEST" "$NOTARY_LOG" "$CODESIGN_DETAILS"
 xcodebuild archive \
   -configuration Release \
@@ -156,7 +161,7 @@ fi
 EXECUTABLE_SHA="$(shasum -a 256 "$EXECUTABLE" | awk '{print $1}')"
 CREATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-python3 - "$MANIFEST" "$CREATED_AT" "$BUNDLE_ID" "$DISPLAY_NAME" "$VERSION" "$BUILD" "$CATEGORY" "$ARCHIVE_PATH" "$APP_OUTPUT" "$EXECUTABLE_SHA" "$DEVELOPMENT_TEAM" "$SIGNING_IDENTITY" "$SPCTL_OUTPUT" "$RUN_XCUITEST" <<'PY'
+python3 - "$MANIFEST" "$CREATED_AT" "$BUNDLE_ID" "$DISPLAY_NAME" "$VERSION" "$BUILD" "$CATEGORY" "$ARCHIVE_PATH" "$APP_OUTPUT" "$EXECUTABLE_SHA" "$DEVELOPMENT_TEAM" "$SIGNING_IDENTITY" "$SPCTL_OUTPUT" "$RUN_XCUITEST" "$SOURCE_GIT_HEAD" "$SOURCE_DIRTY" "$SOURCE_FINGERPRINT" "$SOURCE_GIT_STATUS_SHORT" <<'PY'
 import json
 import sys
 
@@ -175,6 +180,10 @@ import sys
     signing_identity,
     spctl_output,
     run_xcuitest,
+    source_git_head,
+    source_dirty,
+    source_fingerprint,
+    source_git_status,
 ) = sys.argv[1:]
 payload = {
     "product": "Fed Chairman Game",
@@ -187,6 +196,11 @@ payload = {
     "archivePath": archive,
     "appPath": app,
     "executableSha256": executable_sha,
+    "sourceGitHead": source_git_head,
+    "sourceDirty": source_dirty == "true",
+    "sourceFingerprint": source_fingerprint,
+    "sourceGitStatusShort": source_git_status,
+    "builtFromCleanCommit": source_dirty == "false",
     "teamId": team_id,
     "signingIdentity": signing_identity,
     "hardenedRuntime": True,
@@ -210,7 +224,9 @@ if [[ "$INSTALL_APP" == true ]]; then
   osascript -e 'tell application id "local.fed-chairman-game.native" to quit' >/dev/null 2>&1 || true
   rm -rf "/Applications/$APP_NAME"
   rm -rf "/Applications/$LEGACY_APP_NAME"
+  rm -f "/Applications/Fed Chairman Game.release-manifest.json" "/Applications/Fed Chairman Game.production-manifest.json"
   ditto --norsrc "$APP_OUTPUT" "/Applications/$APP_NAME"
+  ditto --norsrc "$MANIFEST" "/Applications/Fed Chairman Game.production-manifest.json"
   codesign --verify --deep --strict --verbose=2 "/Applications/$APP_NAME"
   xcrun stapler validate "/Applications/$APP_NAME"
   spctl --assess --type execute --verbose=4 "/Applications/$APP_NAME"

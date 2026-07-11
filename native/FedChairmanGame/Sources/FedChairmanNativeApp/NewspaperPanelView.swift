@@ -9,13 +9,6 @@ struct NewspaperPanelView: View {
 
     var body: some View {
         HStack(spacing: layout.mode == .compact ? 12 : 18) {
-            Text("THE MANDATE DESK")
-                .font(.system(size: 1))
-                .foregroundStyle(.clear)
-                .frame(width: 1, height: 1)
-            if layout.mode != .compact {
-                mastheadTile
-            }
             briefingContent
             Spacer(minLength: 0)
             riskStack
@@ -42,33 +35,6 @@ struct NewspaperPanelView: View {
                     endPoint: .bottomTrailing,
                 ),
             )
-    }
-
-    private var mastheadTile: some View {
-        ZStack {
-            if let image = NativeImageLoader.image(named: "newspaper-panel") {
-                Image(nsImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .saturation(0.72)
-                    .brightness(-0.04)
-                    .contrast(0.92)
-                    .accessibilityHidden(true)
-            }
-            LinearGradient(colors: [.clear, .black.opacity(0.42)], startPoint: .top, endPoint: .bottom)
-            VStack(alignment: .leading, spacing: 3) {
-                Spacer()
-                Text("MANDATE")
-                Text("DESK")
-            }
-            .font(.system(size: layout.mode == .compact ? 15 : 18, weight: .black, design: .serif))
-            .foregroundStyle(.white.opacity(0.88))
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(10)
-        }
-        .frame(width: layout.mode == .compact ? 116 : 144)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(.white.opacity(0.18)))
     }
 
     private var briefingContent: some View {
@@ -259,6 +225,7 @@ struct SettingsDrawerView: View {
     @Binding var reducedMotion: Bool
     @Binding var soundEnabled: Bool
     @Binding var reducedNoise: Bool
+    @Binding var fastCommitEnabled: Bool
 
     var panelMessage: String?
     var layout: CockpitLayoutMetrics
@@ -267,10 +234,6 @@ struct SettingsDrawerView: View {
     var exportCsv: () -> Void
     var exportJson: () -> Void
     var exportMarkdown: () -> Void
-
-    private var exportColumnCount: Int {
-        layout.mode == .compact ? 5 : 5
-    }
 
     var body: some View {
         content
@@ -313,6 +276,7 @@ struct SettingsDrawerView: View {
                 compactToggle("Motion", isOn: $reducedMotion)
                 compactToggle("Sound", isOn: $soundEnabled)
                 compactToggle("Noise", isOn: $reducedNoise)
+                compactToggle("Fast commit", isOn: $fastCommitEnabled)
             }
 
             HStack(spacing: 6) {
@@ -359,20 +323,24 @@ struct SettingsDrawerView: View {
                     tint: .mint,
                     isOn: $reducedNoise,
                 )
+                SettingsToggleTile(
+                    title: "Fast commit",
+                    subtitle: "Number keys vote now",
+                    systemName: "bolt.fill",
+                    tint: .yellow,
+                    isOn: $fastCommitEnabled,
+                )
             }
 
-            HStack(spacing: 8) {
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 5),
+                spacing: 8,
+            ) {
                 drawerActionButton("Save", systemName: "square.and.arrow.down", action: save)
                 drawerActionButton("Load", systemName: "folder", action: load)
-                LazyVGrid(
-                    columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: exportColumnCount - 2),
-                    alignment: .leading,
-                    spacing: 6,
-                ) {
-                    drawerActionButton("CSV", systemName: "tablecells", action: exportCsv)
-                    drawerActionButton("JSON", systemName: "curlybraces", action: exportJson)
-                    drawerActionButton("Markdown", systemName: "doc.plaintext", action: exportMarkdown)
-                }
+                drawerActionButton("CSV", systemName: "tablecells", action: exportCsv)
+                drawerActionButton("JSON", systemName: "curlybraces", action: exportJson)
+                drawerActionButton("Markdown", systemName: "doc.plaintext", action: exportMarkdown)
             }
             .buttonStyle(.plain)
 
