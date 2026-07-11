@@ -40,7 +40,9 @@ struct SpriteKitChart: NSViewRepresentable {
 
     func updateNSView(_ view: ChartTrackingView, context: Context) {
         context.coordinator.update(history: history, reducedMotion: reducedMotion, inflationUpperBound: inflationUpperBound)
-        context.coordinator.render(into: view)
+        DispatchQueue.main.async {
+            context.coordinator.render(into: view)
+        }
     }
 
     @MainActor
