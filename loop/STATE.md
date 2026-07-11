@@ -54,8 +54,7 @@ frontload:
     - stuck_attempt_n: 3
     - gui_window_policy: one large-window state unless responsive layout is directly touched.
     - ui_suite_policy: skipped unless Jared explicitly requests it.
-  open_gaps:
-    - save/load/export flows were not exercised in the latest playtest.
+  open_gaps: []
 
 artifacts:
   canonical:
@@ -69,17 +68,18 @@ artifacts:
     gui_capture: scripts/agentic-gui-capture.sh
     native_validation: scripts/native-validation.sh
 
-iteration: 3
-phase: code-validated
-current_artifact: loop/ACCEPTANCE.md
-current_criterion: AC-017
-last_action: "Implemented and code-validated the AC-017/AC-019 mechanics package: engine-derived four-quarter preview, symmetric expectations anchoring, corrected shock channels, model-versioned saves, honest trace copy, and guarded custom commits."
-next_action: "Commit the code-validated package, install that clean commit, and run one large-window multi-quarter computer-use playtest before changing acceptance statuses."
-halt_cause: null
-halt_scan: []
+iteration: 4
+phase: criteria-met
+current_artifact: loop/VERIFY.md
+current_criterion: null
+last_action: "Validated clean installed commit 33a1d0a in one large window, exercised policy, navigation, save/load/export, and closed all 28 frozen acceptance criteria."
+next_action: "None; this loop is complete. Future product work should begin from a new bounded goal."
+halt_cause: criteria-met
+halt_scan:
+  - criteria-met
 stuck_counters: {}
 final_verify:
-  status: partial_package_pass
+  status: pass
   transcript: loop/VERIFY.md
 oracle_change_notes:
   - "2026-07-10: reopened AC-019 after audit showed clearer credibility copy still describes preview behavior that diverges from the commit engine."
@@ -95,7 +95,7 @@ pressure_objects:
     satisfied_by: "loop/VERIFY.md records current commit, app path, and executable hash/bundle metadata."
     on_violation: blocks
     expires: "when AC-024 reaches PASS in final-verify."
-    status: active
+    status: paid
   - id: P-002
     source: authored
     scope: UI validation
@@ -104,7 +104,7 @@ pressure_objects:
     satisfied_by: "final verification avoids broad XCUITest unless Jared explicitly requests it."
     on_violation: blocks
     expires: "when AC-025 reaches PASS in final-verify."
-    status: active
+    status: paid
   - id: P-003
     source: authored
     scope: gameplay mechanics
@@ -113,7 +113,7 @@ pressure_objects:
     satisfied_by: "engine/source inspection and playtest evidence show economic coherence without arbitrary deterministic penalties."
     on_violation: owes_proof
     expires: "when AC-017 through AC-020 reach PASS."
-    status: active
+    status: paid
   - id: P-004
     source: authored
     scope: UI surfaces
@@ -122,7 +122,7 @@ pressure_objects:
     satisfied_by: "screenshots show distinct roles for Desk, Charts, Records, Newspaper, Help, and Settings."
     on_violation: owes_explanation
     expires: "when AC-005, AC-011, AC-013, AC-015, and AC-028 reach PASS."
-    status: active
+    status: paid
   - id: P-005
     source: mined
     scope: repo workflow
@@ -131,12 +131,13 @@ pressure_objects:
     satisfied_by: "root AGENTS.md requires screenshot-first computer-use validation for UI/game work."
     on_violation: blocks
     expires: "if root AGENTS.md changes this rule."
-    status: active
+    status: paid
 
 pressure_ledger:
   - "2026-07-06: seeded P-001..P-005 during loopgen composition."
   - "2026-07-06: P-001 and P-002 satisfied for this package by current-build provenance and no-XCUITest validation; remain active until full goal final-verify."
   - "2026-07-10: P-004 partially paid by distinct Desk receipt/interpretation/Records roles; P-001 remains open because installed dirty-build provenance is documented but not commit-bound."
+  - "2026-07-11: P-001..P-005 paid by clean commit-bound provenance, source-backed mechanics tests, one-window visual evidence, distinct UI roles, and explicit omission of broad XCUITest."
 pressure_consulted:
   - iteration: 1
     rows:

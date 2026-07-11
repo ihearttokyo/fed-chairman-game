@@ -3,7 +3,7 @@
 Rendered from `loop/STATE.md` `pressure_objects`. Re-render this file whenever
 pressure changes; do not treat this file as an independent store.
 
-## Active Rows
+## Paid Rows
 
 - `P-001` validation constraint, high: GUI evidence must prove current-build
   provenance with commit, app path, and executable metadata. Violation blocks.
@@ -15,6 +15,10 @@ pressure changes; do not treat this file as an independent store.
   surfaces over adding more panels.
 - `P-005` repo workflow constraint, high: root `AGENTS.md` requires
   screenshot-first computer-use validation for UI/game work. Violation blocks.
+
+All five rows were paid on 2026-07-11 by the final evidence in
+`loop/VERIFY.md`. They remain documented as reopen conditions for future work,
+not as active debt in this completed loop.
 
 ## Maintenance Rules
 

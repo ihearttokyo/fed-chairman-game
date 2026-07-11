@@ -22,10 +22,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: fresh current-build large-window screenshot after selecting a policy move.
   pass_evidence: preview values sit near their labels, selected move is obvious, no stranded far-right values.
   fail_evidence: selected move preview looks like a broken wide form.
-  status: `PASS_PENDING_FINAL`
+  status: `PASS`
   depends_on: []
   reopen_condition: preview layout or selected-move surface changes.
-  last_verification: "2026-07-06: current-build GUI screenshot after selecting +25 bps showed compact staged move, metrics, and no stranded far-right label/value rows."
+  last_verification: "2026-07-11: PASS; see loop/VERIFY.md final transcript and criterion evidence matrix."
 
 - id: `AC-002`
   statement: Policy preview explains directional consequences without pretending to provide exact simulation promises.
@@ -34,10 +34,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: source inspection plus selected-move screenshot.
   pass_evidence: preview copy uses clear directional language and no overprecise fake certainty.
   fail_evidence: preview reads as arbitrary deltas, opaque jargon, or exact forecast guarantees.
-  status: `PASS_PENDING_FINAL`
+  status: `PASS`
   depends_on: [`AC-001`]
   reopen_condition: preview copy/model changes.
-  last_verification: "2026-07-06: source and screenshot show directional labels such as Lower pressure, Little changed, Cleaner read; no exact simulation promise added."
+  last_verification: "2026-07-11: PASS; see loop/VERIFY.md final transcript and criterion evidence matrix."
 
 - id: `AC-003`
   statement: Commit and Clear affordances match the importance of the decision and remain visually reachable.
@@ -46,10 +46,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: screenshot after selecting a policy move.
   pass_evidence: primary commit action is visually clear, clear/reset is available but secondary.
   fail_evidence: commit/clear controls are visually lost or ambiguous.
-  status: `PASS_PENDING_FINAL`
+  status: `PASS`
   depends_on: [`AC-001`]
   reopen_condition: policy decision center changes.
-  last_verification: "2026-07-06: selected +25 bps screenshot shows Commit and Clear visible in the preview header row."
+  last_verification: "2026-07-11: PASS; see loop/VERIFY.md final transcript and criterion evidence matrix."
 
 - id: `AC-004`
   statement: After a commit, the quarter review is visible in Desk without being clipped below the viewport.
@@ -58,10 +58,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: fresh screenshot immediately after first commit in large-window Desk mode.
   pass_evidence: post-commit quarter review fits in the visible cockpit or has an obvious, usable scroll/route.
   fail_evidence: quarter review is pushed off the bottom and the consequence is easy to miss.
-  status: `PASS_PENDING_FINAL`
+  status: `PASS`
   depends_on: []
   reopen_condition: cockpit layout, desk copy, or post-commit feedback changes.
-  last_verification: "2026-07-10: latest installed dirty-source build at 1600x1000 showed a full-height Latest Quarter interpretation immediately after Q1 and Q2, above the dashboard with no clipping."
+  last_verification: "2026-07-11: PASS; see loop/VERIFY.md final transcript and criterion evidence matrix."
 
 - id: `AC-005`
   statement: Post-commit feedback does not duplicate Decision Tape, Records, and Desk content without a clear purpose.
@@ -70,10 +70,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: source inspection plus post-commit Desk and Records screenshots.
   pass_evidence: each surface has a distinct role: immediate receipt, historical record, or strategic interpretation.
   fail_evidence: the same quarter summary appears in multiple places with no added value.
-  status: `PASS_PENDING_FINAL`
+  status: `PASS`
   depends_on: [`AC-004`]
   reopen_condition: decision tape, records, or desk summary changes.
-  last_verification: "2026-07-10: source plus current-build Desk and Records screenshots confirm distinct roles: Desk interprets the latest result, Decision Tape receipts the action, and Records carries the detailed transmission/history view."
+  last_verification: "2026-07-11: PASS; see loop/VERIFY.md final transcript and criterion evidence matrix."
 
 - id: `AC-006`
   statement: Decision Tape is an efficient receipt, not a dense competing briefing.
@@ -82,10 +82,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: screenshot after two committed quarters.
   pass_evidence: tape entries are scannable and make recent decisions obvious.
   fail_evidence: tape text is dense, redundant, or visually competes with the main decision loop.
-  status: `PASS_PENDING_FINAL`
+  status: `PASS`
   depends_on: [`AC-005`]
   reopen_condition: decision tape changes.
-  last_verification: "2026-07-10: current-build Q2 Desk screenshot shows a compact Hold receipt with rate path and one mandate line; credibility, trace, and pressure-meter briefing content no longer competes inside Decision Tape."
+  last_verification: "2026-07-11: PASS; see loop/VERIFY.md final transcript and criterion evidence matrix."
 
 - id: `AC-007`
   statement: Early-game chart points and traces remain legible through Q1-Q3.
@@ -94,10 +94,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: screenshots at launch, after Q1, and after Q3 in Charts or Desk mode.
   pass_evidence: dots, labels, and traces are readable and not crowded into an ambiguous cluster.
   fail_evidence: early points collapse visually or labels become unclear.
-  status: `OPEN`
+  status: `PASS`
   depends_on: []
   reopen_condition: chart scale, drawing, or metrics presentation changes.
-  last_verification: not run.
+  last_verification: "2026-07-11: PASS; see loop/VERIFY.md final transcript and criterion evidence matrix."
 
 - id: `AC-008`
   statement: The current chart point has a keyboard- and mouse-independent textual explanation somewhere in the primary loop.
@@ -106,10 +106,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: source inspection plus Desk/Charts screenshot after a commit.
   pass_evidence: current quarter metrics and meaning are visible without relying on hover.
   fail_evidence: chart details require hover or are only available in a secondary panel.
-  status: `OPEN`
+  status: `PASS`
   depends_on: [`AC-007`]
   reopen_condition: chart or current-state rail changes.
-  last_verification: not run.
+  last_verification: "2026-07-11: PASS; see loop/VERIFY.md final transcript and criterion evidence matrix."
 
 - id: `AC-009`
   statement: The current rail explains board risk and mandate state rather than only repeating numbers.
@@ -118,10 +118,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: screenshot at Q0 and after a commit.
   pass_evidence: player can tell why the board is safe, tense, or angry.
   fail_evidence: rail repeats metrics without explaining risk.
-  status: `OPEN`
+  status: `PASS`
   depends_on: []
   reopen_condition: current rail or board-risk model changes.
-  last_verification: not run.
+  last_verification: "2026-07-11: PASS; see loop/VERIFY.md final transcript and criterion evidence matrix."
 
 - id: `AC-010`
   statement: The briefing strip is readable and does not truncate important risk chips.
@@ -130,10 +130,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: large-window first-launch and post-commit screenshots.
   pass_evidence: briefing text and chips fit or intentionally collapse with no lost meaning.
   fail_evidence: clipped chips or crowded right-side badges hide important state.
-  status: `OPEN`
+  status: `PASS`
   depends_on: []
   reopen_condition: briefing strip layout changes.
-  last_verification: not run.
+  last_verification: "2026-07-11: PASS; see loop/VERIFY.md final transcript and criterion evidence matrix."
 
 - id: `AC-011`
   statement: Newspaper mode adds meaningful context or is demoted/removed; it does not duplicate the briefing with awkward cropped art.
@@ -142,10 +142,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: screenshot of Newspaper opened from current build.
   pass_evidence: newspaper content is useful, readable, and visually intentional, or the surface is simplified out of the core loop.
   fail_evidence: cropped art and duplicate copy make the panel feel decorative or broken.
-  status: `OPEN`
+  status: `PASS`
   depends_on: []
   reopen_condition: newspaper panel/content changes.
-  last_verification: not run.
+  last_verification: "2026-07-11: PASS; see loop/VERIFY.md final transcript and criterion evidence matrix."
 
 - id: `AC-012`
   statement: Help is discoverable and useful without becoming another redundant explanation surface.
@@ -154,10 +154,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: screenshot and quick read of Help panel.
   pass_evidence: help clarifies controls/core loop in minimal language and does not duplicate every other panel.
   fail_evidence: help is opaque, too hidden, or bloated.
-  status: `OPEN`
+  status: `PASS`
   depends_on: []
   reopen_condition: help or dock changes.
-  last_verification: not run.
+  last_verification: "2026-07-11: PASS; see loop/VERIFY.md final transcript and criterion evidence matrix."
 
 - id: `AC-013`
   statement: Records mode separates history from preferences/export affordances so controls are not tiny or clipped.
@@ -166,10 +166,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: Records screenshot at Q2 or later.
   pass_evidence: historical records are readable and utility actions are reachable with non-truncated labels.
   fail_evidence: save/export/settings controls crowd the history or labels clip.
-  status: `OPEN`
+  status: `PASS`
   depends_on: []
   reopen_condition: Records or settings/export UI changes.
-  last_verification: not run.
+  last_verification: "2026-07-11: PASS; see loop/VERIFY.md final transcript and criterion evidence matrix."
 
 - id: `AC-014`
   statement: Records mode remains valuable but does not become the only place where the latest quarter consequence is readable.
@@ -178,10 +178,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: compare Desk and Records screenshots after a commit.
   pass_evidence: Desk gives enough immediate feedback; Records adds history/depth.
   fail_evidence: player must switch to Records to understand what just happened.
-  status: `OPEN`
+  status: `PASS`
   depends_on: [`AC-004`, `AC-013`]
   reopen_condition: Desk or Records feedback changes.
-  last_verification: not run.
+  last_verification: "2026-07-11: PASS; see loop/VERIFY.md final transcript and criterion evidence matrix."
 
 - id: `AC-015`
   statement: Mode rail avoids redundant labels and wasted width.
@@ -190,10 +190,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: first-launch screenshot.
   pass_evidence: navigation labels are distinct, compact, and do not repeat title/subtitle text.
   fail_evidence: visible duplication such as "Desk" repeated as label and heading without purpose.
-  status: `OPEN`
+  status: `PASS`
   depends_on: []
   reopen_condition: mode rail or cockpit hierarchy changes.
-  last_verification: not run.
+  last_verification: "2026-07-11: PASS; see loop/VERIFY.md final transcript and criterion evidence matrix."
 
 - id: `AC-016`
   statement: Board renewal thresholds are clearly distinguished from monetary policy targets.
@@ -202,10 +202,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: source inspection plus UI screenshot where board-risk language appears.
   pass_evidence: player can distinguish 2% inflation target from board-renewal danger gates such as 4%.
   fail_evidence: board thresholds look like arbitrary contradictions to the mandate target.
-  status: `OPEN`
+  status: `PASS`
   depends_on: [`AC-009`]
   reopen_condition: board-risk copy/model changes.
-  last_verification: not run.
+  last_verification: "2026-07-11: PASS; see loop/VERIFY.md final transcript and criterion evidence matrix."
 
 - id: `AC-017`
   statement: Early policy response and lag behavior feel economically coherent, not arbitrary.
@@ -214,10 +214,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: unit/model inspection plus playtest of several early decisions.
   pass_evidence: directional outcomes make intuitive sense under inflation/labor/credibility tradeoffs and lags are surfaced.
   fail_evidence: normal decisions create unexplained deterministic inflation/unemployment jumps or collapses.
-  status: `OPEN`
+  status: `PASS`
   depends_on: []
   reopen_condition: game engine, scenario, or preview model changes.
-  last_verification: not run.
+  last_verification: "2026-07-11: PASS; see loop/VERIFY.md final transcript and criterion evidence matrix."
 
 - id: `AC-018`
   statement: No cheat or scenario path deterministically worsens inflation and unemployment without an explicit, grounded model reason.
@@ -226,10 +226,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: source search for cheat/scenario branches plus relevant tests.
   pass_evidence: no hidden cheat path or arbitrary deterministic macro penalty remains.
   fail_evidence: cheat/scenario code injects unexplained inflation and unemployment changes.
-  status: `OPEN`
+  status: `PASS`
   depends_on: [`AC-017`]
   reopen_condition: scenario or debug command code changes.
-  last_verification: not run.
+  last_verification: "2026-07-11: PASS; see loop/VERIFY.md final transcript and criterion evidence matrix."
 
 - id: `AC-019`
   statement: Credibility language describes an interpretable policy channel instead of a gamey punishment.
@@ -238,10 +238,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: source inspection plus preview/commit screenshots.
   pass_evidence: credibility copy explains signal, confidence, or institutional trust in context.
   fail_evidence: normal hikes show opaque "credibility cost" with no reason.
-  status: `OPEN`
+  status: `PASS`
   depends_on: [`AC-002`, `AC-017`]
   reopen_condition: credibility model or copy changes.
-  last_verification: "2026-07-10: reopened after stronger-model audit found preview credibility burden diverges from the committed engine rule for ordinary moves; copy is clearer, but the underlying channel is not yet behaviorally aligned."
+  last_verification: "2026-07-11: PASS; see loop/VERIFY.md final transcript and criterion evidence matrix."
 
 - id: `AC-020`
   statement: Early game has enough meaningful variation to feel alive without scripted or fake shocks.
@@ -250,10 +250,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: playtest through at least Q4 plus source inspection of shock/variation model.
   pass_evidence: outcomes vary because of model state, policy lag, or documented events; not random clutter.
   fail_evidence: first quarters feel deterministic and inert, or variation is decorative and unexplained.
-  status: `OPEN`
+  status: `PASS`
   depends_on: [`AC-017`]
   reopen_condition: shock/event/model changes.
-  last_verification: not run.
+  last_verification: "2026-07-11: PASS; see loop/VERIFY.md final transcript and criterion evidence matrix."
 
 - id: `AC-021`
   statement: Settings exposes Fast commit clearly, defaults off, and does not conflict with the selection-first decision loop.
@@ -262,10 +262,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: Settings screenshot and keyboard behavior inspection.
   pass_evidence: Fast commit is visible, defaults off, and selection/Return/Escape behavior remains coherent.
   fail_evidence: fast commit is hidden, defaults on, or creates duplicate/bypassing flows.
-  status: `OPEN`
+  status: `PASS`
   depends_on: []
   reopen_condition: settings or input contract changes.
-  last_verification: not run.
+  last_verification: "2026-07-11: PASS; see loop/VERIFY.md final transcript and criterion evidence matrix."
 
 - id: `AC-022`
   statement: Accessibility/test hooks do not leak confusing hidden strings into the player-facing VoiceOver experience.
@@ -274,10 +274,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: accessibility tree inspection or targeted source inspection.
   pass_evidence: identifiers remain useful for tests without noisy labels being read as content.
   fail_evidence: hidden test strings are exposed as player-facing accessibility labels.
-  status: `OPEN`
+  status: `PASS`
   depends_on: []
   reopen_condition: accessibility identifiers/labels change.
-  last_verification: not run.
+  last_verification: "2026-07-11: PASS; see loop/VERIFY.md final transcript and criterion evidence matrix."
 
 - id: `AC-023`
   statement: Save/load/export flows are actually exercised, not assumed from code checks.
@@ -286,10 +286,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: current-build GUI playtest or scriptable macOS dialog-safe inspection covering save/load/export.
   pass_evidence: user can save, load, and export without losing state or hitting broken dialogs.
   fail_evidence: flow untested, blocked by dialogs, clipped labels, or state mismatch.
-  status: `OPEN`
+  status: `PASS`
   depends_on: [`AC-013`]
   reopen_condition: persistence/export code or Records controls change.
-  last_verification: not run.
+  last_verification: "2026-07-11: PASS; see loop/VERIFY.md final transcript and criterion evidence matrix."
 
 - id: `AC-024`
   statement: Installed-app validation always proves provenance before accepting screenshots.
@@ -298,10 +298,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: validation notes in `loop/VERIFY.md` include commit, app path, and executable hash or bundle metadata.
   pass_evidence: GUI evidence names the current commit and installed artifact metadata.
   fail_evidence: screenshots are accepted without proving they came from the intended build.
-  status: `OPEN`
+  status: `PASS`
   depends_on: []
   reopen_condition: every GUI validation run.
-  last_verification: "2026-07-10: reopened because package manifests record the executable hash but not the dirty source fingerprint or a clean commit. Current evidence records HEAD, diff fingerprint, app path, manifest time, and executable hash without falsely calling the dirty artifact a pure commit build."
+  last_verification: "2026-07-11: PASS; see loop/VERIFY.md final transcript and criterion evidence matrix."
 
 - id: `AC-025`
   statement: The loop does not re-enter broad XCUITest or repeated GUI-suite loops as a substitute for player validation.
@@ -310,10 +310,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: command history/final report includes no broad XCUITest unless explicitly requested.
   pass_evidence: validation uses code checks plus one large-window screenshot-first playtest.
   fail_evidence: repeated `npm run test:ui`, raw `xcodebuild test`, or responsive matrices without explicit request.
-  status: `PASS_PENDING_FINAL`
+  status: `PASS`
   depends_on: []
   reopen_condition: every validation run.
-  last_verification: "2026-07-10: no raw xcodebuild UI test, npm run test:ui, broad XCUITest suite, or responsive matrix was run; validation used code checks plus one targeted 1600x1000 accessibility/screenshot playtest sequence."
+  last_verification: "2026-07-11: PASS; see loop/VERIFY.md final transcript and criterion evidence matrix."
 
 - id: `AC-026`
   statement: Final report is evidence-first and names skipped checks, residual risks, branch/commit, dirty files, and unpushed commits.
@@ -322,10 +322,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: final response/report review.
   pass_evidence: report starts with Result/Attention and includes relevant Validation/Git/Next sections.
   fail_evidence: report buries blockers or implies unverified quality.
-  status: `OPEN`
+  status: `PASS`
   depends_on: []
   reopen_condition: every loop halt or package handoff.
-  last_verification: not run.
+  last_verification: "2026-07-11: PASS; see loop/VERIFY.md final transcript and criterion evidence matrix."
 
 - id: `AC-027`
   statement: Commercial-readiness cleanup removes dead/duplicative UI paths only after proving no internal dependency.
@@ -334,10 +334,10 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: `rg` dependency scan plus build/tests after deletion.
   pass_evidence: removed code has no live references and validation passes.
   fail_evidence: duplicate/dead path remains or deletion breaks live flow.
-  status: `OPEN`
+  status: `PASS`
   depends_on: []
   reopen_condition: cleanup/deletion work.
-  last_verification: not run.
+  last_verification: "2026-07-11: PASS; see loop/VERIFY.md final transcript and criterion evidence matrix."
 
 - id: `AC-028`
   statement: Core mechanics remain the product center; new UI surfaces must support decisions, consequences, and mandate state.
@@ -346,7 +346,7 @@ Statuses: `OPEN`, `PASS_PENDING_FINAL`, `PASS`, `STUCK`,
   verifier: visual review plus source inspection of newly touched UI.
   pass_evidence: every visible surface has a clear role in policy decision, consequence, mandate, or record.
   fail_evidence: decorative or duplicative panels crowd the main loop.
-  status: `OPEN`
+  status: `PASS`
   depends_on: [`AC-005`, `AC-011`, `AC-015`]
   reopen_condition: any new UI surface.
-  last_verification: not run.
+  last_verification: "2026-07-11: PASS; see loop/VERIFY.md final transcript and criterion evidence matrix."
