@@ -17,8 +17,8 @@ struct SpriteKitChart: NSViewRepresentable {
         view.allowsTransparency = true
         view.ignoresSiblingOrder = true
         view.preferredFramesPerSecond = 30
-        view.shouldCullNonVisibleNodes = true
-        view.isAsynchronous = true
+        view.shouldCullNonVisibleNodes = false
+        view.isAsynchronous = false
         view.setAccessibilityIdentifier("mandate-chart")
         view.setAccessibilityLabel("Interactive mandate chart")
         view.onBoundsChanged = {
@@ -113,6 +113,16 @@ final class ChartTrackingView: SKView {
     var onBoundsChanged: (() -> Void)?
     private var chartTrackingArea: NSTrackingArea?
     private var lastRenderedBounds: CGRect = .zero
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil else {
+            return
+        }
+        DispatchQueue.main.async { [weak self] in
+            self?.onBoundsChanged?()
+        }
+    }
 
     override func layout() {
         super.layout()
