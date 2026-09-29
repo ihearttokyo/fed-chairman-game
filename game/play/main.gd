@@ -21,6 +21,9 @@ var guidance: SpinBox
 var assets: SpinBox
 var liquidity: SpinBox
 var commitment: OptionButton
+var custom_guidance: VBoxContainer
+var inflation_response: SpinBox
+var activity_response: SpinBox
 var scenario: OptionButton
 var seed_input: SpinBox
 var city: Node3D
@@ -265,9 +268,16 @@ func _build_policy(parent: Node) -> void:
 	commitment = OptionButton.new()
 	commitment.add_item("Data-dependent guidance")
 	commitment.add_item("Firm rate pledge")
+	commitment.add_item("Custom conditional guidance")
 	commitment.tooltip_text = "Data dependence adjusts your promise by %.2f × the change in inflation and %.2f × the change in output gap. A firm pledge does not adjust." % [career.params.policy_inflation_response, career.params.policy_output_gap_response]
-	commitment.item_selected.connect(func(_i: int): _preview())
+	commitment.item_selected.connect(func(_i: int): _guidance_controls())
 	box.add_child(commitment)
+	custom_guidance = _vbox(box, 6)
+	var bound: float = career.params.guidance_sensitivity_limit
+	inflation_response = _spin(custom_guidance, "Inflation response", -bound, bound, 0.1, "Adjust the announced rate by this many percentage points for each 1 pp change in four-quarter inflation since the announcement.")
+	activity_response = _spin(custom_guidance, "Output-gap response", -bound, bound, 0.1, "Adjust the announced rate by this many percentage points for each 1 pp change in the output gap since the announcement.")
+	var units := _label(custom_guidance, "Rate pp per 1 pp change since your announcement. Negative responses reverse the direction; these are game-design choices.", 11, MUTED)
+	units.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	assets = _spin(box, "Asset purchases / runoff", -2, 2, 0.25, "Percent of initial annual GDP. Purchases lower the term premium; runoff raises it. Stock capacity applies.")
 	liquidity = _spin(box, "New liquidity lending", 0, 5, 0.25, "Percent of initial annual GDP. New loans are limited by funding need, eligibility and collateral. They do not cure insolvency.")
 	_label(box, "Asset and loan units: % of initial annual GDP", 11, MUTED)
@@ -283,9 +293,13 @@ func _build_policy(parent: Node) -> void:
 
 func _policy() -> Dictionary:
 	return {"policy_rate_request_pct": rate.value, "guidance_rate_pct": guidance.value,
-		"guidance_inflation_sensitivity": career.params.policy_inflation_response if commitment.selected == 0 else 0.0,
-		"guidance_output_gap_sensitivity": career.params.policy_output_gap_response if commitment.selected == 0 else 0.0,
+		"guidance_inflation_sensitivity": inflation_response.value if commitment.selected == 2 else (career.params.policy_inflation_response if commitment.selected == 0 else 0.0),
+		"guidance_output_gap_sensitivity": activity_response.value if commitment.selected == 2 else (career.params.policy_output_gap_response if commitment.selected == 0 else 0.0),
 		"asset_flow_request_pct_initial_gdp": assets.value, "liquidity_request_pct_initial_gdp": liquidity.value}
+
+func _guidance_controls() -> void:
+	custom_guidance.visible = commitment.selected == 2
+	_preview()
 
 func _start_career(case_id: String, seed_number: int) -> void:
 	var result: Dictionary = career.start(case_id, seed_number)
@@ -320,7 +334,15 @@ func _refresh(reset_controls := false) -> void:
 		guidance.value = s.policy_rate_pct
 		assets.value = 0
 		liquidity.value = 0
+		inflation_response.value = s.guidance_inflation_sensitivity if s.guidance_active else career.params.policy_inflation_response
+		activity_response.value = s.guidance_output_gap_sensitivity if s.guidance_active else career.params.policy_output_gap_response
 		commitment.select(0)
+		if s.guidance_active:
+			if inflation_response.value == 0.0 and activity_response.value == 0.0:
+				commitment.select(1)
+			elif inflation_response.value != career.params.policy_inflation_response or activity_response.value != career.params.policy_output_gap_response:
+				commitment.select(2)
+		_guidance_controls()
 		loading_controls = false
 	decision_button.disabled = career.decisions.size() >= Career.MAX_QUARTERS
 	_preview()
@@ -345,6 +367,18 @@ func _decision_briefing() -> String:
 	var first: Dictionary = selected.states[0]
 	var reference: Dictionary = held.states[0]
 	var text := "CURRENT MEETING / REQUESTED AND APPLIED\nRequested rate %.2f%% · Applied rate %.2f%%\nRequested assets %+.2f · Applied assets %+.2f\nRequested lending %.2f · Applied lending %.2f\n\nRates can change at most %.2f percentage points each quarter. Asset flows are limited by quarterly capacity and holdings. Lending is limited by funding need, eligible collateral after haircuts, existing loans and quarterly capacity. Asset and lending units are %% of initial annual GDP.\n\n" % [policy.policy_rate_request_pct, first.policy_rate_pct, policy.asset_flow_request_pct_initial_gdp, first.asset_flow_applied_pct_initial_gdp, policy.liquidity_request_pct_initial_gdp, first.liquidity_applied_pct_initial_gdp, career.params.policy_rate_change_limit_pct]
+	text += "GUIDANCE / COMMITMENT AND FLEXIBILITY\n"
+	var s: Dictionary = career.state
+	if s.guidance_active:
+		var prior_promise: float = s.guidance_rate_pct + s.guidance_inflation_sensitivity * (s.four_quarter_inflation_pct - s.guidance_reference_inflation_pct) + s.guidance_output_gap_sensitivity * (s.output_gap_pct - s.guidance_reference_output_gap_pct)
+		text += "Previous quote %.2f%%; inflation response %.2f, output-gap response %.2f.\nReference inflation %.3f%%, output gap %+.3f%%.\nAdjusted prior promise %.3f%%\nProjected follow-through %.1f / 100\n" % [s.guidance_rate_pct, s.guidance_inflation_sensitivity, s.guidance_output_gap_sensitivity, s.guidance_reference_inflation_pct, s.guidance_reference_output_gap_pct, prior_promise, 100 * first.guidance_followthrough_score]
+		var low: float = max(career.params.policy_rate_min_pct, s.policy_rate_pct - career.params.policy_rate_change_limit_pct)
+		var high: float = min(career.params.policy_rate_max_pct, s.policy_rate_pct + career.params.policy_rate_change_limit_pct)
+		if prior_promise < low or prior_promise > high:
+			text += "The adjusted prior promise is outside this meeting's feasible rate range %.2f–%.2f%%. The rate cap prevents full delivery this meeting.\n" % [low, high]
+	else:
+		text += "No previous announcement to evaluate at this meeting.\n"
+	text += "\nNew quote %.2f%%; inflation response %.2f, output-gap response %.2f.\nA new announcement does not erase the previous obligation. Conditions affect next meeting's follow-through, not an immediate credibility bonus. Follow-through is one component of credibility, alongside inflation performance and policy stance.\n\n" % [policy.guidance_rate_pct, policy.guidance_inflation_sensitivity, policy.guidance_output_gap_sensitivity]
 	text += "CURRENT TRANSMISSION / SELECTED VS HOLD\nLong yield %.3f%% vs %.3f%%\nCredit spread %.3f%% vs %.3f%%\nUncovered funding %.2f vs %.2f\n\n" % [first.long_yield_pct, reference.long_yield_pct, first.credit_spread_pct, reference.credit_spread_pct, first.uncovered_funding_pct_initial_gdp, reference.uncovered_funding_pct_initial_gdp]
 	text += "DIFFERENCE FROM HOLD / SELECTED MINUS REFERENCE\n"
 	for index in [0, 3, 7]:
@@ -363,6 +397,7 @@ func _staff_rule() -> void:
 	rate.value = policy.policy_rate_request_pct
 	guidance.value = policy.guidance_rate_pct
 	commitment.select(0)
+	_guidance_controls()
 	loading_controls = false
 	_preview()
 	status_label.text = "Staff benchmark selected. This simple rule is a comparison, not an optimal policy. Other tools are unchanged."
@@ -376,6 +411,8 @@ func _advance() -> void:
 	_refresh(true)
 	var s: Dictionary = career.state
 	consequence.text = "Q%d OUTCOME  ·  Inflation %+.2f pp; unemployment %+.2f pp.\nApplied rate %.2f%%. Public support %+.1f; credibility %+.1f. Your earlier decisions remain in the transmission pipeline." % [s.quarter_index, s.four_quarter_inflation_pct - before.four_quarter_inflation_pct, s.unemployment_rate_pct - before.unemployment_rate_pct, s.policy_rate_pct, s.public_support - before.public_support, (s.credibility - before.credibility) * 100]
+	if before.guidance_active:
+		consequence.text += "\nPrevious promise follow-through: %.1f / 100." % (100 * s.guidance_followthrough_score)
 	status_label.text = "Quarter %d completed. Unsaved changes · %s" % [s.quarter_index, career.cases[career.scenario_id].label]
 	if int(s.quarter_index) % 12 == 0:
 		_review()
