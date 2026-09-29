@@ -275,6 +275,7 @@ func _build_policy(parent: Node) -> void:
 	forecast_label = _label(box, "", 13, MINT)
 	forecast_label.custom_minimum_size.y = 114
 	forecast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_button(box, "Compare policy paths", func(): _text_dialog("Compare policy paths", _decision_briefing()))
 	decision_button = _button(box, "Adopt decision  →  Next quarter", _advance)
 	decision_button.custom_minimum_size.y = 48
 	var explanation := _label(box, "Preview: this decision, then hold the rate for eight quarters. No new future shocks. This is a conditional path, not a confidence interval.", 11, MUTED)
@@ -334,6 +335,27 @@ func _preview() -> void:
 	var first: Dictionary = result.states[0]
 	var last: Dictionary = result.states[-1]
 	forecast_label.text = "APPLIED NOW\nRate %.2f%% · assets %+.2f · lending %.2f\n\nCONDITIONAL Q+8\nInflation %.2f%% · unemployment %.2f%%\nOutput gap %+.2f%%" % [first.policy_rate_pct, first.asset_flow_applied_pct_initial_gdp, first.liquidity_applied_pct_initial_gdp, last.four_quarter_inflation_pct, last.unemployment_rate_pct, last.output_gap_pct]
+
+func _decision_briefing() -> String:
+	var policy := _policy()
+	var selected: Dictionary = career.forecast(policy)
+	var held: Dictionary = career.forecast(career.model.benchmark_policy(career.state, career.params, "hold"))
+	if not selected.ok or not held.ok:
+		return "Comparison unavailable: " + (selected.error if not selected.ok else held.error)
+	var first: Dictionary = selected.states[0]
+	var reference: Dictionary = held.states[0]
+	var text := "CURRENT MEETING / REQUESTED AND APPLIED\nRequested rate %.2f%% · Applied rate %.2f%%\nRequested assets %+.2f · Applied assets %+.2f\nRequested lending %.2f · Applied lending %.2f\n\nRates can change at most %.2f percentage points each quarter. Asset flows are limited by quarterly capacity and holdings. Lending is limited by funding need, eligible collateral after haircuts, existing loans and quarterly capacity. Asset and lending units are %% of initial annual GDP.\n\n" % [policy.policy_rate_request_pct, first.policy_rate_pct, policy.asset_flow_request_pct_initial_gdp, first.asset_flow_applied_pct_initial_gdp, policy.liquidity_request_pct_initial_gdp, first.liquidity_applied_pct_initial_gdp, career.params.policy_rate_change_limit_pct]
+	text += "CURRENT TRANSMISSION / SELECTED VS HOLD\nLong yield %.3f%% vs %.3f%%\nCredit spread %.3f%% vs %.3f%%\nUncovered funding %.2f vs %.2f\n\n" % [first.long_yield_pct, reference.long_yield_pct, first.credit_spread_pct, reference.credit_spread_pct, first.uncovered_funding_pct_initial_gdp, reference.uncovered_funding_pct_initial_gdp]
+	text += "DIFFERENCE FROM HOLD / SELECTED MINUS REFERENCE\n"
+	for index in [0, 3, 7]:
+		var choice: Dictionary = selected.states[index]
+		var baseline: Dictionary = held.states[index]
+		text += "Q+%d: Inflation %+.3f pp · unemployment %+.3f pp\nOutput gap %+.3f pp\n\n" % [index + 1, choice.four_quarter_inflation_pct - baseline.four_quarter_inflation_pct, choice.unemployment_rate_pct - baseline.unemployment_rate_pct, choice.output_gap_pct - baseline.output_gap_pct]
+	var last: Dictionary = selected.states[-1]
+	var baseline: Dictionary = held.states[-1]
+	text += "Q+8 / SELECTED VS HOLD\nCredibility %.1f vs %.1f / 100\nPublic support %.1f vs %.1f / 100\n\n" % [100 * last.credibility, 100 * baseline.credibility, last.public_support, baseline.public_support]
+	text += "REFERENCE AND LIMITS\nHold today's rate, guide to that rate with data dependence, and request no new asset flows or loans. Both paths use the same current shock and no new future shocks. After this meeting, each holds its own applied rate and makes no new asset flows or loans. Existing holdings, loans and policy lags carry forward.\n\nThese are combined effects of the staged controls, not an optimal-policy recommendation or a confidence interval. Positive differences mean a higher value, not necessarily a better outcome. Policy lags can leave first-quarter inflation unchanged even when later outcomes differ."
+	return text
 
 func _staff_rule() -> void:
 	var policy: Dictionary = career.model.benchmark_policy(career.state, career.params, "feedback")

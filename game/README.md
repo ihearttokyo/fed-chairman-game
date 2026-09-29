@@ -111,6 +111,14 @@ current shock, then assumes no new shocks and holds the rate for eight quarters.
 It cannot read the realized future shock path. The staff rate rule is a disclosed
 benchmark rather than an optimal-play recommendation.
 
+Choose **Compare policy paths** before adopting to inspect requested and applied
+tools, current financial conditions and quarter-1, quarter-4 and quarter-8
+differences from holding policy. The reference holds today's rate, uses
+data-dependent guidance and requests no new asset flows or lending. Both paths
+use the same current shock and no future innovations. The briefing also compares
+credibility and public support and explains binding tool limits; it does not
+change the career or select a policy for the player.
+
 Careers continue through 12-quarter reviews without resetting policy lags,
 expectations, hardship memory or charts. The local career limit is 240 quarters.
 Save and Load use separate `FedChairmanPolicyLab` user storage and never touch the
