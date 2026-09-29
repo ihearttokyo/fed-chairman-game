@@ -93,3 +93,28 @@ upload. A working credential is required; no security bypass or store publicatio
 occurred. Intel hardware validation is not a gate for the ARM64-only release.
 Rollback is a revert of the isolated playable-game commit; no legacy save
 migration or replacement installation is included.
+
+## Policy-comparison briefing, September 30
+
+The source game now compares staged policy with a same-shock hold reference,
+including requested versus applied tools, financial conditions, quarterly
+outcome differences, credibility and public support. The new UI assertion first
+failed because the comparison was absent. It then passed alongside the existing
+career, chart and UI suites, 141 resource/replay checks and packaging safety
+checks. Tests use the actual paired forecasts and verify career isolation and
+no access to future realized shocks. Parent correctness and Ponytail reviews
+found no remaining issue in this diff; model equations and saves are unchanged.
+
+Live computer use covered an identical-policy comparison and a constrained-rate
+comparison from saved quarter 17. The scrollable briefing showed a 6.30 percent
+request capped at 5.22, and quarter-8 differences of -0.022 percentage points for
+inflation, +0.063 for unemployment and -0.188 for output. Credibility was 56.9
+versus 56.7; support rounded to 65.4 in both paths. Closing the briefing and
+adopting advanced to quarter 18 with the capped rate and visible outcome
+feedback. No engine errors appeared. Source hashes were captured before the
+default-size GUI check; the existing save was not overwritten.
+
+This briefing was tested in the source build, not the earlier signed ZIP. Jared
+deferred Apple account recovery and notarization; development continues without
+retrying authentication. Existing release and workbook validation gaps above
+remain open. Rollback of this addition is a revert of its isolated UI commit.
