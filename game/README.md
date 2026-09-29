@@ -111,6 +111,17 @@ current shock, then assumes no new shocks and holds the rate for eight quarters.
 It cannot read the realized future shock path. The staff rate rule is a disclosed
 benchmark rather than an optimal-play recommendation.
 
+Guidance can use the existing data-dependent preset, a firm pledge, or custom
+responses to changes in four-quarter inflation and the output gap. Custom
+responses range from -2 to +2 rate percentage points per 1 percentage-point
+change since the announcement. They adjust the promise evaluated at the next
+meeting, rather than granting an immediate credibility bonus. The comparison
+shows the previous condition-adjusted promise, projected follow-through and
+any binding rate cap. Announcing a new path does not erase the previous promise.
+Committed conditions survive adoption and lossless replay; a new career restores
+the defaults. These quantitative conditions are game-design choices, not a
+claim about the FOMC's current communication practice.
+
 Choose **Compare policy paths** before adopting to inspect requested and applied
 tools, current financial conditions and quarter-1, quarter-4 and quarter-8
 differences from holding policy. The reference holds today's rate, uses

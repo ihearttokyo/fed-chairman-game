@@ -93,8 +93,9 @@ data dependence. [Jefferson, May 13, 2024](https://www.federalreserve.gov/newsev
 ## Gates and rollback
 
 Write behavioral assertions before implementation and record the intended RED,
-first GREEN, correctness/Ponytail review and final GREEN. Use Luna xhigh review
-tasks for bounded code sections; the parent owns integration and live validation.
+first GREEN, correctness/Ponytail review and final GREEN. Use bounded section
+reviews under the user's current testing-runtime instructions. The parent owns
+integration and live validation.
 Do not merge a replacement engine solely because the workbook looks plausible.
 
 Promote in order: reviewed baseline evidence, reference-model acceptance,

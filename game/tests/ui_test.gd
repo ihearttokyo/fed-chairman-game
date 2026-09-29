@@ -8,10 +8,65 @@ func _initialize() -> void:
 	call_deferred("run")
 func check_cancel_window(dialog: AcceptDialog) -> void:
 	check(dialog.visible, "cancel keeps the window registered through deferred accessibility focus")
+func check_custom_guidance(game: Control) -> void:
+	check(game.commitment.item_count == 3, "player can choose custom conditional guidance")
+	if game.commitment.item_count != 3:
+		return
+	game._start_career("base", 417)
+	game.career.shocks[0] = {"demand_shock_pct": 1.2}
+	game.rate.value = 3.5
+	game.guidance.value = 3.65
+	var preset: Dictionary = game.career.forecast(game._policy())
+	game.commitment.select(2)
+	game.commitment.item_selected.emit(2)
+	check(game.custom_guidance.visible, "custom conditions are visible only when selected")
+	check(game.inflation_response.min_value == -game.career.params.guidance_sensitivity_limit and game.activity_response.max_value == game.career.params.guidance_sensitivity_limit, "custom conditions use model-defined bounds")
+	game.inflation_response.value = 1.0
+	game.activity_response.value = -0.25
+	var preserved: PackedByteArray = game.career.encode()
+	var preview: Dictionary = game.career.forecast(game._policy())
+	check(preview.states[0].credibility == preset.states[0].credibility and preview.states[0].long_yield_pct == preset.states[0].long_yield_pct, "new conditions do not invent an immediate credibility or market-pricing bonus")
+	check(game.career.encode() == preserved, "custom preview cannot change the career")
+	game._advance()
+	check(game.career.decisions[0].guidance_inflation_sensitivity == 1.0 and game.career.decisions[0].guidance_output_gap_sensitivity == -0.25, "custom coefficients reach the committed policy")
+	check(game.commitment.selected == 2 and game._policy().guidance_output_gap_sensitivity == -0.25, "custom conditions persist after adoption")
+	var replay = game.career.get_script().new()
+	check(replay.restore(bytes_to_var(game.career.encode())).ok and replay.state == game.career.state, "custom communication survives lossless replay")
+	var s: Dictionary = game.career.state
+	var promise: float = s.guidance_rate_pct + s.guidance_inflation_sensitivity * (s.four_quarter_inflation_pct - s.guidance_reference_inflation_pct) + s.guidance_output_gap_sensitivity * (s.output_gap_pct - s.guidance_reference_output_gap_pct)
+	game.rate.value = promise
+	game.guidance.value = 4.0
+	var follows: Dictionary = game.career.forecast(game._policy())
+	var report: String = game._decision_briefing()
+	check(report.contains("Adjusted prior promise %.3f%%" % promise), "comparison reveals the previous condition-adjusted promise")
+	check(report.contains("Projected follow-through %.1f / 100" % (100 * follows.states[0].guidance_followthrough_score)), "comparison uses the actual model's projected follow-through")
+	check(report.contains("new announcement does not erase"), "comparison distinguishes new communication from the previous obligation")
+	game.rate.value = s.guidance_rate_pct
+	var breaks: Dictionary = game.career.forecast(game._policy())
+	check(follows.states[0].guidance_followthrough_score > breaks.states[0].guidance_followthrough_score and follows.states[0].credibility > breaks.states[0].credibility, "honoring the custom condition improves subsequent follow-through and credibility")
+	game.commitment.select(1)
+	game.commitment.item_selected.emit(1)
+	check(not game.custom_guidance.visible and game._policy().guidance_inflation_sensitivity == 0.0 and game._policy().guidance_output_gap_sensitivity == 0.0, "firm preset cannot leak custom conditions")
+	game.commitment.select(0)
+	game.commitment.item_selected.emit(0)
+	check(game._policy().guidance_inflation_sensitivity == game.career.params.policy_inflation_response and game._policy().guidance_output_gap_sensitivity == game.career.params.policy_output_gap_response, "data-dependent preset keeps its original coefficients")
+	game.assets.value = 1.25
+	game.liquidity.value = 2.0
+	game._staff_rule()
+	check(game.commitment.selected == 0 and game.assets.value == 1.25 and game.liquidity.value == 2.0, "staff selection restores its guidance rule without changing other tools")
+	game._start_career("base", 417)
+	check(game.commitment.selected == 0 and game.inflation_response.value == game.career.params.policy_inflation_response, "new career restores known guidance defaults")
+	game.commitment.select(1)
+	game.commitment.item_selected.emit(1)
+	game.guidance.value = 15.0
+	game._advance()
+	check(game._decision_briefing().contains("outside this meeting's feasible rate range"), "comparison warns when an earlier pledge cannot be delivered")
+	game._start_career("supply_shock", 1)
 func run() -> void:
 	var game = load("res://main.tscn").instantiate()
 	root.add_child(game)
 	await process_frame
+	check_custom_guidance(game)
 	var compare_button: Button
 	for button in game.find_children("*", "Button", true, false):
 		if button.text == "Compare policy paths":
