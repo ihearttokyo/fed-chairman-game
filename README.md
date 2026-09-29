@@ -6,6 +6,14 @@ Players make one policy decision per quarter, read the briefing, watch credibili
 
 This project is independent and is not affiliated with, sponsored by, or endorsed by the Board of Governors of the Federal Reserve System or any Federal Reserve Bank.
 
+## Clean-sheet rebuild
+
+A research-first Godot replacement is in development. The existing Swift app
+below remains the legacy release; no save migration or replacement release is
+ready. Start with the [full-pass review](docs/REBUILD_REVIEW.md),
+[Federal Reserve research decisions](docs/FED_RESEARCH.md) and
+[economic model acceptance contract](docs/MODEL_CONTRACT.md).
+
 ## Beta Scope
 
 - Native macOS app built with SwiftUI and SpriteKit.
