@@ -1,0 +1,448 @@
+extends Control
+
+const Career = preload("res://play/career.gd")
+const Chart = preload("res://play/history_chart.gd")
+const SAVE_PATH := "user://career-v1.save"
+const GOLD := Color("e9b76e")
+const MINT := Color("75d4c0")
+const MUTED := Color("a4babe")
+var career := Career.new()
+var stats: Array = []
+var charts: Array = []
+var quarter_label: Label
+var case_title: Label
+var case_detail: Label
+var briefing: Label
+var consequence: Label
+var forecast_label: Label
+var status_label: Label
+var rate: SpinBox
+var guidance: SpinBox
+var assets: SpinBox
+var liquidity: SpinBox
+var commitment: OptionButton
+var scenario: OptionButton
+var seed_input: SpinBox
+var city: Node3D
+var reduced_motion := true
+var decision_button: Button
+var loading_controls := false
+
+func _ready() -> void:
+	_apply_theme()
+	var background := ColorRect.new()
+	background.color = Color("0c191f")
+	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(background)
+	var scroll := ScrollContainer.new()
+	scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(scroll)
+	var margin := MarginContainer.new()
+	margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for side in ["left", "top", "right", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 24)
+	scroll.add_child(margin)
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 16)
+	margin.add_child(root)
+	_build_header(root)
+	var cards := HBoxContainer.new()
+	cards.add_theme_constant_override("separation", 12)
+	root.add_child(cards)
+	for heading in ["INFLATION", "EMPLOYMENT", "CREDIBILITY", "PUBLIC SUPPORT"]:
+		var panel := _panel(cards)
+		panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var box := _vbox(panel, 5)
+		_label(box, heading, 12, MUTED)
+		var value := _label(box, "", 29, GOLD if stats.size() == 0 else Color("e7eee9"))
+		var note := _label(box, "", 12, MUTED)
+		stats.append([value, note])
+	var body := HBoxContainer.new()
+	body.add_theme_constant_override("separation", 18)
+	root.add_child(body)
+	var left := VBoxContainer.new()
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	left.add_theme_constant_override("separation", 12)
+	left.custom_minimum_size.x = 630
+	body.add_child(left)
+	_build_city(left)
+	var brief_box := _vbox(_panel(left), 5)
+	_label(brief_box, "MEETING DISPATCH  /  INFORMATION AVAILABLE NOW", 12, GOLD)
+	briefing = _label(brief_box, "", 14)
+	briefing.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var chart_row := HBoxContainer.new()
+	chart_row.add_theme_constant_override("separation", 20)
+	left.add_child(chart_row)
+	for n in range(2):
+		var chart := Chart.new()
+		chart.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if n == 1:
+			chart.heading = "EMPLOYMENT & STRUCTURAL REFERENCE"
+			chart.keys = ["unemployment_rate_pct", "structural_unemployment_pct"]
+			chart.labels = ["Unemployment", "Structural reference"]
+		chart_row.add_child(chart)
+		charts.append(chart)
+	consequence = _label(left, "", 14, MINT)
+	consequence.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	consequence.accessibility_live = AccessibilityServer.LIVE_POLITE
+	_build_policy(body)
+	status_label = _label(root, "", 13, MUTED)
+	status_label.accessibility_live = AccessibilityServer.LIVE_POLITE
+	_label(root, "A research-informed strategy game. Hypothetical economy, disclosed design coefficients. No Federal Reserve affiliation.", 11, MUTED)
+	_start_career("supply_shock", 1)
+	if "--verify-build" in OS.get_cmdline_user_args():
+		get_tree().quit(load("res://play/build_check.gd").new().run(self))
+
+func _apply_theme() -> void:
+	var design := Theme.new()
+	var font := SystemFont.new()
+	font.font_names = PackedStringArray(["Avenir Next", "DejaVu Sans"])
+	design.default_font = font
+	design.default_font_size = 14
+	design.set_color("font_color", "Label", Color("e7eee9"))
+	for node_type in ["Button", "OptionButton", "LineEdit", "SpinBox"]:
+		design.set_color("font_color", node_type, Color("e7eee9"))
+		design.set_color("font_hover_color", node_type, Color.WHITE)
+		for state_name in ["normal", "hover", "pressed", "focus"]:
+			var style := StyleBoxFlat.new()
+			style.bg_color = Color("203740") if state_name == "normal" else Color("34505a")
+			style.set_corner_radius_all(5)
+			style.set_content_margin_all(9)
+			style.border_color = GOLD if state_name == "focus" else Color("46626a")
+			style.set_border_width_all(2 if state_name == "focus" else 1)
+			design.set_stylebox(state_name, node_type, style)
+	var dialog_style := StyleBoxFlat.new()
+	dialog_style.bg_color = Color("14282f")
+	dialog_style.set_content_margin_all(18)
+	dialog_style.set_border_width_all(1)
+	dialog_style.border_color = Color("527078")
+	design.set_stylebox("panel", "AcceptDialog", dialog_style)
+	theme = design
+
+func _panel(parent: Node) -> PanelContainer:
+	var panel := PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("14282f")
+	style.border_color = Color("2c454c")
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(8)
+	style.set_content_margin_all(16)
+	panel.add_theme_stylebox_override("panel", style)
+	parent.add_child(panel)
+	return panel
+
+func _vbox(parent: Node, separation := 10) -> VBoxContainer:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", separation)
+	parent.add_child(box)
+	return box
+
+func _label(parent: Node, text: String, size_px := 14, color := Color("e7eee9")) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", size_px)
+	label.add_theme_color_override("font_color", color)
+	parent.add_child(label)
+	return label
+
+func _button(parent: Node, text: String, action: Callable) -> Button:
+	var button := Button.new()
+	button.text = text
+	button.pressed.connect(action)
+	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	parent.add_child(button)
+	return button
+
+func _build_header(parent: Node) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	parent.add_child(row)
+	var brand := _vbox(row, 0)
+	brand.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var title := _label(brand, "THE CHAIR", 31)
+	var serif := SystemFont.new()
+	serif.font_names = PackedStringArray(["Georgia", "Liberation Serif"])
+	title.add_theme_font_override("font", serif)
+	_label(brand, "FEDERAL RESERVE  /  POLICY LAB", 11, GOLD)
+	quarter_label = _label(row, "", 15, MINT)
+	_button(row, "New career", _new_dialog)
+	_button(row, "Save", _save)
+	_button(row, "Load", _load)
+	_button(row, "Data & journal", _journal)
+	_button(row, "How to play", _help)
+	_button(row, "Credits", _credits)
+
+func _build_city(parent: Node) -> void:
+	var panel := _panel(parent)
+	var box := _vbox(panel, 3)
+	var top := HBoxContainer.new()
+	box.add_child(top)
+	var title := _label(top, "THE ECONOMY IS YOUR RESPONSIBILITY", 12, MUTED)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var motion := CheckButton.new()
+	motion.text = "Animate city"
+	motion.toggled.connect(func(enabled: bool): reduced_motion = not enabled)
+	top.add_child(motion)
+	var scene_row := HBoxContainer.new()
+	box.add_child(scene_row)
+	var context := _vbox(scene_row, 12)
+	context.custom_minimum_size.x = 230
+	context.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	case_title = _label(context, "", 24, GOLD)
+	case_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	case_detail = _label(context, "", 14)
+	case_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	context.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var container := SubViewportContainer.new()
+	container.custom_minimum_size = Vector2(0, 215)
+	container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	container.size_flags_stretch_ratio = 2.0
+	container.stretch = true
+	container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	scene_row.add_child(container)
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(750, 215)
+	viewport.transparent_bg = true
+	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	container.add_child(viewport)
+	var world := Node3D.new()
+	viewport.add_child(world)
+	city = load("res://assets/policy_city.glb").instantiate()
+	world.add_child(city)
+	var camera := Camera3D.new()
+	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
+	camera.size = 15
+	camera.position = Vector3(17, 19, 23)
+	world.add_child(camera)
+	camera.look_at(Vector3(0, 0.8, 0))
+	var key := DirectionalLight3D.new()
+	key.rotation_degrees = Vector3(-50, -30, 0)
+	key.light_color = Color("ffdfab")
+	key.light_energy = 1.6
+	key.shadow_enabled = true
+	world.add_child(key)
+	var fill := DirectionalLight3D.new()
+	fill.rotation_degrees = Vector3(-25, 150, 0)
+	fill.light_color = Color("83bbcf")
+	fill.light_energy = 0.8
+	world.add_child(fill)
+	var environment := WorldEnvironment.new()
+	environment.environment = Environment.new()
+	environment.environment.background_mode = Environment.BG_COLOR
+	environment.environment.background_color = Color("14282f")
+	environment.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	environment.environment.ambient_light_color = Color("b8d7db")
+	environment.environment.ambient_light_energy = 0.6
+	world.add_child(environment)
+	_label(box, "Original Blender miniature · illustrative city, not a regional model", 10, MUTED)
+
+func _spin(parent: Node, title: String, low: float, high: float, step_size: float, tip: String) -> SpinBox:
+	var row := HBoxContainer.new()
+	parent.add_child(row)
+	var label := _label(row, title, 14)
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var input := SpinBox.new()
+	input.min_value = low
+	input.max_value = high
+	input.step = 0.01 if step_size < 1 else step_size
+	input.custom_arrow_step = step_size
+	input.custom_minimum_size.x = 105
+	input.accessibility_name = title
+	input.tooltip_text = tip
+	input.value_changed.connect(func(_v: float): _preview())
+	row.add_child(input)
+	return input
+
+func _build_policy(parent: Node) -> void:
+	var panel := _panel(parent)
+	panel.custom_minimum_size.x = 380
+	var box := _vbox(panel, 13)
+	_label(box, "FOMC DECISION", 18, GOLD)
+	_label(box, "Set a path. Allow time for it to work.", 13, MUTED)
+	rate = _spin(box, "Target midpoint (%)", 0, 15, 0.25, "Applied change is limited to 75 basis points per quarter.")
+	guidance = _spin(box, "Next-quarter guidance (%)", 0, 15, 0.25, "Markets price this promise according to credibility. Broken promises reduce follow-through.")
+	commitment = OptionButton.new()
+	commitment.add_item("Data-dependent guidance")
+	commitment.add_item("Firm rate pledge")
+	commitment.tooltip_text = "Data dependence adjusts your promise by %.2f × the change in inflation and %.2f × the change in output gap. A firm pledge does not adjust." % [career.params.policy_inflation_response, career.params.policy_output_gap_response]
+	commitment.item_selected.connect(func(_i: int): _preview())
+	box.add_child(commitment)
+	assets = _spin(box, "Asset purchases / runoff", -2, 2, 0.25, "Percent of initial annual GDP. Purchases lower the term premium; runoff raises it. Stock capacity applies.")
+	liquidity = _spin(box, "New liquidity lending", 0, 5, 0.25, "Percent of initial annual GDP. New loans are limited by funding need, eligibility and collateral. They do not cure insolvency.")
+	_label(box, "Asset and loan units: % of initial annual GDP", 11, MUTED)
+	_button(box, "Use staff rate rule", _staff_rule)
+	forecast_label = _label(box, "", 13, MINT)
+	forecast_label.custom_minimum_size.y = 114
+	forecast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	decision_button = _button(box, "Adopt decision  →  Next quarter", _advance)
+	decision_button.custom_minimum_size.y = 48
+	var explanation := _label(box, "Preview: this decision, then hold the rate for eight quarters. No new future shocks. This is a conditional path, not a confidence interval.", 11, MUTED)
+	explanation.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+
+func _policy() -> Dictionary:
+	return {"policy_rate_request_pct": rate.value, "guidance_rate_pct": guidance.value,
+		"guidance_inflation_sensitivity": career.params.policy_inflation_response if commitment.selected == 0 else 0.0,
+		"guidance_output_gap_sensitivity": career.params.policy_output_gap_response if commitment.selected == 0 else 0.0,
+		"asset_flow_request_pct_initial_gdp": assets.value, "liquidity_request_pct_initial_gdp": liquidity.value}
+
+func _start_career(case_id: String, seed_number: int) -> void:
+	var result: Dictionary = career.start(case_id, seed_number)
+	if not result.ok:
+		status_label.text = result.error
+		return
+	_refresh(true)
+	consequence.text = "Your first meeting: read the dispatch, compare the policy preview, then adopt a decision. There is no arbitrary unemployment or popularity game-over."
+	status_label.text = "New unsaved career · %s · seed %d" % [career.cases[case_id].label, seed_number]
+
+func _refresh(reset_controls := false) -> void:
+	var s: Dictionary = career.state
+	case_title.text = career.cases[career.scenario_id].label
+	case_detail.text = "Balance price stability with employment. Expectations, policy lags and public memory carry forward.\n\nAsset holdings: %.1f%% of initial GDP\nOutstanding loans: %.2f%%" % [s.asset_stock_pct_initial_gdp, s.outstanding_liquidity_pct_initial_gdp]
+	quarter_label.text = "YEAR %02d / Q%d   ·   MEETING %d" % [int(s.quarter_index / 4) + 1, int(s.quarter_index) % 4 + 1, s.quarter_index + 1]
+	stats[0][0].text = "%.2f%%" % s.four_quarter_inflation_pct
+	stats[0][1].text = "2.00% target · 4-quarter change"
+	stats[1][0].text = "%.2f%%" % s.unemployment_rate_pct
+	stats[1][1].text = "%.2f%% structural reference" % s.structural_unemployment_pct
+	stats[2][0].text = "%.0f / 100" % (100 * s.credibility)
+	stats[2][1].text = "Long expectations %.2f%%" % s.expected_long_inflation_pct
+	stats[3][0].text = "%.0f / 100" % s.public_support
+	stats[3][1].text = "Hardship memory %.2f" % s.public_hardship_memory
+	for chart in charts:
+		chart.history = career.history
+		chart.queue_redraw()
+	var shock: Dictionary = career.current_briefing()
+	briefing.text = "Demand impulse %+.2f pp · supply innovation %+.2f pp.\nFunding need %.2f; eligible collateral %.2f (%% initial GDP). Current output gap %+.2f%%. %s" % [shock.get("demand_shock_pct", 0), shock.get("supply_innovation_pct", 0), shock.get("funding_need_pct_initial_gdp", 0), shock.get("eligible_collateral_pct_initial_gdp", 0), s.output_gap_pct, "Lending cannot erase solvency risk." if shock.get("funding_need_pct_initial_gdp", 0) > 0.1 else "Policy works through a lagged real-rate channel."]
+	if reset_controls:
+		loading_controls = true
+		rate.value = s.policy_rate_pct
+		guidance.value = s.policy_rate_pct
+		assets.value = 0
+		liquidity.value = 0
+		commitment.select(0)
+		loading_controls = false
+	decision_button.disabled = career.decisions.size() >= Career.MAX_QUARTERS
+	_preview()
+
+func _preview() -> void:
+	if loading_controls or forecast_label == null or career.state.is_empty():
+		return
+	var result: Dictionary = career.forecast(_policy())
+	if not result.ok:
+		forecast_label.text = "Preview unavailable: " + result.error
+		return
+	var first: Dictionary = result.states[0]
+	var last: Dictionary = result.states[-1]
+	forecast_label.text = "APPLIED NOW\nRate %.2f%% · assets %+.2f · lending %.2f\n\nCONDITIONAL Q+8\nInflation %.2f%% · unemployment %.2f%%\nOutput gap %+.2f%%" % [first.policy_rate_pct, first.asset_flow_applied_pct_initial_gdp, first.liquidity_applied_pct_initial_gdp, last.four_quarter_inflation_pct, last.unemployment_rate_pct, last.output_gap_pct]
+
+func _staff_rule() -> void:
+	var policy: Dictionary = career.model.benchmark_policy(career.state, career.params, "feedback")
+	loading_controls = true
+	rate.value = policy.policy_rate_request_pct
+	guidance.value = policy.guidance_rate_pct
+	commitment.select(0)
+	loading_controls = false
+	_preview()
+	status_label.text = "Staff benchmark selected. This simple rule is a comparison, not an optimal policy. Other tools are unchanged."
+
+func _advance() -> void:
+	var before: Dictionary = career.state.duplicate(true)
+	var result: Dictionary = career.advance(_policy())
+	if not result.ok:
+		status_label.text = result.error + " Last valid quarter retained."
+		return
+	_refresh(true)
+	var s: Dictionary = career.state
+	consequence.text = "Q%d OUTCOME  ·  Inflation %+.2f pp; unemployment %+.2f pp.\nApplied rate %.2f%%. Public support %+.1f; credibility %+.1f. Your earlier decisions remain in the transmission pipeline." % [s.quarter_index, s.four_quarter_inflation_pct - before.four_quarter_inflation_pct, s.unemployment_rate_pct - before.unemployment_rate_pct, s.policy_rate_pct, s.public_support - before.public_support, (s.credibility - before.credibility) * 100]
+	status_label.text = "Quarter %d completed. Unsaved changes · %s" % [s.quarter_index, career.cases[career.scenario_id].label]
+	if int(s.quarter_index) % 12 == 0:
+		_review()
+
+func _save() -> void:
+	var result: Dictionary = career.save_to(SAVE_PATH)
+	status_label.text = "Saved quarter %d. The legacy game's saves are untouched." % career.state.quarter_index if result.ok else result.error
+
+func _load() -> void:
+	var dialog := AcceptDialog.new()
+	dialog.title = "Load saved career"
+	dialog.add_button("Cancel", true).pressed.connect(dialog.queue_free)
+	dialog.dialog_text = "Load the saved career? Unsaved decisions in this session will be replaced."
+	dialog.confirmed.connect(func():
+		var result: Dictionary = career.load_from(SAVE_PATH)
+		if result.ok:
+			_refresh(true)
+			consequence.text = "Saved career restored with its decisions, economic history and policy lags."
+		status_label.text = "Loaded quarter %d." % career.state.quarter_index if result.ok else result.error
+	)
+	_show_dialog(dialog, Vector2i(740, 180))
+
+func _show_dialog(dialog: Window, desired_size := Vector2i(740, 540)) -> void:
+	add_child(dialog)
+	dialog.close_requested.connect(dialog.queue_free)
+	if dialog is AcceptDialog:
+		# AccessKit finishes the button action with a focus request. Keep its window
+		# registered until queue_free runs at frame end, instead of hiding immediately.
+		dialog.dialog_hide_on_ok = false
+		dialog.confirmed.connect(dialog.queue_free)
+		dialog.canceled.connect(dialog.queue_free)
+	dialog.popup_centered(desired_size)
+
+func _text_dialog(title: String, text: String) -> void:
+	var dialog := AcceptDialog.new()
+	dialog.title = title
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(690, 450)
+	dialog.add_child(scroll)
+	var label := Label.new()
+	label.text = text
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(label)
+	_show_dialog(dialog)
+
+func _new_dialog() -> void:
+	var dialog := AcceptDialog.new()
+	dialog.add_button("Cancel", true).pressed.connect(dialog.queue_free)
+	dialog.title = "Start a new career · unsaved decisions will be replaced"
+	var box := _vbox(dialog)
+	_label(box, "Choose a hypothetical economy. Nothing here is a historical forecast.")
+	scenario = OptionButton.new()
+	for case_id in career.cases:
+		scenario.add_item(career.cases[case_id].label)
+		scenario.set_item_metadata(scenario.item_count - 1, case_id)
+	box.add_child(scenario)
+	seed_input = _spin(box, "Scenario seed", 1, 2147483647, 1, "Same seed gives the same shock path.")
+	seed_input.value = 1
+	_label(box, "Start with the baseline or supply shock. Weakly anchored inflation is a long recovery.", 13, MUTED)
+	dialog.confirmed.connect(func(): _start_career(scenario.get_item_metadata(scenario.selected), int(seed_input.value)))
+	_show_dialog(dialog, Vector2i(740, 240))
+
+func _review() -> void:
+	var s: Dictionary = career.state
+	var start: Dictionary = career.history[maxi(0, career.history.size() - 13)]
+	var improvement: float = abs(start.four_quarter_inflation_pct - 2) - abs(s.four_quarter_inflation_pct - 2)
+	var direction := "narrowed" if improvement >= 0 else "widened"
+	_text_dialog("Your 12-quarter policy review", "Distance from the 2%% inflation target %s by %.2f percentage points over this review period.\n\nCurrent inflation %.2f%%; unemployment %.2f%%; output gap %+.2f%%.\nCredibility %.0f/100; public support %.0f/100.\n\n%s\n\nThere is no dismissal threshold. Continue the recovery: credibility and public forgiveness are gradual, and earlier rate decisions keep working after this review." % [direction, abs(improvement), s.four_quarter_inflation_pct, s.unemployment_rate_pct, s.output_gap_pct, s.credibility * 100, s.public_support, "Inflation and output are close to their references. Try maintaining that balance." if abs(s.four_quarter_inflation_pct - 2) < 0.75 and abs(s.output_gap_pct) < 1 else "The economy still needs work. Judge the direction and costs of your policy, not a single quarter."])
+
+func _journal() -> void:
+	var text := "%s · seed %d\nRates and changes are percentage units. Asset and lending flows use %% of initial annual GDP.\n\n" % [career.cases[career.scenario_id].label, career.seed_value]
+	for s in career.history:
+		text += "Q%03d | inflation %.2f%% | unemployment %.2f%% | rate %.2f%% | output gap %+.2f%%\nCredibility %.1f | support %.1f | assets %+.2f | loans %.2f\n\n" % [s.quarter_index, s.four_quarter_inflation_pct, s.unemployment_rate_pct, s.policy_rate_pct, s.output_gap_pct, s.credibility * 100, s.public_support, s.asset_flow_applied_pct_initial_gdp, s.liquidity_applied_pct_initial_gdp]
+	_text_dialog("Economic history and policy journal", text)
+
+func _help() -> void:
+	_text_dialog("How to play", "Your role\nGuide a simplified FOMC policy decision. The target-rate midpoint is an abstraction; a real chair does not unilaterally set the market rate.\n\n1. Read the dispatch. It describes current conditions, not future shocks.\n2. Set the target rate. Higher real rates restrain demand gradually; inflation reacts with a lag. A supply shock can raise prices while weakening activity.\n3. Choose guidance. A firm promise is easier to understand but costly to break. Data dependence adjusts the prior promise when inflation and the output gap change.\n4. Use asset purchases or runoff to change the term premium. Liquidity lending addresses eligible funding needs, not insolvency.\n5. Inspect applied amounts and the eight-quarter preview, then adopt. The preview assumes no new future shocks and no later rate changes.\n\nCredibility changes how markets price guidance and long-run inflation expectations. Public support remembers both inflation/deflation hardship and unemployment. It recovers gradually, without term resets or a game-over threshold.\n\nSave preserves a career in this game's separate storage. New career and Load ask before replacing unsaved play. Tab navigates controls; charts also have exact values in Data & journal. Animation is off by default.\n\nModel limits\nSix hypothetical scenarios; behavioral coefficients are design assumptions. Only the 2% objective is source-defined. No empirical forecast, financial advice or Federal Reserve affiliation. See the repository's FED_RESEARCH and model README for primary sources and equations.\n\nCredits\nOriginal procedural Blender city by the project. Godot Engine is MIT-licensed.\n\n" + Engine.get_license_text())
+
+func _process(delta: float) -> void:
+	if city != null and not reduced_motion:
+		city.rotation.y += delta * 0.025
+
+func _credits() -> void:
+	var text := "THE CHAIR / FEDERAL RESERVE POLICY LAB\n\nOriginal game and procedural Blender city © 2026 Jared Bland.\nSystem fonts are supplied by the operating system and are not redistributed.\n\nGODOT ENGINE\n" + Engine.get_license_text()
+	for component in Engine.get_copyright_info():
+		text += "\n\n" + component.name + "\n"
+		for part in component.parts:
+			text += "\n".join(part.copyright) + "\nLicense: " + part.license + "\nFiles: " + ", ".join(part.files) + "\n"
+	for license_name in Engine.get_license_info():
+		text += "\n\n" + license_name + "\n" + Engine.get_license_info()[license_name]
+	_text_dialog("Engine and third-party notices", text)
