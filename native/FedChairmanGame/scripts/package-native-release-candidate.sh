@@ -33,6 +33,22 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Refuse replacements before generating, building, or touching an application.
+for output in "$ARCHIVE_PATH" "$APP_OUTPUT" "$RELEASE_ROOT/$LEGACY_APP_NAME" "$MANIFEST" "$JSON_MANIFEST"; do
+  if [[ -e "$output" || -L "$output" ]]; then
+    echo "Refusing to replace existing output: $output. Choose a new FED_CHAIRMAN_NATIVE_RELEASE_ROOT." >&2
+    exit 1
+  fi
+done
+if [[ "$INSTALL_APP" == true ]]; then
+  for output in "/Applications/$APP_NAME" "/Applications/$LEGACY_APP_NAME" "/Applications/Fed Chairman Game.release-manifest.json" "/Applications/Fed Chairman Game.production-manifest.json"; do
+    if [[ -e "$output" || -L "$output" ]]; then
+      echo "Refusing to replace existing installation: $output. Existing apps and manifests are preserved." >&2
+      exit 1
+    fi
+  done
+fi
+
 cd "$ROOT_DIR"
 mkdir -p "$RELEASE_ROOT"
 
@@ -60,7 +76,6 @@ fi
 source "$SOURCE_PROVENANCE_SCRIPT"
 collect_source_provenance "$REPO_ROOT"
 
-rm -rf "$ARCHIVE_PATH" "$APP_OUTPUT" "$RELEASE_ROOT/$LEGACY_APP_NAME"
 xcodebuild archive \
   -project "$PROJECT" \
   -scheme "$SCHEME" \
@@ -155,11 +170,6 @@ with open(manifest_path, "w", encoding="utf-8") as handle:
 PY
 
 if [[ "$INSTALL_APP" == true ]]; then
-  osascript -e 'tell application id "local.fed-chairman-game" to quit' >/dev/null 2>&1 || true
-  osascript -e 'tell application id "local.fed-chairman-game.native" to quit' >/dev/null 2>&1 || true
-  rm -rf "/Applications/$APP_NAME"
-  rm -rf "/Applications/$LEGACY_APP_NAME"
-  rm -f "/Applications/Fed Chairman Game.release-manifest.json" "/Applications/Fed Chairman Game.production-manifest.json"
   ditto --norsrc "$APP_OUTPUT" "/Applications/$APP_NAME"
   ditto --norsrc "$JSON_MANIFEST" "/Applications/Fed Chairman Game.release-manifest.json"
   codesign --verify --deep --strict --verbose=2 "/Applications/$APP_NAME"

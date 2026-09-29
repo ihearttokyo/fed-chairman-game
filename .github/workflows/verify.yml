@@ -7,6 +7,22 @@ on:
     branches: [main]
 
 jobs:
+  model:
+    name: Godot economic model
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install checksum-pinned Godot 4.7.2
+        run: |
+          curl --fail --location --retry 2 https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip -o "$RUNNER_TEMP/godot.zip"
+          echo "cadd3204e728a35d3f13adb7fd0d7902636b79f6b95c40c265eb73b6c35329e4  $RUNNER_TEMP/godot.zip" | sha256sum --check
+          unzip "$RUNNER_TEMP/godot.zip" -d "$RUNNER_TEMP/godot"
+          ln -s "$RUNNER_TEMP/godot/Godot_v4.7.2-stable_linux.x86_64" "$RUNNER_TEMP/godot/godot"
+          echo "$RUNNER_TEMP/godot" >> "$GITHUB_PATH"
+      - name: Model and packaging safety tests
+        run: |
+          scripts/test-model.sh
+          python3 scripts/tests/test-package-safety.py
   native:
     name: Native app checks
     runs-on: macos-latest
@@ -18,7 +34,15 @@ jobs:
         run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 
       - name: Install native tooling
-        run: brew install xcodegen swiftformat swiftlint
+        run: brew install xcodegen swiftlint
+
+      - name: Install checksum-pinned SwiftFormat 0.63.0
+        run: |
+          mkdir -p "$RUNNER_TEMP/swiftformat"
+          curl --fail --location --retry 2 https://github.com/nicklockwood/SwiftFormat/releases/download/0.63.0/swiftformat.zip -o "$RUNNER_TEMP/swiftformat.zip"
+          echo "28c7802e11fa5ae113d903066439c6bb1be20a8ac1ad9709c42616a7e273fb0f  $RUNNER_TEMP/swiftformat.zip" | shasum -a 256 --check
+          unzip "$RUNNER_TEMP/swiftformat.zip" -d "$RUNNER_TEMP/swiftformat"
+          echo "$RUNNER_TEMP/swiftformat" >> "$GITHUB_PATH"
 
       - name: Generate Xcode project
         working-directory: native/FedChairmanGame
@@ -40,9 +64,8 @@ jobs:
         working-directory: native/FedChairmanGame
         run: swift test
 
-      - name: Native UI tests
-        working-directory: native/FedChairmanGame
-        run: xcodebuild test -project FedChairmanGameNative.xcodeproj -scheme FedChairmanGameNative -destination 'platform=macOS'
+      - name: Guarded native launch smoke test
+        run: scripts/native-validation.sh ui-final
 
       - name: Local release candidate
         working-directory: native/FedChairmanGame

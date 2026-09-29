@@ -70,51 +70,49 @@ struct ChartInspectionStrip: View {
     var compact = false
 
     var body: some View {
-        Group {
-            if let inspection {
-                VStack(alignment: .leading, spacing: compact ? 0 : 5) {
-                    HStack(spacing: 10) {
-                        Text(isInspecting ? "INSPECTING" : "LATEST")
-                            .font(.caption2.weight(.black))
-                            .foregroundStyle(.green)
-                        Text(inspection.primaryLabel)
-                            .font(.system(size: 15, weight: .black, design: .rounded))
-                            .accessibilityIdentifier("chart-inspection-primary")
-                        Text(inspection.secondaryLabel)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.55))
-                        Spacer()
-                        inspectionStat("INF", inspection.inflation, .orange)
-                        inspectionStat("U", inspection.unemployment, .blue)
-                        inspectionStat("FFR", inspection.fedFunds, .green)
-                        inspectionStat("CRED", inspection.credibility, .yellow)
-                    }
-                    if !compact {
-                        HStack(spacing: 10) {
-                            Text(inspection.policy)
-                                .font(.caption2.weight(.black))
-                                .foregroundStyle(.white.opacity(0.72))
-                                .lineLimit(1)
-                                .accessibilityIdentifier("chart-inspection-policy")
-                            Text(inspection.movement)
-                                .font(.caption2)
-                                .foregroundStyle(.white.opacity(0.55))
-                                .lineLimit(1)
-                            Spacer(minLength: 0)
-                        }
-                    } else {
-                        Text(inspection.policy)
-                            .font(.system(size: 1))
-                            .foregroundStyle(.clear)
-                            .accessibilityIdentifier("chart-inspection-policy")
-                    }
+        if let inspection {
+            VStack(alignment: .leading, spacing: compact ? 0 : 5) {
+                HStack(spacing: 10) {
+                    Text(isInspecting ? "INSPECTING" : "LATEST")
+                        .font(.caption2.weight(.black))
+                        .foregroundStyle(.green)
+                    Text(inspection.primaryLabel)
+                        .font(.system(size: 15, weight: .black, design: .rounded))
+                        .accessibilityIdentifier("chart-inspection-primary")
+                    Text(inspection.secondaryLabel)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.55))
+                    Spacer()
+                    inspectionStat("INF", inspection.inflation, .orange)
+                    inspectionStat("U", inspection.unemployment, .blue)
+                    inspectionStat("FFR", inspection.fedFunds, .green)
+                    inspectionStat("CRED", inspection.credibility, .yellow)
                 }
-                .padding(.vertical, compact ? 5 : 8)
-                .padding(.horizontal, compact ? 8 : 10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.white.opacity(0.070), in: RoundedRectangle(cornerRadius: 9))
-                .overlay(RoundedRectangle(cornerRadius: 9).stroke(.white.opacity(0.16)))
+                if !compact {
+                    HStack(spacing: 10) {
+                        Text(inspection.policy)
+                            .font(.caption2.weight(.black))
+                            .foregroundStyle(.white.opacity(0.72))
+                            .lineLimit(1)
+                            .accessibilityIdentifier("chart-inspection-policy")
+                        Text(inspection.movement)
+                            .font(.caption2)
+                            .foregroundStyle(.white.opacity(0.55))
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                } else {
+                    Text(inspection.policy)
+                        .font(.system(size: 1))
+                        .foregroundStyle(.clear)
+                        .accessibilityIdentifier("chart-inspection-policy")
+                }
             }
+            .padding(.vertical, compact ? 5 : 8)
+            .padding(.horizontal, compact ? 8 : 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.white.opacity(0.070), in: RoundedRectangle(cornerRadius: 9))
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(.white.opacity(0.16)))
         }
     }
 

@@ -1,0 +1,8 @@
+; Clean-sheet economic laboratory. The legacy Swift app remains unchanged.
+config_version=5
+
+[application]
+config/name="Fed Chairman: Policy Lab"
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
