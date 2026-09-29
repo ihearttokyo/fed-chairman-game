@@ -28,3 +28,6 @@ test-results
 *.njsproj
 *.sln
 *.sw?
+
+# Godot editor/import cache; source assets and UID files remain tracked.
+game/.godot/
