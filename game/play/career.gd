@@ -54,6 +54,29 @@ func forecast(policy: Dictionary) -> Dictionary:
 		states.append(projected.duplicate(true))
 	return {"ok": true, "states": states}
 
+func review_comparison() -> Dictionary:
+	if decisions.is_empty():
+		return {"ok": false, "error": "Complete a decision before reviewing its outcome."}
+	var start := maxi(0, decisions.size() - 12)
+	var reference: Dictionary = history[start].duplicate(true)
+	var held_states: Array = []
+	for q in range(start, decisions.size()):
+		var result: Dictionary = model.step(reference, model.benchmark_policy(reference, params, "hold"), shocks[q], params)
+		if not result.ok:
+			return {"ok": false, "error": "Hold reference unavailable: " + result.error}
+		reference = result.state
+		held_states.append(reference)
+	var summaries: Array = []
+	for path in [history.slice(start + 1), held_states]:
+		var summary := {"inflation_miss": 0.0, "employment_shortfall": 0.0,
+			"credibility": path[-1].credibility, "public_support": path[-1].public_support}
+		for outcome in path:
+			summary.inflation_miss += abs(outcome.four_quarter_inflation_pct - params.inflation_target_pct) / path.size()
+			summary.employment_shortfall += max(0.0, outcome.unemployment_rate_pct - outcome.structural_unemployment_pct) / path.size()
+		summaries.append(summary)
+	return {"ok": true, "from_quarter": start, "to_quarter": decisions.size(),
+		"hold_rate": history[start].policy_rate_pct, "actual": summaries[0], "held": summaries[1]}
+
 func model_digest() -> String:
 	return (FileAccess.get_sha256("res://model/economy.gd") + FileAccess.get_sha256("res://model/parameters.json") + FileAccess.get_sha256("res://model/scenarios.json")).sha256_text()
 

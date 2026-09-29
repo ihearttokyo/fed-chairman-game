@@ -118,3 +118,28 @@ This briefing was tested in the source build, not the earlier signed ZIP. Jared
 deferred Apple account recovery and notarization; development continues without
 retrying authentication. Existing release and workbook validation gaps above
 remain open. Rollback of this addition is a revert of its isolated UI commit.
+
+## Realized policy review
+
+The 12-quarter review now reports average inflation distance and employment
+shortfall over the period, rather than only endpoint inflation movement. Its
+hold-rate reference begins at the actual period-start state, shares only the
+shocks already observed, and retains policy lags and hardship memory. It does
+not replace the player's history or combine the two mandate costs into a score.
+
+The missing comparison and missing UI explanation each produced intended RED
+failures. Career tests then verified period boundaries, exact equality for hold
+play, independent reference replay, distinct actual outcomes, state/save
+immutability and exclusion of current/future unadopted shocks. Correctness and
+Ponytail reviews passed before the broader career/chart/UI tests, 141 build
+checks and packaging guards. The model digest is unchanged.
+
+Live current-source computer use loaded the existing Q17 save, adopted seven
+decisions and inspected the Q13–Q24 review. Actual versus hold-reference average
+inflation distance was 1.124 versus 1.130 percentage points; average employment
+shortfall was 0.118 versus 0.093. Ending credibility was 66.3 versus 57.3, while
+support was 65.4 versus 65.5. The player achieved a small inflation improvement
+at an employment cost over this period; the comparison makes no optimality claim.
+The scrollable text was readable, and closing the review allowed Q25 adoption
+without a reset. No engine errors appeared, and the saved career was not
+overwritten. This is source-build evidence, not a newly signed release.

@@ -54,6 +54,34 @@ func _initialize() -> void:
 	check(loaded.load_from(path).ok and loaded.state == career.state, "replaced save replays full history")
 	check(not career.save_to(path.path_join("missing/save")).ok, "failed write reported")
 	check(loaded.load_from(path).ok and loaded.state == career.state, "failed write preserves last save")
+	check(career.has_method("review_comparison"), "completed periods expose a same-shock policy comparison")
+	if career.has_method("review_comparison"):
+		var held := Career.new()
+		held.start("supply_shock", 17)
+		check(not held.review_comparison().ok, "review requires a completed decision")
+		for q in range(24):
+			held.advance(held.model.benchmark_policy(held.state, held.params, "hold"))
+		var identical: Dictionary = held.review_comparison()
+		check(identical.ok and identical.from_quarter == 12 and identical.to_quarter == 24, "review uses only the last twelve completed quarters")
+		check(identical.actual == identical.held, "holding policy equals its same-realized-shock reference")
+		var preserved := career.encode()
+		var state_before_review: Dictionary = career.state.duplicate(true)
+		var history_before: Array = career.history.duplicate(true)
+		var result: Dictionary = career.review_comparison()
+		var baseline: Dictionary = career.history[37].duplicate(true)
+		var inflation_miss := 0.0
+		var employment_shortfall := 0.0
+		for q in range(37, 49):
+			baseline = career.model.step(baseline, career.model.benchmark_policy(baseline, career.params, "hold"), career.shocks[q], career.params).state
+			inflation_miss += abs(baseline.four_quarter_inflation_pct - career.params.inflation_target_pct) / 12.0
+			employment_shortfall += max(0.0, baseline.unemployment_rate_pct - baseline.structural_unemployment_pct) / 12.0
+		check(is_equal_approx(result.held.inflation_miss, inflation_miss) and is_equal_approx(result.held.employment_shortfall, employment_shortfall), "review reports realized path costs, not endpoint-only changes")
+		check(result.held.credibility == baseline.credibility and result.held.public_support == baseline.public_support, "review carries expectations and hardship memory through the reference")
+		check(result.actual.credibility == career.state.credibility and result.actual.public_support == career.state.public_support, "actual review ends at the player's committed outcome")
+		check(not is_equal_approx(result.actual.inflation_miss, result.held.inflation_miss), "different realized policies remain distinct in the comparison")
+		check(career.encode() == preserved and career.history == history_before and career.state == state_before_review, "review cannot mutate the career or save")
+		career.shocks[49].demand_shock_pct = 10.0
+		check(career.review_comparison() == result, "review cannot inspect the current or future unrealized briefing")
 	if failures == 0:
 		print("PASS: career progression, forecast isolation, validated lossless saves and 49-quarter continuity")
 	quit(1 if failures else 0)
