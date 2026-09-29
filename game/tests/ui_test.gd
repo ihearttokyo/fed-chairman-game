@@ -64,6 +64,8 @@ func run() -> void:
 	var review: AcceptDialog = game.get_child(game.get_child_count() - 1)
 	var review_text: Label = review.get_child(0).get_child(0)
 	check(not review_text.text.contains("employment are close"), "review cannot infer employment from the output gap")
+	check(review_text.text.contains("REALIZED PATHS") and review_text.text.contains("unemployment above structural reference"), "review exposes realized inflation and employment tradeoffs")
+	check(review_text.text.contains("already occurred") and review_text.text.contains("not a forecast"), "review distinguishes hindsight from a conditional future preview")
 	review.get_ok_button().pressed.emit()
 	await process_frame
 	game._new_dialog()

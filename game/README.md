@@ -121,6 +121,11 @@ change the career or select a policy for the player.
 
 Careers continue through 12-quarter reviews without resetting policy lags,
 expectations, hardship memory or charts. The local career limit is 240 quarters.
+Each review compares realized average inflation distance and unemployment above
+the structural reference, plus ending credibility and support, against holding
+the period's initial rate. Both paths begin at the same state and use the same
+already-realized shocks. This hindsight comparison is not the forward preview
+or an optimal-policy score; it makes the period's tradeoffs inspectable.
 Save and Load use separate `FedChairmanPolicyLab` user storage and never touch the
 Swift game's saves. Native-value serialization preserves floating-point inputs
 exactly; loading validates every shock and replays decisions in isolation before

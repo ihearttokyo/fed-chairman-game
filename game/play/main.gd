@@ -441,10 +441,16 @@ func _new_dialog() -> void:
 
 func _review() -> void:
 	var s: Dictionary = career.state
-	var start: Dictionary = career.history[maxi(0, career.history.size() - 13)]
-	var improvement: float = abs(start.four_quarter_inflation_pct - 2) - abs(s.four_quarter_inflation_pct - 2)
-	var direction := "narrowed" if improvement >= 0 else "widened"
-	_text_dialog("Your 12-quarter policy review", "Distance from the 2%% inflation target %s by %.2f percentage points over this review period.\n\nCurrent inflation %.2f%%; unemployment %.2f%%; output gap %+.2f%%.\nCredibility %.0f/100; public support %.0f/100.\n\n%s\n\nThere is no dismissal threshold. Continue the recovery: credibility and public forgiveness are gradual, and earlier rate decisions keep working after this review." % [direction, abs(improvement), s.four_quarter_inflation_pct, s.unemployment_rate_pct, s.output_gap_pct, s.credibility * 100, s.public_support, "Inflation and output are close to their references. Try maintaining that balance." if abs(s.four_quarter_inflation_pct - 2) < 0.75 and abs(s.output_gap_pct) < 1 else "The economy still needs work. Judge the direction and costs of your policy, not a single quarter."])
+	var compared: Dictionary = career.review_comparison()
+	if not compared.ok:
+		_text_dialog("Policy review", compared.error)
+		return
+	var actual: Dictionary = compared.actual
+	var held: Dictionary = compared.held
+	var text := "REALIZED PATHS / Q%d–Q%d\nYOUR POLICY vs HOLD REFERENCE\n\nAverage absolute distance from 2%% inflation: %.3f vs %.3f pp\nAverage unemployment above structural reference: %.3f vs %.3f pp\nEnding credibility: %.1f vs %.1f / 100\nEnding public support: %.1f vs %.1f / 100\n\n" % [compared.from_quarter + 1, compared.to_quarter, actual.inflation_miss, held.inflation_miss, actual.employment_shortfall, held.employment_shortfall, 100 * actual.credibility, 100 * held.credibility, actual.public_support, held.public_support]
+	text += "Both paths start at your actual Q%d state and use only shocks that already occurred. The reference holds %.2f%%, guides to that rate with data dependence, and makes no new asset flows or loans. Existing stocks, loans, expectations and policy lags carry forward. This is a hindsight comparison, not a forecast or proof of optimal policy.\n\n" % [compared.from_quarter, compared.hold_rate]
+	text += "Lower average inflation distance and employment shortfall mean lower costs on those measures. There is no single combined score: reducing one cost can increase the other. Structural unemployment is a model assumption, not a known real-world employment target.\n\nCurrent inflation %.2f%%; unemployment %.2f%%; output gap %+.2f%%.\n\nThere is no dismissal threshold. Credibility and public forgiveness are gradual, and earlier decisions keep working after this review." % [s.four_quarter_inflation_pct, s.unemployment_rate_pct, s.output_gap_pct]
+	_text_dialog("Your 12-quarter policy review", text)
 
 func _journal() -> void:
 	var text := "%s · seed %d\nRates and changes are percentage units. Asset and lending flows use %% of initial annual GDP.\n\n" % [career.cases[career.scenario_id].label, career.seed_value]
