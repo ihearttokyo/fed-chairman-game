@@ -125,19 +125,36 @@ and CI do not need Blender. Art source is excluded from runtime imports. Animati
 is off by default, controls expose accessibility labels, and the journal supplies
 exact chart values. Engine and component notices are available under Credits.
 
-## Local export gate
+## Apple Silicon release
 
-Install the official Godot 4.7.2 macOS export template, then use the
-`macOS local candidate` preset. It exports a universal, ad-hoc-signed application.
-That signature is for local validation; it is not Developer ID notarization or a
-store release. Plaintext scripts are deliberately included so the economic model
-remains inspectable and save fingerprints survive export.
+The shipping target is Apple Silicon (ARM64), not Intel. Godot's official 4.7.2
+macOS template is universal; the `macOS universal staging` preset is an
+intermediate, not a distributable release. The packager removes the Intel slice
+with Apple's `lipo`, then signs the ARM64 application with the supplied Developer
+ID identity. No custom engine or export template is needed. This follows the
+[Godot architecture contract](https://docs.godotengine.org/en/4.7/classes/class_editorexportplatformmacos.html#class-editorexportplatformmacos-property-binary-format-architecture).
+
+Install that official template, then run from the repository root on macOS:
+
+```sh
+scripts/package-game.sh "$HOME/.cache/fed-chairman-builds/NEW_RELEASE" \
+  'Developer ID Application: YOUR NAME (TEAM_ID)' TEAM_ID
+```
+
+The destination must not exist. The script retains the app, export log,
+verification log and ZIP. It checks ARM64-only native code, Developer ID team,
+hardened runtime, secure timestamp and strict bundle integrity before packaging.
+Signing uses the existing Keychain identity; no credentials belong in this repo.
+Apple notarization and store publication are separate actions. A Developer ID
+signature alone does not establish notarization or Gatekeeper acceptance.
 
 Stage unpacked apps outside cloud-synced folders: a File Provider may attach
-Finder metadata that invalidates strict bundle verification. Verify the generated
-ZIP and its extracted app without stripping quarantine or weakening Gatekeeper.
-The final shipping build still requires release review and authorized signing and
-notarization. Run the actual exported executable with `--headless -- --verify-build`
-for 141 release-safe resource, career and replay checks. This fixed self-check
-needs no external script or path override; the official template's restriction
-on such overrides stays enabled.
+Finder metadata that invalidates strict bundle verification. Do not strip
+quarantine or weaken Gatekeeper. Plaintext scripts remain included so the model
+is inspectable and save fingerprints survive export.
+
+The actual release executable's `--headless -- --verify-build` entry point runs
+141 resource, career and replay checks without external scripts or path
+overrides. The release verifier also runs that self-check. Linux CI validates
+source behavior; it does not build or distribute an Intel Mac game. Intel
+hardware testing is not a release gate for this ARM64-only product.

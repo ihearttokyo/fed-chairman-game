@@ -33,8 +33,8 @@ component copyright/license texts are available under Credits.
 
 ## Export evidence
 
-The universal macOS candidate uses the official checksum-verified 4.7.2 template.
-The final local ZIP SHA-256 is:
+The earlier universal macOS candidate used the official checksum-verified 4.7.2 template.
+Its historical local ZIP SHA-256 is:
 
 ```text
 2855f81ca43b6e3fcb59a9b52190924f309530c2ed57cd7f2e7574c4645969fc
@@ -77,6 +77,19 @@ accessibility lookup; that is not a passing native release gate. The native
 workflow remains intact. Godot checks have their own all-PR workflow so stacked
 game changes can be validated without repeating unchanged legacy UI automation.
 
-Developer ID signing, notarization and store publication have not occurred.
+The September 30 Apple Silicon candidate is ARM64-only and signed with Jared's
+Developer ID Application identity, team 4QUZHBXSVT. Strict signature verification,
+hardened runtime, secure timestamp and all 141 release checks passed. The same
+architecture assertion first rejected the earlier universal candidate.
+
+Live computer use against the signed app loaded the saved quarter-17 career,
+staged the staff rate and adopted quarter 18 with the correct 5.22 percent limit.
+The city, charts, labels and outcome feedback were visually inspected at the
+current window size. Source and bundle hashes were recorded before interaction.
+No gameplay source changed during the packaging correction.
+
+Apple rejected the existing stored notarization credential before accepting an
+upload. A working credential is required; no security bypass or store publication
+occurred. Intel hardware validation is not a gate for the ARM64-only release.
 Rollback is a revert of the isolated playable-game commit; no legacy save
 migration or replacement installation is included.
