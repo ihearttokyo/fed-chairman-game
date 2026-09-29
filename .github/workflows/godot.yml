@@ -1,0 +1,31 @@
+name: Verify Godot Policy Lab
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  model:
+    name: Godot economic model
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install checksum-pinned Godot 4.7.2
+        run: |
+          curl --fail --location --retry 2 https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip -o "$RUNNER_TEMP/godot.zip"
+          echo "cadd3204e728a35d3f13adb7fd0d7902636b79f6b95c40c265eb73b6c35329e4  $RUNNER_TEMP/godot.zip" | sha256sum --check
+          unzip "$RUNNER_TEMP/godot.zip" -d "$RUNNER_TEMP/godot"
+          ln -s "$RUNNER_TEMP/godot/Godot_v4.7.2-stable_linux.x86_64" "$RUNNER_TEMP/godot/godot"
+          echo "$RUNNER_TEMP/godot" >> "$GITHUB_PATH"
+      - name: Model and packaging safety tests
+        run: |
+          scripts/test-model.sh
+          python3 scripts/tests/test-package-safety.py
+      - name: Import and test playable Godot game
+        run: |
+          godot --headless --editor --path game --import
+          scripts/test-game.sh
+          godot --headless --path game --quit-after 600 -- --verify-build 2>&1 | tee "$RUNNER_TEMP/game-check.log"
+          ! grep -Eq 'SCRIPT ERROR:|ERROR:|FAIL:' "$RUNNER_TEMP/game-check.log"
+          grep -q 'PASS: 141 release-safe checks' "$RUNNER_TEMP/game-check.log"

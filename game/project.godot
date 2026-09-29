@@ -2,7 +2,22 @@
 config_version=5
 
 [application]
-config/name="Fed Chairman: Policy Lab"
+config/name="The Chair — Federal Reserve Policy Lab"
+config/icon="res://assets/icon.svg"
+run/main_scene="res://main.tscn"
+config/use_custom_user_dir=true
+config/custom_user_dir_name="FedChairmanPolicyLab"
+
+[display]
+window/size/viewport_width=1440
+window/size/viewport_height=960
+window/size/window_width_override=1440
+window/size/window_height_override=960
+window/stretch/mode="canvas_items"
+
+[accessibility]
+general/accessibility_support=1
 
 [rendering]
 renderer/rendering_method="gl_compatibility"
+textures/vram_compression/import_etc2_astc=true

@@ -1,7 +1,7 @@
 # Policy Lab economic core
 
-This directory holds the clean-sheet Godot simulation. The playable game and
-formula workbook are still being built. The original Swift app and its saves
+This directory holds the clean-sheet Godot game and its deterministic economic
+core. The current build is a local pre-release candidate. The original Swift app and its saves
 remain separate. Start with the [research](../docs/FED_RESEARCH.md) and
 [acceptance contract](../docs/MODEL_CONTRACT.md) for scope and evidence limits.
 
@@ -10,6 +10,8 @@ remain separate. Start with the [research](../docs/FED_RESEARCH.md) and
 Use Godot 4.7.2 and run from the repository root:
 
 ```sh
+godot --path game
+scripts/test-game.sh
 scripts/test-model.sh
 scripts/test-model.sh --boundaries-only
 scripts/test-model.sh --impulse-only
@@ -100,3 +102,42 @@ are disclosed design assumptions. This is an auditable research-informed game
 model, with no FRB/US equivalence, empirical confidence interval or forecasting
 claim. Workbook parity, playtesting and production exports remain separate
 release gates.
+
+## Playable career
+
+Choose one of six scenarios, inspect the current meeting dispatch and stage a
+rate, guidance, asset-flow and lending decision. The preview uses the known
+current shock, then assumes no new shocks and holds the rate for eight quarters.
+It cannot read the realized future shock path. The staff rate rule is a disclosed
+benchmark rather than an optimal-play recommendation.
+
+Careers continue through 12-quarter reviews without resetting policy lags,
+expectations, hardship memory or charts. The local career limit is 240 quarters.
+Save and Load use separate `FedChairmanPolicyLab` user storage and never touch the
+Swift game's saves. Native-value serialization preserves floating-point inputs
+exactly; loading validates every shock and replays decisions in isolation before
+replacing the active state. Model-version mismatches are refused rather than
+silently migrated. Save is a single explicit slot, replaced only when selected.
+
+The original city is authored by `art/build_city.py`; its editable `.blend` source
+is retained beside the script. The game loads `assets/policy_city.glb`, so players
+and CI do not need Blender. Art source is excluded from runtime imports. Animation
+is off by default, controls expose accessibility labels, and the journal supplies
+exact chart values. Engine and component notices are available under Credits.
+
+## Local export gate
+
+Install the official Godot 4.7.2 macOS export template, then use the
+`macOS local candidate` preset. It exports a universal, ad-hoc-signed application.
+That signature is for local validation; it is not Developer ID notarization or a
+store release. Plaintext scripts are deliberately included so the economic model
+remains inspectable and save fingerprints survive export.
+
+Stage unpacked apps outside cloud-synced folders: a File Provider may attach
+Finder metadata that invalidates strict bundle verification. Verify the generated
+ZIP and its extracted app without stripping quarantine or weakening Gatekeeper.
+The final shipping build still requires release review and authorized signing and
+notarization. Run the actual exported executable with `--headless -- --verify-build`
+for 141 release-safe resource, career and replay checks. This fixed self-check
+needs no external script or path override; the official template's restriction
+on such overrides stays enabled.
