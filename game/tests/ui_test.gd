@@ -129,7 +129,7 @@ func check_pending_policy(game: Control) -> void:
 				await process_frame
 				await process_frame
 				var comparison: AcceptDialog = game.get_child(game.get_child_count() - 1)
-				var report: Label = comparison.get_child(0).get_child(0)
+				var report: RichTextLabel = comparison.find_children("*", "RichTextLabel", true, false)[0]
 				check(game._policy() == expected and report.text.contains(descriptions[index]), "Compare submits pending %s without Return" % keys[index])
 				check(edit.text.to_float() == values[index], "Compare visibly normalizes bounded native input")
 				check(game.forecast_label.text.contains("Rate %.2f%%" % projected.states[0].policy_rate_pct) and game.career.encode() == preserved, "Compare refreshes applied preview without changing the career")
@@ -186,10 +186,66 @@ func check_review_access(game: Control) -> void:
 		await process_frame
 		check(game.career.encode() == preserved and game._policy() == staged, "opening and closing realized review preserves career and controls")
 	game._start_career("supply_shock", 1)
+func check_comparison_navigation(game: Control) -> void:
+	var destinations := [["Meeting", "CURRENT MEETING /"], ["Guidance", "GUIDANCE /"], ["Scores", "Q+1 / WHY"], ["Forecasts", "CURRENT TRANSMISSION /"], ["Tools", "ONE-CONTROL CONTRASTS /"], ["Limits", "REFERENCE AND LIMITS"]]
+	for case_id in ["funding_stress", "base"]:
+		game._start_career(case_id, 11)
+		if case_id == "funding_stress":
+			for q in range(4):
+				game.career.advance(game.career.model.benchmark_policy(game.career.state, game.career.params, "hold"))
+			game._refresh(true)
+			game.rate.value = 8.0
+			game.guidance.value = 8.0
+			game.assets.value = 2.0
+			game.liquidity.value = 5.0
+		await process_frame
+		var preserved: PackedByteArray = game.career.encode()
+		var staged: Dictionary = game._policy()
+		var expected: String = game._decision_briefing()
+		game._compare()
+		await process_frame
+		await process_frame
+		var dialog: AcceptDialog = game.get_child(game.get_child_count() - 1)
+		var choosers := dialog.find_children("*", "OptionButton", true, false)
+		var bodies := dialog.find_children("*", "RichTextLabel", true, false)
+		check(choosers.size() == 1 and bodies.size() == 1, "comparison provides native section navigation and a selectable complete report")
+		if choosers.size() == 1 and bodies.size() == 1:
+			var chooser: OptionButton = choosers[0]
+			var body: RichTextLabel = bodies[0]
+			check(body.text == expected and body.get_parsed_text() == expected, "section navigation preserves every report byte and warning")
+			check(body.selection_enabled and body.focus_mode == Control.FOCUS_ALL, "comparison report supports native text selection and keyboard focus")
+			check(chooser.accessibility_name == "Comparison section" and chooser.item_count == destinations.size(), "section chooser has a distinct accessible name and all six destinations")
+			for index in range(mini(chooser.item_count, destinations.size())):
+				check(chooser.get_item_text(index) == destinations[index][0], "comparison sections retain their named order")
+				var paragraph := expected.substr(0, expected.find(destinations[index][1])).count("\n")
+				chooser.select(index)
+				chooser.item_selected.emit(index)
+				await process_frame
+				var position: float = body.get_paragraph_offset(paragraph) - body.get_v_scroll_bar().value
+				check(position >= -1 and position < body.size.y - body.get_theme_font("normal_font").get_height(), "selecting %s brings its actual heading into view" % destinations[index][0])
+				check(chooser.get_global_rect().end.y <= body.get_global_rect().position.y and chooser.is_visible_in_tree(), "section navigation remains above the scrolling report")
+			check(game.career.encode() == preserved and game._policy() == staged, "section changes cannot mutate the career or staged decision")
+			body.select_all()
+			check(body.get_selected_text() == expected, "the full comparison remains available to native selection")
+		dialog.get_ok_button().pressed.emit()
+		check(dialog.visible and dialog.is_queued_for_deletion(), "comparison navigation preserves deferred accessibility closing")
+		await process_frame
+		game._compare()
+		await process_frame
+		await process_frame
+		var reopened: AcceptDialog = game.get_child(game.get_child_count() - 1)
+		var reset_bodies := reopened.find_children("*", "RichTextLabel", true, false)
+		if reset_bodies.size() == 1:
+			check(reset_bodies[0].get_v_scroll_bar().value == 0, "reopening comparison starts at the meeting rather than a stale section")
+		reopened.get_ok_button().pressed.emit()
+		await process_frame
+		check(game.career.encode() == preserved and game._policy() == staged, "closing and reopening comparison preserves the unsaved decision")
+	game._start_career("supply_shock", 1)
 func run() -> void:
 	var game = load("res://main.tscn").instantiate()
 	root.add_child(game)
 	await process_frame
+	await check_comparison_navigation(game)
 	await check_pending_policy(game)
 	await check_review_access(game)
 	check_custom_guidance(game)
