@@ -141,6 +141,14 @@ distance, prior-promise follow-through, current hardship and remembered hardship
 for both paths. The stance rule and score weights are disclosed game assumptions,
 not an optimal policy or a measured institutional reputation. The briefing does
 not change the career or select a policy for the player.
+Four one-control contrasts also show how the staged rate, guidance quote, asset
+flow and lending differ from changing only that input. The rate alternative
+requests today's rate; the guidance alternative quotes the selected applied rate
+while retaining the staged conditions; the other alternatives request zero new
+flow or loans. Q+1 yield/spread and Q+8 inflation, employment, credibility and
+support differences come from the same model forecasts. They are conditional,
+nonadditive contrasts, including legitimate zero effects for unused or constrained
+tools, rather than an attribution of measured U.S. policy effects.
 
 Careers continue through 12-quarter reviews without resetting policy lags,
 expectations, hardship memory or charts. The local career limit is 240 quarters.

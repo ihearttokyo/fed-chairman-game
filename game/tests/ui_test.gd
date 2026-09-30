@@ -207,6 +207,24 @@ func run() -> void:
 		check(report.contains("Requested rate 8.00%"), "briefing shows the requested instrument")
 		check(report.contains("Applied rate %.2f%%" % selected.states[0].policy_rate_pct), "briefing shows actual capped rate")
 		check(report.contains("Applied lending %.2f" % selected.states[0].liquidity_applied_pct_initial_gdp), "briefing shows collateral-constrained lending")
+		check(report.contains("ONE-CONTROL CONTRASTS / SELECTED MINUS ALTERNATIVE"), "comparison isolates staged tools")
+		var alternatives := [
+			["Rate / alternative request today's rate", "policy_rate_request_pct", game.career.state.policy_rate_pct, "%"],
+			["Guidance quote / alternative quote applied rate", "guidance_rate_pct", selected.states[0].policy_rate_pct, "%"],
+			["Asset flow / alternative no new flow", "asset_flow_request_pct_initial_gdp", 0.0, "% of initial annual GDP"],
+			["Lending / alternative no new loans", "liquidity_request_pct_initial_gdp", 0.0, "% of initial annual GDP"],
+		]
+		for alternative in alternatives:
+			var other: Dictionary = game._policy().duplicate()
+			other[alternative[1]] = alternative[2]
+			var path: Dictionary = game.career.forecast(other)
+			var first: Dictionary = selected.states[0]
+			var last: Dictionary = selected.states[7]
+			var reference_first: Dictionary = path.states[0]
+			var reference_last: Dictionary = path.states[7]
+			var row := "%s: %.2f%s\nQ+1 long yield %+.3f pp; credit spread %+.3f pp\nQ+8 inflation %+.3f pp; unemployment %+.3f pp; credibility %+.2f points; support %+.2f points" % [alternative[0], alternative[2], alternative[3], first.long_yield_pct - reference_first.long_yield_pct, first.credit_spread_pct - reference_first.credit_spread_pct, last.four_quarter_inflation_pct - reference_last.four_quarter_inflation_pct, last.unemployment_rate_pct - reference_last.unemployment_rate_pct, 100 * (last.credibility - reference_last.credibility), last.public_support - reference_last.public_support]
+			check(report.contains(row), "named tool contrast matches its real one-input alternative at both horizons")
+		check(report.contains("only its named input") and report.contains("not additive") and report.contains("conditional coefficients unchanged"), "tool contrasts disclose matched controls and interpretation limits")
 		check(report.contains("Inflation %+.3f pp" % (selected.states[7].four_quarter_inflation_pct - held.states[7].four_quarter_inflation_pct)), "comparison uses the actual paired Q8 paths")
 		check(report.contains("Credibility %.1f vs %.1f" % [100 * selected.states[7].credibility, 100 * held.states[7].credibility]), "comparison exposes credibility consequences")
 		for staged_rate in [8.0, game.career.state.policy_rate_pct]:
@@ -235,6 +253,8 @@ func run() -> void:
 		comparison.get_ok_button().pressed.emit()
 		await process_frame
 		game._start_career("supply_shock", 1)
+		var neutral_report: String = game._decision_briefing()
+		check(neutral_report.count("Q+1 long yield +0.000 pp; credit spread +0.000 pp") == 4 and neutral_report.count("Q+8 inflation +0.000 pp; unemployment +0.000 pp; credibility +0.00 points; support +0.00 points") == 4, "unused-tool contrasts truthfully report zero effect")
 	game.rate.value = 4.25
 	game.guidance.value = 4.25
 	await process_frame # SpinBox updates its visible text on the next frame.
