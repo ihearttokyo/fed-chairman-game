@@ -71,7 +71,7 @@ func _ready() -> void:
 	var cards := HBoxContainer.new()
 	cards.add_theme_constant_override("separation", 12)
 	root.add_child(cards)
-	for heading in ["INFLATION", "EMPLOYMENT", "CREDIBILITY", "PUBLIC SUPPORT"]:
+	for heading in ["INFLATION", "UNEMPLOYMENT", "CREDIBILITY", "PUBLIC SUPPORT"]:
 		var panel := _panel(cards)
 		panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var box := _vbox(panel, 5)
@@ -99,7 +99,7 @@ func _ready() -> void:
 		var chart := Chart.new()
 		chart.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		if n == 1:
-			chart.heading = "EMPLOYMENT & STRUCTURAL REFERENCE"
+			chart.heading = "UNEMPLOYMENT & STRUCTURAL REFERENCE"
 			chart.keys = ["unemployment_rate_pct", "structural_unemployment_pct"]
 			chart.labels = ["Unemployment", "Structural reference"]
 		chart_row.add_child(chart)
