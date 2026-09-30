@@ -25,7 +25,13 @@ func check_persistent_actions(game: Control) -> void:
 				check(not ancestor is ScrollContainer, "policy actions remain outside the scrolling cockpit")
 				ancestor = ancestor.get_parent()
 	check(actions.size() == 2, "comparison and adoption each have one action")
+	var feedback_ancestor: Node = game.status_label.get_parent()
+	while feedback_ancestor != game:
+		check(not feedback_ancestor is ScrollContainer, "career status remains outside the scrolling cockpit")
+		feedback_ancestor = feedback_ancestor.get_parent()
 	var original_size := root.size
+	var original_status: String = game.status_label.text
+	game._staff_rule()
 	game.commitment.select(2)
 	game.commitment.item_selected.emit(2)
 	for dimensions in [original_size, Vector2i(1180, 700)]:
@@ -34,7 +40,9 @@ func check_persistent_actions(game: Control) -> void:
 		await process_frame
 		for button in actions:
 			check(button.get_global_rect().position.y >= 0 and button.get_global_rect().end.y <= game.get_viewport_rect().end.y, "expanded guidance keeps actions within the viewport")
+		check(game.status_label.get_global_rect().position.y >= 0 and game.status_label.get_global_rect().end.y <= game.get_viewport_rect().end.y, "long staff feedback remains within the viewport with expanded guidance")
 	root.size = original_size
+	game.status_label.text = original_status
 	game.commitment.select(0)
 	game.commitment.item_selected.emit(0)
 	await process_frame

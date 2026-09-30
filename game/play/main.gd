@@ -55,6 +55,10 @@ func _ready() -> void:
 	actions.alignment = BoxContainer.ALIGNMENT_END
 	actions.add_theme_constant_override("separation", 12)
 	action_margin.add_child(actions)
+	status_label = _label(actions, "", 13, MUTED)
+	status_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	status_label.accessibility_live = AccessibilityServer.LIVE_POLITE
 	var margin := MarginContainer.new()
 	margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	for side in ["left", "top", "right", "bottom"]:
@@ -104,8 +108,6 @@ func _ready() -> void:
 	consequence.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	consequence.accessibility_live = AccessibilityServer.LIVE_POLITE
 	_build_policy(body, actions)
-	status_label = _label(root, "", 13, MUTED)
-	status_label.accessibility_live = AccessibilityServer.LIVE_POLITE
 	_label(root, "A research-informed strategy game. Hypothetical economy, disclosed design coefficients. No Federal Reserve affiliation.", 11, MUTED)
 	_start_career("supply_shock", 1)
 	if "--verify-build" in OS.get_cmdline_user_args():
