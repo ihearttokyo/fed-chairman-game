@@ -38,9 +38,23 @@ func _ready() -> void:
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(background)
+	var layout := VBoxContainer.new()
+	layout.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	layout.add_theme_constant_override("separation", 0)
+	add_child(layout)
 	var scroll := ScrollContainer.new()
-	scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(scroll)
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	layout.add_child(scroll)
+	var action_margin := MarginContainer.new()
+	for side in ["left", "right"]:
+		action_margin.add_theme_constant_override("margin_" + side, 24)
+	action_margin.add_theme_constant_override("margin_top", 8)
+	action_margin.add_theme_constant_override("margin_bottom", 16)
+	layout.add_child(action_margin)
+	var actions := HBoxContainer.new()
+	actions.alignment = BoxContainer.ALIGNMENT_END
+	actions.add_theme_constant_override("separation", 12)
+	action_margin.add_child(actions)
 	var margin := MarginContainer.new()
 	margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	for side in ["left", "top", "right", "bottom"]:
@@ -89,7 +103,7 @@ func _ready() -> void:
 	consequence = _label(left, "", 14, MINT)
 	consequence.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	consequence.accessibility_live = AccessibilityServer.LIVE_POLITE
-	_build_policy(body)
+	_build_policy(body, actions)
 	status_label = _label(root, "", 13, MUTED)
 	status_label.accessibility_live = AccessibilityServer.LIVE_POLITE
 	_label(root, "A research-informed strategy game. Hypothetical economy, disclosed design coefficients. No Federal Reserve affiliation.", 11, MUTED)
@@ -257,7 +271,7 @@ func _spin(parent: Node, title: String, low: float, high: float, step_size: floa
 	row.add_child(input)
 	return input
 
-func _build_policy(parent: Node) -> void:
+func _build_policy(parent: Node, actions: Node) -> void:
 	var panel := _panel(parent)
 	panel.custom_minimum_size.x = 380
 	var box := _vbox(panel, 13)
@@ -285,9 +299,9 @@ func _build_policy(parent: Node) -> void:
 	forecast_label = _label(box, "", 13, MINT)
 	forecast_label.custom_minimum_size.y = 114
 	forecast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_button(box, "Compare policy paths", func(): _text_dialog("Compare policy paths", _decision_briefing()))
-	decision_button = _button(box, "Adopt decision  →  Next quarter", _advance)
-	decision_button.custom_minimum_size.y = 48
+	_button(actions, "Compare policy paths", func(): _text_dialog("Compare policy paths", _decision_briefing()))
+	decision_button = _button(actions, "Adopt decision  →  Next quarter", _advance)
+	decision_button.custom_minimum_size = Vector2(380, 48)
 	var explanation := _label(box, "Preview: this decision, then hold the rate for eight quarters. No new future shocks. This is a conditional path, not a confidence interval.", 11, MUTED)
 	explanation.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
