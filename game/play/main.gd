@@ -299,7 +299,7 @@ func _build_policy(parent: Node, actions: Node) -> void:
 	forecast_label = _label(box, "", 13, MINT)
 	forecast_label.custom_minimum_size.y = 114
 	forecast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_button(actions, "Compare policy paths", func(): _text_dialog("Compare policy paths", _decision_briefing()))
+	_button(actions, "Compare policy paths", _compare)
 	decision_button = _button(actions, "Adopt decision  →  Next quarter", _advance)
 	decision_button.custom_minimum_size = Vector2(380, 48)
 	var explanation := _label(box, "Preview: this decision, then hold the rate for eight quarters. No new future shocks. This is a conditional path, not a confidence interval.", 11, MUTED)
@@ -310,6 +310,18 @@ func _policy() -> Dictionary:
 		"guidance_inflation_sensitivity": inflation_response.value if commitment.selected == 2 else (career.params.policy_inflation_response if commitment.selected == 0 else 0.0),
 		"guidance_output_gap_sensitivity": activity_response.value if commitment.selected == 2 else (career.params.policy_output_gap_response if commitment.selected == 0 else 0.0),
 		"asset_flow_request_pct_initial_gdp": assets.value, "liquidity_request_pct_initial_gdp": liquidity.value}
+
+func _apply_policy_inputs() -> void:
+	loading_controls = true
+	for input in [rate, guidance, assets, liquidity, inflation_response, activity_response]:
+		if input.get_line_edit().has_focus():
+			input.apply()
+	loading_controls = false
+
+func _compare() -> void:
+	_apply_policy_inputs()
+	_preview()
+	_text_dialog("Compare policy paths", _decision_briefing())
 
 func _guidance_controls() -> void:
 	custom_guidance.visible = commitment.selected == 2
@@ -419,6 +431,7 @@ func _staff_rule() -> void:
 	status_label.text = "Staff benchmark selected. This simple rule is a comparison, not an optimal policy. Other tools are unchanged."
 
 func _advance() -> void:
+	_apply_policy_inputs()
 	var before: Dictionary = career.state.duplicate(true)
 	var result: Dictionary = career.advance(_policy())
 	if not result.ok:

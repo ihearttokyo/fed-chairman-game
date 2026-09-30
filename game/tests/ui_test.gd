@@ -92,6 +92,46 @@ func check_custom_guidance(game: Control) -> void:
 	game._advance()
 	check(game._decision_briefing().contains("outside this meeting's feasible rate range"), "comparison warns when an earlier pledge cannot be delivered")
 	game._start_career("supply_shock", 1)
+func check_pending_policy(game: Control) -> void:
+	var fields := [game.rate, game.guidance, game.assets, game.liquidity, game.inflation_response, game.activity_response]
+	var keys := ["policy_rate_request_pct", "guidance_rate_pct", "asset_flow_request_pct_initial_gdp", "liquidity_request_pct_initial_gdp", "guidance_inflation_sensitivity", "guidance_output_gap_sensitivity"]
+	var texts := ["8.00", "7.25", "1.25", "2.50", "9.00", "-0.25"]
+	var values := [8.0, 7.25, 1.25, 2.5, 2.0, -0.25]
+	var descriptions := ["Requested rate 8.00%", "New quote 7.25%", "Requested assets +1.25", "Requested lending 2.50", "inflation response 2.00", "output-gap response -0.25"]
+	for compare in [true, false]:
+		for index in range(fields.size()):
+			game._start_career("base", 41)
+			game.commitment.select(2)
+			game.commitment.item_selected.emit(2)
+			await process_frame
+			await process_frame
+			var prior: Dictionary = game._policy()
+			var preserved: PackedByteArray = game.career.encode()
+			var edit: LineEdit = fields[index].get_line_edit()
+			edit.grab_focus()
+			edit.text = texts[index]
+			check(edit.has_focus() and game._policy() == prior, "pending focused text leaves the preview policy uncommitted")
+			var expected: Dictionary = prior.duplicate()
+			expected[keys[index]] = values[index]
+			var projected: Dictionary = game.career.forecast(expected)
+			if compare:
+				for button in game.find_children("*", "Button", true, false):
+					if button.text == "Compare policy paths":
+						button.pressed.emit()
+				await process_frame
+				await process_frame
+				var comparison: AcceptDialog = game.get_child(game.get_child_count() - 1)
+				var report: Label = comparison.get_child(0).get_child(0)
+				check(game._policy() == expected and report.text.contains(descriptions[index]), "Compare submits pending %s without Return" % keys[index])
+				check(edit.text.to_float() == values[index], "Compare visibly normalizes bounded native input")
+				check(game.forecast_label.text.contains("Rate %.2f%%" % projected.states[0].policy_rate_pct) and game.career.encode() == preserved, "Compare refreshes applied preview without changing the career")
+				comparison.get_ok_button().pressed.emit()
+				await process_frame
+			else:
+				game.decision_button.pressed.emit()
+				check(game.career.decisions[0] == expected, "Adopt submits pending %s without Compare or Return" % keys[index])
+				check(game.career.state == projected.states[0], "pending adoption matches the real model forecast")
+	game._start_career("supply_shock", 1)
 func check_review_access(game: Control) -> void:
 	for quarters in [0, 1, 13]:
 		game._start_career("base", 41)
@@ -142,6 +182,7 @@ func run() -> void:
 	var game = load("res://main.tscn").instantiate()
 	root.add_child(game)
 	await process_frame
+	await check_pending_policy(game)
 	await check_review_access(game)
 	check_custom_guidance(game)
 	await check_persistent_actions(game)
