@@ -116,6 +116,8 @@ benchmark rather than an optimal-play recommendation.
 Comparison and adoption stay in the bottom action bar while the cockpit scrolls.
 Expanding custom guidance keeps both actions available without hiding any policy
 tool, unit, preview assumption or outcome from the scrollable content.
+Both actions submit the field currently being edited, so a valid typed decision
+does not require a separate Return keystroke. Native input bounds still apply.
 
 Guidance can use the existing data-dependent preset, a firm pledge, or custom
 responses to changes in four-quarter inflation and the output gap. Custom
