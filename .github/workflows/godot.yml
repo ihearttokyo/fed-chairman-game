@@ -23,9 +23,10 @@ jobs:
           scripts/test-model.sh
           python3 scripts/tests/test-package-safety.py
       - name: Import and test playable Godot game
+        shell: bash
         run: |
           godot --headless --editor --path game --import
           scripts/test-game.sh
           godot --headless --path game --quit-after 600 -- --verify-build 2>&1 | tee "$RUNNER_TEMP/game-check.log"
-          ! grep -Eq 'SCRIPT ERROR:|ERROR:|FAIL:' "$RUNNER_TEMP/game-check.log"
+          if grep -Eq 'SCRIPT ERROR:|ERROR:|FAIL:' "$RUNNER_TEMP/game-check.log"; then exit 1; fi
           grep -q 'PASS: 141 release-safe checks' "$RUNNER_TEMP/game-check.log"

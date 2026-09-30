@@ -15,7 +15,7 @@ out="$(cd "$1" && pwd)"
 cd "$(dirname "$0")/.."
 app="$out/The Chair — Federal Reserve Policy Lab.app"
 godot --headless --path game --export-release 'macOS universal staging' "$app" 2>&1 | tee "$out/export.log"
-! grep -Eq 'SCRIPT ERROR:|ERROR:|FAIL:' "$out/export.log"
+if grep -Eq 'SCRIPT ERROR:|ERROR:|FAIL:' "$out/export.log"; then exit 1; fi
 binary="$app/Contents/MacOS/The Chair — Federal Reserve Policy Lab"
 lipo "$binary" -thin arm64 -output "$binary"
 python3 - "$app/Contents/Info.plist" <<'PY'
