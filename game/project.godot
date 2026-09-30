@@ -1,4 +1,4 @@
-; Clean-sheet economic laboratory. The legacy Swift app remains unchanged.
+; Sole maintained game frontend. Installed legacy apps and saves remain separate.
 config_version=5
 
 [application]

@@ -1,5 +1,10 @@
 # Economic Model Rationale
 
+Historical rationale for the retired Swift implementation, retained as a research
+record. It does not describe the current Godot equations or release behavior.
+Use [game/README.md](../game/README.md) and the [current acceptance
+contract](MODEL_CONTRACT.md) for the maintained model.
+
 ## Purpose and standard of interpretation
 
 Fed Chairman Game is a directional pedagogical simulation, not a structural macroeconomic model, policy recommendation, point forecast, or estimate of the effect of any real Federal Open Market Committee decision. Its mechanics preserve a small set of economically recognizable signs and tradeoffs so that a player can reason about policy under uncertainty. Numerical outcomes are game calibration. They should be read as internally consistent comparisons, not as predicted percentage-point effects in the U.S. economy.

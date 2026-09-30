@@ -28,7 +28,9 @@ and deteriorating survival; it does not prove that every seed is beatable or
 unbeatable. All 227 first-term hold failures exceeded the final unemployment
 threshold; none failed the score threshold.
 
-Run the benchmark from the repository root, recording the actual source commit:
+Historical reproduction requires an isolated checkout of pre-retirement commit
+`1ecba9fef39d3a814c1dfe69c93c946bba8f451a`. Run the benchmark there, recording
+that checkout's source commit. These paths are retired from the maintained tree:
 
 ```sh
 swiftc -O native/FedChairmanGame/Sources/FedChairmanCore/*.swift \
@@ -94,7 +96,8 @@ toward economic reliability. A research-informed reduced-form simulation is
 still not a Fed forecasting model. Any coefficient without a documented sample,
 identification method and uncertainty remains a design assumption.
 
-Release readiness remains unproven: the Godot replacement, economic acceptance
-tests, workbook recalculation, accessibility/playtesting, platform exports and
-production signing have not passed yet. Blender and Godot are installed globally;
-installation is not release evidence.
+At this review's baseline, replacement release gates had not run. Subsequent
+Godot tests, workbook parity, exports and signing are separate evidence; they do
+not retroactively validate the Swift model. Current readiness must be assessed
+against the maintained acceptance contract, accessibility, playtesting and Apple
+distribution gates. Tool installation alone is not release evidence.

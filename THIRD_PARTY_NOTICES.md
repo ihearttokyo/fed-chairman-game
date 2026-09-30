@@ -1,20 +1,19 @@
-# Third-Party Notices
+# Third-party notices
 
-The release app is native SwiftUI/SpriteKit and uses Apple platform frameworks bundled with macOS and Xcode:
+The application embeds the official Godot 4.7.2 runtime. Godot Engine is
+MIT-licensed; its bundled third-party components retain their individual licenses.
 
-- SwiftUI
-- SpriteKit
-- AppKit
-- CryptoKit
-- XCTest and XCUITest for development verification
+The in-game **Credits** panel displays the engine license, component copyright
+records and license texts obtained from the running engine through
+`Engine.get_license_text()`, `Engine.get_copyright_info()` and
+`Engine.get_license_info()`. These runtime records are authoritative for the
+exported engine build; do not substitute a claim that the app has no dependencies.
 
-Project-generation, formatting, linting, and packaging tools are development-only:
+Blender is an authoring tool only. Neither Blender nor its Python runtime is
+bundled in the game. Apple's signing/export command-line tools and GitHub CI
+utilities are development-only. System fonts are supplied by the operating
+system rather than redistributed as font files.
 
-- XcodeGen
-- SwiftFormat
-- SwiftLint
-- Xcode command-line tools
-
-No third-party runtime packages, external image assets, external audio packs, backend services, telemetry SDKs, or live-data feeds are bundled with the native app.
-
-Before commercial distribution, archive this notice with the release manifest and re-run a dependency review if any non-Apple runtime package is introduced.
+Project code and original assets contain no external asset packs, telemetry SDKs,
+backend clients or live-data feeds. Inspect licenses and retain notices whenever
+an engine build, bundled component or external asset changes before distribution.
