@@ -342,9 +342,17 @@ func run() -> void:
 	check(review_text.text.contains("already occurred") and review_text.text.contains("not a forecast"), "review distinguishes hindsight from a conditional future preview")
 	review.get_ok_button().pressed.emit()
 	await process_frame
+	var before_new: PackedByteArray = game.career.encode()
+	var staged_before_new: Dictionary = game._policy()
 	game._new_dialog()
 	await process_frame
 	var dialog: AcceptDialog = game.get_child(game.get_child_count() - 1)
+	var opening_text := ""
+	for label in dialog.find_children("*", "Label", true, false):
+		opening_text += label.text + "\n"
+	check(opening_text.contains("Every career includes seeded background disturbances") and opening_text.contains("even the baseline"), "new-career disclosure distinguishes seeded baseline play from a no-shock equilibrium")
+	check(game.seed_input.tooltip_text.contains("scenario and seed") and game.seed_input.tooltip_text.contains("same engine and model"), "seed tooltip qualifies every input needed to reproduce the path")
+	check(game.career.encode() == before_new and game._policy() == staged_before_new, "opening seeded disclosure leaves the active career and staged policy unchanged")
 	dialog.get_ok_button().pressed.emit()
 	check(game.career.seed_value == 1 and game.career.scenario_id == "base", "untouched new-career dialog uses its default seed and scenario")
 	check(dialog.visible and dialog.is_queued_for_deletion(), "dialog stays valid until the accessibility action finishes")
@@ -390,6 +398,15 @@ func run() -> void:
 	# Deferred calls run before deletion. Cancel must not hide the embedded window
 	# before an assistive action's deferred focus request completes.
 	call_deferred("check_cancel_window", cancel_dialog)
+	await process_frame
+	game._help()
+	await process_frame
+	var help: AcceptDialog = game.get_child(game.get_child_count() - 1)
+	var help_text: Label = help.get_child(0).get_child(0)
+	check(help_text.text.contains("Every career includes seeded background disturbances") and help_text.text.contains("baseline starts at equilibrium") and help_text.text.contains("no scheduled scenario events"), "help explains the seeded baseline and scheduled-event distinction")
+	check(help_text.text.contains("same scenario and seed") and help_text.text.contains("same engine and model"), "help qualifies every input needed to reproduce the path")
+	check(game.career.encode() == before_cancel and game._policy() == staged_before_cancel, "reading seeded help leaves the active career and staged policy unchanged")
+	help.get_ok_button().pressed.emit()
 	await process_frame
 	game._credits()
 	await process_frame

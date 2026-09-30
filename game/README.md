@@ -35,6 +35,23 @@ cases. Rates and inflation use percent units: 2 means 2 percent. Asset and loan
 amounts use percent of **initial annual GDP**, so growth does not silently change
 their denominator. Output and price levels start at index 100.
 
+## Scenarios and background disturbances
+
+The equilibrium baseline starts at equilibrium and has no scheduled scenario
+events. Every seeded career nevertheless receives quarterly background demand,
+supply and neutral-rate disturbances, including the baseline. The generator adds
+demand innovations in [-0.18, +0.18] percentage points, supply innovations in
+[-0.04, +0.04] and neutral-rate changes in [-0.01, +0.01]. Funding stress also
+receives small funding needs with eligible collateral. These are design choices.
+Scheduled scenario events are added to that background path.
+
+The same scenario and seed reproduce the path within the same engine and model.
+Saved careers retain the realized path. The 240-quarter neutral equilibrium assertion instead
+supplies explicit empty shocks; it does not promise a flat seeded career.
+Forward comparisons use the current observed shock, then no new disturbances.
+The separate formula workbook exposes realized seed-1 paths for audit and labels
+their background shocks; it is not a forecast or the game's concealed future.
+
 ## Quarterly order
 
 1. Observe the previous state and choose a rate, conditional guidance, net asset
