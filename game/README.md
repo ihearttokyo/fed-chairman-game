@@ -151,6 +151,9 @@ flow or loans. Q+1 yield/spread and Q+8 inflation, employment, credibility and
 support differences come from the same model forecasts. They are conditional,
 nonadditive contrasts, including legitimate zero effects for unused or constrained
 tools, rather than an attribution of measured U.S. policy effects.
+The persistent section chooser jumps directly to Meeting, Guidance, Scores,
+Forecasts, Tools and Limits within the complete report. Native text selection
+and keyboard scrolling keep its calculations, explanations and warnings available.
 
 Careers continue through 12-quarter reviews without resetting policy lags,
 expectations, hardship memory or charts. The local career limit is 240 quarters.

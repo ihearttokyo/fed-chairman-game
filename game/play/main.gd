@@ -323,7 +323,32 @@ func _apply_policy_inputs() -> void:
 func _compare() -> void:
 	_apply_policy_inputs()
 	_preview()
-	_text_dialog("Compare policy paths", _decision_briefing())
+	var text := _decision_briefing()
+	var dialog := AcceptDialog.new()
+	dialog.title = "Compare policy paths"
+	var box := _vbox(dialog)
+	box.custom_minimum_size = Vector2(690, 450)
+	_label(box, "Jump to section", 13, MUTED)
+	var chooser := OptionButton.new()
+	chooser.accessibility_name = "Comparison section"
+	chooser.tooltip_text = "Jump within the complete report. All calculations, explanations and limits remain available."
+	box.add_child(chooser)
+	var body := RichTextLabel.new()
+	body.text = text
+	body.selection_enabled = true
+	body.focus_mode = Control.FOCUS_ALL
+	body.accessibility_name = "Policy comparison report"
+	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body.add_theme_color_override("default_color", Color("e7eee9"))
+	box.add_child(body)
+	for section in [["Meeting", "CURRENT MEETING /"], ["Guidance", "GUIDANCE /"], ["Scores", "Q+1 / WHY"], ["Forecasts", "CURRENT TRANSMISSION /"], ["Tools", "ONE-CONTROL CONTRASTS /"], ["Limits", "REFERENCE AND LIMITS"]]:
+		var offset := text.find(section[1])
+		if offset >= 0:
+			chooser.add_item(section[0])
+			chooser.set_item_metadata(chooser.item_count - 1, text.substr(0, offset).count("\n"))
+	chooser.disabled = chooser.item_count == 0
+	chooser.item_selected.connect(func(index): body.scroll_to_paragraph(chooser.get_item_metadata(index)))
+	_show_dialog(dialog)
 
 func _guidance_controls() -> void:
 	custom_guidance.visible = commitment.selected == 2
