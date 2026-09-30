@@ -103,9 +103,10 @@ workbook parity and usability, then game integration and visual playtesting.
 Production exports and signing are later release gates. The initial canary is
 an isolated local workbook/game build, never the user's installed Swift career.
 
-Rollback a failed change by reverting its isolated PR. Keep the original Swift
-release and save schema available until a separately validated migration exists.
-Do not delete old code or silently convert saves during this phase. Resource
-gate: run heavy builds/renders serially; stop launches on unexplained memory
-growth or swap growth. With about 4.5 GiB disk headroom, defer large export-template
-archives and asset bakes rather than removing unrelated user data.
+Rollback a failed change by reverting its isolated PR. Jared authorized complete
+legacy frontend retirement: Godot is the sole maintained implementation and
+retired Swift source remains recoverable from Git history. Preserve the installed
+Swift app and all user saves; no migration or silent conversion is authorized.
+Run heavy builds/renders serially and stop launches on unexplained memory or
+swap growth. Check current disk headroom before large template archives or asset
+bakes; defer them rather than removing unrelated user data.

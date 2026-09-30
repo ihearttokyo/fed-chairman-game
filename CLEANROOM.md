@@ -1,12 +1,18 @@
-# Clean-Room Release Rules
+# Clean-room release rules
 
-This game uses original implementation, copy, visual styling, generated native UI art, and native runtime audio feedback.
+The game uses original implementation, copy, procedural UI and Blender art.
+Godot and its bundled components retain their licenses and notices.
 
-Do not add:
+Do not add Federal Reserve seals, Reserve Bank logos, official-looking emblems,
+photographs, copied interface layouts, extracted game assets, audio or source
+text from another Fed Chair game. Public primary research informs economic
+concepts; it does not authorize copying product expression or implying endorsement.
 
-- Federal Reserve seals, Reserve Bank logos, or official marks.
-- Screenshots, extracted assets, source code, audio, or copied text from any legacy Fed Chair game.
-- Government-style emblems that could imply endorsement.
-- Real-world live data unless a future release adds explicit source citations and licensing review.
+Every new asset needs an authoring source and entry in `ASSET_PROVENANCE.md`.
+Every bundled dependency or component change needs review in
+`THIRD_PARTY_NOTICES.md` and the runtime Credits panel. Any future live-data feed
+requires explicit source, licensing and privacy review before integration.
 
-Every new asset must be documented in `ASSET_PROVENANCE.md`. Every third-party dependency with user-visible or bundled code impact must be reflected in `THIRD_PARTY_NOTICES.md`.
+Keep the independent-project disclosure visible. The simulated economy is
+hypothetical, with disclosed design coefficients; it is not an official Federal
+Reserve forecast or financial advice.

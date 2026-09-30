@@ -1,8 +1,10 @@
 # Policy Lab economic core
 
 This directory holds the clean-sheet Godot game and its deterministic economic
-core. The current build is a local pre-release candidate. The original Swift app and its saves
-remain separate. Start with the [research](../docs/FED_RESEARCH.md) and
+core, the sole maintained game implementation. The current build is a local
+pre-release candidate. The installed Swift app and its saves remain separate;
+its source and obsolete build paths are retired to Git history. Start with the
+[research](../docs/FED_RESEARCH.md) and
 [acceptance contract](../docs/MODEL_CONTRACT.md) for scope and evidence limits.
 
 ## Run and inspect

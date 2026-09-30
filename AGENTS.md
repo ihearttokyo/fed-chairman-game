@@ -1,37 +1,27 @@
-## Fed Chairman Game Working Rules
+# Fed Chairman Game working rules
 
-- This repo ships a native macOS game. Treat playability and visual usability as product requirements, not polish.
+Godot in `game/` is the sole maintained frontend and economic implementation.
+Preserve `/Applications/Fed Chairman Game.app` and all user saves. The retired
+Swift code remains in Git history; no legacy migration or reinstall is implied.
 
-- Do not declare UI/UX work complete from code-only tests or XCTest/accessibility automation alone. Those tests are regression guards, not proof that the game is usable.
+Before model, save, gameplay or packaging changes, read `game/README.md` and
+`docs/MODEL_CONTRACT.md`. Keep equations in `game/model/economy.gd`, parameter
+units/source classifications in `parameters.json`, and model-version checks
+consistent with exports and replay. Disclose invented coefficients and benchmark
+limits rather than presenting them as estimated Federal Reserve behavior.
 
-- For any cockpit, panel, chart, dock, settings, briefing, gameplay, or responsive-layout change, run a real GUI validation loop with computer-use when the app can launch in Jared's desktop session.
+For UI, assets, charts, accessibility or gameplay changes, follow
+`docs/AGENTIC_GUI_VALIDATION.md`: verify current-source/build provenance, inspect
+pixels and use background Computer Use for meaningful decisions and feedback.
+Preserve existing window state. Code-only tests do not prove usability. Report
+`NOT RUN: computer-use GUI validation` with its reason and residual risk when
+that path cannot run. Keep screenshots and disposable evidence outside Git.
 
-- GUI validation must run against the latest intended build, not an older installed artifact. Before any screenshot or click validation, prove the app under test was built from the commit being validated or rebuild/install it from that commit. Record the app path, current git commit, manifest timestamp when available, and executable hash or bundle metadata in the validation notes. Screenshots from older artifacts are historical reference only and do not count as validation.
+Use the existing game, model, package-safety and release-self-check entry points.
+Run the narrow affected regression first; retain deterministic replay and output
+replacement safeguards. Build and render heavy jobs serially. Do not turn a
+failed check into a pass by weakening its assertion or bypassing platform security.
 
-- Do not confuse the native XCTest UI suite with an agentic GUI validation loop. For almost all UI/gameplay work, default to screenshot-first computer-use iteration and skip `npm run test:ui` unless Jared explicitly asks for that suite, the change is specifically an accessibility/XCUITest regression, or a release-grade final gate is truly needed after the visual loop is already clean. XCTest/native UI tests are regression guards and rare final gates; they are not the primary debug signal for visual quality or gameplay usability. Never repeatedly rerun the same broad suite or the same Newspaper/Help/Settings click pattern hoping it will reveal new information.
-
-- If Jared asks for XCUITest/native UI-suite validation, run at most one large-window pass by default. Do not run compact/standard/large responsive matrices, repeated full-suite retries, or targeted rerun loops unless Jared explicitly asks for those exact cases in the current task. If the large-window pass fails because of Codex/window occlusion, stale geometry assertions, or desktop automation focus, stop and report the blocker instead of patching tests and rerunning.
-
-- Use `scripts/native-validation.sh` as the only blessed XCUITest command surface. Do not run raw `xcodebuild test` for UI validation. Use `npm run test:ui:preflight` before `npm run test:ui:prepare|ui:one|ui:final` so agents detect known desktop/UI-automation blockers before any UI test product build/launch. If `ui-preflight` fails, report the blockers and stop the UI ladder for that run.
-  Run `npm run test:fast` or `scripts/native-validation.sh fast` for the inner loop, `npm run test:gui` for screenshot evidence, `npm run test:ui:prepare` to build UI test products once, `npm run test:ui:one -- <Target/Class/testMethod>` for a single targeted XCUITest, and `npm run test:ui:final` only as the explicit large-window final gate. If `test:ui:final` refuses a repeat, report the previous result instead of overriding unless Jared explicitly asks for another pass.
-
-- Do not enter an `npm`/XCTest validation loop before screenshot-driven iteration. After a source change that affects UI, build the app artifact, capture and inspect fresh screenshots from that artifact, patch the visible defect, and only then run `npm run lint`, `npm test`, or the native UI suite as supporting/final gates. If a test fails during visual repair, inspect the screenshot or code path that explains the failure instead of rerunning the same command.
-
-- Use [docs/AGENTIC_GUI_VALIDATION.md](docs/AGENTIC_GUI_VALIDATION.md) as the source-of-truth workflow for visual/playability validation. Prefer direct computer-use app state, screenshots, and LLM visual inspection over brittle scripted click loops. Use [scripts/agentic-gui-capture.sh](scripts/agentic-gui-capture.sh) to create timestamped screenshot evidence when a local macOS app build exists.
-
-- Use this agentic GUI loop instead:
-  1. Verify artifact provenance: current commit, installed app path, manifest/build timestamp if available, and executable hash or bundle metadata. If provenance does not match the commit under test, rebuild/install first.
-  2. Launch the current app build and make sure Codex/other windows are not covering the tested app before any click-based validation.
-  3. Capture and inspect the first-launch cockpit screenshot.
-  4. Exercise meaningful gameplay paths, not only dock toggles: make several policy decisions, advance to early/mid/late quarters, and verify that chart traces, dots, labels, newspaper panels, and controls remain stable after each state transition.
-  5. Open and close Newspaper, Help, and Settings only as part of a broader workflow check; do not repeat that exact click sequence more than once unless a code change directly targets those controls.
-  6. For normal validation, use one large-window app state. Check compact/standard/large responsive sizes only when Jared explicitly asks for responsive validation or the code change directly targets responsive layout.
-  7. Inspect screenshots for occlusion, unreadable text, hidden controls, weak hierarchy, confusing affordances, stale/reset chart positions, and visual clutter.
-  8. Before rerunning any validation path, name the new hypothesis or changed code that makes the rerun useful. If there is no new hypothesis or changed code, stop rerunning and inspect/patch instead.
-  9. Fix issues found, then repeat only the targeted scenario that proves the fix. Do not run the full XCTest/native UI suite by default; reserve it for explicit user requests, targeted accessibility/XCUITest work, or release-grade regression confidence after screenshot validation has already passed. If it is run and another app window occludes the tested app, skip or rerun once after clearing that condition instead of looping.
-
-- Keep XCTest/native UI tests, unit tests, lint, and build checks in the validation suite, but never use them as a replacement for direct visual inspection of the running game.
-
-- If computer-use GUI validation is not run, report it explicitly as `NOT RUN: computer-use GUI validation`, with the reason and the remaining risk.
-
-- Keep generated screenshots, `.xcresult` bundles, build products, and temporary GUI artifacts out of commits unless the user explicitly asks to archive them.
+Every new asset needs provenance in `ASSET_PROVENANCE.md`; bundled code needs
+notices in `THIRD_PARTY_NOTICES.md`. Keep source and generated Blender/GLB assets
+consistent. Shipping targets ARM64 macOS; universal templates are staging only.
