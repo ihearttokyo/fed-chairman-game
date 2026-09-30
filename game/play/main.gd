@@ -521,7 +521,11 @@ func _new_dialog() -> void:
 	seed_input = _spin(box, "Scenario seed", 1, 2147483647, 1, "Same seed gives the same shock path.")
 	seed_input.value = 1
 	_label(box, "Start with the baseline or supply shock. Weakly anchored inflation is a long recovery.", 13, MUTED)
-	dialog.confirmed.connect(func(): _start_career(scenario.get_item_metadata(scenario.selected), int(seed_input.value)))
+	dialog.confirmed.connect(func():
+		if seed_input.get_line_edit().has_focus():
+			seed_input.apply()
+		_start_career(scenario.get_item_metadata(scenario.selected), int(seed_input.value))
+	)
 	_show_dialog(dialog, Vector2i(740, 240))
 
 func _review() -> void:
