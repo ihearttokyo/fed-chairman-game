@@ -29,6 +29,47 @@ untrusted paths or symlinks. The export contains parameters, starting state,
 realized shocks, decisions and full quarterly states. Retain the realized shock
 path when reproducing a run across engine versions.
 
+## Regenerate the formula workbook
+
+The repository owns the workbook builder, reference exporters and saved-file
+checker. Use Godot 4.7.2 and managed Node/artifact-tool dependencies. In Codex,
+`load_workspace_dependencies` supplies the Node executable and `node_modules`
+directory. No npm install, repo-local dependency or game-runtime dependency is
+needed. From the repository root:
+
+```sh
+python3 scripts/build-workbook.py /absolute/new/workbook-directory \
+  --node /absolute/managed/node --modules /absolute/managed/node_modules
+python3 scripts/tests/test-workbook-safety.py
+```
+
+The command refuses existing destinations and paths inside Git checkouts before
+invoking tools. It creates an external execution copy of the source builder and
+a link to managed dependencies. References, logs, previews and source hashes
+stay beside the new workbook rather than entering Git. Failed builds are kept
+for diagnosis; rerun with a new destination instead of replacing one.
+
+Six seed-1, 48-quarter reference careers and four one-variable policy edits come
+from the current Godot equations. The builder checks every state against its
+formula chain, exercises input boundaries and causality, exports four editable
+charts and renders all five sheets. These are hypothetical design assumptions,
+not historically calibrated forecasts. Generating a file does not prove native
+spreadsheet usability or human playability.
+
+For a separately recalculated disposable copy, run the same saved-file checker:
+
+```sh
+python3 scripts/spreadsheet/check-workbook.py /absolute/recalculated.xlsx \
+  --reference /absolute/new/workbook-directory/reference-v1/supply_shock.json \
+  --map /absolute/new/workbook-directory/evidence/workbook-model-map.json
+```
+
+The checker reads the supplied workbook without editing it. It verifies all
+quarterly state values for the default supply case, formula errors, chart
+bindings and the absence of macros or external links. Native recalculation and
+interactive GUI validation remain separate checks; the build does not launch
+or change a spreadsheet application's windows.
+
 `model/economy.gd` owns the equations. `parameters.json` records each parameter's
 units and source classification; `scenarios.json` contains six hypothetical
 cases. Rates and inflation use percent units: 2 means 2 percent. Asset and loan
