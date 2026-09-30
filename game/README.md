@@ -114,6 +114,7 @@ It cannot read the realized future shock path. The staff rate rule is a disclose
 benchmark rather than an optimal-play recommendation.
 
 Comparison and adoption stay in the bottom action bar while the cockpit scrolls.
+Career and decision feedback also stays visible in that bar.
 Expanding custom guidance keeps both actions available without hiding any policy
 tool, unit, preview assumption or outcome from the scrollable content.
 Both actions submit the field currently being edited, so a valid typed decision
