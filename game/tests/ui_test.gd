@@ -282,16 +282,47 @@ func run() -> void:
 	await process_frame
 	var dialog: AcceptDialog = game.get_child(game.get_child_count() - 1)
 	dialog.get_ok_button().pressed.emit()
+	check(game.career.seed_value == 1 and game.career.scenario_id == "base", "untouched new-career dialog uses its default seed and scenario")
 	check(dialog.visible and dialog.is_queued_for_deletion(), "dialog stays valid until the accessibility action finishes")
 	await process_frame
 	game._new_dialog()
 	await process_frame
+	var programmatic_dialog: AcceptDialog = game.get_child(game.get_child_count() - 1)
+	programmatic_dialog.get_ok_button().grab_focus()
+	game.seed_input.value = 42
+	check(not game.seed_input.get_line_edit().has_focus() and game.seed_input.get_line_edit().text == "1", "unfocused seed display can still be queued after a programmatic change")
+	programmatic_dialog.get_ok_button().pressed.emit()
+	check(game.career.seed_value == 42, "unfocused stale display cannot overwrite the seed value")
+	await process_frame
+	for seed_case in [["11", 11], ["0", 1], ["2147483648", 2147483647]]:
+		game._new_dialog()
+		await process_frame
+		var seed_dialog: AcceptDialog = game.get_child(game.get_child_count() - 1)
+		for index in range(game.scenario.item_count):
+			if game.scenario.get_item_metadata(index) == "funding_stress":
+				game.scenario.select(index)
+		var edit: LineEdit = game.seed_input.get_line_edit()
+		edit.grab_focus()
+		edit.text = seed_case[0]
+		check(edit.has_focus() and game.seed_input.value == 1, "typed seed remains pending before confirmation")
+		seed_dialog.get_ok_button().pressed.emit()
+		check(game.career.seed_value == seed_case[1] and game.status_label.text.contains("seed %d" % seed_case[1]), "OK submits the focused seed without Return using native bounds")
+		check(game.career.scenario_id == "funding_stress" and game.career.shocks == game.career.model.seeded_shock_path(seed_case[1], game.career.cases.funding_stress, game.career.MAX_QUARTERS), "confirmed seed selects the actual reproducible shock path")
+		check(seed_dialog.visible and seed_dialog.is_queued_for_deletion(), "seed submission retains the deferred accessibility window lifecycle")
+		await process_frame
+	var before_cancel: PackedByteArray = game.career.encode()
+	var staged_before_cancel: Dictionary = game._policy()
+	game._new_dialog()
+	await process_frame
 	var cancel_dialog: AcceptDialog = game.get_child(game.get_child_count() - 1)
+	game.seed_input.get_line_edit().grab_focus()
+	game.seed_input.get_line_edit().text = "99"
 	var cancel_button: Button
 	for button in cancel_dialog.get_ok_button().get_parent().get_children():
 		if button is Button and button.text == "Cancel":
 			cancel_button = button
 	cancel_button.pressed.emit()
+	check(game.career.encode() == before_cancel and game._policy() == staged_before_cancel, "canceling a pending seed preserves the career and staged policy")
 	# Deferred calls run before deletion. Cancel must not hide the embedded window
 	# before an assistive action's deferred focus request completes.
 	call_deferred("check_cancel_window", cancel_dialog)
