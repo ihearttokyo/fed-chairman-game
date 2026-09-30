@@ -1,5 +1,12 @@
 extends SceneTree
 var failures := 0
+var pending_review: Button
+func _process(_delta: float) -> bool:
+	if pending_review != null:
+		var action := pending_review
+		pending_review = null
+		action.pressed.emit()
+	return false
 func check(condition: bool, message: String) -> void:
 	if not condition:
 		failures += 1
@@ -85,10 +92,57 @@ func check_custom_guidance(game: Control) -> void:
 	game._advance()
 	check(game._decision_briefing().contains("outside this meeting's feasible rate range"), "comparison warns when an earlier pledge cannot be delivered")
 	game._start_career("supply_shock", 1)
+func check_review_access(game: Control) -> void:
+	for quarters in [0, 1, 13]:
+		game._start_career("base", 41)
+		for q in range(quarters):
+			game.career.advance(game.career.model.benchmark_policy(game.career.state, game.career.params, "hold"))
+		check(game.career.restore(bytes_to_var(game.career.encode())).ok, "restored careers retain realized review inputs")
+		game._refresh(true)
+		var preserved: PackedByteArray = game.career.encode()
+		var staged: Dictionary = game._policy()
+		game._journal()
+		await process_frame
+		var journal: AcceptDialog = game.get_child(game.get_child_count() - 1)
+		var action: Button
+		for button in journal.find_children("*", "Button", true, false):
+			if button.text == "Review realized policy":
+				action = button
+		check(action != null, "journal provides on-demand realized review access")
+		if action == null or quarters == 0:
+			if action != null:
+				check(action.disabled, "review action waits for a completed decision")
+			journal.get_ok_button().pressed.emit()
+		else:
+			check(not action.disabled, "completed decisions enable realized review")
+			if quarters == 13:
+				# MainLoop processing runs just before SceneTree's process_frame,
+				# without an intervening deletion flush.
+				pending_review = action
+				await process_frame
+			else:
+				action.pressed.emit()
+			check(journal.visible and journal.is_queued_for_deletion(), "review replaces the journal without hiding its accessibility window prematurely")
+			await process_frame
+			await process_frame
+			var review: AcceptDialog = game.get_child(game.get_child_count() - 1)
+			var reviews := 0
+			for child in game.get_children():
+				if child is AcceptDialog and child.visible:
+					reviews += 1
+			check(reviews == 1 and not is_instance_valid(journal), "only one review remains after actual journal exit")
+			var text: Label = review.get_child(0).get_child(0)
+			check(review.title == "Your %d-quarter policy review" % mini(12, quarters), "on-demand review title uses actual interval length")
+			check(text.text.contains("REALIZED PATHS / Q%d–Q%d" % [maxi(0, quarters - 12) + 1, quarters]), "on-demand review reports only the latest completed interval")
+			review.get_ok_button().pressed.emit()
+		await process_frame
+		check(game.career.encode() == preserved and game._policy() == staged, "opening and closing realized review preserves career and controls")
+	game._start_career("supply_shock", 1)
 func run() -> void:
 	var game = load("res://main.tscn").instantiate()
 	root.add_child(game)
 	await process_frame
+	await check_review_access(game)
 	check_custom_guidance(game)
 	await check_persistent_actions(game)
 	var compare_button: Button
@@ -157,6 +211,7 @@ func run() -> void:
 	await process_frame
 	var review: AcceptDialog = game.get_child(game.get_child_count() - 1)
 	var review_text: Label = review.get_child(0).get_child(0)
+	check(review.title == "Your 1-quarter policy review", "short completed review does not claim twelve quarters")
 	check(not review_text.text.contains("employment are close"), "review cannot infer employment from the output gap")
 	check(review_text.text.contains("REALIZED PATHS") and review_text.text.contains("unemployment above structural reference"), "review exposes realized inflation and employment tradeoffs")
 	check(review_text.text.contains("already occurred") and review_text.text.contains("not a forecast"), "review distinguishes hindsight from a conditional future preview")
