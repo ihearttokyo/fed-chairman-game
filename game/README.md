@@ -133,8 +133,12 @@ tools, current financial conditions and quarter-1, quarter-4 and quarter-8
 differences from holding policy. The reference holds today's rate, uses
 data-dependent guidance and requests no new asset flows or lending. Both paths
 use the same current shock and no future innovations. The briefing also compares
-credibility and public support and explains binding tool limits; it does not
-change the career or select a policy for the player.
+credibility and public support and explains binding tool limits. Its Q+1
+diagnostics expose inflation-miss memory, the model stance target and applied-rate
+distance, prior-promise follow-through, current hardship and remembered hardship
+for both paths. The stance rule and score weights are disclosed game assumptions,
+not an optimal policy or a measured institutional reputation. The briefing does
+not change the career or select a policy for the player.
 
 Careers continue through 12-quarter reviews without resetting policy lags,
 expectations, hardship memory or charts. The local career limit is 240 quarters.

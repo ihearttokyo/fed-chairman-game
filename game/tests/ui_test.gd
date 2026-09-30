@@ -114,6 +114,21 @@ func run() -> void:
 		check(report.contains("Applied lending %.2f" % selected.states[0].liquidity_applied_pct_initial_gdp), "briefing shows collateral-constrained lending")
 		check(report.contains("Inflation %+.3f pp" % (selected.states[7].four_quarter_inflation_pct - held.states[7].four_quarter_inflation_pct)), "comparison uses the actual paired Q8 paths")
 		check(report.contains("Credibility %.1f vs %.1f" % [100 * selected.states[7].credibility, 100 * held.states[7].credibility]), "comparison exposes credibility consequences")
+		for staged_rate in [8.0, game.career.state.policy_rate_pct]:
+			game.rate.value = staged_rate
+			selected = game.career.forecast(game._policy())
+			var first: Dictionary = selected.states[0]
+			var reference: Dictionary = held.states[0]
+			var diagnostics: String = game._decision_briefing()
+			check(diagnostics.contains("Q+1 / WHY CREDIBILITY AND SUPPORT MOVE"), "comparison identifies the diagnostic horizon")
+			check(diagnostics.contains("Credibility %.1f vs %.1f / 100\nPublic support %.1f vs %.1f / 100" % [100 * first.credibility, 100 * reference.credibility, first.public_support, reference.public_support]), "diagnostics show paired first-quarter scores")
+			check(diagnostics.contains("Inflation-miss memory %.3f vs %.3f pp" % [first.inflation_miss_memory_pct, reference.inflation_miss_memory_pct]), "diagnostics show the model's inflation memory")
+			check(diagnostics.contains("Model stance target %.3f%% vs %.3f%%\nApplied-rate distance %.3f vs %.3f pp" % [first.reaction_function_target_pct, reference.reaction_function_target_pct, abs(first.policy_rate_pct - first.reaction_function_target_pct), abs(reference.policy_rate_pct - reference.reaction_function_target_pct)]), "diagnostics show the target and applied rather than requested stance")
+			check(diagnostics.contains("Prior-promise follow-through %.1f vs %.1f / 100" % [100 * first.guidance_followthrough_score, 100 * reference.guidance_followthrough_score]), "diagnostics show paired follow-through")
+			check(diagnostics.contains("Current hardship %.3f vs %.3f support points\nHardship memory %.3f vs %.3f support points" % [first.current_hardship, reference.current_hardship, first.public_hardship_memory, reference.public_hardship_memory]), "diagnostics distinguish current hardship from memory")
+			check(diagnostics.contains("40% inflation performance, 40% stance, 20% follow-through") and diagnostics.contains("game assumptions, not an optimal policy or a measured institutional reputation"), "diagnostics disclose weights and interpretation limits")
+			check(game.career.payload() == preserved and game.rate.value == staged_rate, "diagnostics cannot alter the career or staged controls")
+		game.rate.value = 8.0
 		check(report.contains("no new asset flows or loans") and report.contains("same current shock"), "reference policy and shock assumptions are explicit")
 		check(game.career.payload() == preserved and game.rate.value == 8.0, "comparison cannot alter the career or controls")
 		game.career.shocks[6].demand_shock_pct = 10.0
