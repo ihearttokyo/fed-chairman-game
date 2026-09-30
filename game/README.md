@@ -142,7 +142,10 @@ not change the career or select a policy for the player.
 
 Careers continue through 12-quarter reviews without resetting policy lags,
 expectations, hardship memory or charts. The local career limit is 240 quarters.
-Each review compares realized average inflation distance and unemployment above
+Data & journal also opens a realized review on demand after any completed
+decision, including after loading a career. It compares the latest up to twelve
+completed quarters and labels the actual interval. Each review compares realized
+average inflation distance and unemployment above
 the structural reference, plus ending credibility and support, against holding
 the period's initial rate. Both paths begin at the same state and use the same
 already-realized shocks. This hindsight comparison is not the forward preview

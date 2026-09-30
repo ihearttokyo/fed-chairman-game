@@ -462,7 +462,7 @@ func _show_dialog(dialog: Window, desired_size := Vector2i(740, 540)) -> void:
 		dialog.canceled.connect(dialog.queue_free)
 	dialog.popup_centered(desired_size)
 
-func _text_dialog(title: String, text: String) -> void:
+func _text_dialog(title: String, text: String) -> AcceptDialog:
 	var dialog := AcceptDialog.new()
 	dialog.title = title
 	var scroll := ScrollContainer.new()
@@ -474,6 +474,7 @@ func _text_dialog(title: String, text: String) -> void:
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(label)
 	_show_dialog(dialog)
+	return dialog
 
 func _new_dialog() -> void:
 	var dialog := AcceptDialog.new()
@@ -503,13 +504,22 @@ func _review() -> void:
 	var text := "REALIZED PATHS / Q%d–Q%d\nYOUR POLICY vs HOLD REFERENCE\n\nAverage absolute distance from 2%% inflation: %.3f vs %.3f pp\nAverage unemployment above structural reference: %.3f vs %.3f pp\nEnding credibility: %.1f vs %.1f / 100\nEnding public support: %.1f vs %.1f / 100\n\n" % [compared.from_quarter + 1, compared.to_quarter, actual.inflation_miss, held.inflation_miss, actual.employment_shortfall, held.employment_shortfall, 100 * actual.credibility, 100 * held.credibility, actual.public_support, held.public_support]
 	text += "Both paths start at your actual Q%d state and use only shocks that already occurred. The reference holds %.2f%%, guides to that rate with data dependence, and makes no new asset flows or loans. Existing stocks, loans, expectations and policy lags carry forward. This is a hindsight comparison, not a forecast or proof of optimal policy.\n\n" % [compared.from_quarter, compared.hold_rate]
 	text += "Lower average inflation distance and employment shortfall mean lower costs on those measures. There is no single combined score: reducing one cost can increase the other. Structural unemployment is a model assumption, not a known real-world employment target.\n\nCurrent inflation %.2f%%; unemployment %.2f%%; output gap %+.2f%%.\n\nThere is no dismissal threshold. Credibility and public forgiveness are gradual, and earlier decisions keep working after this review." % [s.four_quarter_inflation_pct, s.unemployment_rate_pct, s.output_gap_pct]
-	_text_dialog("Your 12-quarter policy review", text)
+	_text_dialog("Your %d-quarter policy review" % (compared.to_quarter - compared.from_quarter), text)
 
 func _journal() -> void:
 	var text := "%s · seed %d\nRates and changes are percentage units. Asset and lending flows use %% of initial annual GDP.\n\n" % [career.cases[career.scenario_id].label, career.seed_value]
 	for s in career.history:
 		text += "Q%03d | inflation %.2f%% | unemployment %.2f%% | rate %.2f%% | output gap %+.2f%%\nCredibility %.1f | support %.1f | assets %+.2f | loans %.2f\n\n" % [s.quarter_index, s.four_quarter_inflation_pct, s.unemployment_rate_pct, s.policy_rate_pct, s.output_gap_pct, s.credibility * 100, s.public_support, s.asset_flow_applied_pct_initial_gdp, s.liquidity_applied_pct_initial_gdp]
-	_text_dialog("Economic history and policy journal", text)
+	var dialog := _text_dialog("Economic history and policy journal", text)
+	var review := dialog.add_button("Review realized policy")
+	review.disabled = career.decisions.is_empty()
+	review.tooltip_text = "Compare the latest up to twelve completed quarters with holding policy. Complete a decision first."
+	review.pressed.connect(func():
+		# A frame signal can precede deletion. Wait for the exclusive journal to
+		# actually exit, then deliver after its AccessKit action has finished.
+		dialog.tree_exited.connect(_review, CONNECT_DEFERRED | CONNECT_ONE_SHOT)
+		dialog.queue_free()
+	)
 
 func _help() -> void:
 	_text_dialog("How to play", "Your role\nGuide a simplified FOMC policy decision. The target-rate midpoint is an abstraction; a real chair does not unilaterally set the market rate.\n\n1. Read the dispatch. It describes current conditions, not future shocks.\n2. Set the target rate. Higher real rates restrain demand gradually; inflation reacts with a lag. A supply shock can raise prices while weakening activity.\n3. Choose guidance. A firm promise is easier to understand but costly to break. Data dependence adjusts the prior promise when inflation and the output gap change.\n4. Use asset purchases or runoff to change the term premium. Liquidity lending addresses eligible funding needs, not insolvency.\n5. Inspect applied amounts and the eight-quarter preview, then adopt. The preview assumes no new future shocks and no later rate changes.\n\nCredibility changes how markets price guidance and long-run inflation expectations. Public support remembers both inflation/deflation hardship and unemployment. It recovers gradually, without term resets or a game-over threshold.\n\nSave preserves a career in this game's separate storage. New career and Load ask before replacing unsaved play. Tab navigates controls; charts also have exact values in Data & journal. Animation is off by default.\n\nModel limits\nSix hypothetical scenarios; behavioral coefficients are design assumptions. Only the 2% objective is source-defined. No empirical forecast, financial advice or Federal Reserve affiliation. See the repository's FED_RESEARCH and model README for primary sources and equations.\n\nCredits\nOriginal procedural Blender city by the project. Godot Engine is MIT-licensed.\n\n" + Engine.get_license_text())
