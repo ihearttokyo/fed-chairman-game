@@ -113,6 +113,10 @@ current shock, then assumes no new shocks and holds the rate for eight quarters.
 It cannot read the realized future shock path. The staff rate rule is a disclosed
 benchmark rather than an optimal-play recommendation.
 
+Comparison and adoption stay in the bottom action bar while the cockpit scrolls.
+Expanding custom guidance keeps both actions available without hiding any policy
+tool, unit, preview assumption or outcome from the scrollable content.
+
 Guidance can use the existing data-dependent preset, a firm pledge, or custom
 responses to changes in four-quarter inflation and the output gap. Custom
 responses range from -2 to +2 rate percentage points per 1 percentage-point

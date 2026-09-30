@@ -8,6 +8,29 @@ func _initialize() -> void:
 	call_deferred("run")
 func check_cancel_window(dialog: AcceptDialog) -> void:
 	check(dialog.visible, "cancel keeps the window registered through deferred accessibility focus")
+func check_persistent_actions(game: Control) -> void:
+	var actions: Array[Button] = []
+	for button in game.find_children("*", "Button", true, false):
+		if button.text in ["Compare policy paths", "Adopt decision  →  Next quarter"]:
+			actions.append(button)
+			var ancestor: Node = button.get_parent()
+			while ancestor != game:
+				check(not ancestor is ScrollContainer, "policy actions remain outside the scrolling cockpit")
+				ancestor = ancestor.get_parent()
+	check(actions.size() == 2, "comparison and adoption each have one action")
+	var original_size := root.size
+	game.commitment.select(2)
+	game.commitment.item_selected.emit(2)
+	for dimensions in [original_size, Vector2i(1180, 700)]:
+		root.size = dimensions
+		await process_frame
+		await process_frame
+		for button in actions:
+			check(button.get_global_rect().position.y >= 0 and button.get_global_rect().end.y <= game.get_viewport_rect().end.y, "expanded guidance keeps actions within the viewport")
+	root.size = original_size
+	game.commitment.select(0)
+	game.commitment.item_selected.emit(0)
+	await process_frame
 func check_custom_guidance(game: Control) -> void:
 	check(game.commitment.item_count == 3, "player can choose custom conditional guidance")
 	if game.commitment.item_count != 3:
@@ -67,6 +90,7 @@ func run() -> void:
 	root.add_child(game)
 	await process_frame
 	check_custom_guidance(game)
+	await check_persistent_actions(game)
 	var compare_button: Button
 	for button in game.find_children("*", "Button", true, false):
 		if button.text == "Compare policy paths":
