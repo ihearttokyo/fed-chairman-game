@@ -416,6 +416,24 @@ func _decision_briefing() -> String:
 	var last: Dictionary = selected.states[-1]
 	var baseline: Dictionary = held.states[-1]
 	text += "Q+8 / SELECTED VS HOLD\nCredibility %.1f vs %.1f / 100\nPublic support %.1f vs %.1f / 100\n\n" % [100 * last.credibility, 100 * baseline.credibility, last.public_support, baseline.public_support]
+	text += "ONE-CONTROL CONTRASTS / SELECTED MINUS ALTERNATIVE\nEach alternative changes only its named input. Guidance keeps conditional coefficients unchanged. Each path uses the same current shock, then no new shocks and its own applied-rate hold. Existing stocks, loans, prior promises and lags remain. These conditional differences are not additive or estimated U.S. effects; zero can mean an unused or constrained tool.\n\n"
+	var alternatives := [
+		["Rate / alternative request today's rate", "policy_rate_request_pct", s.policy_rate_pct, "%"],
+		["Guidance quote / alternative quote applied rate", "guidance_rate_pct", first.policy_rate_pct, "%"],
+		["Asset flow / alternative no new flow", "asset_flow_request_pct_initial_gdp", 0.0, "% of initial annual GDP"],
+		["Lending / alternative no new loans", "liquidity_request_pct_initial_gdp", 0.0, "% of initial annual GDP"],
+	]
+	for alternative in alternatives:
+		var other: Dictionary = policy.duplicate()
+		other[alternative[1]] = alternative[2]
+		var path: Dictionary = career.forecast(other)
+		text += "%s: %.2f%s\n" % [alternative[0], alternative[2], alternative[3]]
+		if not path.ok:
+			text += "Contrast unavailable: " + path.error + "\n\n"
+			continue
+		var reference_first: Dictionary = path.states[0]
+		var reference_last: Dictionary = path.states[-1]
+		text += "Q+1 long yield %+.3f pp; credit spread %+.3f pp\nQ+8 inflation %+.3f pp; unemployment %+.3f pp; credibility %+.2f points; support %+.2f points\n\n" % [first.long_yield_pct - reference_first.long_yield_pct, first.credit_spread_pct - reference_first.credit_spread_pct, last.four_quarter_inflation_pct - reference_last.four_quarter_inflation_pct, last.unemployment_rate_pct - reference_last.unemployment_rate_pct, 100 * (last.credibility - reference_last.credibility), last.public_support - reference_last.public_support]
 	text += "REFERENCE AND LIMITS\nHold today's rate, guide to that rate with data dependence, and request no new asset flows or loans. Both paths use the same current shock and no new future shocks. After this meeting, each holds its own applied rate and makes no new asset flows or loans. Existing holdings, loans and policy lags carry forward.\n\nThese are combined effects of the staged controls, not an optimal-policy recommendation or a confidence interval. Positive differences mean a higher value, not necessarily a better outcome. Policy lags can leave first-quarter inflation unchanged even when later outcomes differ."
 	return text
 

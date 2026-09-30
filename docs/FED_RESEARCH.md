@@ -79,3 +79,27 @@ series. Each workbook coefficient must distinguish a source-defined value from
 an assumed magnitude supported only by a directional relationship. Tests can
 establish internal consistency and the intended mechanisms; external realism
 still needs sensitivity analysis and comparison with observed episodes.
+
+## Inspect channels without claiming empirical attribution
+
+The September 30 follow-up examined the model discussion and simulation design
+in [Kiley's full paper, sections 3–5 and Appendix 1](https://www.federalreserve.gov/econres/feds/files/2025027pap.pdf).
+Its FRB/US exercise combines expectation specifications, a changing equilibrium
+real rate and historically resampled residuals. This game's adaptive rules and
+small bounded innovations do not reproduce that exercise or its policy rankings.
+Inspecting a tool's conditional effect is a product choice; it does not fit a
+coefficient or establish optimal play.
+
+[D'Amico, English, Lopez-Salido and Nelson, sections 3 and 7](https://www.federalreserve.gov/pubs/feds/2012/201285/)
+distinguish signaling, scarcity and duration channels and explain why yield
+estimates differ with methods and samples. Securities purchases can also convey
+information about future short rates. The game deliberately compresses their
+direct channel into a term-premium rule; a one-control contrast is conditional
+on that simplification, not a separation of real-world causal channels.
+
+The [discount-window rules](https://www.federalreserve.gov/monetarypolicy/discountrate.htm)
+retain collateral and eligibility constraints. A zero simulated lending effect
+when there is no eligible funding need is therefore meaningful, rather than a
+reason to add an artificial reward. The comparison preserves the same known
+current shock, stocks and lags while changing one control. Its differences must
+not be added as a decomposition of the combined decision.
