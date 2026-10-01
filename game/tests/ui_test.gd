@@ -46,6 +46,28 @@ func check_persistent_actions(game: Control) -> void:
 	game.commitment.select(0)
 	game.commitment.item_selected.emit(0)
 	await process_frame
+func check_terminal_career(game: Control) -> void:
+	game._start_career("base", 41)
+	for q in range(game.career.MAX_QUARTERS - 1):
+		check(game.career.advance(game.career.model.benchmark_policy(game.career.state, game.career.params, "hold")).ok, "terminal setup uses valid decisions")
+	game._refresh(true)
+	check(game.quarter_label.text == "YEAR 60 / Q4   ·   MEETING 240" and not game.decision_button.disabled, "last supported meeting remains playable")
+	game._advance()
+	await process_frame
+	check(game.career.state.quarter_index == 240, "UI adopts the final supported decision")
+	check(game.quarter_label.text == "CAREER COMPLETE · 240 MEETINGS", "completion never advertises Year61 or meeting241")
+	check(game.decision_button.disabled and game.decision_button.text == "Career complete", "terminal action explains why no next quarter is available")
+	var review: AcceptDialog = game.get_child(game.get_child_count() - 1)
+	check(review.title == "Your 12-quarter policy review", "completion retains the final realized policy review")
+	review.get_ok_button().pressed.emit()
+	await process_frame
+	var preserved: PackedByteArray = game.career.encode()
+	check(game.career.restore(bytes_to_var(preserved)).ok, "completed career restores through real replay")
+	game._refresh(true)
+	check(game.quarter_label.text == "CAREER COMPLETE · 240 MEETINGS" and game.decision_button.disabled, "restored completion uses the same shared refresh")
+	check(game._decision_briefing().contains("CURRENT MEETING / REQUESTED AND APPLIED") and game.career.encode() == preserved, "terminal comparison remains available without changing completed history")
+	game._start_career("supply_shock", 1)
+	check(game.quarter_label.text == "YEAR 01 / Q1   ·   MEETING 1" and not game.decision_button.disabled and game.decision_button.text == "Adopt decision  →  Next quarter", "new career restores ordinary meeting and action labels")
 func check_custom_guidance(game: Control) -> void:
 	check(game.commitment.item_count == 3, "player can choose custom conditional guidance")
 	if game.commitment.item_count != 3:
@@ -245,6 +267,13 @@ func run() -> void:
 	var game = load("res://main.tscn").instantiate()
 	root.add_child(game)
 	await process_frame
+	await check_terminal_career(game)
+	if OS.get_cmdline_user_args().has("--terminal-only"):
+		if failures == 0:
+			print("PASS: terminal career and restart labels")
+		game.free()
+		quit(1 if failures else 0)
+		return
 	var unemployment_heading: Label = game.stats[1][0].get_parent().get_child(0)
 	check(unemployment_heading.text == "UNEMPLOYMENT", "cockpit card names the unemployment rate it displays")
 	check(game.charts[1].heading == "UNEMPLOYMENT & STRUCTURAL REFERENCE" and game.charts[1].accessibility_name == game.charts[1].heading, "chart heading and accessibility name identify unemployment")
