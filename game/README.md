@@ -171,6 +171,12 @@ current shock, then assumes no new shocks and holds the rate for eight quarters.
 It cannot read the realized future shock path. The staff rate rule is a disclosed
 benchmark rather than an optimal-play recommendation.
 
+The staff rule retains its requested rate but bounds its guidance quote to the
+next meeting's reachable interval after the current rate cap, assuming unchanged
+reference observations. Workbook blank guidance follows the same benchmark.
+Later data can still change the conditional promise. A manually entered firm
+promise is not clipped or forgiven merely because it is unreachable.
+
 Comparison and adoption stay in the bottom action bar while the cockpit scrolls.
 Career and decision feedback also stays visible in that bar.
 Expanding custom guidance keeps both actions available without hiding any policy

@@ -425,9 +425,11 @@ func benchmark_policy(state: Dictionary, params: Dictionary, kind: String = "fee
 	elif kind != "hold":
 		return {"ok": false, "error": "unknown benchmark policy: %s" % kind}
 	target = clamp(target, params.policy_rate_min_pct, params.policy_rate_max_pct)
+	var applied_rate: float = clamp(target, max(params.policy_rate_min_pct, state.policy_rate_pct - params.policy_rate_change_limit_pct), min(params.policy_rate_max_pct, state.policy_rate_pct + params.policy_rate_change_limit_pct))
+	var reachable_quote: float = clamp(target, max(params.policy_rate_min_pct, applied_rate - params.policy_rate_change_limit_pct), min(params.policy_rate_max_pct, applied_rate + params.policy_rate_change_limit_pct))
 	return {
 		"policy_rate_request_pct": target,
-		"guidance_rate_pct": target,
+		"guidance_rate_pct": reachable_quote,
 		"guidance_inflation_sensitivity": params.policy_inflation_response,
 		"guidance_output_gap_sensitivity": params.policy_output_gap_response,
 		"asset_flow_request_pct_initial_gdp": 0.0,
