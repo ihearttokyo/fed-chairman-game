@@ -195,7 +195,10 @@ for (let q = 0; q <= 48; q++) {
   const requested = `CHOOSE('Policy Lab'!$C$6,${prev('r_star_pct')}+${prev('expected_short_inflation_pct')}+${p('policy_inflation_response')}*(${prev('four_quarter_inflation_pct')}-${p('inflation_target_pct')})+${p('policy_output_gap_response')}*${prev('output_gap_pct')},${prev('policy_rate_pct')})`;
   put('benchmark_rate', clamp(requested, p('policy_rate_min_pct'), p('policy_rate_max_pct')));
   put('last_policy_rate_request_pct', override(6, s('benchmark_rate')));
-  put('guidance_rate_pct', override(7, s('benchmark_rate')));
+  const rateLimit = p('policy_rate_change_limit_pct');
+  const appliedBenchmark = clamp(s('benchmark_rate'), `MAX(${p('policy_rate_min_pct')},${prev('policy_rate_pct')}-${rateLimit})`, `MIN(${p('policy_rate_max_pct')},${prev('policy_rate_pct')}+${rateLimit})`);
+  const reachableQuote = clamp(s('benchmark_rate'), `MAX(${p('policy_rate_min_pct')},${appliedBenchmark}-${rateLimit})`, `MIN(${p('policy_rate_max_pct')},${appliedBenchmark}+${rateLimit})`);
+  put('guidance_rate_pct', override(7, reachableQuote));
   put('guidance_inflation_sensitivity', override(8, p('policy_inflation_response')));
   put('guidance_output_gap_sensitivity', override(9, p('policy_output_gap_response')));
   put('asset_flow_request_pct_initial_gdp', `IF(ISNUMBER('Policy'!${col}10),'Policy'!${col}10,NA())`);

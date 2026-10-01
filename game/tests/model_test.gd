@@ -67,6 +67,9 @@ func _initialize() -> void:
 		failures.append("canonical quarterly state/step API is missing")
 	elif OS.get_cmdline_user_args().has("--boundaries-only"):
 		_test_review_regressions()
+	elif OS.get_cmdline_user_args().has("--guidance-only"):
+		_test_conditional_guidance()
+		_test_benchmark_guidance_attainability()
 	elif OS.get_cmdline_user_args().has("--impulse-only"):
 		_test_policy_impulse_and_peak()
 		if failures.is_empty():
@@ -89,6 +92,7 @@ func _initialize() -> void:
 		_test_demand_and_supply_channels()
 		_test_expectations_and_credibility()
 		_test_conditional_guidance()
+		_test_benchmark_guidance_attainability()
 		_test_liquidity_limits_and_solvency_separation()
 		_test_public_support_recovers_without_reset()
 		_test_shipped_scenarios_and_seeded_robustness()
@@ -376,6 +380,31 @@ func _test_conditional_guidance() -> void:
 	if follows.ok and breaks.ok:
 		expect_close(follows.state.guidance_followthrough_score, 1.0, "disclosed data revision follows conditional commitment")
 		expect_true(breaks.state.guidance_followthrough_score < follows.state.guidance_followthrough_score, "unconditional deviation reduces follow-through")
+
+
+func _test_benchmark_guidance_attainability() -> void:
+	var params: Dictionary = load_parameters().values
+	var cases: Dictionary = load_scenarios().scenarios
+	for case_id in ["base", "unanchored_inflation", "lower_bound_slump"]:
+		var state: Dictionary = initial_state(params, cases[case_id].initial).state
+		for kind in ["feedback", "neutral", "hold"]:
+			var policy: Dictionary = model.benchmark_policy(state, params, kind)
+			var result: Dictionary = step(state, policy, {}, params)
+			expect_true(result.ok, "%s %s benchmark is valid" % [case_id, kind])
+			if not result.ok:
+				continue
+			var low: float = max(params.policy_rate_min_pct, result.state.policy_rate_pct - params.policy_rate_change_limit_pct)
+			var high: float = min(params.policy_rate_max_pct, result.state.policy_rate_pct + params.policy_rate_change_limit_pct)
+			expect_true(policy.guidance_rate_pct >= low and policy.guidance_rate_pct <= high, "%s %s quote is reachable next meeting with unchanged observations" % [case_id, kind])
+			if case_id == "unanchored_inflation" and kind == "feedback":
+				expect_close(policy.policy_rate_request_pct, 10.05, "staff still discloses the distant requested rate")
+				expect_close(result.state.policy_rate_pct, 4.25, "current applied rate still respects the cap")
+				var following: Dictionary = step(result.state, model.benchmark_policy(result.state, params, kind), {}, params)
+				print("Staff guidance diagnostic: requested %.3f, applied %.3f, quote %.3f, next follow-through %.6f" % [policy.policy_rate_request_pct, result.state.policy_rate_pct, policy.guidance_rate_pct, following.state.guidance_followthrough_score])
+	var state: Dictionary = initial_state(params, cases.unanchored_inflation.initial).state
+	var pledged: Dictionary = step(state, policy_at(10.05, 10.05, 0.0, 0.0, 0.0, 0.0), {}, params)
+	var delivered: Dictionary = step(pledged.state, policy_at(10.05, 10.05), {}, params)
+	expect_true(delivered.state.guidance_followthrough_score < 0.001, "manual unreachable firm promise still loses follow-through")
 
 
 func _test_liquidity_limits_and_solvency_separation() -> void:
