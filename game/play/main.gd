@@ -365,9 +365,10 @@ func _start_career(case_id: String, seed_number: int) -> void:
 
 func _refresh(reset_controls := false) -> void:
 	var s: Dictionary = career.state
+	var complete := career.decisions.size() >= Career.MAX_QUARTERS
 	case_title.text = career.cases[career.scenario_id].label
 	case_detail.text = "Balance price stability with employment. Expectations, policy lags and public memory carry forward.\n\nAsset holdings: %.1f%% of initial GDP\nOutstanding loans: %.2f%%" % [s.asset_stock_pct_initial_gdp, s.outstanding_liquidity_pct_initial_gdp]
-	quarter_label.text = "YEAR %02d / Q%d   ·   MEETING %d" % [int(s.quarter_index / 4) + 1, int(s.quarter_index) % 4 + 1, s.quarter_index + 1]
+	quarter_label.text = "CAREER COMPLETE · %d MEETINGS" % Career.MAX_QUARTERS if complete else "YEAR %02d / Q%d   ·   MEETING %d" % [int(s.quarter_index / 4) + 1, int(s.quarter_index) % 4 + 1, s.quarter_index + 1]
 	stats[0][0].text = "%.2f%%" % s.four_quarter_inflation_pct
 	stats[0][1].text = "2.00% target · 4-quarter change"
 	stats[1][0].text = "%.2f%%" % s.unemployment_rate_pct
@@ -397,7 +398,8 @@ func _refresh(reset_controls := false) -> void:
 				commitment.select(2)
 		_guidance_controls()
 		loading_controls = false
-	decision_button.disabled = career.decisions.size() >= Career.MAX_QUARTERS
+	decision_button.disabled = complete
+	decision_button.text = "Career complete" if complete else "Adopt decision  →  Next quarter"
 	_preview()
 
 func _preview() -> void:
