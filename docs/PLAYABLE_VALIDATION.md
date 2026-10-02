@@ -1,6 +1,89 @@
 # Playable Policy Lab validation
 
-## Current verified candidate, October 2, 2026 (UTC)
+## Retina startup source validation, October 2, 2026 (UTC)
+
+The startup-only repair uses native display scaling and usable-screen geometry.
+On the measured2x Apple M4 display, the default content changed from1440×960
+physical pixels to2880×1920, with a1440×992-point decorated window wholly inside
+the usable screen. The1440×960 design viewport and14-pixel font constants stay
+unchanged; canvas scaling restores their intended logical size. Explicit800×600
+physical resolution remained unchanged in a separate native run. Standard-density,
+height/width-constrained fitting and headless preservation passed native fixtures.
+Other physical monitors and Macs remain untested.
+
+Independent correctness/Ponytail review, intended RED, final narrow/full-game and
+package-safety checks passed. Current-source background Computer Use at the new
+default exercised Funding stress42, constrained rate/assets/lending, full
+comparison/close, custom-guidance expansion and native scroll, two real adoptions,
+Help focus/Page Down/Tab/keyboard close and new-career Cancel. Inspected bounded
+pixels showed readable dialogs, both actions and full prior-promise feedback.
+Window bounds and saved-career hashes stayed unchanged throughout interaction.
+No Save, Load, window raise/resize or external driver override was used.
+
+Validated main.gd SHA-256:
+`8795f850af61312fc2193e202e3dd0d43922201495f8d94c74145e5461e51318`.
+The retained notarized package below records an earlier candidate and supports
+unchanged gameplay channels; it does not prove this startup repair was packaged.
+Human enjoyment and actual assistive-technology speech remain separate checks.
+
+## Retained notarized candidate: PR35, October 2, 2026 (UTC)
+
+[PR35](https://github.com/ihearttokyo/fed-chairman-game/pull/35) fixes outcome
+score feedback without changing equations, scenarios, saves, workbook or assets.
+Tiny nonzero changes disclose their direction and a magnitude bound; exact zero
+says unchanged. Credibility and public support both use displayed score points.
+Independent GPT-6.1-Sol/xhigh correctness and Ponytail review, intended RED, final
+GREEN, the full game suite and package-safety checks passed.
+
+Merge `64802c6c076f22ecdf83f813211688ea935b1c02` passed
+[exact-head CI](https://github.com/ihearttokyo/fed-chairman-game/actions/runs/37072458326)
+and [merged-main CI](https://github.com/ihearttokyo/fed-chairman-game/actions/runs/37072702775).
+The source-bound build began with the reviewed uncommitted diff; its six runtime
+source hashes were subsequently verified against committed head `c736d7c` and the
+merge. It was not built at the merged commit. At delivery, both local main checkouts were
+fast-forwarded and tracked-clean; unrelated untracked work remained intact.
+
+The current external ZIP is `The Chair — Apple Silicon meaningful scores notarized.zip`,
+SHA-256 `e94a40bf40dda098934aec55f2e3c276ad01e1140a7150440396d8dc6cd3e934`.
+Apple accepted submission `c30c685b-771a-4fb6-aafa-a48bffb07d92` with no issues.
+Original and extracted apps passed ARM64-only, strict Developer ID team checks,
+hardened runtime, timestamp, staple, Gatekeeper and 164 actual executable checks.
+The model digest remains `55a22f0cc0d6a658698cc8aa72ce489e586c6fe23ce23497902e44a30cf8d315`.
+
+Background Computer Use on the same-byte signed canary exercised Funding stress42
+through two real decisions, comparison/close, custom-guidance expansion, constrained
+rate/assets/lending and new-career cancellation. Inspected bounded pixels showed
+small negative support, positive/negative credibility, complete prior-promise
+feedback and both actions at720×512. The actual extracted notarized ZIP independently
+verified first launch and Funding stress42 adoption with the new wording visible.
+No Save, user-career replacement, window raise/resize or external-script override
+was used. The owned canaries were stopped; all saved-career hashes stayed unchanged.
+
+The retained PR32 full-career and workbook evidence below remains applicable to
+unchanged channels, not proof that the new text was exercised for240 live meetings.
+Actual VoiceOver speech, representative human playtesting and a second physical
+Mac remain unverified. This is a local prerelease, not a market-ready or
+store-published release. No AI, connector or network call runs during play.
+
+### Offline synchronous responsiveness
+
+An independently reviewed native Godot probe mounted the exact final PR35 pack.
+It sampled all seven cases at completed quarters0/120/239, seed42:420 measured
+previews,420 full briefing computations and21 real adoptions after warmups.
+Maximum measured elapsed times on this Apple M4 were1.984ms,19.209ms and4.846ms,
+respectively. All individual previews/briefings preserved native payload, live
+state, history and parameters; each adoption matched the independent next state,
+including terminal review construction. Source, packed resources and saved career
+stayed unchanged. The full run took6.216s and peaked at166MB resident memory.
+
+These are warm synchronous API calls, not cold startup, process CPU time,
+comparison-popup presentation, deferred rendering or live frame latency. One seed
+and three sampled ages do not certify every career or device. No sample exceeded
+the150ms diagnostic guard, so no speculative cache, background service or thread
+was added. Native Retina metrics separately identified the old default window's
+half-size logical typography; the startup repair is validated above.
+
+## Retained PR32 candidate, October 2, 2026 (UTC)
 
 The local Apple Silicon prerelease has passed Developer ID signing, Apple
 notarization, stapling and Gatekeeper assessment. It is not market-ready or

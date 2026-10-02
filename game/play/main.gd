@@ -32,6 +32,7 @@ var decision_button: Button
 var loading_controls := false
 
 func _ready() -> void:
+	_fit_initial_window()
 	_apply_theme()
 	var background := ColorRect.new()
 	background.color = Color("0c191f")
@@ -113,6 +114,26 @@ func _ready() -> void:
 	_start_career("supply_shock", 1)
 	if "--verify-build" in OS.get_cmdline_user_args():
 		get_tree().quit(load("res://play/build_check.gd").new().run(self))
+
+static func _initial_window_size(design: Vector2i, display_scale: float, available: Vector2i) -> Vector2i:
+	var desired := Vector2(design) * display_scale
+	var fit := minf(1.0, minf(available.x / desired.x, available.y / desired.y))
+	return Vector2i((desired * fit).round()).min(available)
+
+func _fit_initial_window() -> void:
+	var window := get_window()
+	if DisplayServer.get_name() == "headless" or window.mode != Window.MODE_WINDOWED:
+		return
+	if OS.get_cmdline_args().has("--resolution") or window.size != window.content_scale_size:
+		return
+	var usable := DisplayServer.screen_get_usable_rect(window.current_screen)
+	var decoration_size := window.get_size_with_decorations() - window.size
+	var decoration_offset := window.position - window.get_position_with_decorations()
+	var available := usable.size - decoration_size
+	if available.x <= 0 or available.y <= 0:
+		return
+	window.size = _initial_window_size(window.content_scale_size, DisplayServer.screen_get_scale(window.current_screen), available)
+	window.position = usable.position + (usable.size - window.get_size_with_decorations()) / 2 + decoration_offset
 
 func _apply_theme() -> void:
 	var design := Theme.new()

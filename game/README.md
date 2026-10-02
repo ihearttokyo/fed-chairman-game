@@ -23,6 +23,12 @@ godot --headless --path game --script res://tests/export_reference.gd -- \
   --quarters 48 --seed 1 --policy feedback
 ```
 
+Default desktop startup treats the1440×960 design as logical display size, fits
+its decorated window uniformly to the usable screen, and uses native canvas
+scaling. Explicit `--resolution`, nondefault window sizes, fullscreen/maximized
+and headless runs are preserved. Later user resizes do not trigger an automatic
+window reset. No gameplay or font-size constants change.
+
 The test wrapper rejects runtime errors even when Godot exits with status zero.
 The exporter requires an absolute destination outside this repository. Its
 lexical path check is a guard against misplaced artifacts, not a sandbox for
