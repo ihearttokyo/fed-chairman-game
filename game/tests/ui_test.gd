@@ -341,6 +341,45 @@ func check_city_framing(game: Control, viewport: SubViewport) -> void:
 				count += 1
 	print("CITY_FRAME size=", camera.size, " viewport=", viewport.size, " min=", minimum, " max=", maximum, " vertices=", count)
 	check(count > 0 and minimum.x >= 0 and minimum.y >= 0 and maximum.x <= viewport.size.x and maximum.y <= viewport.size.y, "complete native city fits the camera through every rotation")
+func check_city_redraw(game: Control, viewport: SubViewport) -> void:
+	var motion: CheckButton
+	for button in game.find_children("*", "CheckButton", true, false):
+		if button.text == "Animate city":
+			motion = button
+	check(motion != null, "city motion remains an explicit control")
+	if motion == null:
+		return
+	check(game.reduced_motion and viewport.render_target_update_mode == SubViewport.UPDATE_ONCE, "static city requests one native render, not perpetual redraw")
+	var rotation: float = game.city.rotation.y
+	game._process(1.0)
+	check(game.city.rotation.y == rotation, "static city keeps its orientation")
+	motion.button_pressed = true
+	check(not game.reduced_motion and viewport.render_target_update_mode == SubViewport.UPDATE_ALWAYS, "enabled motion restores continuous native rendering")
+	game._process(1.0)
+	check(is_equal_approx(game.city.rotation.y, rotation + 0.025), "animation retains its existing speed")
+	motion.button_pressed = false
+	check(game.reduced_motion and viewport.render_target_update_mode == SubViewport.UPDATE_ONCE, "disabling motion rearms its final static frame")
+	var container: SubViewportContainer = viewport.get_parent()
+	viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	viewport.size_changed.emit()
+	check(viewport.render_target_update_mode == SubViewport.UPDATE_ONCE, "native size notification rearms static texture")
+	var original_size := viewport.size
+	container.stretch_shrink = 2
+	check(viewport.size == original_size / 2 and viewport.render_target_update_mode == SubViewport.UPDATE_ONCE, "real native size change requests a new static frame")
+	container.stretch_shrink = 1
+	check(viewport.size == original_size and viewport.render_target_update_mode == SubViewport.UPDATE_ONCE, "restored native size rearms the full-quality city")
+	container.hide()
+	check(viewport.render_target_update_mode == SubViewport.UPDATE_DISABLED, "hidden city does not request a redraw")
+	container.show()
+	await process_frame
+	check(viewport.render_target_update_mode == SubViewport.UPDATE_ONCE, "visible static city overrides container's continuous-mode reset")
+	motion.button_pressed = true
+	container.hide()
+	container.show()
+	await process_frame
+	check(viewport.render_target_update_mode == SubViewport.UPDATE_ALWAYS, "visible animated city continues after visibility change")
+	motion.button_pressed = false
+	game.city.rotation.y = rotation
 func run() -> void:
 	var game = load("res://main.tscn").instantiate()
 	root.add_child(game)
@@ -349,6 +388,7 @@ func run() -> void:
 	check(city_viewports.size() == 1 and city_viewports[0].msaa_3d == Viewport.MSAA_4X, "miniature city uses bounded four-sample native edge antialiasing")
 	if city_viewports.size() == 1:
 		check_city_framing(game, city_viewports[0])
+		await check_city_redraw(game, city_viewports[0])
 	if OS.get_cmdline_user_args().has("--city-only"):
 		if failures == 0:
 			print("PASS: native miniature antialiasing")

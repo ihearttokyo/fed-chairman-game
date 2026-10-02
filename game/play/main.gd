@@ -201,7 +201,6 @@ func _build_city(parent: Node) -> void:
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var motion := CheckButton.new()
 	motion.text = "Animate city"
-	motion.toggled.connect(func(enabled: bool): reduced_motion = not enabled)
 	top.add_child(motion)
 	var scene_row := HBoxContainer.new()
 	box.add_child(scene_row)
@@ -224,7 +223,6 @@ func _build_city(parent: Node) -> void:
 	viewport.size = Vector2i(750, 215)
 	viewport.msaa_3d = Viewport.MSAA_4X
 	viewport.transparent_bg = true
-	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	container.add_child(viewport)
 	var world := Node3D.new()
 	viewport.add_child(world)
@@ -255,6 +253,15 @@ func _build_city(parent: Node) -> void:
 	environment.environment.ambient_light_color = Color("b8d7db")
 	environment.environment.ambient_light_energy = 0.6
 	world.add_child(environment)
+	var redraw := func():
+		viewport.render_target_update_mode = (SubViewport.UPDATE_ONCE if reduced_motion else SubViewport.UPDATE_ALWAYS) if container.is_visible_in_tree() else SubViewport.UPDATE_DISABLED
+	viewport.size_changed.connect(redraw)
+	# The container resets the native mode after its visibility signal.
+	container.visibility_changed.connect(redraw, CONNECT_DEFERRED)
+	motion.toggled.connect(func(enabled: bool):
+		reduced_motion = not enabled
+		redraw.call())
+	redraw.call()
 	_label(box, "Original Blender miniature · illustrative city, not a regional model", 10, MUTED)
 
 func _spin(parent: Node, title: String, low: float, high: float, step_size: float, tip: String) -> SpinBox:
