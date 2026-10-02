@@ -96,6 +96,25 @@ func check_text_reports(game: Control) -> void:
 	await process_frame
 	check(game.career.encode() == preserved, "reading full completed history is pure")
 	game._start_career("supply_shock", 1)
+func check_score_feedback(game: Control) -> void:
+	game._start_career("funding_stress", 42)
+	var before: Dictionary = game.career.state.duplicate(true)
+	var expected: Dictionary = game.career.model.step(before, game._policy(), game.career.current_briefing(), game.career.params)
+	game._advance()
+	check(expected.ok and game.career.state == expected.state, "score wording preserves the exact adopted economic state")
+	var support_change: float = game.career.state.public_support - before.public_support
+	check(support_change < 0 and abs(support_change) < 0.05, "real Funding stress decision exercises a small negative support change")
+	check(game.consequence.text.contains("Public support down <0.05 points"), "real small support changes disclose their direction instead of negative zero")
+	var credibility_change: float = 100 * (game.career.state.credibility - before.credibility)
+	check(game.consequence.text.contains("credibility %+.1f points" % credibility_change), "credibility changes use score points, not the zero-to-one internal scale")
+	check(game.consequence.accessibility_live == AccessibilityServer.LIVE_POLITE, "score feedback retains assistive announcements")
+	check(game.has_method("_score_change"), "both outcome scores use one shared formatter")
+	if game.has_method("_score_change"):
+		var preserved: PackedByteArray = game.career.encode()
+		for sample in [[0.0, "unchanged"], [-0.0, "unchanged"], [0.000001, "up <0.05 points"], [-0.000001, "down <0.05 points"], [0.049999, "up <0.05 points"], [-0.049999, "down <0.05 points"], [0.05, "+0.1 points"], [-0.05, "-0.1 points"], [1.25, "+1.2 points"], [-1.25, "-1.2 points"]]:
+			check(game.call("_score_change", sample[0]) == sample[1], "score formatter preserves zero, small-change direction, precision threshold and signed points")
+		check(game.career.encode() == preserved, "formatting score changes cannot change the career")
+	game._start_career("supply_shock", 1)
 func check_persistent_actions(game: Control) -> void:
 	var actions: Array[Button] = []
 	for button in game.find_children("*", "Button", true, false):
@@ -592,6 +611,13 @@ func run() -> void:
 	var game = load("res://main.tscn").instantiate()
 	root.add_child(game)
 	await process_frame
+	check_score_feedback(game)
+	if OS.get_cmdline_user_args().has("--score-feedback-only"):
+		if failures == 0:
+			print("PASS: meaningful score-change direction and units")
+		game.free()
+		quit(1 if failures else 0)
+		return
 	if OS.get_cmdline_user_args().has("--text-reports-only"):
 		await check_text_reports(game)
 		if failures == 0:
