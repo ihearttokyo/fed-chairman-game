@@ -26,6 +26,7 @@ func check_report_body(dialog: AcceptDialog, markers: Array[String]) -> void:
 	check(body.focus_mode == Control.FOCUS_ALL and body.selecting_enabled, "report body supports keyboard focus and native selection")
 	check(not body.editable and body.wrap_mode == TextEdit.LINE_WRAPPING_BOUNDARY and not body.tab_input_mode, "report is read-only, wrapped and permits keyboard focus to leave")
 	check(body.accessibility_name == dialog.title and body.custom_minimum_size == Vector2(690, 450), "report retains its accessible title and existing dimensions")
+	check(body.accessibility_description == body.text, "native assistive description retains the entire report including wrapped paragraphs")
 	for marker in markers:
 		check(body.text.contains(marker), "complete report retains " + marker)
 	body.select_all()

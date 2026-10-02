@@ -573,6 +573,7 @@ func _text_dialog(title: String, text: String) -> AcceptDialog:
 	body.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
 	body.tab_input_mode = false
 	body.accessibility_name = title
+	body.accessibility_description = text
 	body.add_theme_color_override("font_readonly_color", Color("e7eee9"))
 	dialog.add_child(body)
 	_show_dialog(dialog)
