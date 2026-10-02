@@ -15,6 +15,87 @@ func _initialize() -> void:
 	call_deferred("run")
 func check_cancel_window(dialog: AcceptDialog) -> void:
 	check(dialog.visible, "cancel keeps the window registered through deferred accessibility focus")
+func check_report_body(dialog: AcceptDialog, markers: Array[String]) -> void:
+	await process_frame
+	await process_frame
+	var bodies := dialog.find_children("*", "TextEdit", true, false)
+	check(bodies.size() == 1, "shared report provides a keyboard-focusable selectable native text body")
+	if bodies.size() != 1:
+		return
+	var body: TextEdit = bodies[0]
+	check(body.focus_mode == Control.FOCUS_ALL and body.selecting_enabled, "report body supports keyboard focus and native selection")
+	check(not body.editable and body.wrap_mode == TextEdit.LINE_WRAPPING_BOUNDARY and not body.tab_input_mode, "report is read-only, wrapped and permits keyboard focus to leave")
+	check(body.accessibility_name == dialog.title and body.custom_minimum_size == Vector2(690, 450), "report retains its accessible title and existing dimensions")
+	check(body.accessibility_description == body.text, "native assistive description retains the entire report including wrapped paragraphs")
+	for marker in markers:
+		check(body.text.contains(marker), "complete report retains " + marker)
+	body.select_all()
+	check(body.get_selected_text() == body.text, "native selection includes the entire report, including its tail")
+	body.grab_focus()
+	var original_text := body.text
+	var typed := InputEventKey.new()
+	typed.keycode = KEY_X
+	typed.unicode = 120
+	typed.pressed = true
+	dialog.push_input(typed)
+	await process_frame
+	check(body.text == original_text, "typing cannot replace selected report text or interpret markup")
+	body.deselect()
+	check(body.has_focus(), "native report body can receive keyboard focus")
+	var scrollbar := body.get_v_scroll_bar()
+	if scrollbar.max_value > scrollbar.page:
+		var page_down := InputEventKey.new()
+		page_down.keycode = KEY_PAGEDOWN
+		page_down.pressed = true
+		dialog.push_input(page_down)
+		await process_frame
+		check(scrollbar.value > 0, "native Page Down scrolls a long focused report")
+	var tab := InputEventKey.new()
+	tab.keycode = KEY_TAB
+	tab.pressed = true
+	dialog.push_input(tab)
+	await process_frame
+	check(not body.has_focus(), "Tab leaves the report body rather than trapping keyboard navigation")
+func check_text_reports(game: Control) -> void:
+	game._start_career("mixed_crises", 417)
+	var preserved: PackedByteArray = game.career.encode()
+	var staged: Dictionary = game._policy()
+	var literal := "Plain [b]brackets[/b] stay literal.\n\nFinal warning remains intact."
+	var dialog: AcceptDialog = game._text_dialog("Literal report", literal)
+	await check_report_body(dialog, [literal])
+	dialog.get_ok_button().pressed.emit()
+	await process_frame
+	for method in ["_help", "_credits", "_journal", "_review"]:
+		game.call(method)
+		dialog = game.get_child(game.get_child_count() - 1)
+		await check_report_body(dialog, [])
+		dialog.get_ok_button().pressed.emit()
+		check(dialog.visible and dialog.is_queued_for_deletion(), "text reports preserve deferred accessibility closing")
+		await process_frame
+		check(game.career.encode() == preserved and game._policy() == staged, "shared text report cannot change career or staged tools")
+	check(game.career.advance(game.career.model.benchmark_policy(game.career.state, game.career.params, "feedback")).ok, "completed review setup uses a real model decision")
+	game._refresh(true)
+	preserved = game.career.encode()
+	game._review()
+	dialog = game.get_child(game.get_child_count() - 1)
+	await check_report_body(dialog, ["REALIZED PATHS / Q1–Q1", "There is no dismissal threshold."])
+	dialog.get_ok_button().pressed.emit()
+	await process_frame
+	check(game.career.encode() == preserved, "completed keyboard review is pure")
+	for q in range(1, game.career.MAX_QUARTERS):
+		check(game.career.advance(game.career.model.benchmark_policy(game.career.state, game.career.params, "feedback")).ok, "long journal setup uses actual campaign decisions")
+	game._refresh(true)
+	preserved = game.career.encode()
+	game._journal()
+	dialog = game.get_child(game.get_child_count() - 1)
+	var journal_markers: Array[String] = ["Recurring crises (advanced) · seed 417"]
+	for state in game.career.history:
+		journal_markers.append("Q%03d |" % state.quarter_index)
+	await check_report_body(dialog, journal_markers)
+	dialog.get_ok_button().pressed.emit()
+	await process_frame
+	check(game.career.encode() == preserved, "reading full completed history is pure")
+	game._start_career("supply_shock", 1)
 func check_persistent_actions(game: Control) -> void:
 	var actions: Array[Button] = []
 	for button in game.find_children("*", "Button", true, false):
@@ -345,7 +426,7 @@ func check_review_access(game: Control) -> void:
 				if child is AcceptDialog and child.visible:
 					reviews += 1
 			check(reviews == 1 and not is_instance_valid(journal), "only one review remains after actual journal exit")
-			var text: Label = review.get_child(0).get_child(0)
+			var text: TextEdit = review.get_child(0)
 			check(review.title == "Your %d-quarter policy review" % mini(12, quarters), "on-demand review title uses actual interval length")
 			check(text.text.contains("REALIZED PATHS / Q%d–Q%d" % [maxi(0, quarters - 12) + 1, quarters]), "on-demand review reports only the latest completed interval")
 			review.get_ok_button().pressed.emit()
@@ -511,6 +592,13 @@ func run() -> void:
 	var game = load("res://main.tscn").instantiate()
 	root.add_child(game)
 	await process_frame
+	if OS.get_cmdline_user_args().has("--text-reports-only"):
+		await check_text_reports(game)
+		if failures == 0:
+			print("PASS: complete selectable keyboard text reports")
+		game.free()
+		quit(1 if failures else 0)
+		return
 	if OS.get_cmdline_user_args().has("--inputs-only"):
 		await check_pending_policy(game)
 		await check_unfocused_inputs(game)
@@ -568,6 +656,7 @@ func run() -> void:
 	await check_unfocused_inputs(game)
 	await check_pending_overwrites(game)
 	await check_review_access(game)
+	await check_text_reports(game)
 	check_custom_guidance(game)
 	await check_persistent_actions(game)
 	var compare_button: Button
@@ -655,7 +744,7 @@ func run() -> void:
 	game._review()
 	await process_frame
 	var review: AcceptDialog = game.get_child(game.get_child_count() - 1)
-	var review_text: Label = review.get_child(0).get_child(0)
+	var review_text: TextEdit = review.get_child(0)
 	check(review.title == "Your 1-quarter policy review", "short completed review does not claim twelve quarters")
 	check(not review_text.text.contains("employment are close"), "review cannot infer employment from the output gap")
 	check(review_text.text.contains("REALIZED PATHS") and review_text.text.contains("unemployment above structural reference"), "review exposes realized inflation and employment tradeoffs")
@@ -722,7 +811,7 @@ func run() -> void:
 	game._help()
 	await process_frame
 	var help: AcceptDialog = game.get_child(game.get_child_count() - 1)
-	var help_text: Label = help.get_child(0).get_child(0)
+	var help_text: TextEdit = help.get_child(0)
 	check(help_text.text.contains("Every career includes seeded background disturbances") and help_text.text.contains("baseline starts at equilibrium") and help_text.text.contains("no scheduled scenario events"), "help explains the seeded baseline and scheduled-event distinction")
 	check(help_text.text.contains("same scenario and seed") and help_text.text.contains("same engine and model"), "help qualifies every input needed to reproduce the path")
 	check(game.career.encode() == before_cancel and game._policy() == staged_before_cancel, "reading seeded help leaves the active career and staged policy unchanged")
@@ -731,7 +820,7 @@ func run() -> void:
 	game._credits()
 	await process_frame
 	var credits: AcceptDialog = game.get_child(game.get_child_count() - 1)
-	var notices: Label = credits.get_child(0).get_child(0)
+	var notices: TextEdit = credits.get_child(0)
 	check(notices.text.contains(Engine.get_license_info()["FTL"]), "bundled component license is preserved verbatim")
 	credits.get_ok_button().pressed.emit()
 	await process_frame
