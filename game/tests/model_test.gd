@@ -70,6 +70,8 @@ func _initialize() -> void:
 	elif OS.get_cmdline_user_args().has("--guidance-only"):
 		_test_conditional_guidance()
 		_test_benchmark_guidance_attainability()
+	elif OS.get_cmdline_user_args().has("--unemployment-only"):
+		_test_unemployment_physical_domain()
 	elif OS.get_cmdline_user_args().has("--impulse-only"):
 		_test_policy_impulse_and_peak()
 		if failures.is_empty():
@@ -95,6 +97,7 @@ func _initialize() -> void:
 		_test_benchmark_guidance_attainability()
 		_test_liquidity_limits_and_solvency_separation()
 		_test_public_support_recovers_without_reset()
+		_test_unemployment_physical_domain()
 		_test_shipped_scenarios_and_seeded_robustness()
 	if not failures.is_empty():
 		for failure in failures:
@@ -487,6 +490,83 @@ func _run_policy_path(start: Dictionary, params: Dictionary, path: Array, policy
 		"failed_gap": failed_gap,
 		"failed_unemployment": failed_unemployment,
 	}
+
+
+func _test_unemployment_physical_domain() -> void:
+	var params: Dictionary = load_parameters().values
+	var cases: Dictionary = load_scenarios().scenarios
+	for id in ["unanchored_inflation", "lower_bound_slump"]:
+		var initial: Dictionary = initial_state(params, cases[id].initial).state
+		var path: Array = model.callv("seeded_shock_path", [1, cases[id], 240])
+		var result: Dictionary = _run_policy_path(initial, params, path, "hold")
+		expect_true(result.ok and result.state.quarter_index == 240, "%s seed1 hold completes 240 quarters: %s" % [id, result.error])
+		expect_true(result.severe and not result.recovered, "physical labor repair does not hide %s peg instability" % id)
+	var fixed: Dictionary = params.duplicate(true)
+	fixed.output_gap_persistence = 1.0
+	fixed.real_rate_output_sensitivity = 0.0
+	fixed.inflation_output_gap_sensitivity = 0.0
+	fixed.unemployment_gap_persistence = 0.0
+	var outcomes: Array[float] = []
+	for gap in [-90.0, -4.5, -0.0001, 0.0, 0.0001, 4.5, 10.0, 100.0]:
+		var state: Dictionary = initial_state(fixed, {"output_gap_pct": gap}).state
+		var result: Dictionary = step(state, neutral_policy(state), {}, fixed)
+		expect_true(result.ok, "fixed gap %.4f has a physical labor transition" % gap)
+		if result.ok:
+			var unemployment: float = result.state.unemployment_rate_pct
+			expect_true(unemployment >= 0.0 and unemployment <= 100.0, "unemployment remains a labor-force share")
+			outcomes.append(unemployment)
+	if outcomes.size() == 8:
+		for n in range(1, outcomes.size()):
+			expect_true(outcomes[n] < outcomes[n - 1], "labor response is monotone, not a clipped plateau")
+		expect_close(outcomes[3], 4.5, "zero gap retains structural reference")
+		expect_close(outcomes[5], 2.7293879687068503, "expansion reduces remaining unemployment proportionately")
+		expect_true(abs((outcomes[4] - outcomes[2]) / 0.0002 + 0.5) < 0.00002, "local Okun-style slope retains disclosed sensitivity")
+		for pair in [[-4.5, outcomes[1]], [4.5, outcomes[5]]]:
+			fixed.unemployment_gap_persistence = params.unemployment_gap_persistence
+			var constant: Dictionary = initial_state(fixed, {"output_gap_pct": pair[0]}).state
+			for q in range(96):
+				var result: Dictionary = step(constant, neutral_policy(constant), {}, fixed)
+				expect_true(result.ok, "fixed-gap convergence remains valid")
+				if not result.ok:
+					break
+				constant = result.state
+			expect_close(constant.unemployment_rate_pct, pair[1], "constant gap converges without perpetual unemployment drift")
+	fixed.unemployment_gap_persistence = 0.0
+	fixed.unemployment_gap_sensitivity = 0.0
+	for gap in [-90.0, 100.0]:
+		var zero: Dictionary = initial_state(fixed, {"output_gap_pct": gap}).state
+		var result: Dictionary = step(zero, neutral_policy(zero), {}, fixed)
+		expect_true(result.ok, "zero labor sensitivity remains valid")
+		if result.ok:
+			expect_close(result.state.unemployment_rate_pct, 4.5, "zero sensitivity retains the reference at either gap sign")
+	for rate in [0.0, 100.0]:
+		var endpoint: Dictionary = initial_state(params, {"unemployment_rate_pct": rate})
+		expect_true(endpoint.ok, "physical unemployment endpoint %.0f is valid" % rate)
+		if endpoint.ok:
+			expect_true(step(endpoint.state, neutral_policy(endpoint.state), {}, params).ok, "endpoint permits ordinary adjustment")
+	for rate in [-0.01, 100.01]:
+		expect_true(not initial_state(params, {"unemployment_rate_pct": rate}).ok, "nonphysical unemployment is rejected")
+	for reference in [0.0, 100.0]:
+		expect_true(not initial_state(params, {"structural_unemployment_pct": reference}).ok, "structural reference remains strictly internal")
+		var invalid: Dictionary = params.duplicate(true)
+		invalid.initial_structural_unemployment_pct = reference
+		expect_true(not initial_state(invalid).ok, "parameter structural boundary is rejected")
+	for pair in [[0.25, -0.5], [99.75, 0.5]]:
+		var boundary: Dictionary = initial_state(params, {"structural_unemployment_pct": pair[0]}).state
+		var before: Dictionary = boundary.duplicate(true)
+		expect_true(not step(boundary, neutral_policy(boundary), {"structural_unemployment_change_pct": pair[1]}, params).ok, "invalid structural shift rejects before target division")
+		expect_true(boundary == before, "invalid shift preserves input")
+	var state: Dictionary = initial_state(params).state
+	fixed.unemployment_gap_persistence = 1.0
+	var persistent: Dictionary = step(state, neutral_policy(state), {"structural_unemployment_change_pct": 0.5}, fixed)
+	expect_true(persistent.ok, "full labor persistence accepts valid reference shift")
+	if persistent.ok:
+		expect_close(persistent.state.unemployment_rate_pct, state.unemployment_rate_pct, "full persistence retains actual rate rather than instantly shifting it")
+	fixed.unemployment_gap_persistence = 0.0
+	var immediate: Dictionary = step(state, neutral_policy(state), {"structural_unemployment_change_pct": 0.5}, fixed)
+	expect_true(immediate.ok, "zero labor persistence accepts valid reference shift")
+	if immediate.ok:
+		expect_close(immediate.state.unemployment_rate_pct, 5.0, "zero persistence adjusts to the new reference")
 
 
 func _test_shipped_scenarios_and_seeded_robustness() -> void:
