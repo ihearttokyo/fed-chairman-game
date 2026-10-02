@@ -278,7 +278,17 @@ func _spin(parent: Node, title: String, low: float, high: float, step_size: floa
 	input.custom_minimum_size.x = 105
 	input.accessibility_name = title
 	input.tooltip_text = tip
-	input.value_changed.connect(func(_v: float): _preview())
+	# Numeric setters update the visible text on draw; accessible setters only edit text.
+	input.set_meta("numeric_text", input.get_line_edit().text)
+	input.set_meta("numeric_text_pending", true)
+	input.value_changed.connect(func(_v: float):
+		input.set_meta("numeric_text", input.get_line_edit().text)
+		input.set_meta("numeric_text_pending", true)
+		_preview())
+	input.draw.connect(func():
+		if input.get_meta("numeric_text_pending"):
+			input.set_meta("numeric_text", input.get_line_edit().text)
+			input.set_meta("numeric_text_pending", false))
 	row.add_child(input)
 	return input
 
@@ -325,9 +335,13 @@ func _policy() -> Dictionary:
 func _apply_policy_inputs() -> void:
 	loading_controls = true
 	for input in [rate, guidance, assets, liquidity, inflation_response, activity_response]:
-		if input.get_line_edit().has_focus():
-			input.apply()
+		_apply_input(input)
 	loading_controls = false
+
+func _apply_input(input: SpinBox) -> void:
+	var edit := input.get_line_edit()
+	if edit.has_focus() or edit.text != input.get_meta("numeric_text"):
+		input.apply()
 
 func _compare() -> void:
 	_apply_policy_inputs()
@@ -394,6 +408,8 @@ func _refresh(reset_controls := false) -> void:
 	briefing.text += "\n\n" + career.situation_briefing()
 	if reset_controls:
 		loading_controls = true
+		for input in [rate, guidance, assets, liquidity, inflation_response, activity_response]:
+			_apply_input(input)
 		rate.value = s.policy_rate_pct
 		guidance.value = s.policy_rate_pct
 		assets.value = 0
@@ -492,6 +508,8 @@ func _decision_briefing() -> String:
 func _staff_rule() -> void:
 	var policy: Dictionary = career.model.benchmark_policy(career.state, career.params, "feedback")
 	loading_controls = true
+	_apply_input(rate)
+	_apply_input(guidance)
 	rate.value = policy.policy_rate_request_pct
 	guidance.value = policy.guidance_rate_pct
 	commitment.select(0)
@@ -574,8 +592,7 @@ func _new_dialog() -> void:
 	seed_input.value = 1
 	_label(box, "Start with the baseline or supply shock. Weakly anchored inflation is a long recovery.", 13, MUTED)
 	dialog.confirmed.connect(func():
-		if seed_input.get_line_edit().has_focus():
-			seed_input.apply()
+		_apply_input(seed_input)
 		_start_career(scenario.get_item_metadata(scenario.selected), int(seed_input.value))
 	)
 	_show_dialog(dialog, Vector2i(740, 240))
