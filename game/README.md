@@ -116,7 +116,7 @@ their background shocks; it is not a forecast or the game's concealed future.
    gaps, add the credit spread, subtract the neutral real rate and smooth the
    result into financial restraint. Output responds gradually to restraint and
    separately to demand and supply disturbances. Unemployment adjusts toward a
-   gap-dependent level around an exogenous structural reference.
+   bounded, gap-dependent target around an exogenous structural reference.
 4. Inflation depends on prior inflation, prior short expectations, prior output
    pressure and current supply pressure. Compound the price index and calculate
    four-quarter inflation from five price levels. Actual output equals potential
@@ -140,6 +140,29 @@ term-premium policy channel, excluding routine reserve-management purchases.
 Liquidity eligibility is supplied externally and represents soundness and
 collateral restrictions. Emergency lending authorities and bank recapitalization
 are outside this model.
+
+## Physical labor bounds
+
+Unemployment is a percent of the labor force, from 0 to 100. Its structural
+reference must remain strictly between those endpoints. The earlier linear
+target could turn negative under prolonged inflationary expansion, rejecting
+otherwise valid careers. The replacement uses a disclosed design target, not
+an estimated labor equation. With structural reference `a`, output gap `g` and
+local sensitivity `k`, the target is `a * exp(-k*g/a)` for nonnegative gaps and
+`100 - (100-a) * exp(k*g/(100-a))` for negative gaps.
+
+Both branches meet at `a` with local slope `-k`. They approach physical bounds
+without clipping outcomes. The existing persistence blends the previous actual
+unemployment rate toward this target. Structural-reference changes therefore
+affect unemployment gradually rather than instantly rebasing it one-for-one.
+Zero persistence reaches the target immediately; full persistence retains the
+previous rate. Invalid reference shifts reject without changing the career.
+
+This repairs the labor domain, not unstable inflation under unsuitable policy.
+Inflation, activity, expectations, credibility, tool constraints and hardship
+formulas remain unchanged. Labor hardship and public support can change because
+they depend on unemployment. Changed model fingerprints reject incompatible
+saves without overwriting or silently migrating them.
 
 ## What the tests establish
 

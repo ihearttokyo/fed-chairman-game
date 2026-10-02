@@ -280,22 +280,25 @@ func step(state: Dictionary, policy: Dictionary, shocks: Dictionary, params: Dic
 
 	var growth: float = shocks.get("potential_growth_pct", state.potential_growth_pct)
 	var structural_u: float = state.structural_unemployment_pct + shocks.get("structural_unemployment_change_pct", 0.0)
+	if structural_u <= 0.0 or structural_u >= 100.0:
+		return {"ok": false, "error": "structural unemployment reference must be between 0 and 100 percent"}
 	var potential_output: float = state.potential_output_index * pow(1.0 + growth / 100.0, 1.0 / params.quarters_per_year)
 	var supply_pressure: float = params.supply_pressure_persistence * state.supply_pressure_pct + shocks.get("supply_innovation_pct", 0.0)
 	var output_gap: float = params.output_gap_persistence * state.output_gap_pct \
 		- params.real_rate_output_sensitivity * financial_gap \
 		+ shocks.get("demand_shock_pct", 0.0) - params.supply_output_gap_sensitivity * supply_pressure
-	var unemployment_gap: float = params.unemployment_gap_persistence * (state.unemployment_rate_pct - state.structural_unemployment_pct) \
-		+ (1.0 - params.unemployment_gap_persistence) * (-params.unemployment_gap_sensitivity * output_gap)
-	var unemployment: float = structural_u + unemployment_gap
+	# A bounded design target preserves the local Okun-style slope without clipping outcomes.
+	var labor_target: float = structural_u * exp(-params.unemployment_gap_sensitivity * output_gap / structural_u) if output_gap >= 0.0 \
+		else 100.0 - (100.0 - structural_u) * exp(params.unemployment_gap_sensitivity * output_gap / (100.0 - structural_u))
+	var unemployment: float = lerpf(state.unemployment_rate_pct, labor_target, 1.0 - params.unemployment_gap_persistence)
 
 	var inflation: float = params.inflation_persistence * state.annualized_quarterly_inflation_pct \
 		+ (1.0 - params.inflation_persistence) * state.expected_short_inflation_pct \
 		+ params.inflation_output_gap_sensitivity * state.output_gap_pct \
 		+ params.inflation_supply_sensitivity * supply_pressure
 	var price_growth_base: float = 1.0 + inflation / 100.0
-	if output_gap <= -100.0 or potential_output <= 0.0 or structural_u <= 0.0 or price_growth_base <= 0.0:
-		return {"ok": false, "error": "transition implied nonpositive output, potential, unemployment reference or prices"}
+	if output_gap <= -100.0 or potential_output <= 0.0 or price_growth_base <= 0.0:
+		return {"ok": false, "error": "transition implied nonpositive output, potential or prices"}
 	var price_index: float = state.price_index * pow(price_growth_base, 1.0 / params.quarters_per_year)
 	var history: Array = state.price_history.duplicate()
 	history.append(price_index)
@@ -476,11 +479,11 @@ func _validate_parameters(params: Dictionary) -> Dictionary:
 			return {"ok": false, "error": "share parameter out of range: %s" % key}
 	if params.policy_rate_min_pct < 0.0 or params.policy_rate_max_pct <= params.policy_rate_min_pct or params.initial_asset_stock_pct_initial_gdp < 0.0 or params.asset_stock_capacity_pct_initial_gdp < params.initial_asset_stock_pct_initial_gdp or params.inflation_target_pct != 2.0:
 		return {"ok": false, "error": "inconsistent bounds or unsupported target parameter"}
-	if params.quarters_per_year != 4.0 or params.percent_multiplier != 100.0 or params.initial_output_index <= 0.0 or params.initial_price_index <= 0.0 or params.initial_structural_unemployment_pct <= 0.0:
+	if params.quarters_per_year != 4.0 or params.percent_multiplier != 100.0 or params.initial_output_index <= 0.0 or params.initial_price_index <= 0.0 or params.initial_structural_unemployment_pct <= 0.0 or params.initial_structural_unemployment_pct >= 100.0:
 		return {"ok": false, "error": "invalid scale or initial reference parameter"}
 	if params.initial_inflation_rate_pct <= -100.0 or params.initial_expected_short_inflation_pct <= -100.0 or params.initial_expected_long_inflation_pct <= -100.0 or params.initial_output_gap_pct <= -100.0 or params.initial_policy_rate_pct < params.policy_rate_min_pct or params.initial_policy_rate_pct > params.policy_rate_max_pct:
 		return {"ok": false, "error": "invalid initial inflation, output gap or rate"}
-	if params.initial_credibility < 0.0 or params.initial_credibility > 1.0 or params.initial_public_support < 0.0 or params.initial_public_support > 100.0 or params.initial_unemployment_pct <= 0.0:
+	if params.initial_credibility < 0.0 or params.initial_credibility > 1.0 or params.initial_public_support < 0.0 or params.initial_public_support > 100.0 or params.initial_unemployment_pct < 0.0 or params.initial_unemployment_pct > 100.0:
 		return {"ok": false, "error": "initial bounded state outside its domain"}
 	for key in ["asset_flow_quarter_limit_pct_initial_gdp", "asset_flow_request_limit_pct_initial_gdp", "liquidity_flow_quarter_limit_pct_initial_gdp", "liquidity_request_limit_pct_initial_gdp", "policy_rate_change_limit_pct", "guidance_sensitivity_limit", "policy_inflation_response", "policy_output_gap_response", "credibility_miss_tolerance_pct", "credibility_stance_scale_pct", "credibility_followthrough_tolerance_pct", "real_rate_output_sensitivity", "inflation_output_gap_sensitivity", "inflation_supply_sensitivity", "short_expectation_supply_sensitivity", "supply_output_gap_sensitivity", "unemployment_gap_sensitivity", "term_premium_asset_sensitivity", "funding_spread_sensitivity", "public_inflation_burden_weight", "public_unemployment_burden_weight", "public_hardship_memory_weight"]:
 		if params[key] < 0.0:
@@ -521,7 +524,7 @@ func _validate_state(state: Dictionary, params: Dictionary) -> Dictionary:
 		return {"ok": false, "error": "quarterly inflation conflicts with price history"}
 	if state.asset_stock_capacity_pct_initial_gdp != params.asset_stock_capacity_pct_initial_gdp:
 		return {"ok": false, "error": "state asset capacity conflicts with parameter capacity"}
-	if state.quarter_index < 0 or float(state.quarter_index) != int(state.quarter_index) or state.initial_annual_gdp_index <= 0.0 or state.potential_output_index <= 0.0 or state.actual_output_index <= 0.0 or state.price_index <= 0.0 or state.output_gap_pct <= -100.0 or state.structural_unemployment_pct <= 0.0 or state.unemployment_rate_pct <= 0.0 or state.credibility < 0.0 or state.credibility > 1.0 or state.public_support < 0.0 or state.public_support > 100.0:
+	if state.quarter_index < 0 or float(state.quarter_index) != int(state.quarter_index) or state.initial_annual_gdp_index <= 0.0 or state.potential_output_index <= 0.0 or state.actual_output_index <= 0.0 or state.price_index <= 0.0 or state.output_gap_pct <= -100.0 or state.structural_unemployment_pct <= 0.0 or state.structural_unemployment_pct >= 100.0 or state.unemployment_rate_pct < 0.0 or state.unemployment_rate_pct > 100.0 or state.credibility < 0.0 or state.credibility > 1.0 or state.public_support < 0.0 or state.public_support > 100.0:
 		return {"ok": false, "error": "state violates positive-scale or bounded-domain invariant"}
 	if state.policy_rate_pct < params.policy_rate_min_pct or state.policy_rate_pct > params.policy_rate_max_pct or state.last_policy_rate_request_pct < params.policy_rate_min_pct or state.last_policy_rate_request_pct > params.policy_rate_max_pct or state.guidance_rate_pct < params.policy_rate_min_pct or state.guidance_rate_pct > params.policy_rate_max_pct:
 		return {"ok": false, "error": "state rate outside declared bounds"}

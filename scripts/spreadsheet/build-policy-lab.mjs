@@ -62,6 +62,8 @@ for (let i = 0; i < source.parameters.length; i++) {
   if (record.classification === 'mathematical_identity' || record.key === 'inflation_target_pct') domain = `AND(${domain},${ref}=${record.value})`;
   else if ((shares.test(record.key) && !unboundedWeights.has(record.key)) || record.key === 'initial_credibility') domain = `AND(${domain},${ref}>=0,${ref}<=1)`;
   else if (record.key.includes('public_support')) domain = `AND(${domain},${ref}>=0,${ref}<=100)`;
+  else if (record.key === 'initial_structural_unemployment_pct') domain = `AND(${domain},${ref}>0,${ref}<100)`;
+  else if (record.key === 'initial_unemployment_pct') domain = `AND(${domain},${ref}>=0,${ref}<=100)`;
   else if (/tolerance|stance_scale|initial_output_index|initial_price_index/.test(record.key)) domain = `AND(${domain},${ref}>0)`;
   else if (/sensitivity|limit|capacity|normal_credit|burden_weight|hardship_memory_weight/.test(record.key)) domain = `AND(${domain},${ref}>=0)`;
   cell(assumptions, `D${row}`, `=IF(${domain},${ref},NA())`, true);
@@ -100,7 +102,10 @@ for (const key of initialFields) {
   cell(assumptions, `B${initialRow}`, `${human(key)}: active`);
   const choices = cases.map((_, i) => `D${initialRow + i + 1}`).join(',');
   const present = cases.map((_, i) => `ISNUMBER(D${initialRow + i + 1})`).join(',');
-  cell(assumptions, `D${initialRow}`, `=IF(CHOOSE('Policy Lab'!$C$4,${present}),CHOOSE('Policy Lab'!$C$4,${choices}),NA())`, true);
+  const selected = `CHOOSE('Policy Lab'!$C$4,${choices})`;
+  const numeric = `CHOOSE('Policy Lab'!$C$4,${present})`;
+  const valid = key === 'unemployment_rate_pct' ? `AND(${numeric},${selected}>=0,${selected}<=100)` : numeric;
+  cell(assumptions, `D${initialRow}`, `=IF(${valid},${selected},NA())`, true);
   assumptions.getRange(`B${initialRow}:F${initialRow}`).format.fill = C.pale;
   for (let i = 0; i < cases.length; i++) {
     const row = initialRow + i + 1, value = cases[i].scenario.initial[key];
@@ -231,11 +236,14 @@ for (let q = 0; q <= 48; q++) {
   put('spot_gap', `${p('real_rate_short_weight')}*(${s('policy_rate_pct')}-${prev('expected_short_inflation_pct')})+(1-${p('real_rate_short_weight')})*(${s('long_yield_pct')}-${p('initial_term_premium_pct')}-${prev('expected_long_inflation_pct')})+(${s('credit_spread_pct')}-${p('normal_credit_spread_pct')})-${s('r_star_pct')}`);
   put('financial_restraint_gap_pct', `${p('real_rate_gap_persistence')}*${prev('financial_restraint_gap_pct')}+(1-${p('real_rate_gap_persistence')})*${s('spot_gap')}`);
   put('potential_growth_pct', `IF(${shock('potential_growth_pct')}="unchanged",${prev('potential_growth_pct')},${shock('potential_growth_pct')})`);
-  put('structural_unemployment_pct', `${prev('structural_unemployment_pct')}+${shock('structural_unemployment_change_pct')}`);
+  const structural = `${prev('structural_unemployment_pct')}+${shock('structural_unemployment_change_pct')}`;
+  put('structural_unemployment_pct', `IF(AND(${structural}>0,${structural}<100),${structural},NA())`);
   put('potential_output_index', `${prev('potential_output_index')}*POWER(1+${s('potential_growth_pct')}/100,0.25)`);
   put('supply_pressure_pct', `${p('supply_pressure_persistence')}*${prev('supply_pressure_pct')}+${shock('supply_innovation_pct')}`);
   put('output_gap_pct', `${p('output_gap_persistence')}*${prev('output_gap_pct')}-${p('real_rate_output_sensitivity')}*${s('financial_restraint_gap_pct')}+${shock('demand_shock_pct')}-${p('supply_output_gap_sensitivity')}*${s('supply_pressure_pct')}`);
-  put('unemployment_rate_pct', `${s('structural_unemployment_pct')}+${p('unemployment_gap_persistence')}*(${prev('unemployment_rate_pct')}-${prev('structural_unemployment_pct')})+(1-${p('unemployment_gap_persistence')})*(-${p('unemployment_gap_sensitivity')}*${s('output_gap_pct')})`);
+  const laborReference = s('structural_unemployment_pct'), laborGap = s('output_gap_pct'), laborSlope = p('unemployment_gap_sensitivity');
+  const laborTarget = `IF(${laborGap}>=0,${laborReference}*EXP(-${laborSlope}*${laborGap}/${laborReference}),100-(100-${laborReference})*EXP(${laborSlope}*${laborGap}/(100-${laborReference})))`;
+  put('unemployment_rate_pct', `${prev('unemployment_rate_pct')}+(1-${p('unemployment_gap_persistence')})*(${laborTarget}-${prev('unemployment_rate_pct')})`);
   put('inflation_pressure', `${p('inflation_persistence')}*${prev('annualized_quarterly_inflation_pct')}+(1-${p('inflation_persistence')})*${prev('expected_short_inflation_pct')}+${p('inflation_output_gap_sensitivity')}*${prev('output_gap_pct')}+${p('inflation_supply_sensitivity')}*${s('supply_pressure_pct')}`);
   put('price_index', `${prev('price_index')}*POWER(1+${s('inflation_pressure')}/100,0.25)`);
   for (let age = 0; age < 4; age++) put(`price_h${age}`, prev(`price_h${age + 1}`));
@@ -371,6 +379,27 @@ assert.ok(economy.getRange('AJ12').values[0][0] > inflationBefore, 'A later-peri
 assert.equal(economy.getRange('AI6').values[0][0], outputBefore, 'A later-period shock cannot change earlier output');
 cell(shocks, later, laterValue); workbook.recalculate();
 assert.ok(verifyTrace('restored supply case', [cases[2].initial_state, ...cases[2].quarters.map(x => x.state)]) < 1e-7);
+const laborInput = `D${initialRows.get('unemployment_rate_pct') + 6}`, laborValue = assumptions.getRange(laborInput).values[0][0];
+cell(lab, 'C4', 6);
+for (const endpoint of [0, 100]) {
+  cell(assumptions, laborInput, endpoint); workbook.recalculate();
+  assert.equal(economy.getRange('D16').values[0][0], endpoint, 'Physical initial unemployment endpoint is preserved');
+  const adjusted = economy.getRange('E16').values[0][0];
+  assert.ok(Number.isFinite(adjusted) && adjusted >= 0 && adjusted <= 100, 'Labor endpoint adjusts within physical bounds');
+}
+cell(assumptions, laborInput, 100.01); workbook.recalculate();
+assert.equal(economy.getRange('D16').values[0][0], '#N/A', 'Nonphysical initial unemployment stays unavailable');
+cell(assumptions, laborInput, laborValue); cell(lab, 'C4', 3);
+const referenceInput = `C${parameterRow.get('initial_structural_unemployment_pct')}`, referenceValue = assumptions.getRange(referenceInput).values[0][0];
+const referenceShock = `E${shockRows.get('structural_unemployment_change_pct') + 3}`, referenceShockValue = shocks.getRange(referenceShock).values[0][0];
+for (const [reference, shift] of [[0.25, -0.5], [99.75, 0.5]]) {
+  cell(assumptions, referenceInput, reference); cell(shocks, referenceShock, shift); workbook.recalculate();
+  assert.equal(economy.getRange('E17').values[0][0], '#N/A', 'Nonphysical structural shift stays unavailable');
+  assert.equal(economy.getRange('E16').values[0][0], '#N/A', 'Invalid labor reference cannot produce a healthy rate');
+}
+cell(assumptions, referenceInput, referenceValue); cell(shocks, referenceShock, referenceShockValue); workbook.recalculate();
+assert.ok(verifyTrace('restored labor boundaries', [cases[2].initial_state, ...cases[2].quarters.map(x => x.state)]) < 1e-7);
+console.log('PASS: labor endpoints, invalid reference shifts and restored model parity');
 console.log('PASS: four policy edits, blank/zero distinction, missing-case isolation, invalid funding and later-period causality');
 await fs.writeFile(new URL('workbook-parity.json', evidence), JSON.stringify(checks, null, 2));
 console.log((await workbook.inspect({ kind: 'table', range: 'Policy Lab!B11:D17', include: 'values,formulas', tableMaxRows: 8, tableMaxCols: 4 })).ndjson);

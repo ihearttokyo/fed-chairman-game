@@ -103,3 +103,26 @@ when there is no eligible funding need is therefore meaningful, rather than a
 reason to add an artificial reward. The comparison preserves the same known
 current shock, stocks and lags while changing one control. Its differences must
 not be added as a decomposition of the combined decision.
+
+## Respect labor-share bounds without claiming calibration
+
+The October 2 full-career audit found that the linear unemployment target could
+become negative during prolonged expansion under unchanged nominal rates.
+[BLS defines the unemployment rate](https://www.bls.gov/cps/definitions.htm#ur)
+as unemployed people divided by the labor force, expressed as a percent. This
+definition supplies physical bounds, not the game's behavioral coefficients.
+
+[Mishkin's discussion of potential output](https://www.federalreserve.gov/newsevents/speech/mishkin20070524a.htm)
+explains how labor supply, productivity and structural changes complicate Okun's
+relationship. [Daly and Hobijn's analysis of 2009](https://www.frbsf.org/research-and-insights/publications/economic-letter/2010/03/okun-law-unemployment-2009/)
+also finds a substantial departure from its usual proportional relationship.
+Neither source justifies extrapolating a linear unemployment rate indefinitely
+or supplies the replacement's nonlinear function.
+
+The bounded piecewise-exponential target and gradual level adjustment are
+explicit design assumptions. They retain the existing local slope and
+persistence without clipping unemployment or resetting macroeconomic states.
+The equations and structural-reference timing are documented in
+[the economic-core guide](../game/README.md#physical-labor-bounds). The repair
+does not establish inflation stability under an unresponsive peg, optimal play
+or empirical accuracy.
