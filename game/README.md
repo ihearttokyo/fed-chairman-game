@@ -17,6 +17,7 @@ scripts/test-game.sh
 scripts/test-model.sh
 scripts/test-model.sh --boundaries-only
 scripts/test-model.sh --impulse-only
+scripts/test-model.sh --price-only
 godot --headless --path game --script res://tests/export_reference.gd -- \
   --output /tmp/policy-reference.json --scenario supply_shock \
   --quarters 48 --seed 1 --policy feedback
@@ -159,10 +160,37 @@ Zero persistence reaches the target immediately; full persistence retains the
 previous rate. Invalid reference shifts reject without changing the career.
 
 This repairs the labor domain, not unstable inflation under unsuitable policy.
-Inflation, activity, expectations, credibility, tool constraints and hardship
-formulas remain unchanged. Labor hardship and public support can change because
-they depend on unemployment. Changed model fingerprints reject incompatible
-saves without overwriting or silently migrating them.
+The labor-only repair left inflation, activity, expectations, credibility,
+tool constraints and hardship formulas unchanged. Labor hardship and public
+support can change because they depend on unemployment. Changed model
+fingerprints reject incompatible saves without overwriting or silently migrating
+them.
+
+## Positive price and expectation factors
+
+Annual inflation and expectations remain ordinary percentages, with a physical
+lower bound strictly above -100. The earlier additive inflation rule crossed
+that bound under valid 15% rate pegs late in the career. A separate valid supply
+improvement could also push short expectations below -100 even while prices
+remained positive. Both recurrences now blend positive gross price factors and
+apply signed resource or supply pressure multiplicatively.
+
+Define `G(x)=1+x/100`, `c=100+target=102`, persistence `rho`, recent-price
+expectation weight `w`, and `d=k*prior_gap+s*current_supply`. The annual price
+factor is `[rho*G(prior_pi)+(1-rho)*G(prior_short)]*exp(d/c)`. The short expected
+factor is `[(1-w)*G(prior_short)+w*G(prior_four_quarter_pi)]*exp(s_short*current_supply/c)`.
+Prices compound the annual factor over four quarters; observed inflation still
+comes from actual price-level ratios. Economy row 64 in the workbook shows the
+annual gross factor, not a percentage.
+
+The normalization preserves the 2% equilibrium and the original local
+percent-unit sensitivities there. With no forcing, arithmetic averaging and
+equal off-target fixed points remain unchanged. Long-expectation anchoring,
+transmission lags and numerical coefficients are unchanged. These nonlinear
+forcing rules are disclosed design assumptions, not estimated Fed equations.
+They preserve mathematical positivity without a floor or forced recovery;
+floating-point overflow, underflow and representability remain numerical limits.
+Model fingerprints change, so incompatible saves are refused without overwrite.
 
 ## What the tests establish
 
@@ -173,10 +201,9 @@ It also reports 1,000 seeds across four shock cases under two benchmark policies
 for 48 quarters each. The sweep asserts numerical validity; recovery and severe
 outcome counts remain visible rather than being forced to pass.
 
-The unanchored-inflation case remains difficult. With the current assumptions,
-the feedback benchmark misses the 48-quarter recovery criterion for all 1,000
-seeds; a separately tested 96-quarter path recovers. This is a difficulty and
-calibration diagnostic, not evidence about optimal play or human performance.
+The unanchored-inflation case is a difficult benchmark. For that case, the suite reports 48-quarter recovery counts and separately
+requires a seeded 96-quarter recovery path. These are difficulty and calibration diagnostics, not evidence about
+optimal play or human performance.
 
 A one-variable lag experiment increased financial-restraint persistence from
 0.55 to 0.85. A single 75-basis-point rate surprise then has its largest output

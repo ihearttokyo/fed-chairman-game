@@ -126,3 +126,25 @@ The equations and structural-reference timing are documented in
 [the economic-core guide](../game/README.md#physical-labor-bounds). The repair
 does not establish inflation stability under an unresponsive peg, optimal play
 or empirical accuracy.
+
+## Preserve positive price factors without claiming stability
+
+The October 2 permitted-policy probe found that all six seed-1 firm 15% rate
+pegs crossed the physical price domain at quarters 204–235. The linear annual
+inflation rule implied a nonpositive gross factor; its validator correctly
+rejected the transition. A separate near -100% fixture also exposed an additive
+short-expectation domain failure.
+
+[BLS percent-change instructions](https://www.bls.gov/cpi/factsheets/calculating-percent-changes.htm)
+define index changes relative to the earlier index. Positive price levels imply
+a gross factor above zero. [Rudd's Federal Reserve note](https://www.federalreserve.gov/econres/notes/feds-notes/underlying-inflation-its-measurement-and-significance-20200918.html)
+uses annualized log price differences in its inflation analysis. Neither source
+identifies this game's coefficients or its nonlinear forcing rule.
+
+The replacement retains arithmetic gross-factor blends, applying signed resource
+and supply effects multiplicatively. It preserves the 2% equilibrium, existing
+local sensitivities and lag timing without clipping inflation or forgiving poor
+policy. The equations are in [the core guide](../game/README.md#positive-price-and-expectation-factors).
+This domain repair does not establish global stability, empirical forecasting
+accuracy or successful recovery under unsuitable policy. Finite-precision limits
+and full-career stress outcomes remain explicit validation questions.
