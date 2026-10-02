@@ -25,10 +25,14 @@ func check_persistent_actions(game: Control) -> void:
 				check(not ancestor is ScrollContainer, "policy actions remain outside the scrolling cockpit")
 				ancestor = ancestor.get_parent()
 	check(actions.size() == 2, "comparison and adoption each have one action")
-	var feedback_ancestor: Node = game.status_label.get_parent()
-	while feedback_ancestor != game:
-		check(not feedback_ancestor is ScrollContainer, "career status remains outside the scrolling cockpit")
-		feedback_ancestor = feedback_ancestor.get_parent()
+	for feedback in [game.status_label, game.consequence]:
+		var feedback_ancestor: Node = feedback.get_parent()
+		while feedback_ancestor != game:
+			check(not feedback_ancestor is ScrollContainer, "career status and economic outcome remain outside the scrolling cockpit")
+			feedback_ancestor = feedback_ancestor.get_parent()
+	game._advance()
+	game._advance()
+	check(game.consequence.text.contains("Q2 OUTCOME") and game.consequence.text.contains("Previous promise follow-through"), "persistent feedback retains real outcome and prior promise explanation")
 	var original_size := root.size
 	var original_status: String = game.status_label.text
 	game._staff_rule()
@@ -41,6 +45,7 @@ func check_persistent_actions(game: Control) -> void:
 		for button in actions:
 			check(button.get_global_rect().position.y >= 0 and button.get_global_rect().end.y <= game.get_viewport_rect().end.y, "expanded guidance keeps actions within the viewport")
 		check(game.status_label.get_global_rect().position.y >= 0 and game.status_label.get_global_rect().end.y <= game.get_viewport_rect().end.y, "long staff feedback remains within the viewport with expanded guidance")
+		check(game.consequence.get_global_rect().position.y >= 0 and game.consequence.get_global_rect().end.y <= game.get_viewport_rect().end.y, "complete adopted outcome stays within the viewport with expanded guidance")
 	root.size = original_size
 	game.status_label.text = original_status
 	game.commitment.select(0)
@@ -392,6 +397,13 @@ func run() -> void:
 	if OS.get_cmdline_user_args().has("--city-only"):
 		if failures == 0:
 			print("PASS: native miniature antialiasing")
+		game.free()
+		quit(1 if failures else 0)
+		return
+	if OS.get_cmdline_user_args().has("--feedback-only"):
+		await check_persistent_actions(game)
+		if failures == 0:
+			print("PASS: persistent policy actions and outcome feedback")
 		game.free()
 		quit(1 if failures else 0)
 		return

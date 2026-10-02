@@ -209,7 +209,8 @@ Later data can still change the conditional promise. A manually entered firm
 promise is not clipped or forgiven merely because it is unreachable.
 
 Comparison and adoption stay in the bottom action bar while the cockpit scrolls.
-Career and decision feedback also stays visible in that bar.
+Career status and the complete quarterly outcome also stay visible in that bar,
+including credibility, public support, transmission lags and prior follow-through.
 Expanding custom guidance keeps both actions available without hiding any policy
 tool, unit, preview assumption or outcome from the scrollable content.
 Both actions submit the field currently being edited, so a valid typed decision
