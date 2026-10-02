@@ -518,6 +518,13 @@ func _staff_rule() -> void:
 	_preview()
 	status_label.text = "Staff benchmark selected. This simple rule is a comparison, not an optimal policy. Other tools are unchanged."
 
+func _score_change(change: float) -> String:
+	if change == 0:
+		return "unchanged"
+	if abs(change) < 0.05:
+		return ("up" if change > 0 else "down") + " <0.05 points"
+	return "%+.1f points" % change
+
 func _advance() -> void:
 	_apply_policy_inputs()
 	var before: Dictionary = career.state.duplicate(true)
@@ -527,7 +534,7 @@ func _advance() -> void:
 		return
 	_refresh(true)
 	var s: Dictionary = career.state
-	consequence.text = "Q%d OUTCOME  ·  Inflation %+.2f pp; unemployment %+.2f pp.\nApplied rate %.2f%%. Public support %+.1f; credibility %+.1f. Your earlier decisions remain in the transmission pipeline." % [s.quarter_index, s.four_quarter_inflation_pct - before.four_quarter_inflation_pct, s.unemployment_rate_pct - before.unemployment_rate_pct, s.policy_rate_pct, s.public_support - before.public_support, (s.credibility - before.credibility) * 100]
+	consequence.text = "Q%d OUTCOME  ·  Inflation %+.2f pp; unemployment %+.2f pp.\nApplied rate %.2f%%. Public support %s; credibility %s. Your earlier decisions remain in the transmission pipeline." % [s.quarter_index, s.four_quarter_inflation_pct - before.four_quarter_inflation_pct, s.unemployment_rate_pct - before.unemployment_rate_pct, s.policy_rate_pct, _score_change(s.public_support - before.public_support), _score_change((s.credibility - before.credibility) * 100)]
 	if before.guidance_active:
 		consequence.text += "\nPrevious promise follow-through: %.1f / 100." % (100 * s.guidance_followthrough_score)
 	status_label.text = "Quarter %d completed. Unsaved changes · %s" % [s.quarter_index, career.cases[career.scenario_id].label]
