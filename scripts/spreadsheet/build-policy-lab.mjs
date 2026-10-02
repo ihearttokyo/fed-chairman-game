@@ -318,7 +318,7 @@ const chart = (title, columns, start, end, colors) => {
   plot.titleTextStyle.fontSize = 12; plot.titleTextStyle.typeface = 'Arial';
   plot.legend = { position: 'top', textStyle: { typeface: 'Arial', fontSize: 10 } };
   plot.xAxis = { axisType: 'textAxis', textStyle: { typeface: 'Arial', fontSize: 9 }, tickLabelInterval: 8 };
-  plot.yAxis = { numberFormatCode: '0.0', numberFormatSourceLinked: false, textStyle: { typeface: 'Arial', fontSize: 10 } };
+  plot.yAxis = { numberFormatCode: '0.00', numberFormatSourceLinked: false, textStyle: { typeface: 'Arial', fontSize: 10 } };
   plot.series.items.forEach((series, i) => { series.line = { fill: colors[i], style: i === 1 ? 'dashed' : 'solid', width: 2 }; });
 };
 chart('Inflation and expectations (%)', ['C', 'D', 'E'], 'B20', 'H35', [C.copper, C.blue, C.green]);

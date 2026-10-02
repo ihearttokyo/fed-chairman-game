@@ -11,7 +11,7 @@ merge `985308d3764848bb7683e985a9f8cdf5cfa62356`. Its complete Git tree matches
 reviewed build head `13b8cf801127852a78a70d512eaf217129d21095`.
 [Exact-head CI](https://github.com/ihearttokyo/fed-chairman-game/actions/runs/37048399649)
 and [merged-main CI](https://github.com/ihearttokyo/fed-chairman-game/actions/runs/37056416938)
-passed. Later documentation changes do not imply a rebuilt app.
+passed. Later documentation or workbook-tooling changes do not imply a rebuilt app.
 
 The validated ZIP is retained outside Git as
 `The Chair — Apple Silicon keyboard reports notarized.zip`, SHA-256
@@ -51,10 +51,16 @@ No installed legacy app or user save was replaced.
   0/48, both benchmarks and an explicit-zero policy override followed by restoration.
   All five sheet views and four charts were inspected. Visible metrics matched
   rounded native references; this is not a full-precision Excel parity claim.
-  The hold-rate unemployment chart showed duplicate rounded axis labels; repair
-  remains pending. LibreOffice's earlier macOS accessibility-bridge crash remains
-  recorded. Both routes used a disposable copy; the original workbook stayed
-  unchanged, with no add-in, connector or Save used.
+  The original hold-rate unemployment chart showed duplicate rounded axis labels.
+  A format-only repair passed native Excel checks in a fresh workbook: case 7's
+  0.05-point unemployment ticks display distinct two-decimal labels. All four
+  charts, quarter 0/48 and restored default inputs passed; edits were discarded
+  without saving. The repaired workbook's SHA-256 is
+  `728a347760bcec5b7913ce55c413ea914d082412b32d3ede2d378a950f3b446f`.
+  This does not establish unique labels at every possible automatic tick interval.
+  LibreOffice's earlier macOS accessibility-bridge crash remains recorded. Both
+  routes used disposable copies; original workbooks stayed unchanged, with no
+  add-in, connector or Save used.
 
 Current equations, seven scenarios, workbook regeneration and packaging belong
 in the [model README](../game/README.md); economic acceptance belongs in the

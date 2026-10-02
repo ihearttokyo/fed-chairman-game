@@ -66,6 +66,9 @@ for filename in args.workbooks:
             chart = ET.fromstring(archive.read(path))
             title = ''.join(node.text or '' for node in chart.findall('c:chart/c:title//a:t', NS))
             titles.append(title)
+            formats = chart.findall('.//c:valAx/c:numFmt', NS)
+            assert formats and all(f.attrib.get('formatCode') == '0.00'
+                                   and f.attrib.get('sourceLinked') in ('0', 'false') for f in formats), (path, title, 'ambiguous value-axis precision')
             series = chart.findall('.//c:ser', NS)
             assert len(series) == expected_series.get(title), (path, title, 'missing chart series')
             palettes.append([s.find('c:spPr/a:ln/a:solidFill/a:srgbClr', NS).attrib['val'] for s in series])
