@@ -272,6 +272,11 @@ and CI do not need Blender. Art source is excluded from runtime imports. Animati
 is off by default, controls expose accessibility labels, and the journal supplies
 exact chart values. Engine and component notices are available under Credits.
 
+The static city uses a native one-shot render, refreshed after viewport size or
+visibility changes. Enabling animation restores continuous rendering; disabling
+it retains the final orientation. Camera framing and four-sample antialiasing
+are unchanged. This reduces redundant rendering, not economic simulation work.
+
 ## Offline policy deliberation
 
 The comparison report includes a Deliberation section. It shows your selected
