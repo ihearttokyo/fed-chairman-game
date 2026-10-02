@@ -48,7 +48,7 @@ with tempfile.TemporaryDirectory(prefix='fed-runtime-error-guards-') as director
         environment['FED_TEST_EXIT'] = str(exit_code)
         rejected = bool(marker or exit_code)
         log.write_text((marker + ' synthetic runtime failure\n' if marker else '')
-                       + 'PASS: 141 release-safe checks; synthetic output only\n')
+                       + 'PASS: 164 release-safe checks; synthetic output only\n')
         for script in ('scripts/test-model.sh', 'scripts/test-game.sh'):
             result = subprocess.run(['bash', str(root / script)], env=environment,
                                     capture_output=True, text=True)

@@ -451,6 +451,28 @@ func shock_for_quarter(scenario: Dictionary, quarter: int) -> Dictionary:
 
 
 func seeded_shock_path(seed: int, scenario: Dictionary, quarters: int) -> Array:
+	if scenario.id == "mixed_crises":
+		scenario = scenario.duplicate(true)
+		var templates: Dictionary = load_scenarios().scenarios
+		var episodes := RandomNumberGenerator.new()
+		episodes.seed = seed ^ 0x43414D50
+		var bag: Array = []
+		var onset := episodes.randi_range(12, 20)
+		while onset < quarters:
+			if bag.is_empty():
+				bag = ["demand_boom", "supply_shock", "funding_stress"]
+			var id: String = bag.pop_at(episodes.randi_range(0, bag.size() - 1))
+			var strength := episodes.randf_range(0.75, 1.25)
+			var polarity := 1.0 if id == "funding_stress" or episodes.randi_range(0, 1) == 1 else -1.0
+			var events: Array = templates[id].events
+			for template in events:
+				var event: Dictionary = template.duplicate(true)
+				event.quarter_index = onset + int(template.quarter_index) - int(events[0].quarter_index)
+				for key in ["demand_shock_pct", "supply_innovation_pct", "funding_need_pct_initial_gdp", "eligible_collateral_pct_initial_gdp", "solvency_risk_innovation_pct"]:
+					if event.has(key):
+						event[key] *= strength * polarity
+				scenario.events.append(event)
+			onset += episodes.randi_range(12, 20)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
 	var path: Array = []

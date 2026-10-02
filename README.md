@@ -12,7 +12,7 @@ affiliation, sponsorship or endorsement.
 
 ## Play
 
-Choose one of six hypothetical economies. At each quarterly meeting, inspect
+Choose one of seven hypothetical economies. At each quarterly meeting, inspect
 inflation, employment, expectations and financial conditions; stage a target-rate
 midpoint, conditional guidance, asset flow and liquidity request; compare the
 applied decision with holding policy; then adopt and inspect the outcome.
@@ -22,6 +22,11 @@ hardship and recovers gradually. Policy lags, shocks and history carry through
 12-quarter reviews without resets or score-driven dismissal. Careers can continue
 for 240 quarters. Exact journal values accompany the charts; city animation is
 optional and off by default.
+
+The optional Recurring crises campaign introduces paired demand, supply and
+funding episodes throughout the career. Their timing and strength vary with
+the seed; future episodes stay hidden from dispatches and previews. Crisis
+incidence is fictional game design, not a historical estimate.
 
 Save and Load use the game's separate FedChairmanPolicyLab storage. Loading
 validates and replays the career before replacing active play. There is no legacy

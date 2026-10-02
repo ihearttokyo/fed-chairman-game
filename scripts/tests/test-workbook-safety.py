@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location('build_workbook', ROOT / 'scripts/build-workbook.py')
 builder = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(builder)
+assert list(builder.CASES) == [case['id'] for case in json.loads((ROOT / 'game/model/scenarios.json').read_text())], 'Workbook must cover every shipped scenario in its stable order'
 
 
 def rejected_output(path, message):
@@ -117,3 +118,24 @@ with tempfile.TemporaryDirectory(prefix='fed-price-boundaries-') as directory:
     result = subprocess.run(command, capture_output=True, text=True)
     assert result.returncode == 1 and output.read_bytes() == before
 print('PASS: real Godot three physical price boundaries and replacement refusal')
+
+# Reference exports keep their wider seed and horizon contract, unlike careers.
+with tempfile.TemporaryDirectory(prefix='fed-campaign-reference-') as directory:
+    paths = []
+    for quarters in (48, 1000):
+        output = Path(directory) / f'campaign-{quarters}.json'
+        command = [godot, '--headless', '--path', str(ROOT / 'game'),
+                   '--script', 'res://tests/export_reference.gd', '--',
+                   '--output', str(output), '--scenario', 'mixed_crises',
+                   '--quarters', str(quarters), '--seed', '9223372036854775807',
+                   '--policy', 'feedback']
+        result = subprocess.run(command, capture_output=True, text=True, timeout=120)
+        assert result.returncode == 0 and 'EXPORTED ' in result.stdout and not any(
+            marker in result.stdout + result.stderr for marker in ('SCRIPT ERROR:', 'ERROR:', 'FAIL:')), result.stdout + result.stderr
+        document = json.loads(output.read_text())
+        assert document['seed'] == 9223372036854775807 and len(document['quarters']) == quarters
+        assert [row['quarter_index'] for row in document['quarters']] == list(range(1, quarters + 1))
+        paths.append(document['shock_path'])
+    assert paths[0] == paths[1][:48], 'Campaign exporter must retain exact horizon prefixes'
+    assert any(shock.get('funding_need_pct_initial_gdp', 0) > 0.1 for shock in paths[1][900:]), 'Long reference keeps recurring late crises'
+print('PASS: real campaign reference, int64 seed, 1000-quarter horizon and exact prefix')

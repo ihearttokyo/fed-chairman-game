@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { Workbook, SpreadsheetFile } from '@oai/artifact-tool';
 
-const ids = ['base', 'demand_boom', 'supply_shock', 'funding_stress', 'unanchored_inflation', 'lower_bound_slump'];
+const ids = ['base', 'demand_boom', 'supply_shock', 'funding_stress', 'unanchored_inflation', 'lower_bound_slump', 'mixed_crises'];
 const cases = await Promise.all(ids.map(async id => JSON.parse(await fs.readFile(new URL(`./reference-v1/${id}.json`, import.meta.url), 'utf8'))));
 const source = cases[0];
 const out = new URL('./', import.meta.url);
@@ -43,7 +43,7 @@ cell(lab, 'B5', 'Quarter shown'); cell(lab, 'C5', 48);
 cell(lab, 'B6', 'Benchmark policy'); cell(lab, 'C6', 1);
 cell(lab, 'E6', '=CHOOSE(C6,"Feedback rule","Hold previous rate")', true);
 input(lab, 'C4:C6');
-for (const [address, max] of [['C4', 6], ['C5', 48], ['C6', 2]]) lab.getRange(address).dataValidation = { rule: { type: 'whole', operator: 'between', formula1: address === 'C5' ? 0 : 1, formula2: max } };
+for (const [address, max] of [['C4', cases.length], ['C5', 48], ['C6', 2]]) lab.getRange(address).dataValidation = { rule: { type: 'whole', operator: 'between', formula1: address === 'C5' ? 0 : 1, formula2: max } };
 cell(lab, 'B8', 'Edit amber cells. Policy blanks use the selected benchmark; zero is an explicit decision.');
 cell(lab, 'B9', 'Design assumptions, not a forecast. All cases include small seed-1 shocks.');
 for (let n = 0; n < cases.length; n++) cell(lab, `J${4 + n}`, `${n + 1}. ${cases[n].scenario.label}`);
@@ -96,6 +96,7 @@ const initialParameter = {
 };
 const initialRows = new Map();
 const initialFields = [...new Set(cases.flatMap(x => Object.keys(x.scenario.initial)))];
+const caseStride = cases.length + 2;
 let initialRow = 77;
 for (const key of initialFields) {
   assert.ok(initialParameter[key], `Undocumented initial case driver ${key}`);
@@ -115,14 +116,14 @@ for (const key of initialFields) {
     if (value === undefined) cell(assumptions, `D${row}`, `=${p(initialParameter[key])}`, true);
     else { cell(assumptions, `D${row}`, value); input(assumptions, `D${row}`); }
   }
-  initialRow += 8;
+  initialRow += caseStride;
 }
 const initial = key => initialRows.has(key) ? `'Assumptions'!$D$${initialRows.get(key)}` : initialParameter[key] ? p(initialParameter[key]) : '0';
 
 const shockKeys = ['demand_shock_pct', 'supply_innovation_pct', 'potential_growth_pct', 'r_star_change_pct', 'structural_unemployment_change_pct', 'funding_need_pct_initial_gdp', 'eligible_collateral_pct_initial_gdp', 'collateral_haircut_pct', 'liquidity_eligibility_pct', 'credit_risk_innovation_pct', 'solvency_risk_innovation_pct'];
 const shockRows = new Map();
 for (let i = 0; i < shockKeys.length; i++) {
-  const key = shockKeys[i], row = 6 + i * 8;
+  const key = shockKeys[i], row = 6 + i * caseStride;
   shockRows.set(key, row);
   cell(shocks, `B${row}`, `${human(key)}: active`);
   shocks.getRange(`B${row}:AZ${row}`).format.fill = C.pale;
@@ -142,9 +143,11 @@ for (let i = 0; i < shockKeys.length; i++) {
   });
   shocks.getRange(`E${row}:AZ${row}`).formulas = [formulas];
 }
-cell(shocks, 'B97', 'Seed 1 realized paths from Godot 4.7.2. Hypothetical disturbances; no historical calibration.');
-cell(shocks, 'B98', 'Blank potential growth keeps the previous trend. All other active shock inputs must be numeric.');
-shocks.getRange('E6:AZ92').setNumberFormat('0.000');
+const shockNoteRow = 6 + shockKeys.length * caseStride;
+cell(shocks, `B${shockNoteRow}`, 'Seed 1 realized paths from Godot 4.7.2. Hypothetical disturbances; no historical calibration.');
+cell(shocks, `B${shockNoteRow + 1}`, 'Blank potential growth keeps the previous trend. All other active shock inputs must be numeric.');
+cell(shocks, `B${shockNoteRow + 2}`, 'Recurring crises: paired episodes every 12 to 20 quarters at 0.75 to 1.25 times the demand, supply or funding template.');
+shocks.getRange(`E6:AZ${shockNoteRow - 2}`).setNumberFormat('0.000');
 
 const R = {
   quarter_index: 4, potential_output_index: 5, actual_output_index: 6, annualized_actual_growth_pct: 7,
@@ -397,17 +400,19 @@ cell(lab, 'C6', 1); cell(lab, 'C4', 3); workbook.recalculate();
 assert.ok(verifyTrace('restored price boundaries', [cases[2].initial_state, ...cases[2].quarters.map(x => x.state)]) < 1e-7);
 console.log('PASS: three native price boundaries, strict gross-rate inputs and restored model parity');
 // Missing unselected input must not break the chosen case; selected missing input must not become zero.
-const supplyCell = 'E17', supplyValue = shocks.getRange(supplyCell).values[0][0];
+const supplyRow = shockRows.get('supply_innovation_pct');
+const supplyCell = `E${supplyRow + 3}`, supplyValue = shocks.getRange(supplyCell).values[0][0];
 cell(lab, 'C4', 1); cell(shocks, supplyCell, null); workbook.recalculate();
 assert.ok(Number.isFinite(economy.getRange('AZ13').values[0][0]), 'Missing unselected shock is isolated');
 cell(lab, 'C4', 3); workbook.recalculate();
-assert.equal(shocks.getRange('E14').values[0][0], '#N/A', 'Selected missing shock remains unavailable');
+assert.equal(shocks.getRange(`E${supplyRow}`).values[0][0], '#N/A', 'Selected missing shock remains unavailable');
 cell(shocks, supplyCell, supplyValue); workbook.recalculate();
-const fundingCell = 'E49', fundingValue = shocks.getRange(fundingCell).values[0][0];
+const fundingRow = shockRows.get('funding_need_pct_initial_gdp');
+const fundingCell = `E${fundingRow + 3}`, fundingValue = shocks.getRange(fundingCell).values[0][0];
 cell(shocks, fundingCell, -1); workbook.recalculate();
-assert.equal(shocks.getRange('E46').values[0][0], '#N/A', 'Negative funding need is rejected');
+assert.equal(shocks.getRange(`E${fundingRow}`).values[0][0], '#N/A', 'Negative funding need is rejected');
 cell(shocks, fundingCell, fundingValue); workbook.recalculate();
-const later = `${column(36)}17`, laterValue = shocks.getRange(later).values[0][0];
+const later = `${column(36)}${supplyRow + 3}`, laterValue = shocks.getRange(later).values[0][0];
 const inflationBefore = economy.getRange('AJ12').values[0][0], outputBefore = economy.getRange('AI6').values[0][0];
 cell(shocks, later, laterValue + 0.5); workbook.recalculate();
 assert.ok(economy.getRange('AJ12').values[0][0] > inflationBefore, 'A later-period supply edit updates that period');
