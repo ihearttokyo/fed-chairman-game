@@ -10,7 +10,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 CASES = ('base', 'demand_boom', 'supply_shock', 'funding_stress',
-         'unanchored_inflation', 'lower_bound_slump')
+         'unanchored_inflation', 'lower_bound_slump', 'mixed_crises')
 
 
 def new_output(value):

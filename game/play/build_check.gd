@@ -24,8 +24,8 @@ func run(game: Control) -> int:
 		check(restored.state == career.state, "exact replay state")
 	check(game.career.state.quarter_index == 0, "main scene starts")
 	check(game.city.get_child_count() > 0, "original city resource loads")
-	if failures == 0 and checks == 141:
-		print("PASS: 141 release-safe checks; six 20-quarter careers, lossless replay, main scene and city")
+	if failures == 0 and checks == 164:
+		print("PASS: 164 release-safe checks; seven 20-quarter careers, lossless replay, main scene and city")
 		print("MODEL_DIGEST ", Career.new().model_digest())
 		return 0
 	printerr("FAIL: build verification completed ", checks, " checks with ", failures, " failures")

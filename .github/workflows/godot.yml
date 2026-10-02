@@ -30,4 +30,4 @@ jobs:
           scripts/test-game.sh
           godot --headless --path game --quit-after 600 -- --verify-build 2>&1 | tee "$RUNNER_TEMP/game-check.log"
           if grep -Eq 'SCRIPT ERROR:|ERROR:|FAIL:' "$RUNNER_TEMP/game-check.log"; then exit 1; fi
-          grep -q 'PASS: 141 release-safe checks' "$RUNNER_TEMP/game-check.log"
+          grep -q 'PASS: 164 release-safe checks' "$RUNNER_TEMP/game-check.log"

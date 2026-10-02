@@ -29,6 +29,6 @@ assert '(runtime)' in signature, 'Hardened runtime required'
 assert 'Timestamp=' in signature, 'Secure timestamp required'
 log = run(str(binary), '--headless', '--quit-after', '600', '--', '--verify-build')
 assert not any(marker in log for marker in ('SCRIPT ERROR:', 'ERROR:', 'FAIL:')), log
-assert 'PASS: 141 release-safe checks' in log, log
+assert 'PASS: 164 release-safe checks' in log, log
 print(log.strip())
 print('PASS: ARM64-only, Developer ID, hardened runtime, timestamp and strict signature')

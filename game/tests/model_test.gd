@@ -577,7 +577,7 @@ func _test_unemployment_physical_domain() -> void:
 func _test_shipped_scenarios_and_seeded_robustness() -> void:
 	var params: Dictionary = load_parameters().values
 	var scenarios_result: Dictionary = load_scenarios()
-	expect_true(scenarios_result.ok and scenarios_result.scenarios.size() == 6, "six named scenarios validate")
+	expect_true(scenarios_result.ok and scenarios_result.scenarios.size() == 7, "seven named scenarios validate")
 	if not scenarios_result.ok:
 		return
 	var scenarios: Dictionary = scenarios_result.scenarios

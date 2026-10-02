@@ -50,7 +50,7 @@ a link to managed dependencies. References, logs, previews and source hashes
 stay beside the new workbook rather than entering Git. Failed builds are kept
 for diagnosis; rerun with a new destination instead of replacing one.
 
-Six seed-1, 48-quarter reference careers and four one-variable policy edits come
+Seven seed-1, 48-quarter reference careers and four one-variable policy edits come
 from the current Godot equations. The builder checks every state against its
 formula chain, exercises input boundaries and causality, exports four editable
 charts and renders all five sheets. These are hypothetical design assumptions,
@@ -72,7 +72,7 @@ interactive GUI validation remain separate checks; the build does not launch
 or change a spreadsheet application's windows.
 
 `model/economy.gd` owns the equations. `parameters.json` records each parameter's
-units and source classification; `scenarios.json` contains six hypothetical
+units and source classification; `scenarios.json` contains seven hypothetical
 cases. Rates and inflation use percent units: 2 means 2 percent. Asset and loan
 amounts use percent of **initial annual GDP**, so growth does not silently change
 their denominator. Output and price levels start at index 100.
@@ -86,6 +86,21 @@ demand innovations in [-0.18, +0.18] percentage points, supply innovations in
 [-0.04, +0.04] and neutral-rate changes in [-0.01, +0.01]. Funding stress also
 receives small funding needs with eligible collateral. These are design choices.
 Scheduled scenario events are added to that background path.
+
+The optional Recurring crises (advanced) case reuses the demand, supply and
+funding templates in two-quarter episodes throughout the career. First onset
+and subsequent onset intervals range from 12 to 20 quarters. Each episode is
+0.75 to 1.25 times its template; demand and supply can have either sign, while
+funding remains positive. Each bag includes all three types once before refill.
+A separate seed-derived local generator precomputes the episodes at start,
+without changing the background random sequence or any of the six earlier
+scenario paths. No background service or per-turn network work is required.
+
+These incidence and magnitude choices are fictional game design, not empirical
+crisis frequencies. The shared seeded generator supplies the game, exports and
+workbook. Previews and dispatches still cannot inspect future episodes. Adding
+the campaign changes the model fingerprint; older saves are rejected without
+overwrite or silent migration. Previous release artifacts remain separate.
 
 The dispatch also interprets markets, public hardship and funding as an offline
 storyline. It reads only current information and completed history; replay
@@ -223,7 +238,7 @@ release gates.
 
 ## Playable career
 
-Choose one of six scenarios, inspect the current meeting dispatch and stage a
+Choose one of seven scenarios, inspect the current meeting dispatch and stage a
 rate, guidance, asset-flow and lending decision. The preview uses the known
 current shock, then assumes no new shocks and holds the rate for eight quarters.
 It cannot read the realized future shock path. The staff rate rule is a disclosed
@@ -352,7 +367,7 @@ quarantine or weaken Gatekeeper. Plaintext scripts remain included so the model
 is inspectable and save fingerprints survive export.
 
 The actual release executable's `--headless -- --verify-build` entry point runs
-141 resource, career and replay checks without external scripts or path
+164 resource, career and replay checks without external scripts or path
 overrides. The release verifier also runs that self-check. Linux CI validates
 source behavior; it does not build or distribute an Intel Mac game. Intel
 hardware testing is not a release gate for this ARM64-only product.
