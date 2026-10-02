@@ -292,11 +292,12 @@ func step(state: Dictionary, policy: Dictionary, shocks: Dictionary, params: Dic
 		else 100.0 - (100.0 - structural_u) * exp(params.unemployment_gap_sensitivity * output_gap / (100.0 - structural_u))
 	var unemployment: float = lerpf(state.unemployment_rate_pct, labor_target, 1.0 - params.unemployment_gap_persistence)
 
-	var inflation: float = params.inflation_persistence * state.annualized_quarterly_inflation_pct \
-		+ (1.0 - params.inflation_persistence) * state.expected_short_inflation_pct \
-		+ params.inflation_output_gap_sensitivity * state.output_gap_pct \
-		+ params.inflation_supply_sensitivity * supply_pressure
-	var price_growth_base: float = 1.0 + inflation / 100.0
+	# Positive gross growth preserves the unforced blend and local percent slopes at target.
+	var inflation_scale: float = 100.0 + params.inflation_target_pct
+	var inflation_base: float = params.inflation_persistence * (1.0 + state.annualized_quarterly_inflation_pct / 100.0) \
+		+ (1.0 - params.inflation_persistence) * (1.0 + state.expected_short_inflation_pct / 100.0)
+	var price_growth_base: float = inflation_base * exp((params.inflation_output_gap_sensitivity * state.output_gap_pct \
+		+ params.inflation_supply_sensitivity * supply_pressure) / inflation_scale)
 	if output_gap <= -100.0 or potential_output <= 0.0 or price_growth_base <= 0.0:
 		return {"ok": false, "error": "transition implied nonpositive output, potential or prices"}
 	var price_index: float = state.price_index * pow(price_growth_base, 1.0 / params.quarters_per_year)
@@ -304,9 +305,9 @@ func step(state: Dictionary, policy: Dictionary, shocks: Dictionary, params: Dic
 	history.append(price_index)
 	history.pop_front()
 	var four_quarter: float = _four_quarter_inflation(history, params.percent_multiplier)
-	var expected_short: float = (1.0 - params.short_expectation_recent_weight) * state.expected_short_inflation_pct \
-		+ params.short_expectation_recent_weight * state.four_quarter_inflation_pct \
-		+ params.short_expectation_supply_sensitivity * supply_pressure
+	var expected_short_base: float = (1.0 - params.short_expectation_recent_weight) * (1.0 + state.expected_short_inflation_pct / 100.0) \
+		+ params.short_expectation_recent_weight * (1.0 + state.four_quarter_inflation_pct / 100.0)
+	var expected_short: float = 100.0 * (expected_short_base * exp(params.short_expectation_supply_sensitivity * supply_pressure / inflation_scale) - 1.0)
 	var long_anchor: float = credibility * params.inflation_target_pct + (1.0 - credibility) * state.four_quarter_inflation_pct
 	var expected_long: float = state.expected_long_inflation_pct \
 		+ params.long_expectation_adjustment * (long_anchor - state.expected_long_inflation_pct)

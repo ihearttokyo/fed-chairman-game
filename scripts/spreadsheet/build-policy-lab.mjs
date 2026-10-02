@@ -64,6 +64,7 @@ for (let i = 0; i < source.parameters.length; i++) {
   else if (record.key.includes('public_support')) domain = `AND(${domain},${ref}>=0,${ref}<=100)`;
   else if (record.key === 'initial_structural_unemployment_pct') domain = `AND(${domain},${ref}>0,${ref}<100)`;
   else if (record.key === 'initial_unemployment_pct') domain = `AND(${domain},${ref}>=0,${ref}<=100)`;
+  else if (['initial_inflation_rate_pct', 'initial_expected_short_inflation_pct', 'initial_expected_long_inflation_pct'].includes(record.key)) domain = `AND(${domain},${ref}>-100)`;
   else if (/tolerance|stance_scale|initial_output_index|initial_price_index/.test(record.key)) domain = `AND(${domain},${ref}>0)`;
   else if (/sensitivity|limit|capacity|normal_credit|burden_weight|hardship_memory_weight/.test(record.key)) domain = `AND(${domain},${ref}>=0)`;
   cell(assumptions, `D${row}`, `=IF(${domain},${ref},NA())`, true);
@@ -104,7 +105,8 @@ for (const key of initialFields) {
   const present = cases.map((_, i) => `ISNUMBER(D${initialRow + i + 1})`).join(',');
   const selected = `CHOOSE('Policy Lab'!$C$4,${choices})`;
   const numeric = `CHOOSE('Policy Lab'!$C$4,${present})`;
-  const valid = key === 'unemployment_rate_pct' ? `AND(${numeric},${selected}>=0,${selected}<=100)` : numeric;
+  const valid = key === 'unemployment_rate_pct' ? `AND(${numeric},${selected}>=0,${selected}<=100)`
+    : ['annualized_quarterly_inflation_pct', 'expected_short_inflation_pct', 'expected_long_inflation_pct'].includes(key) ? `AND(${numeric},${selected}>-100)` : numeric;
   cell(assumptions, `D${initialRow}`, `=IF(${valid},${selected},NA())`, true);
   assumptions.getRange(`B${initialRow}:F${initialRow}`).format.fill = C.pale;
   for (let i = 0; i < cases.length; i++) {
@@ -166,6 +168,7 @@ const R = {
 };
 await fs.writeFile(new URL('workbook-model-map.json', evidence), JSON.stringify(R, null, 2));
 for (const [key, row] of Object.entries(R)) cell(economy, `B${row}`, human(key));
+cell(economy, 'B64', 'Annual gross price growth');
 headers(economy, 'B4:AZ4');
 economy.getRange('D5:AZ73').setNumberFormat('0.000');
 const f = (col, key) => `${col}${R[key]}`;
@@ -244,13 +247,13 @@ for (let q = 0; q <= 48; q++) {
   const laborReference = s('structural_unemployment_pct'), laborGap = s('output_gap_pct'), laborSlope = p('unemployment_gap_sensitivity');
   const laborTarget = `IF(${laborGap}>=0,${laborReference}*EXP(-${laborSlope}*${laborGap}/${laborReference}),100-(100-${laborReference})*EXP(${laborSlope}*${laborGap}/(100-${laborReference})))`;
   put('unemployment_rate_pct', `${prev('unemployment_rate_pct')}+(1-${p('unemployment_gap_persistence')})*(${laborTarget}-${prev('unemployment_rate_pct')})`);
-  put('inflation_pressure', `${p('inflation_persistence')}*${prev('annualized_quarterly_inflation_pct')}+(1-${p('inflation_persistence')})*${prev('expected_short_inflation_pct')}+${p('inflation_output_gap_sensitivity')}*${prev('output_gap_pct')}+${p('inflation_supply_sensitivity')}*${s('supply_pressure_pct')}`);
-  put('price_index', `${prev('price_index')}*POWER(1+${s('inflation_pressure')}/100,0.25)`);
+  put('inflation_pressure', `(${p('inflation_persistence')}*(1+${prev('annualized_quarterly_inflation_pct')}/100)+(1-${p('inflation_persistence')})*(1+${prev('expected_short_inflation_pct')}/100))*EXP((${p('inflation_output_gap_sensitivity')}*${prev('output_gap_pct')}+${p('inflation_supply_sensitivity')}*${s('supply_pressure_pct')})/(100+${p('inflation_target_pct')}))`);
+  put('price_index', `${prev('price_index')}*POWER(${s('inflation_pressure')},0.25)`);
   for (let age = 0; age < 4; age++) put(`price_h${age}`, prev(`price_h${age + 1}`));
   put('price_h4', s('price_index'));
   put('four_quarter_inflation_pct', `100*(${s('price_h4')}/${s('price_h0')}-1)`);
   put('annualized_quarterly_inflation_pct', `100*(POWER(${s('price_index')}/${prev('price_index')},4)-1)`);
-  put('expected_short_inflation_pct', `(1-${p('short_expectation_recent_weight')})*${prev('expected_short_inflation_pct')}+${p('short_expectation_recent_weight')}*${prev('four_quarter_inflation_pct')}+${p('short_expectation_supply_sensitivity')}*${s('supply_pressure_pct')}`);
+  put('expected_short_inflation_pct', `100*(((1-${p('short_expectation_recent_weight')})*(1+${prev('expected_short_inflation_pct')}/100)+${p('short_expectation_recent_weight')}*(1+${prev('four_quarter_inflation_pct')}/100))*EXP(${p('short_expectation_supply_sensitivity')}*${s('supply_pressure_pct')}/(100+${p('inflation_target_pct')}))-1)`);
   put('long_anchor', `${prev('credibility')}*${p('inflation_target_pct')}+(1-${prev('credibility')})*${prev('four_quarter_inflation_pct')}`);
   put('expected_long_inflation_pct', `${prev('expected_long_inflation_pct')}+${p('long_expectation_adjustment')}*(${s('long_anchor')}-${prev('expected_long_inflation_pct')})`);
   put('reaction_function_target_pct', `${s('r_star_pct')}+${prev('expected_short_inflation_pct')}+${p('policy_inflation_response')}*(${prev('four_quarter_inflation_pct')}-${p('inflation_target_pct')})+${p('policy_output_gap_response')}*${prev('output_gap_pct')}`);
@@ -361,6 +364,38 @@ for (const variant of variants) {
   checks.push({ policyEdit: variant.name, maxAbsoluteError: verifyTrace(variant.name, variant.states) });
   cell(policy, variant.cell, previous);
 }
+// Real Godot boundary states use this same editable chain, not a second calculation.
+const priceBoundaries = JSON.parse(await fs.readFile(new URL('./reference-v1/price-boundaries.json', import.meta.url), 'utf8'));
+cell(lab, 'C4', 1); cell(lab, 'C6', 2);
+for (const fixture of priceBoundaries) {
+  const initialEdits = Object.keys(fixture.initial).map(key => [`D${initialRows.get(key) + 1}`, fixture.initial[key]]);
+  const shockEdits = shockKeys.map(key => [`E${shockRows.get(key) + 1}`, fixture.shocks[0][key] ?? (key === 'potential_growth_pct' ? null : 0)]);
+  const saved = [...initialEdits, ...shockEdits].map(([ref, value], index) => {
+    const sheet = index < initialEdits.length ? assumptions : shocks;
+    const previous = sheet.getRange(ref).values[0][0];
+    const formula = sheet.getRange(ref).formulas[0][0];
+    cell(sheet, ref, value);
+    return [sheet, ref, previous, formula];
+  });
+  workbook.recalculate();
+  checks.push({ priceBoundary: fixture.name, maxAbsoluteError: verifyTrace(fixture.name, fixture.states) });
+  for (const [sheet, ref, value, formula] of saved) {
+    cell(sheet, ref, formula || value, Boolean(formula));
+    assert.equal(sheet.getRange(ref)[formula ? 'formulas' : 'values'][0][0], formula || value, 'Boundary fixture restores its exact input');
+  }
+}
+for (const key of ['annualized_quarterly_inflation_pct', 'expected_short_inflation_pct', 'expected_long_inflation_pct']) {
+  const parameter = `C${parameterRow.get(initialParameter[key])}`, sourceCell = `D${initialRows.get(key) + 1}`;
+  for (const [ref, formula] of [[parameter, null], [sourceCell, assumptions.getRange(sourceCell).formulas[0][0]]]) {
+    const previous = assumptions.getRange(ref).values[0][0];
+    cell(assumptions, ref, -100); workbook.recalculate();
+    assert.equal(economy.getRange(`D${R[key]}`).values[0][0], '#N/A', 'Nonpositive gross initial inflation or expectations are rejected');
+    cell(assumptions, ref, formula || previous, Boolean(formula));
+  }
+}
+cell(lab, 'C6', 1); cell(lab, 'C4', 3); workbook.recalculate();
+assert.ok(verifyTrace('restored price boundaries', [cases[2].initial_state, ...cases[2].quarters.map(x => x.state)]) < 1e-7);
+console.log('PASS: three native price boundaries, strict gross-rate inputs and restored model parity');
 // Missing unselected input must not break the chosen case; selected missing input must not become zero.
 const supplyCell = 'E17', supplyValue = shocks.getRange(supplyCell).values[0][0];
 cell(lab, 'C4', 1); cell(shocks, supplyCell, null); workbook.recalculate();

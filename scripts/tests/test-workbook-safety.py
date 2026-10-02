@@ -94,3 +94,26 @@ with tempfile.TemporaryDirectory(prefix='fed-workbook-reference-') as directory:
                              '--', '--output', str(output)], capture_output=True, text=True)
     assert result.returncode == 1 and output.read_bytes() == before
 print('PASS: real Godot four policy edits, complete traces and replacement refusal')
+
+# The physical boundary mode shares the same exporter and replacement guard.
+with tempfile.TemporaryDirectory(prefix='fed-price-boundaries-') as directory:
+    output = Path(directory) / 'price-boundaries.json'
+    command = [godot, '--headless', '--path', str(ROOT / 'game'),
+               '--script', 'res://tests/export_policy_variants.gd', '--',
+               '--output', str(output), '--price-boundaries']
+    result = subprocess.run(command, capture_output=True, text=True)
+    assert result.returncode == 0 and 'EXPORTED three' in result.stdout and not any(
+        marker in result.stdout + result.stderr for marker in ('SCRIPT ERROR:', 'ERROR:', 'FAIL:')), result.stdout + result.stderr
+    boundaries = json.loads(output.read_text())
+    assert len(boundaries) == 3
+    assert [v['shocks'][0]['supply_innovation_pct'] for v in boundaries] == [-5, 0, 5]
+    for fixture in boundaries:
+        assert [s['quarter_index'] for s in fixture['states']] == [0, 1]
+        for state in fixture['states']:
+            assert state['price_index'] > 0
+            assert all(state[k] > -100 for k in ('annualized_quarterly_inflation_pct',
+                                                'expected_short_inflation_pct', 'expected_long_inflation_pct'))
+    before = output.read_bytes()
+    result = subprocess.run(command, capture_output=True, text=True)
+    assert result.returncode == 1 and output.read_bytes() == before
+print('PASS: real Godot three physical price boundaries and replacement refusal')

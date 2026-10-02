@@ -70,6 +70,10 @@ func _initialize() -> void:
 	elif OS.get_cmdline_user_args().has("--guidance-only"):
 		_test_conditional_guidance()
 		_test_benchmark_guidance_attainability()
+	elif OS.get_cmdline_user_args().has("--price-only"):
+		_test_equilibrium_and_pure_step()
+		_test_accounting()
+		_test_price_physical_domain()
 	elif OS.get_cmdline_user_args().has("--unemployment-only"):
 		_test_unemployment_physical_domain()
 	elif OS.get_cmdline_user_args().has("--impulse-only"):
@@ -98,6 +102,7 @@ func _initialize() -> void:
 		_test_liquidity_limits_and_solvency_separation()
 		_test_public_support_recovers_without_reset()
 		_test_unemployment_physical_domain()
+		_test_price_physical_domain()
 		_test_shipped_scenarios_and_seeded_robustness()
 	if not failures.is_empty():
 		for failure in failures:
@@ -647,3 +652,81 @@ func _test_shipped_scenarios_and_seeded_robustness() -> void:
 			var mean_support: float = stats.support_sum / total_runs
 			print("SEEDS %s/%s n=1000: severe=%d nonrecovered=%d final(pi/gap/u/support)=%.2f/%.2f/%.2f/%.1f model_errors=%d; failure_causes(pi/gap/u)=%d/%d/%d worst_abs_pi_miss=%.2f@seed%d" % [id, policy_kind, stats.severe, stats.failed_recovery, mean_pi, mean_gap, mean_u, mean_support, stats.model_errors, stats.failed_inflation, stats.failed_gap, stats.failed_unemployment, stats.worst_miss, stats.worst_seed])
 	expect_true(failures_by_model.is_empty(), "seeded 48-quarter model transitions have no numerical failures: %s" % str(failures_by_model))
+
+
+func _test_price_physical_domain() -> void:
+	var params: Dictionary = load_parameters().values
+	var cases: Dictionary = load_scenarios().scenarios
+	var Career = preload("res://play/career.gd")
+	for id in cases:
+		for rate in [params.policy_rate_min_pct, params.policy_rate_max_pct]:
+			var career = Career.new()
+			expect_true(career.start(id, 1).ok, "price-domain career initializes")
+			var policy := policy_at(rate, rate, 0.0, 0.0, 0.0, 0.0)
+			for q in range(Career.MAX_QUARTERS):
+				var before: Dictionary = career.state.duplicate(true)
+				var result: Dictionary = career.advance(policy)
+				expect_true(result.ok, "%s/%.0f%% peg q%d: %s" % [id, rate, q + 1, result.get("error", "")])
+				if not result.ok:
+					expect_true(career.state == before and career.decisions.size() == q and career.history.size() == q + 1, "failed peg advance preserves career")
+					break
+			expect_true(career.state.quarter_index == Career.MAX_QUARTERS, "%s/%.0f%% peg completes the career horizon" % [id, rate])
+			expect_true(abs(career.state.four_quarter_inflation_pct - params.inflation_target_pct) > 5.0, "%s/%.0f%% peg retains severe inflation or deflation" % [id, rate])
+			var encoded: PackedByteArray = career.encode()
+			var replay = Career.new()
+			expect_true(replay.restore(bytes_to_var(encoded)).ok and replay.state == career.state and replay.history == career.history and replay.decisions == career.decisions and replay.shocks == career.shocks, "extreme peg exactly replays its accepted path")
+	# The additive expectation rule crossed -100% while its price factor was positive.
+	for supply in [-5.0, 0.0, 5.0]:
+		var start: Dictionary = initial_state(params, {"annualized_quarterly_inflation_pct": -99.9, "expected_short_inflation_pct": -99.9, "output_gap_pct": 20.0}).state
+		var before: Dictionary = start.duplicate(true)
+		var result: Dictionary = step(start, policy_at(3.5, 3.5), {"supply_innovation_pct": supply}, params)
+		expect_true(result.ok, "physical price/expectation boundary accepts supply %.1f: %s" % [supply, result.get("error", "")])
+		if result.ok:
+			expect_true(result.state.price_index > 0.0 and result.state.annualized_quarterly_inflation_pct > -100.0 and result.state.expected_short_inflation_pct > -100.0 and result.state.expected_long_inflation_pct > -100.0, "physical gross price and expectation rates stay positive")
+			expect_close(result.state.annualized_quarterly_inflation_pct, Economy.annualized_growth(result.state.price_index, start.price_index), "price-domain annualized readout reconciles")
+			expect_close(result.state.four_quarter_inflation_pct, 100.0 * (result.state.price_history[4] / result.state.price_history[0] - 1.0), "price-domain rolling inflation reconciles")
+		expect_true(start == before, "boundary transition leaves its input unchanged")
+	for key in ["annualized_quarterly_inflation_pct", "expected_short_inflation_pct", "expected_long_inflation_pct"]:
+		for invalid in [-100.0, -100.1]:
+			expect_true(not initial_state(params, {key: invalid}).ok, "nonpositive gross inflation/expectation inputs remain rejected")
+	for rate in [-90.0, -5.0, 2.0, 30.0]:
+		var start: Dictionary = initial_state(params, {"annualized_quarterly_inflation_pct": rate, "expected_short_inflation_pct": rate}).state
+		var result: Dictionary = step(start, policy_at(3.5, 3.5), {}, params)
+		expect_true(result.ok, "unforced off-target blend remains physical")
+		if result.ok:
+			expect_close(result.state.annualized_quarterly_inflation_pct, rate, "equal unforced inflation inputs retain their fixed point")
+			expect_close(result.state.expected_short_inflation_pct, rate, "equal unforced expectation inputs retain their fixed point")
+	for persistence in [0.0, 1.0]:
+		for recent_weight in [0.0, 1.0]:
+			var endpoint: Dictionary = params.duplicate(true)
+			endpoint.inflation_persistence = persistence
+			endpoint.short_expectation_recent_weight = recent_weight
+			var start: Dictionary = initial_state(endpoint, {"annualized_quarterly_inflation_pct": 4.0, "expected_short_inflation_pct": 10.0}).state
+			var result: Dictionary = step(start, policy_at(3.5, 3.5), {}, endpoint)
+			expect_true(result.ok, "gross blend weight endpoints remain physical")
+			if result.ok:
+				expect_close(result.state.annualized_quarterly_inflation_pct, 4.0 if persistence == 1.0 else 10.0, "inflation weight endpoints select the stated input")
+				expect_close(result.state.expected_short_inflation_pct, 4.0 if recent_weight == 1.0 else 10.0, "expectation weight endpoints select the stated input")
+	# Central differences test percent-unit slopes at the 2% equilibrium.
+	var epsilon := 0.001
+	for driver in ["annualized_quarterly_inflation_pct", "expected_short_inflation_pct", "output_gap_pct", "supply_innovation_pct"]:
+		var inflation: Array[float] = []
+		var short: Array[float] = []
+		for delta in [-epsilon, epsilon]:
+			var override := {}
+			var shocks := {}
+			if driver == "supply_innovation_pct":
+				shocks[driver] = delta
+			else:
+				override[driver] = delta if driver == "output_gap_pct" else params.inflation_target_pct + delta
+			var start: Dictionary = initial_state(params, override).state
+			var result: Dictionary = step(start, policy_at(3.5, 3.5), shocks, params)
+			expect_true(result.ok, "local price/expectation derivative accepts " + driver)
+			if not result.ok:
+				return
+			inflation.append(result.state.annualized_quarterly_inflation_pct)
+			short.append(result.state.expected_short_inflation_pct)
+		var inflation_slope: float = {"annualized_quarterly_inflation_pct": params.inflation_persistence, "expected_short_inflation_pct": 1.0 - params.inflation_persistence, "output_gap_pct": params.inflation_output_gap_sensitivity, "supply_innovation_pct": params.inflation_supply_sensitivity}[driver]
+		var short_slope: float = {"annualized_quarterly_inflation_pct": params.short_expectation_recent_weight, "expected_short_inflation_pct": 1.0 - params.short_expectation_recent_weight, "output_gap_pct": 0.0, "supply_innovation_pct": params.short_expectation_supply_sensitivity}[driver]
+		expect_true(abs((inflation[1] - inflation[0]) / (2.0 * epsilon) - inflation_slope) < 1e-6, "inflation retains its local percent-unit slope for " + driver)
+		expect_true(abs((short[1] - short[0]) / (2.0 * epsilon) - short_slope) < 1e-6, "short expectations retain their local percent-unit slope for " + driver)
