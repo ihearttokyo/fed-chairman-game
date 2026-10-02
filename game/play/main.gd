@@ -566,14 +566,15 @@ func _show_dialog(dialog: Window, desired_size := Vector2i(740, 540)) -> void:
 func _text_dialog(title: String, text: String) -> AcceptDialog:
 	var dialog := AcceptDialog.new()
 	dialog.title = title
-	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(690, 450)
-	dialog.add_child(scroll)
-	var label := Label.new()
-	label.text = text
-	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(label)
+	var body := TextEdit.new()
+	body.text = text
+	body.custom_minimum_size = Vector2(690, 450)
+	body.editable = false
+	body.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
+	body.tab_input_mode = false
+	body.accessibility_name = title
+	body.add_theme_color_override("font_readonly_color", Color("e7eee9"))
+	dialog.add_child(body)
 	_show_dialog(dialog)
 	return dialog
 
