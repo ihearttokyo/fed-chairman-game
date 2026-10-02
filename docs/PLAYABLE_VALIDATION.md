@@ -1,5 +1,69 @@
 # Playable Policy Lab validation
 
+## Current verified candidate, October 2, 2026 (UTC)
+
+The local Apple Silicon prerelease has passed Developer ID signing, Apple
+notarization, stapling and Gatekeeper assessment. It is not market-ready or
+store-published. Human playtesting and the checks below remain separate gates.
+
+Validated runtime source: [PR32](https://github.com/ihearttokyo/fed-chairman-game/pull/32),
+merge `985308d3764848bb7683e985a9f8cdf5cfa62356`. Its complete Git tree matches
+reviewed build head `13b8cf801127852a78a70d512eaf217129d21095`.
+[Exact-head CI](https://github.com/ihearttokyo/fed-chairman-game/actions/runs/37048399649)
+and [merged-main CI](https://github.com/ihearttokyo/fed-chairman-game/actions/runs/37056416938)
+passed. Later documentation changes do not imply a rebuilt app.
+
+The validated ZIP is retained outside Git as
+`The Chair — Apple Silicon keyboard reports notarized.zip`, SHA-256
+`58870a4fac96f9e93b9d60f42b58cbef9b74f3decd27fea1474fc43633bbe41f`.
+Apple accepted submission `6ad58890-ee4f-4562-8dcc-12c07319c1e3` with no issues.
+The original and extracted apps passed ARM64-only, strict Developer ID,
+hardened-runtime, secure-timestamp, staple and Gatekeeper checks. Actual
+executables passed 164 release checks with model digest
+`55a22f0cc0d6a658698cc8aa72ce489e586c6fe23ce23497902e44a30cf8d315`.
+Six packaged source hashes and the original Blender city resources were checked.
+No installed legacy app or user save was replaced.
+
+### Current evidence and limits
+
+- **Live game:** The signed production UI completed 240 actual Recurring crises
+  meetings at seed 417, with all 20 periodic reviews. Its journal exposed all 241
+  consecutive states and 33,391 selected characters; every applied rate matched
+  the corresponding adoption feedback. Native read-only typing, Page Down,
+  keyboard journal-to-review/OK and final disabled controls passed. No simulated
+  prefix, external script override, Save or Load was used.
+- **Live extracted app:** Funding stress at seed 42 completed five actual meetings.
+  An 8% request applied 4.18%; lending normalized to the UI's 5% limit and applied
+  only 3.02% of initial annual GDP against eligible need. Lending reduced the credit
+  spread while a solvency-risk premium remained. Comparison, Cancel, the
+  six-state read-only journal, deferred realized review and Help keyboard paths
+  passed, with inspected pixels and unchanged window bounds/saved career.
+- **Static and automated:** Full model/game and package/workbook guards passed.
+  Independent GPT-6.1-Sol/xhigh read-only correctness/Ponytail review accepted
+  the final report diff. Seven-case formula-workbook parity, native headless
+  recalculation and four editable charts remain unchanged by this UI-only fix.
+  These checks do not establish human difficulty or optimal policy.
+- **Unverified:** macOS AXValue/selected-text reporting omits some wrapped
+  fragments, including in the realized review. The full native assistive
+  description and visible, keyboard-scrollable text do not certify that adapter
+  output or actual VoiceOver speech. Representative human playtesting and a
+  second physical Mac have not run. Native Excel checks passed case 7, quarter
+  0/48, both benchmarks and an explicit-zero policy override followed by restoration.
+  All five sheet views and four charts were inspected. Visible metrics matched
+  rounded native references; this is not a full-precision Excel parity claim.
+  The hold-rate unemployment chart showed duplicate rounded axis labels; repair
+  remains pending. LibreOffice's earlier macOS accessibility-bridge crash remains
+  recorded. Both routes used a disposable copy; the original workbook stayed
+  unchanged, with no add-in, connector or Save used.
+
+Current equations, seven scenarios, workbook regeneration and packaging belong
+in the [model README](../game/README.md); economic acceptance belongs in the
+[model contract](MODEL_CONTRACT.md). The older narrative below records prior artifacts
+and failed checks; its architecture, counts and credential blocker describe
+those earlier candidates, not the verified candidate above.
+
+## Historical validation record, September 29–30, 2026
+
 The clean-sheet Godot game is a local pre-release candidate, not a market-ready
 or notarized release. It keeps the Swift application and its saved careers
 separate. The [model contract](MODEL_CONTRACT.md) and [model README](../game/README.md)
