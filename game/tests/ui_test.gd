@@ -226,7 +226,7 @@ func check_review_access(game: Control) -> void:
 		check(game.career.encode() == preserved and game._policy() == staged, "opening and closing realized review preserves career and controls")
 	game._start_career("supply_shock", 1)
 func check_comparison_navigation(game: Control) -> void:
-	var destinations := [["Meeting", "CURRENT MEETING /"], ["Guidance", "GUIDANCE /"], ["Scores", "Q+1 / WHY"], ["Forecasts", "CURRENT TRANSMISSION /"], ["Tools", "ONE-CONTROL CONTRASTS /"], ["Limits", "REFERENCE AND LIMITS"]]
+	var destinations := [["Meeting", "CURRENT MEETING /"], ["Deliberation", "COMMITTEE DELIBERATION /"], ["Guidance", "GUIDANCE /"], ["Scores", "Q+1 / WHY"], ["Forecasts", "CURRENT TRANSMISSION /"], ["Tools", "ONE-CONTROL CONTRASTS /"], ["Limits", "REFERENCE AND LIMITS"]]
 	for case_id in ["funding_stress", "base"]:
 		game._start_career(case_id, 11)
 		if case_id == "funding_stress":
@@ -253,7 +253,7 @@ func check_comparison_navigation(game: Control) -> void:
 			var body: RichTextLabel = bodies[0]
 			check(body.text == expected and body.get_parsed_text() == expected, "section navigation preserves every report byte and warning")
 			check(body.selection_enabled and body.focus_mode == Control.FOCUS_ALL, "comparison report supports native text selection and keyboard focus")
-			check(chooser.accessibility_name == "Comparison section" and chooser.item_count == destinations.size(), "section chooser has a distinct accessible name and all six destinations")
+			check(chooser.accessibility_name == "Comparison section" and chooser.item_count == destinations.size(), "section chooser has a distinct accessible name and all seven destinations")
 			for index in range(mini(chooser.item_count, destinations.size())):
 				check(chooser.get_item_text(index) == destinations[index][0], "comparison sections retain their named order")
 				var paragraph := expected.substr(0, expected.find(destinations[index][1])).count("\n")
@@ -279,6 +279,46 @@ func check_comparison_navigation(game: Control) -> void:
 		reopened.get_ok_button().pressed.emit()
 		await process_frame
 		check(game.career.encode() == preserved and game._policy() == staged, "closing and reopening comparison preserves the unsaved decision")
+	game._start_career("supply_shock", 1)
+func check_rate_deliberation(game: Control) -> void:
+	for edge in ["ordinary", "middle", "floor", "ceiling"]:
+		game._start_career("funding_stress", 41)
+		var target := 0.0 if edge == "floor" else 15.0
+		for q in range(4 if edge in ["middle", "ordinary"] else 16):
+			var choice: Dictionary = game.career.model.benchmark_policy(game.career.state, game.career.params, "hold")
+			if edge not in ["middle", "ordinary"]:
+				choice.policy_rate_request_pct = target
+			check(game.career.advance(choice).ok, "deliberation boundary setup uses real valid decisions")
+		game._refresh(true)
+		game.rate.value = 8.0 if edge == "middle" else game.career.state.policy_rate_pct
+		game.guidance.value = 4.0
+		game.assets.value = 1.25
+		game.liquidity.value = 2.5
+		game.commitment.select(2)
+		game.commitment.item_selected.emit(2)
+		game.inflation_response.value = 0.7
+		game.activity_response.value = -0.25
+		var preserved: PackedByteArray = game.career.encode()
+		var staged: Dictionary = game._policy()
+		var selected: Dictionary = game.career.forecast(staged)
+		var applied: float = selected.states[0].policy_rate_pct
+		var low: float = max(game.career.params.policy_rate_min_pct, game.career.state.policy_rate_pct - game.career.params.policy_rate_change_limit_pct)
+		var high: float = min(game.career.params.policy_rate_max_pct, game.career.state.policy_rate_pct + game.career.params.policy_rate_change_limit_pct)
+		var report: String = game._decision_briefing()
+		check(report.contains("COMMITTEE DELIBERATION / FEASIBLE RATE ALTERNATIVES"), "comparison exposes nearby offline rate deliberation")
+		for alternative in [["Selected", applied], ["Tighter rate", clampf(applied + 0.25, low, high)], ["Gentler rate", clampf(applied - 0.25, low, high)], ["Rate continuity", game.career.state.policy_rate_pct]]:
+			var other: Dictionary = staged.duplicate()
+			other.policy_rate_request_pct = alternative[1]
+			var path: Dictionary = selected if alternative[0] == "Selected" else game.career.forecast(other)
+			var last: Dictionary = path.states[-1]
+			check(report.contains("%s / applied %.2f%%\nQ+8 inflation %.3f%%; unemployment %.3f%%; credibility %.1f/100; support %.1f/100" % [alternative[0], path.states[0].policy_rate_pct, last.four_quarter_inflation_pct, last.unemployment_rate_pct, 100 * last.credibility, last.public_support]), "deliberation uses real capped forecasts with every other staged tool preserved")
+		check(report.contains("Fictional viewpoints, not votes or advice"), "deliberation labels fictional viewpoints")
+		check(report.contains("no extra feasible rate move") == (applied == low or applied == high), "only saturated rate directions receive a limit warning")
+		check(game.career.encode() == preserved and game._policy() == staged, "deliberation cannot adopt or replace staged tools")
+		var future: Dictionary = game.career.shocks[game.career.decisions.size() + 1].duplicate(true)
+		game.career.shocks[game.career.decisions.size() + 1].demand_shock_pct = 8.0
+		check(game._decision_briefing() == report, "deliberation cannot read undisclosed future shocks")
+		game.career.shocks[game.career.decisions.size() + 1] = future
 	game._start_career("supply_shock", 1)
 func check_city_framing(game: Control, viewport: SubViewport) -> void:
 	var camera := viewport.get_camera_3d()
@@ -312,6 +352,13 @@ func run() -> void:
 	if OS.get_cmdline_user_args().has("--city-only"):
 		if failures == 0:
 			print("PASS: native miniature antialiasing")
+		game.free()
+		quit(1 if failures else 0)
+		return
+	check_rate_deliberation(game)
+	if OS.get_cmdline_user_args().has("--deliberation-only"):
+		if failures == 0:
+			print("PASS: offline feasible rate deliberation")
 		game.free()
 		quit(1 if failures else 0)
 		return

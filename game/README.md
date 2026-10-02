@@ -249,6 +249,24 @@ and CI do not need Blender. Art source is excluded from runtime imports. Animati
 is off by default, controls expose accessibility labels, and the journal supplies
 exact chart values. Engine and component notices are available under Credits.
 
+## Offline policy deliberation
+
+The comparison report includes a Deliberation section. It shows your selected
+path, nearby tighter and gentler applied rates, and rate continuity while keeping
+all other staged tools and the new guidance quote unchanged. Nearby choices use
+the existing 0.25-point control increment inside this meeting's feasible rate
+range. A limit warning explains a direction with no additional feasible move.
+Each path uses the disclosed current shock, then no future shocks and its own
+applied-rate hold. The report shows actual Q+8 inflation, unemployment, credibility
+and public support without choosing a winner or changing your staged decision.
+
+These are fictional viewpoints, not actual officials, votes or policy advice.
+The [Board's FOMC overview](https://www.federalreserve.gov/monetarypolicy/fomc.htm)
+describes committee assessment of economic conditions, policy options and risks;
+it supplies no calibrated disagreement or voting coefficients for this game.
+Quarterly turns aggregate time rather than reproduce the real eight regularly
+scheduled annual meetings. No AI, connector or network call runs during play.
+
 ## Apple Silicon release
 
 The shipping target is Apple Silicon (ARM64), not Intel. Godot's official 4.7.2

@@ -342,7 +342,7 @@ func _compare() -> void:
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	body.add_theme_color_override("default_color", Color("e7eee9"))
 	box.add_child(body)
-	for section in [["Meeting", "CURRENT MEETING /"], ["Guidance", "GUIDANCE /"], ["Scores", "Q+1 / WHY"], ["Forecasts", "CURRENT TRANSMISSION /"], ["Tools", "ONE-CONTROL CONTRASTS /"], ["Limits", "REFERENCE AND LIMITS"]]:
+	for section in [["Meeting", "CURRENT MEETING /"], ["Deliberation", "COMMITTEE DELIBERATION /"], ["Guidance", "GUIDANCE /"], ["Scores", "Q+1 / WHY"], ["Forecasts", "CURRENT TRANSMISSION /"], ["Tools", "ONE-CONTROL CONTRASTS /"], ["Limits", "REFERENCE AND LIMITS"]]:
 		var offset := text.find(section[1])
 		if offset >= 0:
 			chooser.add_item(section[0])
@@ -424,13 +424,26 @@ func _decision_briefing() -> String:
 	var first: Dictionary = selected.states[0]
 	var reference: Dictionary = held.states[0]
 	var text := "CURRENT MEETING / REQUESTED AND APPLIED\nRequested rate %.2f%% · Applied rate %.2f%%\nRequested assets %+.2f · Applied assets %+.2f\nRequested lending %.2f · Applied lending %.2f\n\nRates can change at most %.2f percentage points each quarter. Asset flows are limited by quarterly capacity and holdings. Lending is limited by funding need, eligible collateral after haircuts, existing loans and quarterly capacity. Asset and lending units are %% of initial annual GDP.\n\n" % [policy.policy_rate_request_pct, first.policy_rate_pct, policy.asset_flow_request_pct_initial_gdp, first.asset_flow_applied_pct_initial_gdp, policy.liquidity_request_pct_initial_gdp, first.liquidity_applied_pct_initial_gdp, career.params.policy_rate_change_limit_pct]
-	text += "GUIDANCE / COMMITMENT AND FLEXIBILITY\n"
 	var s: Dictionary = career.state
+	var low: float = max(career.params.policy_rate_min_pct, s.policy_rate_pct - career.params.policy_rate_change_limit_pct)
+	var high: float = min(career.params.policy_rate_max_pct, s.policy_rate_pct + career.params.policy_rate_change_limit_pct)
+	text += "COMMITTEE DELIBERATION / FEASIBLE RATE ALTERNATIVES\nFictional viewpoints, not votes or advice. Test a higher rate for inflation risk, a lower rate for employment risk, and continuity while past decisions work. Every other staged tool and the new quote stay unchanged. Each path uses the disclosed current shock, then no new shocks and its own applied-rate hold.\n\n"
+	for alternative in [["Selected", policy.policy_rate_request_pct], ["Tighter rate", clampf(first.policy_rate_pct + 0.25, low, high)], ["Gentler rate", clampf(first.policy_rate_pct - 0.25, low, high)], ["Rate continuity", s.policy_rate_pct]]:
+		var other: Dictionary = policy.duplicate()
+		other.policy_rate_request_pct = alternative[1]
+		var path: Dictionary = selected if alternative[0] == "Selected" else career.forecast(other)
+		if not path.ok:
+			text += "%s / unavailable: %s\n\n" % [alternative[0], path.error]
+			continue
+		var outcome: Dictionary = path.states[-1]
+		text += "%s / applied %.2f%%\nQ+8 inflation %.3f%%; unemployment %.3f%%; credibility %.1f/100; support %.1f/100\n" % [alternative[0], path.states[0].policy_rate_pct, outcome.four_quarter_inflation_pct, outcome.unemployment_rate_pct, 100 * outcome.credibility, outcome.public_support]
+		if alternative[0] in ["Tighter rate", "Gentler rate"] and path.states[0].policy_rate_pct == first.policy_rate_pct:
+			text += "At the current rate limit: no extra feasible rate move in this direction.\n"
+		text += "\n"
+	text += "GUIDANCE / COMMITMENT AND FLEXIBILITY\n"
 	if s.guidance_active:
 		var prior_promise: float = s.guidance_rate_pct + s.guidance_inflation_sensitivity * (s.four_quarter_inflation_pct - s.guidance_reference_inflation_pct) + s.guidance_output_gap_sensitivity * (s.output_gap_pct - s.guidance_reference_output_gap_pct)
 		text += "Previous quote %.2f%%; inflation response %.2f, output-gap response %.2f.\nReference inflation %.3f%%, output gap %+.3f%%.\nAdjusted prior promise %.3f%%\nProjected follow-through %.1f / 100\n" % [s.guidance_rate_pct, s.guidance_inflation_sensitivity, s.guidance_output_gap_sensitivity, s.guidance_reference_inflation_pct, s.guidance_reference_output_gap_pct, prior_promise, 100 * first.guidance_followthrough_score]
-		var low: float = max(career.params.policy_rate_min_pct, s.policy_rate_pct - career.params.policy_rate_change_limit_pct)
-		var high: float = min(career.params.policy_rate_max_pct, s.policy_rate_pct + career.params.policy_rate_change_limit_pct)
 		if prior_promise < low or prior_promise > high:
 			text += "The adjusted prior promise is outside this meeting's feasible rate range %.2f–%.2f%%. The rate cap prevents full delivery this meeting.\n" % [low, high]
 	else:
