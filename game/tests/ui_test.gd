@@ -68,6 +68,23 @@ func check_terminal_career(game: Control) -> void:
 	check(game._decision_briefing().contains("CURRENT MEETING / REQUESTED AND APPLIED") and game.career.encode() == preserved, "terminal comparison remains available without changing completed history")
 	game._start_career("supply_shock", 1)
 	check(game.quarter_label.text == "YEAR 01 / Q1   ·   MEETING 1" and not game.decision_button.disabled and game.decision_button.text == "Adopt decision  →  Next quarter", "new career restores ordinary meeting and action labels")
+func check_situation_ui(game: Control) -> void:
+	check(game.briefing.text.contains("MARKETS /") and game.briefing.text.contains("PUBLIC /") and game.briefing.text.contains("FUNDING /"), "shared cockpit refresh exposes offline situation interpretation")
+	game._start_career("funding_stress", 41)
+	for q in range(4):
+		game.career.advance(game.career.model.benchmark_policy(game.career.state, game.career.params, "hold"))
+	game._refresh(true)
+	check(game.briefing.text.contains("New funding pressure") and game.briefing.text.contains("Funding need"), "interpretation retains the exact numerical dispatch")
+	game.liquidity.value = 5.0
+	game._advance()
+	check(game.briefing.text.ends_with(game.career.situation_briefing()) and game.briefing.text.contains("Funding pressure continues"), "actual UI adoption advances the ongoing crisis readout")
+	var text: String = game.briefing.text
+	check(game.career.restore(bytes_to_var(game.career.encode())).ok, "UI readout uses real replay restoration")
+	game._refresh(true)
+	check(game.briefing.text == text, "shared load refresh restores identical situation text")
+	game._start_career("base", 41)
+	check(game.briefing.text.contains("No major new funding pressure") and not game.briefing.text.contains("Funding pressure continues"), "new career cannot retain the previous crisis storyline")
+	game._start_career("supply_shock", 1)
 func check_custom_guidance(game: Control) -> void:
 	check(game.commitment.item_count == 3, "player can choose custom conditional guidance")
 	if game.commitment.item_count != 3:
@@ -267,6 +284,13 @@ func run() -> void:
 	var game = load("res://main.tscn").instantiate()
 	root.add_child(game)
 	await process_frame
+	check_situation_ui(game)
+	if OS.get_cmdline_user_args().has("--situation-only"):
+		if failures == 0:
+			print("PASS: situation briefing in shared cockpit")
+		game.free()
+		quit(1 if failures else 0)
+		return
 	await check_terminal_career(game)
 	if OS.get_cmdline_user_args().has("--terminal-only"):
 		if failures == 0:

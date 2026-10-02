@@ -6,6 +6,12 @@ func check(condition: bool, message: String) -> void:
 		failures += 1
 		printerr("FAIL: " + message)
 func _initialize() -> void:
+	check_situation_briefing()
+	if OS.get_cmdline_user_args().has("--situation-only"):
+		if failures == 0:
+			print("PASS: offline situation continuity, replay and no future spoilers")
+		quit(1 if failures else 0)
+		return
 	var career := Career.new()
 	check(career.start("supply_shock", 417).ok, "scenario starts")
 	var initial: Dictionary = career.state.duplicate(true)
@@ -85,3 +91,53 @@ func _initialize() -> void:
 	if failures == 0:
 		print("PASS: career progression, forecast isolation, validated lossless saves and 49-quarter continuity")
 	quit(1 if failures else 0)
+
+func check_situation_briefing() -> void:
+	var untreated := Career.new()
+	untreated.start("funding_stress", 41)
+	check(untreated.has_method("situation_briefing"), "career exposes current-only market/public/funding interpretation")
+	if not untreated.has_method("situation_briefing"):
+		return
+	var preserved := untreated.encode()
+	var initial_state: Dictionary = untreated.state.duplicate(true)
+	var initial_history: Array = untreated.history.duplicate(true)
+	var initial: String = untreated.call("situation_briefing")
+	check(initial.contains("MARKETS /") and initial.contains("PUBLIC /") and initial.contains("FUNDING /"), "situation distinguishes markets, households and funding")
+	check(untreated.encode() == preserved and untreated.state == initial_state and untreated.history == initial_history, "reading interpretation cannot mutate live state, history or the save")
+	untreated.shocks[200].funding_need_pct_initial_gdp = 9.0
+	check(untreated.call("situation_briefing") == initial, "interpretation cannot inspect unknown future events")
+	untreated.restore(bytes_to_var(preserved))
+	for q in range(4):
+		untreated.advance(untreated.model.benchmark_policy(untreated.state, untreated.params, "hold"))
+	check(untreated.call("situation_briefing").contains("New funding pressure"), "first disclosed large need begins the funding storyline")
+	var assisted := Career.new()
+	check(assisted.restore(bytes_to_var(untreated.encode())).ok, "paired funding career replays actual decisions")
+	var policy: Dictionary = untreated.model.benchmark_policy(untreated.state, untreated.params, "hold")
+	untreated.advance(policy)
+	policy.liquidity_request_pct_initial_gdp = 5.0
+	assisted.advance(policy)
+	var no_lending: String = untreated.call("situation_briefing")
+	var lending: String = assisted.call("situation_briefing")
+	check(no_lending.contains("Funding pressure continues") and lending.contains("Funding pressure continues"), "recurring disclosed needs retain the crisis rather than restarting it")
+	check(no_lending != lending and lending.contains("uncovered %.2f" % assisted.state.uncovered_funding_pct_initial_gdp), "actual lending and collateral constraints change the funding interpretation")
+	for campaign in [untreated, assisted]:
+		campaign.advance(campaign.model.benchmark_policy(campaign.state, campaign.params, "hold"))
+		var aftermath: String = campaign.call("situation_briefing")
+		check(aftermath.contains("Funding aftermath") and aftermath.contains("credit impairment"), "credit impairment survives the end of large scheduled needs")
+		var replay := Career.new()
+		check(replay.restore(bytes_to_var(campaign.encode())).ok and replay.call("situation_briefing") == aftermath, "story continuity derives losslessly from replay without new save fields")
+		var encoded: PackedByteArray = campaign.encode()
+		var state_before: Dictionary = campaign.state.duplicate(true)
+		var history_before: Array = campaign.history.duplicate(true)
+		campaign.forecast(campaign.model.benchmark_policy(campaign.state, campaign.params, "feedback"))
+		check(campaign.encode() == encoded and campaign.state == state_before and campaign.history == history_before and campaign.call("situation_briefing") == aftermath, "preview cannot mutate live state, history or the storyline")
+	var recovery := Career.new()
+	recovery.start("base", 1)
+	var initial_recovery: Dictionary = recovery.model.initial_state(recovery.params, {"public_hardship_memory": 10.0, "public_support": 35.0})
+	check(initial_recovery.ok, "public recovery fixture uses validated model initialization")
+	if initial_recovery.ok:
+		recovery.state = initial_recovery.state
+		recovery.history = [recovery.state.duplicate(true)]
+		recovery.shocks[0] = {}
+		recovery.advance(recovery.model.benchmark_policy(recovery.state, recovery.params, "hold"))
+		check(recovery.call("situation_briefing").contains("Hardship memory is easing"), "forgiveness follows actual decaying hardship memory")

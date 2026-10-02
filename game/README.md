@@ -86,6 +86,14 @@ demand innovations in [-0.18, +0.18] percentage points, supply innovations in
 receives small funding needs with eligible collateral. These are design choices.
 Scheduled scenario events are added to that background path.
 
+The dispatch also interprets markets, public hardship and funding as an offline
+storyline. It reads only current information and completed history; replay
+reconstructs the same text. Large disclosed needs begin or continue a funding
+scare, followed by remaining credit impairment or loan repayment. The existing
+0.1% initial-GDP display threshold separates major needs from small background
+flows. These labels change no equations, scores, shocks or save fields. Public
+forgiveness follows the modeled hardship memory, not a new political rule.
+
 The same scenario and seed reproduce the path within the same engine and model.
 Saved careers retain the realized path. The 240-quarter neutral equilibrium assertion instead
 supplies explicit empty shocks; it does not promise a flat seeded career.

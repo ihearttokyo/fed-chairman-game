@@ -382,6 +382,7 @@ func _refresh(reset_controls := false) -> void:
 		chart.queue_redraw()
 	var shock: Dictionary = career.current_briefing()
 	briefing.text = "Demand impulse %+.2f pp · supply innovation %+.2f pp.\nFunding need %.2f; eligible collateral %.2f (%% initial GDP). Current output gap %+.2f%%. %s" % [shock.get("demand_shock_pct", 0), shock.get("supply_innovation_pct", 0), shock.get("funding_need_pct_initial_gdp", 0), shock.get("eligible_collateral_pct_initial_gdp", 0), s.output_gap_pct, "Lending cannot erase solvency risk." if shock.get("funding_need_pct_initial_gdp", 0) > 0.1 else "Policy works through a lagged real-rate channel."]
+	briefing.text += "\n\n" + career.situation_briefing()
 	if reset_controls:
 		loading_controls = true
 		rate.value = s.policy_rate_pct

@@ -42,6 +42,30 @@ func advance(policy: Dictionary) -> Dictionary:
 func current_briefing() -> Dictionary:
 	return shocks[decisions.size()].duplicate(true) if decisions.size() < shocks.size() else {}
 
+func situation_briefing() -> String:
+	if state.is_empty():
+		return ""
+	var previous: Dictionary = history[-2] if history.size() > 1 else state
+	var market := "Long expectations %.2f%%; credibility %.0f/100." % [state.expected_long_inflation_pct, 100 * state.credibility]
+	if previous.guidance_active:
+		market += " Last evaluated promise: %.1f/100 follow-through." % (100 * state.guidance_followthrough_score)
+	elif state.guidance_active:
+		market += " Your first announcement awaits its follow-through meeting."
+	var public := "Hardship memory is building." if state.public_hardship_memory > previous.public_hardship_memory else "Hardship memory is easing." if state.public_hardship_memory < previous.public_hardship_memory else "Hardship memory is steady."
+	public += " Support %.1f/100; remembered burden %.2f points." % [state.public_support, state.public_hardship_memory]
+	var current: Dictionary = current_briefing()
+	var funding := "No major new funding pressure."
+	if current.get("funding_need_pct_initial_gdp", 0.0) > 0.1:
+		var recurring: bool = not decisions.is_empty() and shocks[decisions.size() - 1].get("funding_need_pct_initial_gdp", 0.0) > 0.1
+		funding = "Funding pressure continues." if recurring else "New funding pressure."
+	elif state.solvency_risk_wedge_pct > 0.1:
+		funding = "Funding aftermath: credit impairment remains; lending cannot repair capital."
+	elif state.outstanding_liquidity_pct_initial_gdp > 0.1:
+		funding = "Funding aftermath: outstanding loans still unwind through repayment."
+	if not decisions.is_empty():
+		funding += " Last decision: lending %.2f; uncovered %.2f (%% initial GDP)." % [state.liquidity_applied_pct_initial_gdp, state.uncovered_funding_pct_initial_gdp]
+	return "MARKETS / %s\nPUBLIC / %s\nFUNDING / %s" % [market, public, funding]
+
 func forecast(policy: Dictionary) -> Dictionary:
 	var projected: Dictionary = state.duplicate(true)
 	var states: Array = []
