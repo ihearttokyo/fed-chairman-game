@@ -222,6 +222,7 @@ func _build_city(parent: Node) -> void:
 	scene_row.add_child(container)
 	var viewport := SubViewport.new()
 	viewport.size = Vector2i(750, 215)
+	viewport.msaa_3d = Viewport.MSAA_4X
 	viewport.transparent_bg = true
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	container.add_child(viewport)
@@ -231,7 +232,7 @@ func _build_city(parent: Node) -> void:
 	world.add_child(city)
 	var camera := Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = 15
+	camera.size = 18
 	camera.position = Vector3(17, 19, 23)
 	world.add_child(camera)
 	camera.look_at(Vector3(0, 0.8, 0))

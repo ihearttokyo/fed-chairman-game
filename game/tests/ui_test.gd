@@ -280,10 +280,41 @@ func check_comparison_navigation(game: Control) -> void:
 		await process_frame
 		check(game.career.encode() == preserved and game._policy() == staged, "closing and reopening comparison preserves the unsaved decision")
 	game._start_career("supply_shock", 1)
+func check_city_framing(game: Control, viewport: SubViewport) -> void:
+	var camera := viewport.get_camera_3d()
+	var horizontal_axes := [Vector3(camera.global_basis.x.x, 0, camera.global_basis.x.z).normalized(), Vector3(camera.global_basis.y.x, 0, camera.global_basis.y.z).normalized()]
+	var minimum := Vector2(INF, INF)
+	var maximum := Vector2(-INF, -INF)
+	var count := 0
+	for node in game.city.find_children("*", "MeshInstance3D", true, false):
+		var instance: MeshInstance3D = node
+		for surface in range(instance.mesh.get_surface_count()):
+			var vertices: PackedVector3Array = instance.mesh.surface_get_arrays(surface)[Mesh.ARRAY_VERTEX]
+			for vertex in vertices:
+				var point: Vector3 = instance.global_transform * vertex
+				var radius := Vector2(point.x, point.z).length()
+				for axis in horizontal_axes:
+					for sign_value in [-1, 1]:
+						var pixel := camera.unproject_position(Vector3(axis.x * radius * sign_value, point.y, axis.z * radius * sign_value))
+						minimum = minimum.min(pixel)
+						maximum = maximum.max(pixel)
+				count += 1
+	print("CITY_FRAME size=", camera.size, " viewport=", viewport.size, " min=", minimum, " max=", maximum, " vertices=", count)
+	check(count > 0 and minimum.x >= 0 and minimum.y >= 0 and maximum.x <= viewport.size.x and maximum.y <= viewport.size.y, "complete native city fits the camera through every rotation")
 func run() -> void:
 	var game = load("res://main.tscn").instantiate()
 	root.add_child(game)
 	await process_frame
+	var city_viewports: Array = game.find_children("*", "SubViewport", true, false)
+	check(city_viewports.size() == 1 and city_viewports[0].msaa_3d == Viewport.MSAA_4X, "miniature city uses bounded four-sample native edge antialiasing")
+	if city_viewports.size() == 1:
+		check_city_framing(game, city_viewports[0])
+	if OS.get_cmdline_user_args().has("--city-only"):
+		if failures == 0:
+			print("PASS: native miniature antialiasing")
+		game.free()
+		quit(1 if failures else 0)
+		return
 	check_situation_ui(game)
 	if OS.get_cmdline_user_args().has("--situation-only"):
 		if failures == 0:
