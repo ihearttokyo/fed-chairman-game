@@ -184,6 +184,128 @@ func check_pending_policy(game: Control) -> void:
 				check(game.career.decisions[0] == expected, "Adopt submits pending %s without Compare or Return" % keys[index])
 				check(game.career.state == projected.states[0], "pending adoption matches the real model forecast")
 	game._start_career("supply_shock", 1)
+func check_unfocused_inputs(game: Control) -> void:
+	var fields := [game.rate, game.guidance, game.assets, game.liquidity, game.inflation_response, game.activity_response]
+	var keys := ["policy_rate_request_pct", "guidance_rate_pct", "asset_flow_request_pct_initial_gdp", "liquidity_request_pct_initial_gdp", "guidance_inflation_sensitivity", "guidance_output_gap_sensitivity"]
+	var texts := ["8.00", "7.25", "1.25", "2.50", "9.00", "-0.25"]
+	var values := [8.0, 7.25, 1.25, 2.5, 2.0, -0.25]
+	for compare in [true, false]:
+		game._start_career("base", 41)
+		game.commitment.select(2)
+		game.commitment.item_selected.emit(2)
+		await process_frame
+		await process_frame
+		game.decision_button.grab_focus()
+		var prior: Dictionary = game._policy()
+		var preserved: PackedByteArray = game.career.encode()
+		var expected: Dictionary = prior.duplicate()
+		for index in range(fields.size()):
+			var edit: LineEdit = fields[index].get_line_edit()
+			# Godot's accessible set-value handler uses set_text, without focus or submit.
+			edit.text = texts[index]
+			check(not edit.has_focus(), "accessible policy edit remains unfocused")
+			expected[keys[index]] = values[index]
+		check(game._policy() == prior, "unfocused text remains pending until submission")
+		var projected: Dictionary = game.career.forecast(expected)
+		if compare:
+			game._compare()
+			await process_frame
+			await process_frame
+			var dialog: AcceptDialog = game.get_child(game.get_child_count() - 1)
+			var report: RichTextLabel = dialog.find_children("*", "RichTextLabel", true, false)[0]
+			check(game._policy() == expected and report.text.contains("Requested rate 8.00%") and report.text.contains("Requested assets +1.25"), "Compare submits all unfocused accessible fields without Return")
+			check(game.career.encode() == preserved and game.forecast_label.text.contains("Rate %.2f%%" % projected.states[0].policy_rate_pct), "accessible comparison uses the real model without advancing")
+			for index in range(fields.size()):
+				check(fields[index].get_line_edit().text.to_float() == values[index], "accessible submission visibly normalizes each native bound")
+			dialog.get_ok_button().pressed.emit()
+			await process_frame
+		else:
+			game.decision_button.pressed.emit()
+			check(game.career.decisions[0] == expected and game.career.state == projected.states[0], "Adopt submits all unfocused accessible fields without Compare or Return")
+	game._start_career("base", 41)
+	game.commitment.select(2)
+	game.commitment.item_selected.emit(2)
+	await process_frame
+	await process_frame
+	game.decision_button.grab_focus()
+	for index in range(fields.size()):
+		fields[index].value = values[index]
+	var programmed: Dictionary = game._policy()
+	game._apply_policy_inputs()
+	check(game._policy() == programmed, "same-frame programmatic policy updates survive stale unfocused text")
+	await process_frame
+	await process_frame
+	var settled: Dictionary = game._policy()
+	check(game.rate.get_meta("numeric_text") == game.rate.get_line_edit().text, "native draw synchronizes the numeric display baseline")
+	game.rate.get_line_edit().text = "3.50"
+	game._apply_policy_inputs()
+	settled.policy_rate_request_pct = 3.5
+	check(game._policy() == settled, "accessible edit can return to the earlier displayed rate after a numeric update")
+	game.rate.get_line_edit().text = "4 + 4"
+	game._apply_policy_inputs()
+	check(game.rate.value == 8.0, "unfocused expression uses the native SpinBox parser")
+	var native_text: String = game.rate.get_line_edit().text
+	game.rate.get_line_edit().text = "not a number"
+	game._apply_policy_inputs()
+	check(game.rate.value == 8.0 and game.rate.get_line_edit().text == native_text, "invalid accessible text retains and normalizes the native numeric value")
+	for seed_case in [["42", 42], ["0", 1], ["2147483648", 2147483647]]:
+		game._new_dialog()
+		await process_frame
+		var dialog: AcceptDialog = game.get_child(game.get_child_count() - 1)
+		dialog.get_ok_button().grab_focus()
+		game.seed_input.get_line_edit().text = seed_case[0]
+		check(not game.seed_input.get_line_edit().has_focus() and game.seed_input.value == 1, "accessible seed remains unfocused and pending")
+		dialog.get_ok_button().pressed.emit()
+		check(game.career.seed_value == seed_case[1], "new-career confirmation submits unfocused accessible seed with native bounds")
+		await process_frame
+	game._new_dialog()
+	await process_frame
+	var programmatic_dialog: AcceptDialog = game.get_child(game.get_child_count() - 1)
+	programmatic_dialog.get_ok_button().grab_focus()
+	game.seed_input.value = 42
+	check(game.seed_input.get_line_edit().text == "1", "programmatic seed keeps queued native display before draw")
+	programmatic_dialog.get_ok_button().pressed.emit()
+	check(game.career.seed_value == 42, "shared submission preserves the same-frame programmatic seed")
+	await process_frame
+	game._start_career("supply_shock", 1)
+func check_pending_overwrites(game: Control) -> void:
+	var fields := [game.rate, game.guidance, game.assets, game.liquidity, game.inflation_response, game.activity_response]
+	var texts := ["8.00", "7.25", "1.25", "2.50", "9.00", "-0.25"]
+	game._start_career("base", 41)
+	await process_frame
+	await process_frame
+	game.decision_button.grab_focus()
+	var defaults: Dictionary = game._policy()
+	for index in range(fields.size()):
+		fields[index].get_line_edit().text = texts[index]
+	game._start_career("base", 42)
+	game._apply_policy_inputs()
+	check(game._policy() == defaults, "explicit new-career reset discards all pending text even when numeric defaults are unchanged")
+	await process_frame
+	await process_frame
+	game._apply_policy_inputs()
+	check(game._policy() == defaults and game.rate.get_line_edit().text.to_float() == defaults.policy_rate_request_pct, "reset numeric policy and visible rate remain default after native draw")
+	game.commitment.select(2)
+	game.commitment.item_selected.emit(2)
+	await process_frame
+	await process_frame
+	check(game.inflation_response.get_line_edit().text.to_float() == game.career.params.policy_inflation_response and game.activity_response.get_line_edit().text.to_float() == game.career.params.policy_output_gap_response, "reset also clears pending text in hidden custom conditions")
+	game._start_career("base", 41)
+	await process_frame
+	await process_frame
+	game.decision_button.grab_focus()
+	var preserved: PackedByteArray = game.career.encode()
+	game.rate.get_line_edit().text = "8.00"
+	game.guidance.get_line_edit().text = "7.25"
+	game.assets.get_line_edit().text = "1.25"
+	game._staff_rule()
+	check(game.career.encode() == preserved and game.assets.value == 0.0 and game.assets.get_line_edit().text == "1.25", "staff rule preserves career and other pending tools")
+	game._apply_policy_inputs()
+	check(game.rate.value == 3.5 and game.guidance.value == 3.5 and game.assets.value == 1.25, "same-value staff rule overrides pending rate and quote without discarding other tools")
+	await process_frame
+	await process_frame
+	check(game.rate.get_line_edit().text.to_float() == 3.5 and game.guidance.get_line_edit().text.to_float() == 3.5, "staff-selected rate and quote stay visible after native draw")
+	game._start_career("supply_shock", 1)
 func check_review_access(game: Control) -> void:
 	for quarters in [0, 1, 13]:
 		game._start_career("base", 41)
@@ -389,6 +511,15 @@ func run() -> void:
 	var game = load("res://main.tscn").instantiate()
 	root.add_child(game)
 	await process_frame
+	if OS.get_cmdline_user_args().has("--inputs-only"):
+		await check_pending_policy(game)
+		await check_unfocused_inputs(game)
+		await check_pending_overwrites(game)
+		if failures == 0:
+			print("PASS: focused, accessible and programmatic native input submission")
+		game.free()
+		quit(1 if failures else 0)
+		return
 	var city_viewports: Array = game.find_children("*", "SubViewport", true, false)
 	check(city_viewports.size() == 1 and city_viewports[0].msaa_3d == Viewport.MSAA_4X, "miniature city uses bounded four-sample native edge antialiasing")
 	if city_viewports.size() == 1:
@@ -434,6 +565,8 @@ func run() -> void:
 	check(game.stats[1][0].text == "%.2f%%" % game.career.state.unemployment_rate_pct and game.charts[1].keys == ["unemployment_rate_pct", "structural_unemployment_pct"] and game.charts[1].labels == ["Unemployment", "Structural reference"], "unemployment naming retains values, units, series and reference")
 	await check_comparison_navigation(game)
 	await check_pending_policy(game)
+	await check_unfocused_inputs(game)
+	await check_pending_overwrites(game)
 	await check_review_access(game)
 	check_custom_guidance(game)
 	await check_persistent_actions(game)
