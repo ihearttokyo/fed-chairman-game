@@ -158,11 +158,20 @@ func run() -> void:
 	check(not game.reduced_motion, "focused Space enables optional city motion")
 	await key(root, KEY_SPACE)
 	check(game.reduced_motion and game.career.encode() == adopted, "keyboard motion toggles restore stillness without economic effects")
+	# Native fonts can fit the compact cockpit entirely; create a real scroll edge.
+	var original_size: Vector2 = game.size
+	game.size.y = 480
+	await process_frame
+	await process_frame
+	check(game.cockpit_scroll.get_v_scroll_bar().max_value > game.cockpit_scroll.get_v_scroll_bar().page, "scroll fixture contains actual off-screen content on every platform")
 	game.cockpit_scroll.grab_focus()
 	await key(root, KEY_END)
 	check(game.cockpit_scroll.scroll_vertical > 0, "keyboard End reaches off-screen cockpit content")
 	await key(root, KEY_HOME)
 	check(game.cockpit_scroll.scroll_vertical == 0, "keyboard Home returns the cockpit to its beginning")
+	game.size = original_size
+	await process_frame
+	await process_frame
 	for shortcut in [KEY_F1, KEY_J]:
 		await key(root, shortcut, shortcut == KEY_J)
 		report = game.get_child(game.get_child_count() - 1) as AcceptDialog
