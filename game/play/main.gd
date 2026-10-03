@@ -220,6 +220,13 @@ func _build_header(parent: Node) -> void:
 	_button(row, "How to play", _help)
 	_button(row, "Credits", _credits)
 
+static func _city_texture_size(area: Vector2, physical: Vector2i, logical: Vector2) -> Vector2i:
+	var density := 1.0
+	if logical.x > 0 and logical.y > 0:
+		density = clampf(minf(physical.x / logical.x, physical.y / logical.y), 1.0, 2.0)
+	density = minf(density, 2048.0 / maxf(2.0, maxf(area.x, area.y)))
+	return Vector2i((area * density).ceil()).max(Vector2i(2, 2))
+
 func _build_city(parent: Node) -> void:
 	var panel := _panel(parent)
 	var box := _vbox(panel, 3)
@@ -240,18 +247,20 @@ func _build_city(parent: Node) -> void:
 	case_detail = _label(context, "", 14)
 	case_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	context.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var container := SubViewportContainer.new()
+	var container := TextureRect.new()
 	container.custom_minimum_size = Vector2(0, 215)
 	container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	container.size_flags_stretch_ratio = 2.0
-	container.stretch = true
+	container.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	container.stretch_mode = TextureRect.STRETCH_SCALE
 	container.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	scene_row.add_child(container)
 	var viewport := SubViewport.new()
-	viewport.size = Vector2i(750, 215)
+	viewport.size = Vector2i(2, 2)
 	viewport.msaa_3d = Viewport.MSAA_4X
 	viewport.transparent_bg = true
 	container.add_child(viewport)
+	container.texture = viewport.get_texture()
 	var world := Node3D.new()
 	viewport.add_child(world)
 	city = load("res://assets/policy_city.glb").instantiate()
@@ -284,12 +293,16 @@ func _build_city(parent: Node) -> void:
 	var redraw := func():
 		viewport.render_target_update_mode = (SubViewport.UPDATE_ONCE if reduced_motion else SubViewport.UPDATE_ALWAYS) if container.is_visible_in_tree() else SubViewport.UPDATE_DISABLED
 	viewport.size_changed.connect(redraw)
-	# The container resets the native mode after its visibility signal.
-	container.visibility_changed.connect(redraw, CONNECT_DEFERRED)
+	var resize := func():
+		viewport.size = _city_texture_size(container.size, get_window().size, get_window().get_visible_rect().size)
+		redraw.call()
+	container.resized.connect(resize)
+	get_window().size_changed.connect(resize)
+	container.visibility_changed.connect(redraw)
 	motion.toggled.connect(func(enabled: bool):
 		reduced_motion = not enabled
 		redraw.call())
-	redraw.call()
+	resize.call()
 	_label(box, "Original Blender miniature · illustrative city, not a regional model", 10, MUTED)
 
 func _spin(parent: Node, title: String, low: float, high: float, step_size: float, tip: String) -> SpinBox:

@@ -611,6 +611,28 @@ func check_city_framing(game: Control, viewport: SubViewport) -> void:
 				count += 1
 	print("CITY_FRAME size=", camera.size, " viewport=", viewport.size, " min=", minimum, " max=", maximum, " vertices=", count)
 	check(count > 0 and minimum.x >= 0 and minimum.y >= 0 and maximum.x <= viewport.size.x and maximum.y <= viewport.size.y, "complete native city fits the camera through every rotation")
+func check_city_density(game: Control) -> void:
+	check(game.has_method("_city_texture_size"), "city allocation follows physical canvas density")
+	if not game.has_method("_city_texture_size"):
+		return
+	var logical := Vector2(1440, 960)
+	var area := Vector2(634, 215)
+	for sample in [
+		[area, Vector2i(1440, 960), logical, Vector2i(634, 215)],
+		[area, Vector2i(2880, 1920), logical, Vector2i(1268, 430)],
+		[area, Vector2i(2160, 1440), logical, Vector2i(951, 323)],
+		[area, Vector2i(2880, 2200), logical, Vector2i(1268, 430)],
+		[area, Vector2i(1440, 2500), logical, Vector2i(634, 215)],
+		[area, Vector2i(800, 600), logical, Vector2i(634, 215)],
+		[area, Vector2i(5760, 3840), logical, Vector2i(1268, 430)],
+		[area, Vector2i(2880, 1920), Vector2.ZERO, Vector2i(634, 215)],
+		[Vector2.ZERO, Vector2i(2880, 1920), logical, Vector2i(2, 2)],
+		[Vector2(4000, 100), Vector2i(2880, 1920), logical, Vector2i(2048, 52)],
+		[Vector2(100, 4000), Vector2i(2880, 1920), logical, Vector2i(52, 2048)],
+		[Vector2(2000, 300), Vector2i(2880, 1920), logical, Vector2i(2048, 308)],
+	]:
+		check(game._city_texture_size(sample[0], sample[1], sample[2]) == sample[3], "bounded uniform native city dimensions: " + str(sample))
+
 func check_city_redraw(game: Control, viewport: SubViewport) -> void:
 	var motion: CheckButton
 	for button in game.find_children("*", "CheckButton", true, false):
@@ -629,20 +651,25 @@ func check_city_redraw(game: Control, viewport: SubViewport) -> void:
 	check(is_equal_approx(game.city.rotation.y, rotation + 0.025), "animation retains its existing speed")
 	motion.button_pressed = false
 	check(game.reduced_motion and viewport.render_target_update_mode == SubViewport.UPDATE_ONCE, "disabling motion rearms its final static frame")
-	var container: SubViewportContainer = viewport.get_parent()
+	var container: TextureRect = viewport.get_parent()
 	viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	viewport.size_changed.emit()
 	check(viewport.render_target_update_mode == SubViewport.UPDATE_ONCE, "native size notification rearms static texture")
+	check(container.expand_mode == TextureRect.EXPAND_IGNORE_SIZE and container.stretch_mode == TextureRect.STRETCH_SCALE and container.mouse_filter == Control.MOUSE_FILTER_IGNORE, "physical texture keeps layout independent and does not intercept policy input")
 	var original_size := viewport.size
-	container.stretch_shrink = 2
-	check(viewport.size == original_size / 2 and viewport.render_target_update_mode == SubViewport.UPDATE_ONCE, "real native size change requests a new static frame")
-	container.stretch_shrink = 1
+	var original_control_size := container.size
+	container.size = Vector2(original_control_size.x / 2, original_control_size.y)
+	check(viewport.size == Vector2i(ceili(original_size.x / 2.0), original_size.y) and viewport.render_target_update_mode == SubViewport.UPDATE_ONCE, "real native size change requests a new static frame")
+	container.size = original_control_size
 	check(viewport.size == original_size and viewport.render_target_update_mode == SubViewport.UPDATE_ONCE, "restored native size rearms the full-quality city")
+	viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	root.size_changed.emit()
+	check(viewport.size == original_size and viewport.render_target_update_mode == SubViewport.UPDATE_ONCE, "window canvas-size notification rearms physical static texture")
 	container.hide()
 	check(viewport.render_target_update_mode == SubViewport.UPDATE_DISABLED, "hidden city does not request a redraw")
 	container.show()
 	await process_frame
-	check(viewport.render_target_update_mode == SubViewport.UPDATE_ONCE, "visible static city overrides container's continuous-mode reset")
+	check(viewport.render_target_update_mode == SubViewport.UPDATE_ONCE, "visible static city retains its one-shot mode")
 	motion.button_pressed = true
 	container.hide()
 	container.show()
@@ -703,13 +730,16 @@ func run() -> void:
 		return
 	var city_viewports: Array = game.find_children("*", "SubViewport", true, false)
 	check(city_viewports.size() == 1 and city_viewports[0].msaa_3d == Viewport.MSAA_4X, "miniature city uses bounded four-sample native edge antialiasing")
+	check_city_density(game)
 	if city_viewports.size() == 1:
 		check_city_framing(game, city_viewports[0])
 		await check_city_redraw(game, city_viewports[0])
 	if OS.get_cmdline_user_args().has("--city-only"):
 		if failures == 0:
-			print("PASS: native miniature antialiasing")
+			print("PASS: bounded physical-density native miniature and redraw lifecycle")
 		game.free()
+		root.size_changed.emit()
+		await process_frame
 		quit(1 if failures else 0)
 		return
 	if OS.get_cmdline_user_args().has("--feedback-only"):
