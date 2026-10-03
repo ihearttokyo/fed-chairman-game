@@ -30,6 +30,11 @@ var city: Node3D
 var reduced_motion := true
 var decision_button: Button
 var loading_controls := false
+var keyboard_controls: Array[Control] = []
+var cockpit_scroll: ScrollContainer
+var save_path := SAVE_PATH
+
+const KEYBOARD_HELP := "Keyboard controls\nTab / Shift+Tab move forward / back through visible controls. Return or Space activates a focused button. In numeric fields, type a value and press Return to commit only that field; Up / Down use its advertised step. Arrow keys navigate open scenario or guidance menus; Return selects and Escape cancels.\n\nCharts: Left / Right inspect completed quarters; Home / End select the first / latest. Focused cockpit and reports: Page Up / Down scroll, Home / End reach the ends. Escape closes a report or cancels replacement and returns focus.\n\nOptional accelerators use Cmd on macOS or Ctrl elsewhere: N New, S Save, O Load, J journal, P Compare, R staff rule, modified Return adopt one quarter. F1 opens this guide. Every command also has a Tab-accessible control; plain typing never adopts a quarter.\n\n"
 
 func _ready() -> void:
 	_fit_initial_window()
@@ -44,6 +49,12 @@ func _ready() -> void:
 	layout.add_theme_constant_override("separation", 0)
 	add_child(layout)
 	var scroll := ScrollContainer.new()
+	cockpit_scroll = scroll
+	scroll.follow_focus = true
+	scroll.focus_mode = Control.FOCUS_ALL
+	scroll.accessibility_name = "Meeting cockpit"
+	scroll.accessibility_description = "Page Up and Page Down scroll the cockpit. Home and End jump to its ends. Tab continues to the next control."
+	scroll.gui_input.connect(_scroll_key)
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	layout.add_child(scroll)
 	var action_margin := MarginContainer.new()
@@ -79,10 +90,16 @@ func _ready() -> void:
 	for heading in ["INFLATION", "UNEMPLOYMENT", "CREDIBILITY", "PUBLIC SUPPORT"]:
 		var panel := _panel(cards)
 		panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var box := _vbox(panel, 5)
+		panel.get_theme_stylebox("panel").set_content_margin_all(10)
+		var box := HBoxContainer.new()
+		box.add_theme_constant_override("separation", 8)
+		panel.add_child(box)
 		_label(box, heading, 12, MUTED)
-		var value := _label(box, "", 29, GOLD if stats.size() == 0 else Color("e7eee9"))
-		var note := _label(box, "", 12, MUTED)
+		var value := _label(box, "", 20, GOLD if stats.size() == 0 else Color("e7eee9"))
+		value.mouse_filter = Control.MOUSE_FILTER_PASS
+		value.accessibility_name = heading
+		var note := _label(box, "", 11, MUTED)
+		note.visible = stats.size() < 2
 		stats.append([value, note])
 	var body := HBoxContainer.new()
 	body.add_theme_constant_override("separation", 18)
@@ -94,7 +111,7 @@ func _ready() -> void:
 	body.add_child(left)
 	_build_city(left)
 	var brief_box := _vbox(_panel(left), 5)
-	_label(brief_box, "MEETING DISPATCH  /  INFORMATION AVAILABLE NOW", 12, GOLD)
+	_label(brief_box, "Meeting dispatch", 12, GOLD)
 	briefing = _label(brief_box, "", 14)
 	briefing.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var chart_row := HBoxContainer.new()
@@ -109,9 +126,12 @@ func _ready() -> void:
 			chart.labels = ["Unemployment", "Structural reference"]
 		chart_row.add_child(chart)
 		charts.append(chart)
+		keyboard_controls.append(chart)
 	_build_policy(body, actions)
-	_label(root, "A research-informed strategy game. Hypothetical economy, disclosed design coefficients. No Federal Reserve affiliation.", 11, MUTED)
 	_start_career("supply_shock", 1)
+	keyboard_controls.append(scroll)
+	_link_focus(_keyboard_focus_order())
+	rate.get_line_edit().grab_focus.call_deferred()
 	if "--verify-build" in OS.get_cmdline_user_args():
 		get_tree().quit(load("res://play/build_check.gd").new().run(self))
 
@@ -193,31 +213,62 @@ func _label(parent: Node, text: String, size_px := 14, color := Color("e7eee9"))
 	parent.add_child(label)
 	return label
 
-func _button(parent: Node, text: String, action: Callable) -> Button:
+func _button(parent: Node, text: String, action: Callable, code: Key = KEY_NONE, command := true) -> Button:
 	var button := Button.new()
 	button.text = text
 	button.pressed.connect(action)
 	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	parent.add_child(button)
+	keyboard_controls.append(button)
+	if code != KEY_NONE:
+		var event := InputEventKey.new()
+		event.keycode = code
+		event.command_or_control_autoremap = command
+		button.shortcut = Shortcut.new()
+		button.shortcut.events = [event]
 	return button
+
+func _keyboard_focus_order() -> Array[Control]:
+	var order: Array[Control] = []
+	for control in keyboard_controls:
+		if control.is_visible_in_tree() and not (control is BaseButton and control.disabled):
+			order.append(control)
+	return order
+
+func _link_focus(order: Array[Control]) -> void:
+	for index in range(order.size()):
+		order[index].focus_next = order[index].get_path_to(order[(index + 1) % order.size()])
+		order[index].focus_previous = order[index].get_path_to(order[(index - 1 + order.size()) % order.size()])
+
+func _scroll_key(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.alt_pressed and not event.is_command_or_control_pressed():
+		match event.keycode:
+			KEY_PAGEUP: cockpit_scroll.scroll_vertical -= int(cockpit_scroll.size.y * 0.8)
+			KEY_PAGEDOWN: cockpit_scroll.scroll_vertical += int(cockpit_scroll.size.y * 0.8)
+			KEY_HOME: cockpit_scroll.scroll_vertical = 0
+			KEY_END: cockpit_scroll.scroll_vertical = int(cockpit_scroll.get_v_scroll_bar().max_value)
+			_: return
+		cockpit_scroll.accept_event()
 
 func _build_header(parent: Node) -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
 	parent.add_child(row)
-	var brand := _vbox(row, 0)
+	var brand := HBoxContainer.new()
+	brand.add_theme_constant_override("separation", 12)
+	row.add_child(brand)
 	brand.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var title := _label(brand, "THE CHAIR", 31)
 	var serif := SystemFont.new()
 	serif.font_names = PackedStringArray(["Georgia", "Liberation Serif"])
 	title.add_theme_font_override("font", serif)
-	_label(brand, "FEDERAL RESERVE  /  POLICY LAB", 11, GOLD)
+	_label(brand, "Federal Reserve Policy Lab", 11, GOLD)
 	quarter_label = _label(row, "", 15, MINT)
-	_button(row, "New career", _new_dialog)
-	_button(row, "Save", _save)
-	_button(row, "Load", _load)
-	_button(row, "Data & journal", _journal)
-	_button(row, "How to play", _help)
+	_button(row, "New career", _new_dialog, KEY_N)
+	_button(row, "Save", _save, KEY_S)
+	_button(row, "Load", _load, KEY_O)
+	_button(row, "Data & journal", _journal, KEY_J)
+	_button(row, "How to play", _help, KEY_F1, false)
 	_button(row, "Credits", _credits)
 
 static func _city_texture_size(area: Vector2, physical: Vector2i, logical: Vector2) -> Vector2i:
@@ -231,12 +282,12 @@ func _build_city(parent: Node) -> void:
 	var panel := _panel(parent)
 	var box := _vbox(panel, 3)
 	var top := HBoxContainer.new()
+	top.alignment = BoxContainer.ALIGNMENT_END
 	box.add_child(top)
-	var title := _label(top, "THE ECONOMY IS YOUR RESPONSIBILITY", 12, MUTED)
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var motion := CheckButton.new()
 	motion.text = "Animate city"
 	top.add_child(motion)
+	keyboard_controls.append(motion)
 	var scene_row := HBoxContainer.new()
 	box.add_child(scene_row)
 	var context := _vbox(scene_row, 12)
@@ -303,7 +354,6 @@ func _build_city(parent: Node) -> void:
 		reduced_motion = not enabled
 		redraw.call())
 	resize.call()
-	_label(box, "Original Blender miniature · illustrative city, not a regional model", 10, MUTED)
 
 func _spin(parent: Node, title: String, low: float, high: float, step_size: float, tip: String) -> SpinBox:
 	var row := HBoxContainer.new()
@@ -318,6 +368,20 @@ func _spin(parent: Node, title: String, low: float, high: float, step_size: floa
 	input.custom_minimum_size.x = 105
 	input.accessibility_name = title
 	input.tooltip_text = tip
+	var edit := input.get_line_edit()
+	edit.accessibility_name = title
+	edit.tooltip_text = tip
+	edit.gui_input.connect(func(event: InputEvent):
+		# LineEdit consumes Return before button shortcuts, including modified Return.
+		if event is InputEventKey and event.pressed and not event.alt_pressed and event.is_command_or_control_pressed() and event.keycode in [KEY_ENTER, KEY_KP_ENTER] and input.get_window() == get_window():
+			if not event.echo and not decision_button.disabled:
+				_advance()
+			edit.accept_event()
+			return
+		if event is InputEventKey and event.pressed and not event.alt_pressed and not event.is_command_or_control_pressed() and event.keycode in [KEY_UP, KEY_DOWN]:
+			_apply_input(input)
+			input.value += input.custom_arrow_step * (1 if event.keycode == KEY_UP else -1)
+			edit.accept_event())
 	# Numeric setters update the visible text on draw; accessible setters only edit text.
 	input.set_meta("numeric_text", input.get_line_edit().text)
 	input.set_meta("numeric_text_pending", true)
@@ -330,6 +394,8 @@ func _spin(parent: Node, title: String, low: float, high: float, step_size: floa
 			input.set_meta("numeric_text", input.get_line_edit().text)
 			input.set_meta("numeric_text_pending", false))
 	row.add_child(input)
+	if input.get_window() == get_window():
+		keyboard_controls.append(edit)
 	return input
 
 func _build_policy(parent: Node, actions: Node) -> void:
@@ -337,16 +403,17 @@ func _build_policy(parent: Node, actions: Node) -> void:
 	panel.custom_minimum_size.x = 380
 	var box := _vbox(panel, 13)
 	_label(box, "FOMC DECISION", 18, GOLD)
-	_label(box, "Set a path. Allow time for it to work.", 13, MUTED)
 	rate = _spin(box, "Target midpoint (%)", 0, 15, 0.25, "Applied change is limited to 75 basis points per quarter.")
 	guidance = _spin(box, "Next-quarter guidance (%)", 0, 15, 0.25, "Markets price this promise according to credibility. Broken promises reduce follow-through.")
 	commitment = OptionButton.new()
+	commitment.accessibility_name = "Guidance commitment"
 	commitment.add_item("Data-dependent guidance")
 	commitment.add_item("Firm rate pledge")
 	commitment.add_item("Custom conditional guidance")
 	commitment.tooltip_text = "Data dependence adjusts your promise by %.2f × the change in inflation and %.2f × the change in output gap. A firm pledge does not adjust." % [career.params.policy_inflation_response, career.params.policy_output_gap_response]
 	commitment.item_selected.connect(func(_i: int): _guidance_controls())
 	box.add_child(commitment)
+	keyboard_controls.append(commitment)
 	custom_guidance = _vbox(box, 6)
 	var bound: float = career.params.guidance_sensitivity_limit
 	inflation_response = _spin(custom_guidance, "Inflation response", -bound, bound, 0.1, "Adjust the announced rate by this many percentage points for each 1 pp change in four-quarter inflation since the announcement.")
@@ -356,12 +423,12 @@ func _build_policy(parent: Node, actions: Node) -> void:
 	assets = _spin(box, "Asset purchases / runoff", -2, 2, 0.25, "Percent of initial annual GDP. Purchases lower the term premium; runoff raises it. Stock capacity applies.")
 	liquidity = _spin(box, "New liquidity lending", 0, 5, 0.25, "Percent of initial annual GDP. New loans are limited by funding need, eligibility and collateral. They do not cure insolvency.")
 	_label(box, "Asset and loan units: % of initial annual GDP", 11, MUTED)
-	_button(box, "Use staff rate rule", _staff_rule)
+	_button(box, "Use staff rate rule", _staff_rule, KEY_R)
 	forecast_label = _label(box, "", 13, MINT)
 	forecast_label.custom_minimum_size.y = 114
 	forecast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_button(actions, "Compare policy paths", _compare)
-	decision_button = _button(actions, "Adopt decision  →  Next quarter", _advance)
+	_button(actions, "Compare policy paths", _compare, KEY_P)
+	decision_button = _button(actions, "Adopt decision  →  Next quarter", _advance, KEY_ENTER)
 	decision_button.custom_minimum_size = Vector2(380, 48)
 	var explanation := _label(box, "Preview: this decision, then hold the rate for eight quarters. No new future shocks. This is a conditional path, not a confidence interval.", 11, MUTED)
 	explanation.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -380,7 +447,7 @@ func _apply_policy_inputs() -> void:
 
 func _apply_input(input: SpinBox) -> void:
 	var edit := input.get_line_edit()
-	if edit.has_focus() or edit.text != input.get_meta("numeric_text"):
+	if edit.text != input.get_meta("numeric_text") or (edit.has_focus() and not input.get_meta("numeric_text_pending")):
 		input.apply()
 
 func _compare() -> void:
@@ -396,13 +463,9 @@ func _compare() -> void:
 	chooser.accessibility_name = "Comparison section"
 	chooser.tooltip_text = "Jump within the complete report. All calculations, explanations and limits remain available."
 	box.add_child(chooser)
-	var body := RichTextLabel.new()
-	body.text = text
-	body.selection_enabled = true
-	body.focus_mode = Control.FOCUS_ALL
-	body.accessibility_name = "Policy comparison report"
+	var body := _read_only_report("Policy comparison report", text)
+	body.custom_minimum_size = Vector2.ZERO
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	body.add_theme_color_override("default_color", Color("e7eee9"))
 	box.add_child(body)
 	for section in [["Meeting", "CURRENT MEETING /"], ["Deliberation", "COMMITTEE DELIBERATION /"], ["Guidance", "GUIDANCE /"], ["Scores", "Q+1 / WHY"], ["Forecasts", "CURRENT TRANSMISSION /"], ["Tools", "ONE-CONTROL CONTRASTS /"], ["Limits", "REFERENCE AND LIMITS"]]:
 		var offset := text.find(section[1])
@@ -410,11 +473,13 @@ func _compare() -> void:
 			chooser.add_item(section[0])
 			chooser.set_item_metadata(chooser.item_count - 1, text.substr(0, offset).count("\n"))
 	chooser.disabled = chooser.item_count == 0
-	chooser.item_selected.connect(func(index): body.scroll_to_paragraph(chooser.get_item_metadata(index)))
-	_show_dialog(dialog)
+	chooser.item_selected.connect(func(index): body.set_line_as_first_visible(chooser.get_item_metadata(index)))
+	_show_dialog(dialog, Vector2i(740, 540), body)
+	_link_focus([chooser, body, dialog.get_ok_button()])
 
 func _guidance_controls() -> void:
 	custom_guidance.visible = commitment.selected == 2
+	_link_focus(_keyboard_focus_order())
 	_preview()
 
 func _start_career(case_id: String, seed_number: int) -> void:
@@ -430,16 +495,21 @@ func _refresh(reset_controls := false) -> void:
 	var s: Dictionary = career.state
 	var complete := career.decisions.size() >= Career.MAX_QUARTERS
 	case_title.text = career.cases[career.scenario_id].label
-	case_detail.text = "Balance price stability with employment. Expectations, policy lags and public memory carry forward.\n\nAsset holdings: %.1f%% of initial GDP\nOutstanding loans: %.2f%%" % [s.asset_stock_pct_initial_gdp, s.outstanding_liquidity_pct_initial_gdp]
+	case_detail.text = "Holdings %.1f%% · Loans %.2f%%\nUnits: initial annual GDP" % [s.asset_stock_pct_initial_gdp, s.outstanding_liquidity_pct_initial_gdp]
 	quarter_label.text = "CAREER COMPLETE · %d MEETINGS" % Career.MAX_QUARTERS if complete else "YEAR %02d / Q%d   ·   MEETING %d" % [int(s.quarter_index / 4) + 1, int(s.quarter_index) % 4 + 1, s.quarter_index + 1]
 	stats[0][0].text = "%.2f%%" % s.four_quarter_inflation_pct
-	stats[0][1].text = "2.00% target · 4-quarter change"
+	stats[0][1].text = "Target 2%"
 	stats[1][0].text = "%.2f%%" % s.unemployment_rate_pct
-	stats[1][1].text = "%.2f%% structural reference" % s.structural_unemployment_pct
+	stats[1][1].text = "Ref %.2f%%" % s.structural_unemployment_pct
 	stats[2][0].text = "%.0f / 100" % (100 * s.credibility)
 	stats[2][1].text = "Long expectations %.2f%%" % s.expected_long_inflation_pct
 	stats[3][0].text = "%.0f / 100" % s.public_support
 	stats[3][1].text = "Hardship memory %.2f" % s.public_hardship_memory
+	var metric_details := ["Four-quarter inflation; 2% annual objective.", "Unemployment rate; uncertain structural reference, not a fixed employment target.", stats[2][1].text, stats[3][1].text]
+	for index in range(stats.size()):
+		stats[index][0].accessibility_name = "%s %s" % [stats[index][0].get_parent().get_child(0).text, stats[index][0].text]
+		stats[index][0].tooltip_text = metric_details[index]
+		stats[index][0].accessibility_description = metric_details[index]
 	for chart in charts:
 		chart.history = career.history
 		chart.queue_redraw()
@@ -466,6 +536,7 @@ func _refresh(reset_controls := false) -> void:
 		loading_controls = false
 	decision_button.disabled = complete
 	decision_button.text = "Career complete" if complete else "Adopt decision  →  Next quarter"
+	_link_focus(_keyboard_focus_order())
 	_preview()
 
 func _preview() -> void:
@@ -583,25 +654,43 @@ func _advance() -> void:
 		_review()
 
 func _save() -> void:
-	var result: Dictionary = career.save_to(SAVE_PATH)
+	var result: Dictionary = career.save_to(save_path)
 	status_label.text = "Saved quarter %d. The legacy game's saves are untouched." % career.state.quarter_index if result.ok else result.error
 
 func _load() -> void:
 	var dialog := AcceptDialog.new()
 	dialog.title = "Load saved career"
-	dialog.add_button("Cancel", true).pressed.connect(dialog.queue_free)
+	var cancel := dialog.add_button("Cancel", true)
+	cancel.pressed.connect(dialog.queue_free)
 	dialog.dialog_text = "Load the saved career? Unsaved decisions in this session will be replaced."
 	dialog.confirmed.connect(func():
-		var result: Dictionary = career.load_from(SAVE_PATH)
+		var result: Dictionary = career.load_from(save_path)
 		if result.ok:
 			_refresh(true)
 			consequence.text = "Saved career restored with its decisions, economic history and policy lags."
 		status_label.text = "Loaded quarter %d." % career.state.quarter_index if result.ok else result.error
 	)
-	_show_dialog(dialog, Vector2i(740, 180))
+	_show_dialog(dialog, Vector2i(740, 180), cancel)
+	_link_focus([cancel, dialog.get_ok_button()])
 
-func _show_dialog(dialog: Window, desired_size := Vector2i(740, 540)) -> void:
+func _restore_keyboard_focus(invoker: WeakRef) -> void:
+	for child in get_children():
+		if child is Window and child.visible:
+			return
+	var control: Control = invoker.get_ref() if invoker != null else null
+	if control != null and control.is_visible_in_tree() and not (control is BaseButton and control.disabled):
+		control.grab_focus()
+	else:
+		rate.get_line_edit().grab_focus()
+
+func _show_dialog(dialog: Window, desired_size := Vector2i(740, 540), initial: Control = null) -> void:
+	var invoker: WeakRef = weakref(get_viewport().gui_get_focus_owner())
 	add_child(dialog)
+	dialog.tree_exited.connect(func(): _restore_keyboard_focus.call_deferred(invoker))
+	dialog.window_input.connect(func(event: InputEvent):
+		if event.is_action_pressed("ui_cancel"):
+			dialog.queue_free()
+			dialog.set_input_as_handled())
 	dialog.close_requested.connect(dialog.queue_free)
 	if dialog is AcceptDialog:
 		# AccessKit finishes the button action with a focus request. Keep its window
@@ -610,10 +699,10 @@ func _show_dialog(dialog: Window, desired_size := Vector2i(740, 540)) -> void:
 		dialog.confirmed.connect(dialog.queue_free)
 		dialog.canceled.connect(dialog.queue_free)
 	dialog.popup_centered(desired_size)
+	if initial != null:
+		initial.grab_focus.call_deferred()
 
-func _text_dialog(title: String, text: String) -> AcceptDialog:
-	var dialog := AcceptDialog.new()
-	dialog.title = title
+func _read_only_report(title: String, text: String) -> TextEdit:
 	var body := TextEdit.new()
 	body.text = text
 	body.custom_minimum_size = Vector2(690, 450)
@@ -623,17 +712,36 @@ func _text_dialog(title: String, text: String) -> AcceptDialog:
 	body.accessibility_name = title
 	body.accessibility_description = text
 	body.add_theme_color_override("font_readonly_color", Color("e7eee9"))
+	body.gui_input.connect(func(event: InputEvent):
+		if event is InputEventKey and event.pressed and not event.shift_pressed and not event.alt_pressed and not event.is_command_or_control_pressed():
+			var bar := body.get_v_scroll_bar()
+			match event.keycode:
+				KEY_PAGEUP: bar.value -= bar.page
+				KEY_PAGEDOWN: bar.value += bar.page
+				KEY_HOME: bar.value = 0
+				KEY_END: bar.value = bar.max_value
+				_: return
+			body.accept_event())
+	return body
+
+func _text_dialog(title: String, text: String) -> AcceptDialog:
+	var dialog := AcceptDialog.new()
+	dialog.title = title
+	var body := _read_only_report(title, text)
 	dialog.add_child(body)
-	_show_dialog(dialog)
+	_show_dialog(dialog, Vector2i(740, 540), body)
+	_link_focus([body, dialog.get_ok_button()])
 	return dialog
 
 func _new_dialog() -> void:
 	var dialog := AcceptDialog.new()
-	dialog.add_button("Cancel", true).pressed.connect(dialog.queue_free)
+	var cancel := dialog.add_button("Cancel", true)
+	cancel.pressed.connect(dialog.queue_free)
 	dialog.title = "Start a new career · unsaved decisions will be replaced"
 	var box := _vbox(dialog)
 	_label(box, "Choose a hypothetical economy, not a historical forecast.\nEvery career includes seeded background disturbances, even the baseline.")
 	scenario = OptionButton.new()
+	scenario.accessibility_name = "Career scenario"
 	for case_id in career.cases:
 		scenario.add_item(career.cases[case_id].label)
 		scenario.set_item_metadata(scenario.item_count - 1, case_id)
@@ -645,7 +753,8 @@ func _new_dialog() -> void:
 		_apply_input(seed_input)
 		_start_career(scenario.get_item_metadata(scenario.selected), int(seed_input.value))
 	)
-	_show_dialog(dialog, Vector2i(740, 240))
+	_show_dialog(dialog, Vector2i(740, 240), scenario)
+	_link_focus([scenario, seed_input.get_line_edit(), cancel, dialog.get_ok_button()])
 
 func _review() -> void:
 	var s: Dictionary = career.state
@@ -667,6 +776,10 @@ func _journal() -> void:
 	var dialog := _text_dialog("Economic history and policy journal", text)
 	var review := dialog.add_button("Review realized policy")
 	review.disabled = career.decisions.is_empty()
+	var order: Array[Control] = [dialog.get_child(0), review, dialog.get_ok_button()]
+	if review.disabled:
+		order.erase(review)
+	_link_focus(order)
 	review.tooltip_text = "Compare the latest up to twelve completed quarters with holding policy. Complete a decision first."
 	review.pressed.connect(func():
 		# A frame signal can precede deletion. Wait for the exclusive journal to
@@ -676,7 +789,7 @@ func _journal() -> void:
 	)
 
 func _help() -> void:
-	_text_dialog("How to play", "Your role\nGuide a simplified FOMC policy decision. The target-rate midpoint is an abstraction; a real chair does not unilaterally set the market rate.\n\nEvery career includes seeded background disturbances. The baseline starts at equilibrium with no scheduled scenario events, but its playable path is not shock-free. The same scenario and seed reproduce the path within the same engine and model.\n\n1. Read the dispatch. It describes current conditions, not future shocks.\n2. Set the target rate. Higher real rates restrain demand gradually; inflation reacts with a lag. A supply shock can raise prices while weakening activity.\n3. Choose guidance. A firm promise is easier to understand but costly to break. Data dependence adjusts the prior promise when inflation and the output gap change.\n4. Use asset purchases or runoff to change the term premium. Liquidity lending addresses eligible funding needs, not insolvency.\n5. Inspect applied amounts and the eight-quarter preview, then adopt. The preview assumes no new future shocks and no later rate changes.\n\nCredibility changes how markets price guidance and long-run inflation expectations. Public support remembers both inflation/deflation hardship and unemployment. It recovers gradually, without term resets or a game-over threshold.\n\nSave preserves a career in this game's separate storage. New career and Load ask before replacing unsaved play. Tab navigates controls; charts also have exact values in Data & journal. Animation is off by default.\n\nModel limits\nSeven hypothetical scenarios. Recurring crises precomputes paired demand, supply and funding episodes throughout a 60-year career; future episodes stay unknown. Incidence and behavioral coefficients are design assumptions. Only the 2% objective is source-defined. No empirical forecast, financial advice or Federal Reserve affiliation. See the repository's FED_RESEARCH and model README for primary sources and equations.\n\nCredits\nOriginal procedural Blender city by the project. Godot Engine is MIT-licensed.\n\n" + Engine.get_license_text())
+	_text_dialog("How to play", KEYBOARD_HELP + "Your role\nGuide a simplified FOMC policy decision. The target-rate midpoint is an abstraction; a real chair does not unilaterally set the market rate.\n\nEvery career includes seeded background disturbances. The baseline starts at equilibrium with no scheduled scenario events, but its playable path is not shock-free. The same scenario and seed reproduce the path within the same engine and model.\n\n1. Read the dispatch. It describes current conditions, not future shocks.\n2. Set the target rate. Higher real rates restrain demand gradually; inflation reacts with a lag. A supply shock can raise prices while weakening activity.\n3. Choose guidance. A firm promise is easier to understand but costly to break. Data dependence adjusts the prior promise when inflation and the output gap change.\n4. Use asset purchases or runoff to change the term premium. Liquidity lending addresses eligible funding needs, not insolvency.\n5. Inspect applied amounts and the eight-quarter preview, then adopt. The preview assumes no new future shocks and no later rate changes.\n\nCredibility changes how markets price guidance and long-run inflation expectations. Public support remembers both inflation/deflation hardship and unemployment. It recovers gradually, without term resets or a game-over threshold.\n\nSave preserves a career in this game's separate storage. New career and Load ask before replacing unsaved play. Tab navigates controls; charts also have exact values in Data & journal. Animation is off by default.\n\nModel limits\nSeven hypothetical scenarios. Recurring crises precomputes paired demand, supply and funding episodes throughout a 60-year career; future episodes stay unknown. Incidence and behavioral coefficients are design assumptions. Only the 2% objective is source-defined. Hypothetical economy; coefficients are design assumptions, not empirical forecasts or financial advice. No Federal Reserve affiliation. See the repository's FED_RESEARCH and model README for primary sources and equations.\n\nCredits\nOriginal procedural Blender city by the project. Godot Engine is MIT-licensed.\n\n" + Engine.get_license_text())
 
 func _process(delta: float) -> void:
 	if city != null and not reduced_motion:

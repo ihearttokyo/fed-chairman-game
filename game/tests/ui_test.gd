@@ -316,7 +316,7 @@ func check_pending_policy(game: Control) -> void:
 				await process_frame
 				await process_frame
 				var comparison: AcceptDialog = game.get_child(game.get_child_count() - 1)
-				var report: RichTextLabel = comparison.find_children("*", "RichTextLabel", true, false)[0]
+				var report: TextEdit = comparison.find_children("*", "TextEdit", true, false)[0]
 				check(game._policy() == expected and report.text.contains(descriptions[index]), "Compare submits pending %s without Return" % keys[index])
 				check(edit.text.to_float() == values[index], "Compare visibly normalizes bounded native input")
 				check(game.forecast_label.text.contains("Rate %.2f%%" % projected.states[0].policy_rate_pct) and game.career.encode() == preserved, "Compare refreshes applied preview without changing the career")
@@ -355,7 +355,7 @@ func check_unfocused_inputs(game: Control) -> void:
 			await process_frame
 			await process_frame
 			var dialog: AcceptDialog = game.get_child(game.get_child_count() - 1)
-			var report: RichTextLabel = dialog.find_children("*", "RichTextLabel", true, false)[0]
+			var report: TextEdit = dialog.find_children("*", "TextEdit", true, false)[0]
 			check(game._policy() == expected and report.text.contains("Requested rate 8.00%") and report.text.contains("Requested assets +1.25"), "Compare submits all unfocused accessible fields without Return")
 			check(game.career.encode() == preserved and game.forecast_label.text.contains("Rate %.2f%%" % projected.states[0].policy_rate_pct), "accessible comparison uses the real model without advancing")
 			for index in range(fields.size()):
@@ -516,13 +516,13 @@ func check_comparison_navigation(game: Control) -> void:
 		await process_frame
 		var dialog: AcceptDialog = game.get_child(game.get_child_count() - 1)
 		var choosers := dialog.find_children("*", "OptionButton", true, false)
-		var bodies := dialog.find_children("*", "RichTextLabel", true, false)
+		var bodies := dialog.find_children("*", "TextEdit", true, false)
 		check(choosers.size() == 1 and bodies.size() == 1, "comparison provides native section navigation and a selectable complete report")
 		if choosers.size() == 1 and bodies.size() == 1:
 			var chooser: OptionButton = choosers[0]
-			var body: RichTextLabel = bodies[0]
-			check(body.text == expected and body.get_parsed_text() == expected, "section navigation preserves every report byte and warning")
-			check(body.selection_enabled and body.focus_mode == Control.FOCUS_ALL, "comparison report supports native text selection and keyboard focus")
+			var body: TextEdit = bodies[0]
+			check(body.text == expected and body.accessibility_description == expected, "section navigation preserves every report byte and warning")
+			check(body.selecting_enabled and not body.editable and body.focus_mode == Control.FOCUS_ALL, "comparison report supports read-only native text selection and keyboard focus")
 			check(chooser.accessibility_name == "Comparison section" and chooser.item_count == destinations.size(), "section chooser has a distinct accessible name and all seven destinations")
 			for index in range(mini(chooser.item_count, destinations.size())):
 				check(chooser.get_item_text(index) == destinations[index][0], "comparison sections retain their named order")
@@ -530,8 +530,7 @@ func check_comparison_navigation(game: Control) -> void:
 				chooser.select(index)
 				chooser.item_selected.emit(index)
 				await process_frame
-				var position: float = body.get_paragraph_offset(paragraph) - body.get_v_scroll_bar().value
-				check(position >= -1 and position < body.size.y - body.get_theme_font("normal_font").get_height(), "selecting %s brings its actual heading into view" % destinations[index][0])
+				check(body.get_line(paragraph).begins_with(destinations[index][1]) and paragraph >= body.get_first_visible_line() and paragraph <= body.get_last_full_visible_line(), "selecting %s brings its actual heading into view" % destinations[index][0])
 				check(chooser.get_global_rect().end.y <= body.get_global_rect().position.y and chooser.is_visible_in_tree(), "section navigation remains above the scrolling report")
 			check(game.career.encode() == preserved and game._policy() == staged, "section changes cannot mutate the career or staged decision")
 			body.select_all()
@@ -543,7 +542,7 @@ func check_comparison_navigation(game: Control) -> void:
 		await process_frame
 		await process_frame
 		var reopened: AcceptDialog = game.get_child(game.get_child_count() - 1)
-		var reset_bodies := reopened.find_children("*", "RichTextLabel", true, false)
+		var reset_bodies := reopened.find_children("*", "TextEdit", true, false)
 		if reset_bodies.size() == 1:
 			check(reset_bodies[0].get_v_scroll_bar().value == 0, "reopening comparison starts at the meeting rather than a stale section")
 		reopened.get_ok_button().pressed.emit()
