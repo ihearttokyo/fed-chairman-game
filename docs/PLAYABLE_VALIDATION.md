@@ -1,5 +1,36 @@
 # Playable Policy Lab validation
 
+## Change precision, October 3, 2026 (UTC)
+
+The shared change formatter now distinguishes exact zero from tiny increases or
+decreases in adopted outcomes and matched policy comparisons. It retains signed
+ordinary precision and percentage-point versus score-point units. Actual Funding
+stress42 model steps proved intended RED for two outcomes and paired forecasts;
+unused tools and boundary samples distinguish unchanged from small effects.
+Independent correctness/Ponytail review, final GREEN, the full game suite and
+package-safety guards passed. Equations, seeds, save format, workbook and assets
+are unchanged; the model digest remains `55a22f0c`.
+
+A fresh ARM64 Developer ID signed candidate passed164 actual release checks and
+six exact packaged-source hashes. Background Computer Use staged four tools,
+inspected the complete comparison, adopted two real decisions, expanded custom
+guidance and verified New/Cancel preserved the second outcome. Q1 accessibility
+feedback reported inflation `up <0.005 pp`; Q2 reported `down <0.005 pp`, with
+prior-promise follow-through0.3/100. The inspected Q0 Tools screenshot showed
+readable bounds and ordinary deltas; saved-career bytes stayed unchanged.
+
+The final Q2 pixel gate is held. Native and Computer Use captures retained an
+older Q0 comparison frame despite current Q2 accessibility feedback. An existing
+animation-toggle trial did not refresh those pixels and was restored to off.
+The stale Q2 capture is excluded from visual acceptance. Brief foregrounding of
+only the owned test game was requested, not performed. Source-editor interaction
+was also held because app binding selected an unrelated Godot project; no input
+was sent to it. The signed-app route supplied the live decisions above.
+
+This is partial GUI evidence, not a passing final outcome-layout check or a new
+notarized release. Human enjoyment, actual VoiceOver speech and a second physical
+Mac remain unverified. No AI, connector or per-turn network work was added.
+
 ## Retina startup source validation, October 2, 2026 (UTC)
 
 The startup-only repair uses native display scaling and usable-screen geometry.

@@ -108,13 +108,56 @@ func check_score_feedback(game: Control) -> void:
 	var credibility_change: float = 100 * (game.career.state.credibility - before.credibility)
 	check(game.consequence.text.contains("credibility %+.1f points" % credibility_change), "credibility changes use score points, not the zero-to-one internal scale")
 	check(game.consequence.accessibility_live == AccessibilityServer.LIVE_POLITE, "score feedback retains assistive announcements")
-	check(game.has_method("_score_change"), "both outcome scores use one shared formatter")
-	if game.has_method("_score_change"):
+	check(game.has_method("_change_text"), "both outcome scores use one shared formatter")
+	if game.has_method("_change_text"):
 		var preserved: PackedByteArray = game.career.encode()
 		for sample in [[0.0, "unchanged"], [-0.0, "unchanged"], [0.000001, "up <0.05 points"], [-0.000001, "down <0.05 points"], [0.049999, "up <0.05 points"], [-0.049999, "down <0.05 points"], [0.05, "+0.1 points"], [-0.05, "-0.1 points"], [1.25, "+1.2 points"], [-1.25, "-1.2 points"]]:
-			check(game.call("_score_change", sample[0]) == sample[1], "score formatter preserves zero, small-change direction, precision threshold and signed points")
+			check(game.call("_change_text", sample[0]) == sample[1], "score formatter preserves zero, small-change direction, precision threshold and signed points")
+		for sample in [[0.0, "unchanged"], [-0.0, "unchanged"], [0.000001, "up <0.005 pp"], [-0.000001, "down <0.005 pp"], [0.004999, "up <0.005 pp"], [-0.004999, "down <0.005 pp"], [0.005, "+0.01 pp"], [-0.005, "-0.01 pp"], [1.23, "+1.23 pp"], [-1.23, "-1.23 pp"]]:
+			check(game.call("_change_text", sample[0], 2, "pp") == sample[1], "macro formatter preserves zero, direction, two-decimal threshold and percentage-point units")
+		for sample in [[0.0, "unchanged"], [-0.0, "unchanged"], [0.000001, "up <0.0005 pp"], [-0.000001, "down <0.0005 pp"], [0.0004999, "up <0.0005 pp"], [-0.0004999, "down <0.0005 pp"], [0.0005, "+0.001 pp"], [-0.0005, "-0.001 pp"], [1.234, "+1.234 pp"], [-1.234, "-1.234 pp"]]:
+			check(game.call("_change_text", sample[0], 3, "pp") == sample[1], "forecast formatter preserves zero, direction, three-decimal threshold and percentage-point units")
+		check(game.call("_change_text", -0.000001, 2) == "down <0.005 points" and game.call("_change_text", 1.23, 2) == "+1.23 points", "forecast score precision retains score-point units")
 		check(game.career.encode() == preserved, "formatting score changes cannot change the career")
 	game._start_career("supply_shock", 1)
+func expected_change(change: float, decimals: int, unit: String) -> String:
+	if change == 0:
+		return "unchanged"
+	var bounds := {1: 0.05, 2: 0.005, 3: 0.0005}
+	var labels := {1: "0.05", 2: "0.005", 3: "0.0005"}
+	var formats := {1: "%+.1f", 2: "%+.2f", 3: "%+.3f"}
+	if abs(change) < bounds[decimals]:
+		return ("up" if change > 0 else "down") + " <" + labels[decimals] + " " + unit
+	return (formats[decimals] % change) + " " + unit
+func check_change_precision(game: Control) -> void:
+	game._start_career("funding_stress", 42)
+	for quarter in [1, 2]:
+		game.rate.value = 8.0
+		game.guidance.value = 8.0
+		game.assets.value = 1.25
+		game.liquidity.value = 5.0
+		var before: Dictionary = game.career.state.duplicate(true)
+		var expected: Dictionary = game.career.model.step(before, game._policy(), game.career.current_briefing(), game.career.params)
+		game._advance()
+		check(expected.ok and game.career.state == expected.state and game.career.state.quarter_index == quarter, "change precision preserves each real Funding42 adopted state")
+		var pi_change: float = game.career.state.four_quarter_inflation_pct - before.four_quarter_inflation_pct
+		var unemployment_change: float = game.career.state.unemployment_rate_pct - before.unemployment_rate_pct
+		check(game.consequence.text.contains("Inflation " + expected_change(pi_change, 2, "pp") + "; unemployment " + expected_change(unemployment_change, 2, "pp")), "real macro outcomes disclose direction and bounds instead of rounded zero")
+		if quarter == 2:
+			check(pi_change < 0 and abs(pi_change) < 0.005, "actual Funding42 Q2 exercises a negative subprecision inflation move")
+	var preserved: PackedByteArray = game.career.encode()
+	var report: String = game._decision_briefing()
+	var selected: Dictionary = game.career.forecast(game._policy())
+	var held: Dictionary = game.career.forecast(game.career.model.benchmark_policy(game.career.state, game.career.params, "hold"))
+	for index in [0, 3, 7]:
+		var choice: Dictionary = selected.states[index]
+		var baseline: Dictionary = held.states[index]
+		var row := "Q+%d: Inflation %s · unemployment %s\nOutput gap %s" % [index + 1, expected_change(choice.four_quarter_inflation_pct - baseline.four_quarter_inflation_pct, 3, "pp"), expected_change(choice.unemployment_rate_pct - baseline.unemployment_rate_pct, 3, "pp"), expected_change(choice.output_gap_pct - baseline.output_gap_pct, 3, "pp")]
+		check(report.contains(row), "paired forecast differences preserve real direction, precision and units")
+	check(game.career.encode() == preserved, "formatted comparisons preserve every career byte")
+	game._start_career("supply_shock", 1)
+	var neutral_report: String = game._decision_briefing()
+	check(neutral_report.count("Q+1 long yield unchanged; credit spread unchanged") == 4 and neutral_report.count("Q+8 inflation unchanged; unemployment unchanged; credibility unchanged; support unchanged") == 4, "exactly unused tools say unchanged rather than imply a signed effect")
 func check_persistent_actions(game: Control) -> void:
 	var actions: Array[Button] = []
 	for button in game.find_children("*", "Button", true, false):
@@ -635,9 +678,10 @@ func run() -> void:
 		quit(1 if failures else 0)
 		return
 	check_score_feedback(game)
+	check_change_precision(game)
 	if OS.get_cmdline_user_args().has("--score-feedback-only"):
 		if failures == 0:
-			print("PASS: meaningful score-change direction and units")
+			print("PASS: meaningful outcome and comparison change direction and units")
 		game.free()
 		quit(1 if failures else 0)
 		return
@@ -744,10 +788,10 @@ func run() -> void:
 			var last: Dictionary = selected.states[7]
 			var reference_first: Dictionary = path.states[0]
 			var reference_last: Dictionary = path.states[7]
-			var row := "%s: %.2f%s\nQ+1 long yield %+.3f pp; credit spread %+.3f pp\nQ+8 inflation %+.3f pp; unemployment %+.3f pp; credibility %+.2f points; support %+.2f points" % [alternative[0], alternative[2], alternative[3], first.long_yield_pct - reference_first.long_yield_pct, first.credit_spread_pct - reference_first.credit_spread_pct, last.four_quarter_inflation_pct - reference_last.four_quarter_inflation_pct, last.unemployment_rate_pct - reference_last.unemployment_rate_pct, 100 * (last.credibility - reference_last.credibility), last.public_support - reference_last.public_support]
+			var row := "%s: %.2f%s\nQ+1 long yield %s; credit spread %s\nQ+8 inflation %s; unemployment %s; credibility %s; support %s" % [alternative[0], alternative[2], alternative[3], expected_change(first.long_yield_pct - reference_first.long_yield_pct, 3, "pp"), expected_change(first.credit_spread_pct - reference_first.credit_spread_pct, 3, "pp"), expected_change(last.four_quarter_inflation_pct - reference_last.four_quarter_inflation_pct, 3, "pp"), expected_change(last.unemployment_rate_pct - reference_last.unemployment_rate_pct, 3, "pp"), expected_change(100 * (last.credibility - reference_last.credibility), 2, "points"), expected_change(last.public_support - reference_last.public_support, 2, "points")]
 			check(report.contains(row), "named tool contrast matches its real one-input alternative at both horizons")
 		check(report.contains("only its named input") and report.contains("not additive") and report.contains("conditional coefficients unchanged"), "tool contrasts disclose matched controls and interpretation limits")
-		check(report.contains("Inflation %+.3f pp" % (selected.states[7].four_quarter_inflation_pct - held.states[7].four_quarter_inflation_pct)), "comparison uses the actual paired Q8 paths")
+		check(report.contains("Inflation " + expected_change(selected.states[7].four_quarter_inflation_pct - held.states[7].four_quarter_inflation_pct, 3, "pp")), "comparison uses the actual paired Q8 paths")
 		check(report.contains("Credibility %.1f vs %.1f" % [100 * selected.states[7].credibility, 100 * held.states[7].credibility]), "comparison exposes credibility consequences")
 		for staged_rate in [8.0, game.career.state.policy_rate_pct]:
 			game.rate.value = staged_rate
@@ -776,7 +820,7 @@ func run() -> void:
 		await process_frame
 		game._start_career("supply_shock", 1)
 		var neutral_report: String = game._decision_briefing()
-		check(neutral_report.count("Q+1 long yield +0.000 pp; credit spread +0.000 pp") == 4 and neutral_report.count("Q+8 inflation +0.000 pp; unemployment +0.000 pp; credibility +0.00 points; support +0.00 points") == 4, "unused-tool contrasts truthfully report zero effect")
+		check(neutral_report.count("Q+1 long yield unchanged; credit spread unchanged") == 4 and neutral_report.count("Q+8 inflation unchanged; unemployment unchanged; credibility unchanged; support unchanged") == 4, "unused-tool contrasts truthfully report zero effect")
 	game.rate.value = 4.25
 	game.guidance.value = 4.25
 	await process_frame # SpinBox updates its visible text on the next frame.

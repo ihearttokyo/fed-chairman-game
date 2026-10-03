@@ -81,6 +81,14 @@ bindings and the absence of macros or external links. Native recalculation and
 interactive GUI validation remain separate checks; the build does not launch
 or change a spreadsheet application's windows.
 
+Outcome and matched-policy change text distinguishes exact zero (`unchanged`)
+from tiny increases or decreases with an explicit magnitude bound. For example,
+a nonzero macro outcome below two-decimal precision says `down <0.005 pp`, not
+`-0.00 pp`. Ordinary changes retain their signed precision and units. Outcomes
+use two decimal places for percentage-point changes and one for score points;
+comparisons use three and two respectively. Higher does not necessarily mean
+better. These are presentation rules, not changes to the simulation.
+
 `model/economy.gd` owns the equations. `parameters.json` records each parameter's
 units and source classification; `scenarios.json` contains seven hypothetical
 cases. Rates and inflation use percent units: 2 means 2 percent. Asset and loan
