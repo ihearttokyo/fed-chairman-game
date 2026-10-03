@@ -23,11 +23,15 @@ godot --headless --path game --script res://tests/export_reference.gd -- \
   --quarters 48 --seed 1 --policy feedback
 ```
 
-Default desktop startup treats the1440×960 design as logical display size, fits
+Default macOS startup treats the1440×960 design as logical display size, fits
 its decorated window uniformly to the usable screen, and uses native canvas
-scaling. Explicit `--resolution`, nondefault window sizes, fullscreen/maximized
-and headless runs are preserved. Later user resizes do not trigger an automatic
-window reset. No gameplay or font-size constants change.
+scaling. Explicit `--resolution` and `--position`, nondefault window sizes,
+fullscreen/maximized and headless runs are preserved. Godot consumes native
+window flags before exposing GDScript arguments, so this startup-only check
+reads its own process command through the fixed system `/bin/ps` path. Failed
+or blank reads preserve the original window. No lookup runs during gameplay,
+and later user resizes do not trigger an automatic reset. Other platforms retain
+engine startup geometry. No gameplay or font-size constants change.
 
 The test wrapper rejects runtime errors even when Godot exits with status zero.
 The exporter requires an absolute destination outside this repository. Its

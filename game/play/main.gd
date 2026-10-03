@@ -122,9 +122,15 @@ static func _initial_window_size(design: Vector2i, display_scale: float, availab
 
 func _fit_initial_window() -> void:
 	var window := get_window()
-	if DisplayServer.get_name() == "headless" or window.mode != Window.MODE_WINDOWED:
+	if OS.get_name() != "macOS" or DisplayServer.get_name() == "headless" or window.mode != Window.MODE_WINDOWED:
 		return
-	if OS.get_cmdline_args().has("--resolution") or window.size != window.content_scale_size:
+	if window.size != window.content_scale_size:
+		return
+	# Godot consumes native window flags before exposing its GDScript argument list.
+	var launch: Array = []
+	if OS.execute("/bin/ps", ["-ww", "-p", str(OS.get_process_id()), "-o", "command="], launch) != 0 or launch.is_empty() or String(launch[0]).strip_edges().is_empty():
+		return
+	if String(launch[0]).contains("--position") or String(launch[0]).contains("--resolution"):
 		return
 	var usable := DisplayServer.screen_get_usable_rect(window.current_screen)
 	var decoration_size := window.get_size_with_decorations() - window.size

@@ -20,11 +20,26 @@ pixels showed readable dialogs, both actions and full prior-promise feedback.
 Window bounds and saved-career hashes stayed unchanged throughout interaction.
 No Save, Load, window raise/resize or external driver override was used.
 
-Validated main.gd SHA-256:
+That original source GUI pass used main.gd SHA-256:
 `8795f850af61312fc2193e202e3dd0d43922201495f8d94c74145e5461e51318`.
-The retained notarized package below records an earlier candidate and supports
-unchanged gameplay channels; it does not prove this startup repair was packaged.
-Human enjoyment and actual assistive-technology speech remain separate checks.
+
+PR36 review then found that startup recentering replaced an explicit native
+`--position`. Godot consumes window flags before exposing GDScript arguments;
+the correction checks only its own process through system `/bin/ps`, once at
+macOS startup. Failed or blank reads preserve engine geometry. Native tests
+proved position400,500 and both800×600 and1440×960 explicit resolutions retain
+their initial size/position. A whitespace-padded native position switch also
+passed the same assertions. Default startup still reached2880×1920 physical;
+headless and constrained-size fixtures, full game and package guards passed.
+Independent correctness/Ponytail findings were corrected and re-reviewed clean.
+The blank-successful-process-read guard was reviewed statically, not fault-injected.
+
+The follow-up native checks used main.gd SHA-256:
+`b67f786cdeb41a07133cf8082ff268553e75252338ba9b584c0de23a5440ab25`.
+No gameplay, font constants, assets or per-turn work changed. The retained
+notarized package below records an earlier candidate, not this startup repair.
+New packaged GUI validation, human enjoyment and actual assistive-technology
+speech remain separate checks.
 
 ## Retained notarized candidate: PR35, October 2, 2026 (UTC)
 
