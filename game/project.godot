@@ -18,6 +18,9 @@ window/stretch/mode="canvas_items"
 [accessibility]
 general/accessibility_support=1
 
+[gui]
+timers/tooltip_delay_sec=0.0
+
 [rendering]
 renderer/rendering_method="gl_compatibility"
 textures/vram_compression/import_etc2_astc=true

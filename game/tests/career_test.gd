@@ -57,6 +57,10 @@ func _initialize() -> void:
 	if temporary.is_empty():
 		temporary = "/tmp" # macOS and Linux test runners; never write fixtures into the repository.
 	var path := temporary.path_join("fed-career-%s.save" % OS.get_process_id())
+	if FileAccess.file_exists(path) or FileAccess.file_exists(path + ".pending"):
+		check(false, "career save fixture collision; existing final and pending files preserved")
+		quit(1)
+		return
 	check(career.save_to(path).ok, "native file save succeeds")
 	check(loaded.load_from(path).ok and loaded.state == career.state, "native file load is lossless")
 	for q in range(48):

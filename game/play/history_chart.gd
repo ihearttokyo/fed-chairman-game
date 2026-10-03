@@ -12,21 +12,45 @@ static func tick_quarters(count: int) -> Array:
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(310, 190)
-	mouse_exited.connect(func(): hovered = -1; queue_redraw())
+	focus_mode = Control.FOCUS_ALL
+	focus_entered.connect(func(): _inspect(history.size() - 1))
+	focus_exited.connect(func(): hovered = -1; queue_redraw())
+	mouse_exited.connect(func():
+		if not has_focus():
+			hovered = -1
+			queue_redraw())
 	accessibility_name = heading
 	accessibility_description = "Historical chart. Exact values are available in the Data and journal button."
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and not history.is_empty():
-		hovered = clampi(roundi((event.position.x - 42) / maxf(1, size.x - 58) * (history.size() - 1)), 0, history.size() - 1)
-		tooltip_text = "Q%d | %s %.2f%% | %s %.2f%%" % [hovered, labels[0], history[hovered][keys[0]], labels[1], history[hovered][keys[1]]]
-		queue_redraw()
+		_inspect(roundi((event.position.x - 42) / maxf(1, size.x - 58) * (history.size() - 1)))
+	if event is InputEventKey and event.pressed and not history.is_empty() and not event.alt_pressed and not event.is_command_or_control_pressed():
+		match event.keycode:
+			KEY_LEFT: _inspect(maxi(0, hovered - 1))
+			KEY_RIGHT: _inspect(mini(history.size() - 1, hovered + 1))
+			KEY_HOME: _inspect(0)
+			KEY_END: _inspect(history.size() - 1)
+			_: return
+		accept_event()
+
+func _inspect(quarter: int) -> void:
+	if history.is_empty():
+		return
+	hovered = clampi(quarter, 0, history.size() - 1)
+	tooltip_text = "Q%d | %s %.2f%% | %s %.2f%%" % [hovered, labels[0], history[hovered][keys[0]], labels[1], history[hovered][keys[1]]]
+	accessibility_description = tooltip_text + ". Left and Right inspect quarters; Home and End jump to the first and latest."
+	queue_redraw()
 
 func _draw() -> void:
 	var font := get_theme_default_font()
 	draw_string(font, Vector2(0, 18), heading, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("b5c9cc"))
 	if history.is_empty():
 		return
+	if has_focus():
+		draw_rect(Rect2(Vector2.ZERO, size), Color("e9b76e"), false, 2)
+	if hovered >= 0 and hovered < history.size():
+		draw_string(font, Vector2(42, 33), "Q%d · %.2f%% / %.2f%%" % [hovered, history[hovered][keys[0]], history[hovered][keys[1]]], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("e9b76e"))
 	var plot := Rect2(42, 38, size.x - 58, size.y - 108)
 	var low := INF
 	var high := -INF
