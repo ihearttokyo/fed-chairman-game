@@ -1,5 +1,42 @@
 # Playable Policy Lab validation
 
+## Native GUI recovery and notarized renderer, October 3, 2026 (UTC)
+
+The previously held change-precision pixels passed a fresh, sole-app background
+playthrough on the exact extracted notarized ARM64 app. Funding stress seed42,
+two constrained comparisons, two real adoptions and New/Cancel preservation
+passed. Distinct Q0/Q1/Q2 screenshots show both tiny inflation directions and
+score feedback. The1306×903point root at67,29 stayed unchanged; saved careers
+and binary/pack hashes were preserved. No foregrounding was required.
+
+For the renderer, a fresh ordinary signed sole-app launch retained that geometry
+and showed finer city detail. Motion on/off and the Funding42 chooser passed.
+Earlier controlled same-pack comparisons, two adoptions and custom-guidance
+paths remain valid. Fresh native initial and terminal-career pixels were
+inspected; the terminal screenshot and accessibility state agree on240 meetings,
+readable final feedback and a disabled completion action. External interaction
+advanced that career, so it is rendering/lifetime evidence, not our controlled
+replay or human-enjoyment certification. Further input and process termination were withheld
+to preserve that state. Earlier failed geometry and stale/missing captures stay
+excluded; the earlier exit cause is not attributed to a product crash.
+
+Apple accepted renderer notarization `b87a9b14-c969-4943-837a-a2a49dacf07c`
+without issues. The final ZIP extraction passed ARM64-only Developer ID,
+hardened runtime, timestamp, strict signature, stapling, Gatekeeper and164
+actual exported-binary checks with model digest `55a22f0c`. Its binary and pack
+are byte-identical to the live-tested candidate. The pinned official Godot
+mounted-pack diagnostic passed six exact committed-source hashes, two model
+adoptions, comparison purity and unchanged city geometry/materials. A first
+attempt correctly rejected path overrides in the hardened export template;
+the failed log is retained, with no compile/config/security change.
+
+No second ordinary extracted GUI instance was launched while the original game
+was externally interacted with. Unchanged runtime/PCK live evidence is reused,
+not relabeled as a new extracted-app playthrough. Human enjoyment, actual
+VoiceOver speech and another physical Mac remain unverified. This validates the
+focused repair, not overall market readiness. No installed-app replacement,
+Save/Load, store/GitHub Release publication or credential change occurred.
+
 ## Physical-density city: first GREEN, October 3, 2026 (UTC)
 
 An actual macOS GPU diagnostic found a634×215 city texture in a1268×430 physical
@@ -27,16 +64,18 @@ applied rate5%, credibility-2.1points and prior-promise follow-through0.3/100.
 The initial ready screenshot showed the sharper city in its unchanged layout;
 all saved-career and signed executable/pack hashes stayed unchanged.
 
-Final Q2 visual acceptance is held. The same owned window later changed from
+At the earlier boundary, final Q2 visual acceptance was held. The same owned
+window later changed from
 1440×992points at135,75 to1280×802 at80,79; the geometry-preservation assertion
 failed. Our actions requested no window raise, zoom, resize or move, and the
 cause is undetermined. Subsequent native capture could not create an image.
 No stale or missing Q2 pixels pass acceptance, and no window was restored to
-conceal this failure. This is partial GUI evidence, not a ready merged release.
+conceal this failure. That was partial GUI evidence, not a ready merged release.
 
 The preceding change-precision candidate has since passed Apple notarization,
 extracted signing/staple/Gatekeeper and exact binary/pack/six-source binding.
-Its fresh Q2 pixel gate remains held, as described below. Signing acceptance
+Its fresh Q2 pixel gate was subsequently resolved by the recovery above.
+Signing acceptance
 alone does not complete native GUI or market-readiness acceptance.
 
 ## Change precision, October 3, 2026 (UTC)
@@ -58,7 +97,8 @@ feedback reported inflation `up <0.005 pp`; Q2 reported `down <0.005 pp`, with
 prior-promise follow-through0.3/100. The inspected Q0 Tools screenshot showed
 readable bounds and ordinary deltas; saved-career bytes stayed unchanged.
 
-The final Q2 pixel gate is held. Native and Computer Use captures retained an
+Before the recovery above, the final Q2 pixel gate was held. Native and Computer
+Use captures retained an
 older Q0 comparison frame despite current Q2 accessibility feedback. An existing
 animation-toggle trial did not refresh those pixels and was restored to off.
 The stale Q2 capture is excluded from visual acceptance. Brief foregrounding of
