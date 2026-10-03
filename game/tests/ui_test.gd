@@ -233,6 +233,26 @@ func check_situation_ui(game: Control) -> void:
 	game._start_career("base", 41)
 	check(game.briefing.text.contains("No major new funding pressure") and not game.briefing.text.contains("Funding pressure continues"), "new career cannot retain the previous crisis storyline")
 	game._start_career("supply_shock", 1)
+func check_unrestricted_rate_controls(game: Control) -> void:
+	var preserved: PackedByteArray = game.career.encode()
+	var original: Dictionary = game._policy()
+	check(game.rate.allow_lesser and game.rate.allow_greater and game.guidance.allow_lesser and game.guidance.allow_greater, "native nominal controls allow signed values beyond former bounds")
+	check(game.rate.step == 0.01 and game.rate.custom_arrow_step == 0.25 and game.guidance.step == 0.01 and game.guidance.custom_arrow_step == 0.25, "native controls retain1bp typed precision and25bp arrow convenience")
+	for quote in [-0.5, 25.0]:
+		game.rate.value = quote
+		game.guidance.value = quote
+		check(game.rate.value == quote and game.guidance.value == quote, "native controls do not clamp signed or large nominal quotes")
+		var preview: Dictionary = game.career.forecast(game._policy())
+		check(preview.ok and preview.states[0].policy_rate_pct == quote, "actual UI policy and forecast apply the full nominal choice")
+		game._preview()
+		if quote < 0.0:
+			check(game.forecast_label.text.contains("Rate -0.50% (effective -0.46%)"), "main preview distinguishes negative nominal choice from effective financing transmission")
+		else:
+			check(not game.forecast_label.text.contains("effective"), "unchanged positive transmission adds no duplicate metric to the cockpit")
+	game.rate.value = original.policy_rate_request_pct
+	game.guidance.value = original.guidance_rate_pct
+	check(game.career.encode() == preserved and game._policy() == original, "native quote inspection restores controls without mutating the career")
+
 func check_custom_guidance(game: Control) -> void:
 	check(game.commitment.item_count == 3, "player can choose custom conditional guidance")
 	if game.commitment.item_count != 3:
@@ -258,7 +278,7 @@ func check_custom_guidance(game: Control) -> void:
 	var replay = game.career.get_script().new()
 	check(replay.restore(bytes_to_var(game.career.encode())).ok and replay.state == game.career.state, "custom communication survives lossless replay")
 	var s: Dictionary = game.career.state
-	var promise: float = s.guidance_rate_pct + s.guidance_inflation_sensitivity * (s.four_quarter_inflation_pct - s.guidance_reference_inflation_pct) + s.guidance_output_gap_sensitivity * (s.output_gap_pct - s.guidance_reference_output_gap_pct)
+	var promise: float = game.career.model.conditional_commitment(s, game.career.params)
 	game.rate.value = promise
 	game.guidance.value = 4.0
 	var follows: Dictionary = game.career.forecast(game._policy())
@@ -285,7 +305,10 @@ func check_custom_guidance(game: Control) -> void:
 	game.commitment.item_selected.emit(1)
 	game.guidance.value = 15.0
 	game._advance()
-	check(game._decision_briefing().contains("outside this meeting's feasible rate range"), "comparison warns when an earlier pledge cannot be delivered")
+	var pledge_report: String = game._decision_briefing()
+	check(pledge_report.contains("Adjusted prior promise 15.000%") and pledge_report.contains("Projected follow-through 0.0 / 100"), "comparison discloses a genuinely broken nominal pledge")
+	game.rate.value = 15.0
+	check(game._decision_briefing().contains("Projected follow-through 100.0 / 100"), "any on-grid nominal pledge can be delivered without a ramp cap")
 	game._start_career("supply_shock", 1)
 func check_pending_policy(game: Control) -> void:
 	var fields := [game.rate, game.guidance, game.assets, game.liquidity, game.inflation_response, game.activity_response]
@@ -571,18 +594,16 @@ func check_rate_deliberation(game: Control) -> void:
 		var staged: Dictionary = game._policy()
 		var selected: Dictionary = game.career.forecast(staged)
 		var applied: float = selected.states[0].policy_rate_pct
-		var low: float = max(game.career.params.policy_rate_min_pct, game.career.state.policy_rate_pct - game.career.params.policy_rate_change_limit_pct)
-		var high: float = min(game.career.params.policy_rate_max_pct, game.career.state.policy_rate_pct + game.career.params.policy_rate_change_limit_pct)
 		var report: String = game._decision_briefing()
 		check(report.contains("COMMITTEE DELIBERATION / FEASIBLE RATE ALTERNATIVES"), "comparison exposes nearby offline rate deliberation")
-		for alternative in [["Selected", applied], ["Tighter rate", clampf(applied + 0.25, low, high)], ["Gentler rate", clampf(applied - 0.25, low, high)], ["Rate continuity", game.career.state.policy_rate_pct]]:
+		for alternative in [["Selected", applied], ["Tighter rate", applied + 0.25], ["Gentler rate", applied - 0.25], ["Rate continuity", game.career.state.policy_rate_pct]]:
 			var other: Dictionary = staged.duplicate()
 			other.policy_rate_request_pct = alternative[1]
 			var path: Dictionary = selected if alternative[0] == "Selected" else game.career.forecast(other)
 			var last: Dictionary = path.states[-1]
-			check(report.contains("%s / applied %.2f%%\nQ+8 inflation %.3f%%; unemployment %.3f%%; credibility %.1f/100; support %.1f/100" % [alternative[0], path.states[0].policy_rate_pct, last.four_quarter_inflation_pct, last.unemployment_rate_pct, 100 * last.credibility, last.public_support]), "deliberation uses real capped forecasts with every other staged tool preserved")
+			check(report.contains("%s / applied %.2f%%\nQ+8 inflation %.3f%%; unemployment %.3f%%; credibility %.1f/100; support %.1f/100" % [alternative[0], path.states[0].policy_rate_pct, last.four_quarter_inflation_pct, last.unemployment_rate_pct, 100 * last.credibility, last.public_support]), "deliberation uses real unrestricted nominal forecasts with every other staged tool preserved")
 		check(report.contains("Fictional viewpoints, not votes or advice"), "deliberation labels fictional viewpoints")
-		check(report.contains("no extra feasible rate move") == (applied == low or applied == high), "only saturated rate directions receive a limit warning")
+		check(not report.contains("no extra feasible rate move"), "former zero/15-percent boundaries do not invent nominal rate limits")
 		check(game.career.encode() == preserved and game._policy() == staged, "deliberation cannot adopt or replace staged tools")
 		var future: Dictionary = game.career.shocks[game.career.decisions.size() + 1].duplicate(true)
 		game.career.shocks[game.career.decisions.size() + 1].demand_shock_pct = 8.0
@@ -727,6 +748,7 @@ func run() -> void:
 		game.free()
 		quit(1 if failures else 0)
 		return
+	check_unrestricted_rate_controls(game)
 	var city_viewports: Array = game.find_children("*", "SubViewport", true, false)
 	check(city_viewports.size() == 1 and city_viewports[0].msaa_3d == Viewport.MSAA_4X, "miniature city uses bounded four-sample native edge antialiasing")
 	check_city_density(game)
@@ -831,7 +853,7 @@ func run() -> void:
 			check(diagnostics.contains("Q+1 / WHY CREDIBILITY AND SUPPORT MOVE"), "comparison identifies the diagnostic horizon")
 			check(diagnostics.contains("Credibility %.1f vs %.1f / 100\nPublic support %.1f vs %.1f / 100" % [100 * first.credibility, 100 * reference.credibility, first.public_support, reference.public_support]), "diagnostics show paired first-quarter scores")
 			check(diagnostics.contains("Inflation-miss memory %.3f vs %.3f pp" % [first.inflation_miss_memory_pct, reference.inflation_miss_memory_pct]), "diagnostics show the model's inflation memory")
-			check(diagnostics.contains("Model stance target %.3f%% vs %.3f%%\nApplied-rate distance %.3f vs %.3f pp" % [first.reaction_function_target_pct, reference.reaction_function_target_pct, abs(first.policy_rate_pct - first.reaction_function_target_pct), abs(reference.policy_rate_pct - reference.reaction_function_target_pct)]), "diagnostics show the target and applied rather than requested stance")
+			check(diagnostics.contains("Effective rate %.3f%% vs %.3f%%\nDesired real restraint %+.3f vs %+.3f pp\nEffective-stance distance %.3f vs %.3f pp\nTransmission-frontier shortfall %.3f vs %.3f pp\nStance adequacy %.1f vs %.1f / 100" % [first.effective_policy_rate_pct, reference.effective_policy_rate_pct, first.stance_target_gap_pct, reference.stance_target_gap_pct, first.stance_distance_pct, reference.stance_distance_pct, first.stance_best_feasible_distance_pct, reference.stance_best_feasible_distance_pct, 100 * first.stance_adequacy_score, 100 * reference.stance_adequacy_score]), "diagnostics show actual effective transmission and economically feasible stance, not nominal-rule alignment")
 			check(diagnostics.contains("Prior-promise follow-through %.1f vs %.1f / 100" % [100 * first.guidance_followthrough_score, 100 * reference.guidance_followthrough_score]), "diagnostics show paired follow-through")
 			check(diagnostics.contains("Current hardship %.3f vs %.3f support points\nHardship memory %.3f vs %.3f support points" % [first.current_hardship, reference.current_hardship, first.public_hardship_memory, reference.public_hardship_memory]), "diagnostics distinguish current hardship from memory")
 			check(diagnostics.contains("40% inflation performance, 40% stance, 20% follow-through") and diagnostics.contains("game assumptions, not an optimal policy or a measured institutional reputation"), "diagnostics disclose weights and interpretation limits")
@@ -936,6 +958,7 @@ func run() -> void:
 	var help_text: TextEdit = help.get_child(0)
 	check(help_text.text.contains("Every career includes seeded background disturbances") and help_text.text.contains("baseline starts at equilibrium") and help_text.text.contains("no scheduled scenario events"), "help explains the seeded baseline and scheduled-event distinction")
 	check(help_text.text.contains("same scenario and seed") and help_text.text.contains("same engine and model"), "help qualifies every input needed to reproduce the path")
+	check(help_text.text.contains("1bp increments") and help_text.text.contains("U.S. counterfactual") and help_text.text.contains("diminishing benefits") and help_text.text.contains("Conditional implied quotes"), "help explains quote precision, negative-rate transmission and nominal promise accountability")
 	check(help_text.text.contains("Deferred demand") and help_text.text.contains("not all lost consumption") and help_text.text.contains("no guaranteed return to 2%"), "help distinguishes catch-up spending from forced recovery")
 	check(help_text.text.contains("structural reference") and help_text.text.to_lower().contains("short expectations") and help_text.text.contains("prior long"), "help explains separate structural and expectation restoration channels")
 	check(game.briefing.text.contains("Deferred demand") and game.briefing.text.contains("% potential"), "dispatch exposes the known deferred-demand stock with its unit")

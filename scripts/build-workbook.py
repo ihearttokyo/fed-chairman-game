@@ -78,6 +78,10 @@ def main():
               '--script', 'res://tests/export_policy_variants.gd', '--', '--output',
               str(references / 'price-boundaries.json'), '--price-boundaries'],
              evidence / 'price-boundaries.log', 'EXPORTED three physical price boundary traces')
+    run_tool([str(args.godot), '--headless', '--path', str(ROOT / 'game'),
+              '--script', 'res://tests/export_policy_variants.gd', '--', '--output',
+              str(references / 'rate-boundaries.json'), '--rate-boundaries'],
+             evidence / 'rate-boundaries.log', 'EXPORTED seven signed-rate boundary traces')
     run_tool([str(args.node), str(execution_copy)], evidence / 'workbook-build.log',
              'EXPORTED Federal Reserve Policy Lab.xlsx')
     run_tool([sys.executable, str(ROOT / 'scripts/spreadsheet/check-workbook.py'),

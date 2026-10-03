@@ -119,6 +119,36 @@ with tempfile.TemporaryDirectory(prefix='fed-price-boundaries-') as directory:
     assert result.returncode == 1 and output.read_bytes() == before
 print('PASS: real Godot three physical price boundaries and replacement refusal')
 
+# Signed-rate fixtures expose actual policies and all state fields for the formula chain.
+with tempfile.TemporaryDirectory(prefix='fed-rate-boundaries-') as directory:
+    output = Path(directory) / 'rate-boundaries.json'
+    command = [godot, '--headless', '--path', str(ROOT / 'game'),
+               '--script', 'res://tests/export_policy_variants.gd', '--',
+               '--output', str(output), '--rate-boundaries']
+    result = subprocess.run(command, capture_output=True, text=True)
+    assert result.returncode == 0 and 'EXPORTED seven signed-rate boundary traces' in result.stdout and not any(
+        marker in result.stdout + result.stderr for marker in ('SCRIPT ERROR:', 'ERROR:', 'FAIL:')), result.stdout + result.stderr
+    fixtures = json.loads(output.read_text())
+    assert [v['name'] for v in fixtures] == ['signed_crossing', 'deep_constraint', 'zero_loading',
+                                           'untrusted_guidance', 'conditional_positive',
+                                           'conditional_negative', 'unrestricted_positive']
+    for fixture in fixtures:
+        assert len(fixture['states']) == len(fixture['policies']) + 1
+        for q, (policy, state) in enumerate(zip(fixture['policies'], fixture['states'][1:]), 1):
+            assert state['quarter_index'] == q
+            assert state['policy_rate_pct'] == policy['policy_rate_request_pct']
+            assert 0 <= state['stance_adequacy_score'] <= 1
+            for value in state.values():
+                assert all(math.isfinite(number) for number in (value if isinstance(value, list) else [value]))
+    assert fixtures[0]['states'][0]['policy_rate_pct'] < 0
+    assert fixtures[1]['states'][1]['stance_best_feasible_distance_pct'] > 0
+    assert fixtures[2]['states'][1]['stance_distance_pct'] == fixtures[2]['states'][1]['stance_best_feasible_distance_pct']
+    assert all(f['states'][2]['guidance_followthrough_score'] == 1 for f in fixtures[4:6])
+    before = output.read_bytes()
+    result = subprocess.run(command, capture_output=True, text=True)
+    assert result.returncode == 1 and output.read_bytes() == before
+print('PASS: real Godot seven signed-rate boundaries, conditional delivery and replacement refusal')
+
 # Reference exports keep their wider seed and horizon contract, unlike careers.
 with tempfile.TemporaryDirectory(prefix='fed-campaign-reference-') as directory:
     paths = []
