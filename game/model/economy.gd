@@ -26,6 +26,10 @@ const PARAMETER_KEYS := [
 	"public_support_base", "public_inflation_burden_weight",
 	"public_unemployment_burden_weight", "public_hardship_memory_persistence",
 	"public_hardship_memory_weight", "public_support_adjustment",
+	"deferred_demand_share", "demand_cancellation_fraction",
+	"demand_release_base_fraction", "demand_release_max_fraction",
+	"demand_release_backlog_scale_pct", "demand_release_financing_scale_pct",
+	"r_star_reversion_persistence", "short_expectation_anchor_weight",
 ]
 const POLICY_KEYS := [
 	"policy_rate_request_pct", "guidance_rate_pct", "guidance_inflation_sensitivity",
@@ -37,6 +41,7 @@ const SHOCK_LIMITS := {
 	"supply_innovation_pct": 5.0,
 	"potential_growth_pct": 20.0,
 	"r_star_change_pct": 1.0,
+	"r_star_reference_change_pct": 1.0,
 	"structural_unemployment_change_pct": 0.5,
 	"funding_need_pct_initial_gdp": 100.0,
 	"eligible_collateral_pct_initial_gdp": 100.0,
@@ -51,6 +56,7 @@ const INITIAL_OVERRIDE_KEYS := [
 	"public_support", "r_star_pct", "structural_unemployment_pct",
 	"asset_stock_pct_initial_gdp", "term_premium_pct",
 	"supply_pressure_pct", "solvency_risk_wedge_pct", "public_hardship_memory",
+	"deferred_demand_pct", "r_star_reference_pct",
 ]
 const POLICY_REQUIRED_HINT := "policy requires all six disclosed controls"
 
@@ -156,6 +162,9 @@ func initial_state(params: Dictionary, override: Dictionary = {}) -> Dictionary:
 		"unemployment_rate_pct": params.initial_unemployment_pct,
 		"structural_unemployment_pct": params.initial_structural_unemployment_pct,
 		"r_star_pct": params.initial_r_star_pct,
+		"r_star_reference_pct": params.initial_r_star_pct,
+		"deferred_demand_pct": 0.0,
+		"demand_release_pct": 0.0,
 		"policy_rate_pct": params.initial_policy_rate_pct,
 		"last_policy_rate_request_pct": params.initial_policy_rate_pct,
 		"long_yield_pct": params.initial_policy_rate_pct + params.initial_term_premium_pct,
@@ -193,6 +202,8 @@ func initial_state(params: Dictionary, override: Dictionary = {}) -> Dictionary:
 	}
 	for key in override:
 		state[key] = float(override[key])
+	if not override.has("r_star_reference_pct"):
+		state.r_star_reference_pct = state.r_star_pct
 	state.credit_risk_wedge_pct = state.solvency_risk_wedge_pct
 	state.credit_spread_pct = params.normal_credit_spread_pct + state.credit_risk_wedge_pct
 	state.actual_output_index = state.potential_output_index * (1.0 + state.output_gap_pct / 100.0)
@@ -271,7 +282,8 @@ func step(state: Dictionary, policy: Dictionary, shocks: Dictionary, params: Dic
 	var priced_guidance: float = rate + credibility * (guide_rate - rate)
 	var expected_policy_path: float = params.long_yield_current_rate_weight * rate + (1.0 - params.long_yield_current_rate_weight) * priced_guidance
 	var long_yield: float = expected_policy_path + term_premium
-	var rstar: float = state.r_star_pct + shocks.get("r_star_change_pct", 0.0)
+	var rstar_reference: float = state.r_star_reference_pct + shocks.get("r_star_reference_change_pct", 0.0)
+	var rstar: float = rstar_reference + params.r_star_reversion_persistence * (state.r_star_pct - state.r_star_reference_pct) + shocks.get("r_star_change_pct", 0.0)
 	var spot_financial_gap: float = params.real_rate_short_weight * (rate - state.expected_short_inflation_pct) \
 		+ (1.0 - params.real_rate_short_weight) * (long_yield - params.initial_term_premium_pct - state.expected_long_inflation_pct) \
 		+ (credit_spread - params.normal_credit_spread_pct) - rstar
@@ -284,9 +296,19 @@ func step(state: Dictionary, policy: Dictionary, shocks: Dictionary, params: Dic
 		return {"ok": false, "error": "structural unemployment reference must be between 0 and 100 percent"}
 	var potential_output: float = state.potential_output_index * pow(1.0 + growth / 100.0, 1.0 / params.quarters_per_year)
 	var supply_pressure: float = params.supply_pressure_persistence * state.supply_pressure_pct + shocks.get("supply_innovation_pct", 0.0)
-	var output_gap: float = params.output_gap_persistence * state.output_gap_pct \
+	var underlying_gap: float = params.output_gap_persistence * state.output_gap_pct \
 		- params.real_rate_output_sensitivity * financial_gap \
 		+ shocks.get("demand_shock_pct", 0.0) - params.supply_output_gap_sensitivity * supply_pressure
+	# Rebase prior stock to current potential output; growth cannot create purchases.
+	var available_demand: float = state.deferred_demand_pct * state.potential_output_index / potential_output
+	var release_fraction: float = (params.demand_release_base_fraction \
+		+ (params.demand_release_max_fraction - params.demand_release_base_fraction) \
+		* abs(available_demand) / (params.demand_release_backlog_scale_pct + abs(available_demand))) \
+		/ (1.0 + pow(max(0.0, financial_gap) / params.demand_release_financing_scale_pct, 2.0))
+	var demand_release: float = release_fraction * available_demand
+	var output_gap: float = underlying_gap + demand_release
+	var deferred_demand: float = (1.0 - params.demand_cancellation_fraction) * available_demand \
+		- params.deferred_demand_share * underlying_gap - demand_release
 	# A bounded design target preserves the local Okun-style slope without clipping outcomes.
 	var labor_target: float = structural_u * exp(-params.unemployment_gap_sensitivity * output_gap / structural_u) if output_gap >= 0.0 \
 		else 100.0 - (100.0 - structural_u) * exp(params.unemployment_gap_sensitivity * output_gap / (100.0 - structural_u))
@@ -305,8 +327,11 @@ func step(state: Dictionary, policy: Dictionary, shocks: Dictionary, params: Dic
 	history.append(price_index)
 	history.pop_front()
 	var four_quarter: float = _four_quarter_inflation(history, params.percent_multiplier)
+	var short_anchor_weight: float = params.short_expectation_anchor_weight * credibility
+	var recent_expectation_base: float = (1.0 - short_anchor_weight) * (1.0 + state.four_quarter_inflation_pct / 100.0) \
+		+ short_anchor_weight * (1.0 + state.expected_long_inflation_pct / 100.0)
 	var expected_short_base: float = (1.0 - params.short_expectation_recent_weight) * (1.0 + state.expected_short_inflation_pct / 100.0) \
-		+ params.short_expectation_recent_weight * (1.0 + state.four_quarter_inflation_pct / 100.0)
+		+ params.short_expectation_recent_weight * recent_expectation_base
 	var expected_short: float = 100.0 * (expected_short_base * exp(params.short_expectation_supply_sensitivity * supply_pressure / inflation_scale) - 1.0)
 	var long_anchor: float = credibility * params.inflation_target_pct + (1.0 - credibility) * state.four_quarter_inflation_pct
 	var expected_long: float = state.expected_long_inflation_pct \
@@ -348,6 +373,9 @@ func step(state: Dictionary, policy: Dictionary, shocks: Dictionary, params: Dic
 		"unemployment_rate_pct": unemployment,
 		"structural_unemployment_pct": structural_u,
 		"r_star_pct": rstar,
+		"r_star_reference_pct": rstar_reference,
+		"deferred_demand_pct": deferred_demand,
+		"demand_release_pct": demand_release,
 		"last_policy_rate_request_pct": rate_request,
 		"policy_rate_pct": rate,
 		"long_yield_pct": long_yield,
@@ -390,6 +418,9 @@ func step(state: Dictionary, policy: Dictionary, shocks: Dictionary, params: Dic
 		"quarter_index": next.quarter_index,
 		"policy_rate_request_pct": rate_request,
 		"policy_rate_applied_pct": rate,
+		"r_star_reference_pct": rstar_reference,
+		"deferred_demand_pct": deferred_demand,
+		"demand_release_pct": demand_release,
 		"guidance_rate_pct": guide_rate,
 		"guidance_followthrough_score": followthrough,
 		"long_yield_pct": long_yield,
@@ -500,6 +531,11 @@ func _validate_parameters(params: Dictionary) -> Dictionary:
 	for key in ["real_rate_gap_persistence", "output_gap_persistence", "inflation_persistence", "short_expectation_recent_weight", "supply_pressure_persistence", "long_expectation_adjustment", "unemployment_gap_persistence", "credibility_adjustment", "credibility_miss_persistence", "solvency_risk_persistence", "liquidity_repayment_fraction", "public_hardship_memory_persistence", "real_rate_short_weight", "long_yield_current_rate_weight"]:
 		if params[key] < 0.0 or params[key] > 1.0:
 			return {"ok": false, "error": "share parameter out of range: %s" % key}
+	for key in ["deferred_demand_share", "demand_cancellation_fraction", "demand_release_base_fraction", "demand_release_max_fraction", "r_star_reversion_persistence", "short_expectation_anchor_weight"]:
+		if params[key] < 0.0 or params[key] > 1.0:
+			return {"ok": false, "error": "recovery fraction out of range: %s" % key}
+	if params.demand_release_base_fraction > params.demand_release_max_fraction or params.demand_release_max_fraction + params.demand_cancellation_fraction > 1.0 or params.demand_release_backlog_scale_pct <= 0.0 or params.demand_release_financing_scale_pct <= 0.0:
+		return {"ok": false, "error": "inconsistent demand-release fractions or nonpositive recovery scale"}
 	if params.policy_rate_min_pct < 0.0 or params.policy_rate_max_pct <= params.policy_rate_min_pct or params.initial_asset_stock_pct_initial_gdp < 0.0 or params.asset_stock_capacity_pct_initial_gdp < params.initial_asset_stock_pct_initial_gdp or params.inflation_target_pct != 2.0:
 		return {"ok": false, "error": "inconsistent bounds or unsupported target parameter"}
 	if params.quarters_per_year != 4.0 or params.percent_multiplier != 100.0 or params.initial_output_index <= 0.0 or params.initial_price_index <= 0.0 or params.initial_structural_unemployment_pct <= 0.0 or params.initial_structural_unemployment_pct >= 100.0:
@@ -532,6 +568,7 @@ func _validate_state(state: Dictionary, params: Dictionary) -> Dictionary:
 		"guidance_inflation_sensitivity", "guidance_output_gap_sensitivity", "guidance_reference_inflation_pct",
 		"guidance_reference_output_gap_pct", "guidance_followthrough_score", "reaction_function_target_pct",
 		"public_support", "public_hardship_memory", "current_hardship",
+		"deferred_demand_pct", "demand_release_pct", "r_star_reference_pct",
 	]
 	for key in keys:
 		if not state.has(key) or typeof(state[key]) not in [TYPE_INT, TYPE_FLOAT] or not is_finite(float(state[key])):
@@ -591,7 +628,7 @@ func _validate_shocks(shocks: Dictionary) -> Dictionary:
 		if key == "potential_growth_pct":
 			if magnitude < -20.0 or magnitude > SHOCK_LIMITS[key]:
 				return {"ok": false, "error": "exogenous input outside declared domain: %s" % key}
-		elif key in ["supply_innovation_pct", "r_star_change_pct", "structural_unemployment_change_pct", "demand_shock_pct"]:
+		elif key in ["supply_innovation_pct", "r_star_change_pct", "r_star_reference_change_pct", "structural_unemployment_change_pct", "demand_shock_pct"]:
 			if abs(magnitude) > SHOCK_LIMITS[key]:
 				return {"ok": false, "error": "exogenous input outside declared domain: %s" % key}
 		elif magnitude < 0.0 or magnitude > SHOCK_LIMITS[key]:
