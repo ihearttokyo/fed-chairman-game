@@ -339,6 +339,13 @@ The static city uses a native one-shot render, refreshed after viewport size or
 visibility changes. Enabling animation restores continuous rendering; disabling
 it retains the final orientation. Camera framing and four-sample antialiasing
 are unchanged. This reduces redundant rendering, not economic simulation work.
+The city is presented through a native TextureRect and SubViewportTexture at
+uniform physical canvas density. Ordinary sampling stays between 1x and 2x;
+the largest texture dimension is capped at 2048, with uniform downsampling for
+oversized areas. Logical layout, camera, materials, MSAA4 and ignored mouse
+input remain unchanged. Control/window size notifications update the texture;
+no per-turn sizing, GPU readback or background service is required.
+
 
 ## Offline policy deliberation
 

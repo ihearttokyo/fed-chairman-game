@@ -1,5 +1,44 @@
 # Playable Policy Lab validation
 
+## Physical-density city: first GREEN, October 3, 2026 (UTC)
+
+An actual macOS GPU diagnostic found a634×215 city texture in a1268×430 physical
+canvas area. The same unchanged scene rendered at1268×430 retains the exact
+Control bounds, camera18 and MSAA4 and shows finer architectural detail. Native
+root GPU readback is2880×1920; its ViewportTexture size reports5760×3840 in this
+engine, so that reported value is excluded as an allocation measurement.
+
+Intended native RED proved the original texture missed the independent2x
+expectation. The current renderer uses native TextureRect/SubViewportTexture,
+with bounded uniform sampling and size notifications. Deterministic boundary
+cases, original framing/motion/hidden checks, post-free notification and actual
+native1268×430 allocation passed first GREEN; career bytes and layout stayed
+unchanged. The first resize fixture tried to halve the215px minimum height;
+actual clamping retained215, so the corrected fixture halves width only and
+keeps exact allocation and rearm assertions. No asset or equation changed.
+
+Independent correctness/Ponytail review, final GREEN, full game and package
+safety checks passed for this separate pass.
+Background Computer Use on the exact ARM64 signed renderer candidate exercised
+motion on/off, Funding stress42, four-tool input submission through Compare,
+tool contrasts, comparison close, two actual adoptions and expanded custom
+guidance1.5/0.5 with native scroll. Q2 feedback reported inflation down<0.005pp,
+applied rate5%, credibility-2.1points and prior-promise follow-through0.3/100.
+The initial ready screenshot showed the sharper city in its unchanged layout;
+all saved-career and signed executable/pack hashes stayed unchanged.
+
+Final Q2 visual acceptance is held. The same owned window later changed from
+1440×992points at135,75 to1280×802 at80,79; the geometry-preservation assertion
+failed. Our actions requested no window raise, zoom, resize or move, and the
+cause is undetermined. Subsequent native capture could not create an image.
+No stale or missing Q2 pixels pass acceptance, and no window was restored to
+conceal this failure. This is partial GUI evidence, not a ready merged release.
+
+The preceding change-precision candidate has since passed Apple notarization,
+extracted signing/staple/Gatekeeper and exact binary/pack/six-source binding.
+Its fresh Q2 pixel gate remains held, as described below. Signing acceptance
+alone does not complete native GUI or market-readiness acceptance.
+
 ## Change precision, October 3, 2026 (UTC)
 
 The shared change formatter now distinguishes exact zero from tiny increases or
