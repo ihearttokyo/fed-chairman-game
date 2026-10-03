@@ -101,7 +101,7 @@ The equilibrium baseline starts at equilibrium and has no scheduled scenario
 events. Every seeded career nevertheless receives quarterly background demand,
 supply and neutral-rate disturbances, including the baseline. The generator adds
 demand innovations in [-0.18, +0.18] percentage points, supply innovations in
-[-0.04, +0.04] and neutral-rate changes in [-0.01, +0.01]. Funding stress also
+[-0.04, +0.04] and transitory neutral-rate innovations in [-0.01, +0.01]. Funding stress also
 receives small funding needs with eligible collateral. These are design choices.
 Scheduled scenario events are added to that background path.
 
@@ -149,13 +149,17 @@ their background shocks; it is not a forecast or the game's concealed future.
 3. Price guidance according to prior credibility. Form short and long real-rate
    gaps, add the credit spread, subtract the neutral real rate and smooth the
    result into financial restraint. Output responds gradually to restraint and
-   separately to demand and supply disturbances. Unemployment adjusts toward a
+   separately to demand and supply disturbances. Deferred durable/replacement
+   spending adds a financing-dependent catch-up impulse. Transitory neutral-rate
+   deviations decay around a separate structural reference; permanent reference
+   shifts change that centre. Unemployment adjusts toward a
    bounded, gap-dependent target around an exogenous structural reference.
 4. Inflation depends on prior inflation, prior short expectations, prior output
    pressure and current supply pressure. Compound the price index and calculate
    four-quarter inflation from five price levels. Actual output equals potential
    output times one plus the output gap; growth follows the level ratio.
-5. Short expectations follow recent observed inflation and supply pressure.
+5. Short expectations mix recent observed inflation with prior long expectations
+   in proportion to credibility, then incorporate supply pressure.
    Long expectations gradually approach a credibility-weighted combination of
    the target and observed inflation. This is a reduced-form expectation rule.
 6. Update credibility from inflation performance, stance adequacy and conditional
@@ -211,19 +215,71 @@ apply signed resource or supply pressure multiplicatively.
 Define `G(x)=1+x/100`, `c=100+target=102`, persistence `rho`, recent-price
 expectation weight `w`, and `d=k*prior_gap+s*current_supply`. The annual price
 factor is `[rho*G(prior_pi)+(1-rho)*G(prior_short)]*exp(d/c)`. The short expected
-factor is `[(1-w)*G(prior_short)+w*G(prior_four_quarter_pi)]*exp(s_short*current_supply/c)`.
+factor is `[(1-w)*G(prior_short)+w*((1-a)*G(prior_four_quarter_pi)+a*G(prior_long))]*exp(s_short*current_supply/c)`.
+Here `a=short_expectation_anchor_weight*prior_credibility`.
 Prices compound the annual factor over four quarters; observed inflation still
 comes from actual price-level ratios. Economy row 64 in the workbook shows the
 annual gross factor, not a percentage.
 
-The normalization preserves the 2% equilibrium and the original local
-percent-unit sensitivities there. With no forcing, arithmetic averaging and
-equal off-target fixed points remain unchanged. Long-expectation anchoring,
-transmission lags and numerical coefficients are unchanged. These nonlinear
+The normalization preserves the 2% equilibrium and local price-pressure
+sensitivities there; the hybrid expectation slopes follow their disclosed weights. With no forcing, arithmetic averaging and
+equal off-target inputs remain fixed when all three inflation inputs agree.
+Long-expectation anchoring and the financial-restraint lag are unchanged. Short
+expectations now give credible prior long expectations an explicit influence. These nonlinear
 forcing rules are disclosed design assumptions, not estimated Fed equations.
 They preserve mathematical positivity without a floor or forced recovery;
 floating-point overflow, underflow and representability remain numerical limits.
 Model fingerprints change, so incompatible saves are refused without overwrite.
+
+## Endogenous recovery channels
+
+Deferred demand is a signed stock of postponed durable/replacement spending,
+not all lost consumption. Positive stock supplies later catch-up demand;
+negative stock represents purchases brought forward and later payback. A share
+of underlying activity shortfall enters this stock even after supply or funding
+pressure. That is an explicit reduced-form assumption, not measured household
+inventory or destroyed productive capacity.
+
+Let `x0` be activity before stock adjustment and rebase prior stock `b` into
+current quarterly potential-output units: `available=b*prior_potential/new_potential`.
+Release is `q=k*available`, activity is `x=x0+q`, and next stock is
+`b_next=(1-cancellation)*available-deferred_share*x0-q`. Growth therefore changes
+units without manufacturing purchases. Release and cancellation subtract once;
+cancellation itself creates no spending.
+
+The smooth fraction is
+`k=(base+(maximum-base)*abs(available)/(backlog_scale+abs(available)))/(1+(max(financial_restraint,0)/financing_scale)^2)`.
+Its design defaults are base .08, maximum .20, cancellation .02 and deferred
+share .12; backlog and financing scales are 5% of quarterly potential output and
+2 percentage points respectively. Large backlogs increase the release fraction;
+restrictive financing delays it. Neither stock nor policy choice is clipped by
+this mechanism. The maximum is a transmission fraction, not a policy-tool cap.
+
+The neutral real rate has a separate structural reference. Its next value is
+`new_reference+rho*(prior_r_star-prior_reference)+transitory_innovation`, with
+`rho=.95`. The optional `r_star_reference_change_pct` input changes the reference
+permanently; a transitory innovation decays. Initial scenario neutral rates set
+their reference unless a separate initial reference is supplied.
+
+Short expectations blend positive gross factors. Their recent-price component
+mixes observed four-quarter inflation with prior long expectations at weight
+`.5*prior_credibility`. Credibility zero remains fully adaptive. This channel is
+gradual, preserves signed supply effects and does not reset inflation to target.
+
+[FRBSF recovery analysis](https://www.frbsf.org/research-and-insights/publications/economic-letter/2010/05/shape-things-come-economic-recovery-recession/)
+and [Fed durable-stock analysis](https://www.federalreserve.gov/feeds/the-unusual-composition-of-demand-during-the-pandemic-20210114.htm)
+motivate postponed/replacement demand alongside financial headwinds. They do not
+estimate these equations or coefficients. [Yellen's inflation analysis](https://www.federalreserve.gov/newsevents/speech/yellen20150924a.htm)
+distinguishes anchoring from debt-deflation dynamics. All new numerical values
+remain disclosed game-design assumptions.
+
+Independent local analysis and real engine traces agree: a frozen low-credibility
+neutral nominal peg can remain unstable; feasible feedback stabilizes small
+perturbations locally. This is conditional stability around balanced growth,
+not stability under arbitrary policy or a guaranteed return to 2%. Persistent
+financial restraint can leave an off-target economy despite finite catch-up
+spending. Tool constraints and nominal-only stance scoring remain separate
+repairs; this slice does not claim to remove them.
 
 ## What the tests establish
 
@@ -238,14 +294,28 @@ The unanchored-inflation case is a difficult benchmark. For that case, the suite
 requires a seeded 96-quarter recovery path. These are difficulty and calibration diagnostics, not evidence about
 optimal play or human performance.
 
-A one-variable lag experiment increased financial-restraint persistence from
+A historical, pre-recovery-model lag experiment increased financial-restraint persistence from
 0.55 to 0.85. A single 75-basis-point rate surprise then has its largest output
 effect at quarter 4 instead of quarter 2, with peak output-gap effects of about
 -0.018 and -0.035 percentage points respectively. This design choice places the
 output response within the broad timing discussed in the research. It does not
-fit an impulse response to data. Under an unresponsive nominal-rate peg,
-inflation is still declining at quarter 240 in that experiment: an inflation
-trough and global stability under arbitrary policies have not been established.
+fit an impulse response to data. In that earlier model, inflation was still
+declining at quarter 240 under an unresponsive nominal-rate peg. That historical
+result is not a trace of the current recovery equations.
+
+Matched 240-quarter engine runs use the same realized funding-stress shocks at
+seeds 1, 417 and 2026. Early feedback reaches sustained terminal-window recovery
+in all three baseline and revised runs. After 96 quarters of an 8% rate and
+guidance, neither a zero-rate peg nor feedback meets that criterion in either
+model. With late feedback, revised ending inflation is 0.43% to 1.47%, versus
+-25.45% to -22.55% previously; cumulative hardship falls by about 78% to 80%.
+Recovery means every one of the final sixteen quarters has inflation within
+0.5 percentage points of target and absolute output gap below 0.5. A less severe
+ending alone is not recovery. One-variable ablations retain these failed cases:
+removing deferred spending or short-expectation anchoring worsens late outcomes,
+while neutral-rate reversion does not improve every seed. No coefficient was
+selected to make a benchmark win. These simulated paths do not establish global
+stability or empirical calibration.
 
 The 2 percent inflation objective is source-defined. Other behavioral
 coefficients, initial conditions, constraints, shock sizes and support scores

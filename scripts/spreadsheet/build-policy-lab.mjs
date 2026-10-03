@@ -51,12 +51,11 @@ for (let n = 0; n < cases.length; n++) cell(lab, `J${4 + n}`, `${n + 1}. ${cases
 // Parameters have one editable value and a checked active value. Missing data stays unavailable.
 assumptions.getRange('B5:F5').values = [['Parameter', 'Input', 'Active value', 'Unit', 'Classification']];
 headers(assumptions, 'B5:F5');
-const parameterRow = new Map();
-const shares = /persistence|adjustment|fraction|_weight$/;
+const parameterRow = new Map(source.parameters.map((record, i) => [record.key, i + 6]));
+const shares = /persistence|adjustment|fraction|_weight$|_share$/;
 const unboundedWeights = new Set(['public_inflation_burden_weight', 'public_unemployment_burden_weight', 'public_hardship_memory_weight']);
 for (let i = 0; i < source.parameters.length; i++) {
   const record = source.parameters[i], row = i + 6, ref = `C${row}`;
-  parameterRow.set(record.key, row);
   cell(assumptions, `B${row}`, human(record.key)); cell(assumptions, ref, record.value);
   let domain = `ISNUMBER(${ref})`;
   if (record.classification === 'mathematical_identity' || record.key === 'inflation_target_pct') domain = `AND(${domain},${ref}=${record.value})`;
@@ -65,8 +64,10 @@ for (let i = 0; i < source.parameters.length; i++) {
   else if (record.key === 'initial_structural_unemployment_pct') domain = `AND(${domain},${ref}>0,${ref}<100)`;
   else if (record.key === 'initial_unemployment_pct') domain = `AND(${domain},${ref}>=0,${ref}<=100)`;
   else if (['initial_inflation_rate_pct', 'initial_expected_short_inflation_pct', 'initial_expected_long_inflation_pct'].includes(record.key)) domain = `AND(${domain},${ref}>-100)`;
-  else if (/tolerance|stance_scale|initial_output_index|initial_price_index/.test(record.key)) domain = `AND(${domain},${ref}>0)`;
+  else if (/tolerance|_scale_pct|initial_output_index|initial_price_index/.test(record.key)) domain = `AND(${domain},${ref}>0)`;
   else if (/sensitivity|limit|capacity|normal_credit|burden_weight|hardship_memory_weight/.test(record.key)) domain = `AND(${domain},${ref}>=0)`;
+  if (record.key === 'demand_release_base_fraction') domain = `AND(${domain},${ref}<=C${parameterRow.get('demand_release_max_fraction')})`;
+  if (record.key === 'demand_release_max_fraction') domain = `AND(${domain},${ref}+C${parameterRow.get('demand_cancellation_fraction')}<=1)`;
   cell(assumptions, `D${row}`, `=IF(${domain},${ref},NA())`, true);
   cell(assumptions, `E${row}`, record.unit); cell(assumptions, `F${row}`, record.classification.replaceAll('_', ' '));
   cell(assumptions, `H${row}`, record.description);
@@ -77,15 +78,16 @@ assumptions.getRange('E5:E150').format.columnWidth = 31;
 assumptions.getRange('F5:F150').format.columnWidth = 22;
 assumptions.getRange('H5:H150').format.columnWidth = 110;
 assumptions.getRange('J5:J150').format.columnWidth = 85;
-assumptions.getRange('B6:J65').format.wrapText = true;
-assumptions.getRange('B6:J65').format.rowHeight = 48;
+assumptions.getRange(`B6:J${source.parameters.length + 5}`).format.wrapText = true;
+assumptions.getRange(`B6:J${source.parameters.length + 5}`).format.rowHeight = 48;
 const p = key => { assert.ok(parameterRow.has(key), `Unknown parameter ${key}`); return `'Assumptions'!$D$${parameterRow.get(key)}`; };
-cell(assumptions, 'B68', 'Credibility weights (fixed in core)');
+const weightsRow = source.parameters.length + 9;
+cell(assumptions, `B${weightsRow - 1}`, 'Credibility weights (fixed in core)');
 for (const [i, label, value] of [[0, 'Inflation performance', 0.4], [1, 'Stance adequacy', 0.4], [2, 'Conditional follow-through', 0.2]]) {
-  cell(assumptions, `B${69 + i}`, label); cell(assumptions, `D${69 + i}`, value);
+  cell(assumptions, `B${weightsRow + i}`, label); cell(assumptions, `D${weightsRow + i}`, value);
 }
-cell(assumptions, 'H69', 'The 40/40/20 rule is a game-design assumption, not an estimated Federal Reserve objective.');
-cell(assumptions, 'H71', 'Public support is a fictional score with gradual recovery, not a legal dismissal threshold.');
+cell(assumptions, `H${weightsRow}`, 'The 40/40/20 rule is a game-design assumption, not an estimated Federal Reserve objective.');
+cell(assumptions, `H${weightsRow + 2}`, 'Public support is a fictional score with gradual recovery, not a legal dismissal threshold.');
 
 const initialParameter = {
   output_gap_pct: 'initial_output_gap_pct', annualized_quarterly_inflation_pct: 'initial_inflation_rate_pct',
@@ -97,7 +99,7 @@ const initialParameter = {
 const initialRows = new Map();
 const initialFields = [...new Set(cases.flatMap(x => Object.keys(x.scenario.initial)))];
 const caseStride = cases.length + 2;
-let initialRow = 77;
+let initialRow = weightsRow + 8;
 for (const key of initialFields) {
   assert.ok(initialParameter[key], `Undocumented initial case driver ${key}`);
   initialRows.set(key, initialRow);
@@ -120,7 +122,7 @@ for (const key of initialFields) {
 }
 const initial = key => initialRows.has(key) ? `'Assumptions'!$D$${initialRows.get(key)}` : initialParameter[key] ? p(initialParameter[key]) : '0';
 
-const shockKeys = ['demand_shock_pct', 'supply_innovation_pct', 'potential_growth_pct', 'r_star_change_pct', 'structural_unemployment_change_pct', 'funding_need_pct_initial_gdp', 'eligible_collateral_pct_initial_gdp', 'collateral_haircut_pct', 'liquidity_eligibility_pct', 'credit_risk_innovation_pct', 'solvency_risk_innovation_pct'];
+const shockKeys = ['demand_shock_pct', 'supply_innovation_pct', 'potential_growth_pct', 'r_star_change_pct', 'r_star_reference_change_pct', 'structural_unemployment_change_pct', 'funding_need_pct_initial_gdp', 'eligible_collateral_pct_initial_gdp', 'collateral_haircut_pct', 'liquidity_eligibility_pct', 'credit_risk_innovation_pct', 'solvency_risk_innovation_pct'];
 const shockRows = new Map();
 for (let i = 0; i < shockKeys.length; i++) {
   const key = shockKeys[i], row = 6 + i * caseStride;
@@ -135,8 +137,8 @@ for (let i = 0; i < shockKeys.length; i++) {
   const formulas = Array.from({ length: 48 }, (_, q) => {
     const col = column(q + 5), refs = cases.map((_, n) => `${col}${row + n + 1}`);
     const choose = values => `CHOOSE('Policy Lab'!$C$4,${values.join(',')})`;
-    const limit = { demand_shock_pct: 10, supply_innovation_pct: 5, potential_growth_pct: 20, r_star_change_pct: 1, structural_unemployment_change_pct: 0.5, credit_risk_innovation_pct: 5, solvency_risk_innovation_pct: 5 }[key] ?? 100;
-    const signed = ['demand_shock_pct', 'supply_innovation_pct', 'potential_growth_pct', 'r_star_change_pct', 'structural_unemployment_change_pct'].includes(key);
+    const limit = { demand_shock_pct: 10, supply_innovation_pct: 5, potential_growth_pct: 20, r_star_change_pct: 1, r_star_reference_change_pct: 1, structural_unemployment_change_pct: 0.5, credit_risk_innovation_pct: 5, solvency_risk_innovation_pct: 5 }[key] ?? 100;
+    const signed = ['demand_shock_pct', 'supply_innovation_pct', 'potential_growth_pct', 'r_star_change_pct', 'r_star_reference_change_pct', 'structural_unemployment_change_pct'].includes(key);
     const valid = choose(refs.map(ref => `AND(ISNUMBER(${ref}),${ref}>=${signed ? -limit : 0},${ref}<=${limit})`));
     const numeric = `IF(${valid},${choose(refs)},NA())`;
     return `=${key === 'potential_growth_pct' ? `IF(${choose(refs.map(ref => `ISBLANK(${ref})`))},"unchanged",${numeric})` : numeric}`;
@@ -168,12 +170,20 @@ const R = {
   prior_commitment: 60, priced_guidance: 61, expected_policy_path: 62, spot_gap: 63, inflation_pressure: 64,
   long_anchor: 65, inflation_performance: 66, stance_adequacy: 67, credibility_score: 68, support_target: 69,
   eligible_capacity: 70, loan_remaining: 71, lending_headroom: 72, policy_valid: 73, benchmark_rate: 75,
+  deferred_demand_pct: 77, demand_release_pct: 78, r_star_reference_pct: 79, underlying_gap: 80,
+  available_demand: 81, release_fraction: 82, recent_expectation_base: 83, short_anchor_weight: 84,
 };
 await fs.writeFile(new URL('workbook-model-map.json', evidence), JSON.stringify(R, null, 2));
 for (const [key, row] of Object.entries(R)) cell(economy, `B${row}`, human(key));
 cell(economy, 'B64', 'Annual gross price growth');
+for (const [row, label] of [
+  [77, 'Deferred demand (% potential)'], [78, 'Demand release (pp)'],
+  [79, 'Neutral structural reference (%)'], [80, 'Activity before catch-up (pp)'],
+  [81, 'Rebased backlog (% potential)'], [82, 'Release fraction'],
+  [83, 'Recent expected gross factor'], [84, 'Credibility-weighted long anchor'],
+]) cell(economy, `B${row}`, label);
 headers(economy, 'B4:AZ4');
-economy.getRange('D5:AZ73').setNumberFormat('0.000');
+economy.getRange('D5:AZ84').setNumberFormat('0.000');
 const f = (col, key) => `${col}${R[key]}`;
 for (let q = 0; q <= 48; q++) {
   const col = column(q + 4), previous = column(q + 3), s = key => f(col, key), prev = key => f(previous, key);
@@ -182,6 +192,7 @@ for (let q = 0; q <= 48; q++) {
   if (q === 0) {
     for (const key of Object.keys(source.initial_state).filter(k => R[k] && k !== 'quarter_index')) put(key, '0');
     for (const key of Object.keys(initialParameter)) put(key, initial(key));
+    put('r_star_reference_pct', s('r_star_pct'));
     put('potential_output_index', p('initial_output_index'));
     put('actual_output_index', `${s('potential_output_index')}*(1+${s('output_gap_pct')}/100)`);
     for (const key of ['potential_growth_pct', 'annualized_potential_growth_pct', 'annualized_actual_growth_pct']) put(key, p('initial_potential_growth_pct'));
@@ -238,7 +249,8 @@ for (let q = 0; q <= 48; q++) {
   put('priced_guidance', `${s('policy_rate_pct')}+${prev('credibility')}*(${s('guidance_rate_pct')}-${s('policy_rate_pct')})`);
   put('expected_policy_path', `${p('long_yield_current_rate_weight')}*${s('policy_rate_pct')}+(1-${p('long_yield_current_rate_weight')})*${s('priced_guidance')}`);
   put('long_yield_pct', `${s('expected_policy_path')}+${s('term_premium_pct')}`);
-  put('r_star_pct', `${prev('r_star_pct')}+${shock('r_star_change_pct')}`);
+  put('r_star_reference_pct', `${prev('r_star_reference_pct')}+${shock('r_star_reference_change_pct')}`);
+  put('r_star_pct', `${s('r_star_reference_pct')}+${p('r_star_reversion_persistence')}*(${prev('r_star_pct')}-${prev('r_star_reference_pct')})+${shock('r_star_change_pct')}`);
   put('spot_gap', `${p('real_rate_short_weight')}*(${s('policy_rate_pct')}-${prev('expected_short_inflation_pct')})+(1-${p('real_rate_short_weight')})*(${s('long_yield_pct')}-${p('initial_term_premium_pct')}-${prev('expected_long_inflation_pct')})+(${s('credit_spread_pct')}-${p('normal_credit_spread_pct')})-${s('r_star_pct')}`);
   put('financial_restraint_gap_pct', `${p('real_rate_gap_persistence')}*${prev('financial_restraint_gap_pct')}+(1-${p('real_rate_gap_persistence')})*${s('spot_gap')}`);
   put('potential_growth_pct', `IF(${shock('potential_growth_pct')}="unchanged",${prev('potential_growth_pct')},${shock('potential_growth_pct')})`);
@@ -246,7 +258,12 @@ for (let q = 0; q <= 48; q++) {
   put('structural_unemployment_pct', `IF(AND(${structural}>0,${structural}<100),${structural},NA())`);
   put('potential_output_index', `${prev('potential_output_index')}*POWER(1+${s('potential_growth_pct')}/100,0.25)`);
   put('supply_pressure_pct', `${p('supply_pressure_persistence')}*${prev('supply_pressure_pct')}+${shock('supply_innovation_pct')}`);
-  put('output_gap_pct', `${p('output_gap_persistence')}*${prev('output_gap_pct')}-${p('real_rate_output_sensitivity')}*${s('financial_restraint_gap_pct')}+${shock('demand_shock_pct')}-${p('supply_output_gap_sensitivity')}*${s('supply_pressure_pct')}`);
+  put('underlying_gap', `${p('output_gap_persistence')}*${prev('output_gap_pct')}-${p('real_rate_output_sensitivity')}*${s('financial_restraint_gap_pct')}+${shock('demand_shock_pct')}-${p('supply_output_gap_sensitivity')}*${s('supply_pressure_pct')}`);
+  put('available_demand', `${prev('deferred_demand_pct')}*${prev('potential_output_index')}/${s('potential_output_index')}`);
+  put('release_fraction', `(${p('demand_release_base_fraction')}+(${p('demand_release_max_fraction')}-${p('demand_release_base_fraction')})*ABS(${s('available_demand')})/(${p('demand_release_backlog_scale_pct')}+ABS(${s('available_demand')})))/(1+POWER(MAX(0,${s('financial_restraint_gap_pct')})/${p('demand_release_financing_scale_pct')},2))`);
+  put('demand_release_pct', `${s('release_fraction')}*${s('available_demand')}`);
+  put('output_gap_pct', `${s('underlying_gap')}+${s('demand_release_pct')}`);
+  put('deferred_demand_pct', `(1-${p('demand_cancellation_fraction')})*${s('available_demand')}-${p('deferred_demand_share')}*${s('underlying_gap')}-${s('demand_release_pct')}`);
   const laborReference = s('structural_unemployment_pct'), laborGap = s('output_gap_pct'), laborSlope = p('unemployment_gap_sensitivity');
   const laborTarget = `IF(${laborGap}>=0,${laborReference}*EXP(-${laborSlope}*${laborGap}/${laborReference}),100-(100-${laborReference})*EXP(${laborSlope}*${laborGap}/(100-${laborReference})))`;
   put('unemployment_rate_pct', `${prev('unemployment_rate_pct')}+(1-${p('unemployment_gap_persistence')})*(${laborTarget}-${prev('unemployment_rate_pct')})`);
@@ -256,14 +273,16 @@ for (let q = 0; q <= 48; q++) {
   put('price_h4', s('price_index'));
   put('four_quarter_inflation_pct', `100*(${s('price_h4')}/${s('price_h0')}-1)`);
   put('annualized_quarterly_inflation_pct', `100*(POWER(${s('price_index')}/${prev('price_index')},4)-1)`);
-  put('expected_short_inflation_pct', `100*(((1-${p('short_expectation_recent_weight')})*(1+${prev('expected_short_inflation_pct')}/100)+${p('short_expectation_recent_weight')}*(1+${prev('four_quarter_inflation_pct')}/100))*EXP(${p('short_expectation_supply_sensitivity')}*${s('supply_pressure_pct')}/(100+${p('inflation_target_pct')}))-1)`);
+  put('short_anchor_weight', `${p('short_expectation_anchor_weight')}*${prev('credibility')}`);
+  put('recent_expectation_base', `(1-${s('short_anchor_weight')})*(1+${prev('four_quarter_inflation_pct')}/100)+${s('short_anchor_weight')}*(1+${prev('expected_long_inflation_pct')}/100)`);
+  put('expected_short_inflation_pct', `100*(((1-${p('short_expectation_recent_weight')})*(1+${prev('expected_short_inflation_pct')}/100)+${p('short_expectation_recent_weight')}*${s('recent_expectation_base')})*EXP(${p('short_expectation_supply_sensitivity')}*${s('supply_pressure_pct')}/(100+${p('inflation_target_pct')}))-1)`);
   put('long_anchor', `${prev('credibility')}*${p('inflation_target_pct')}+(1-${prev('credibility')})*${prev('four_quarter_inflation_pct')}`);
   put('expected_long_inflation_pct', `${prev('expected_long_inflation_pct')}+${p('long_expectation_adjustment')}*(${s('long_anchor')}-${prev('expected_long_inflation_pct')})`);
   put('reaction_function_target_pct', `${s('r_star_pct')}+${prev('expected_short_inflation_pct')}+${p('policy_inflation_response')}*(${prev('four_quarter_inflation_pct')}-${p('inflation_target_pct')})+${p('policy_output_gap_response')}*${prev('output_gap_pct')}`);
   put('inflation_miss_memory_pct', `${p('credibility_miss_persistence')}*${prev('inflation_miss_memory_pct')}+(1-${p('credibility_miss_persistence')})*ABS(${prev('four_quarter_inflation_pct')}-${p('inflation_target_pct')})`);
   put('inflation_performance', `EXP(-${s('inflation_miss_memory_pct')}/${p('credibility_miss_tolerance_pct')})`);
   put('stance_adequacy', `EXP(-ABS(${s('policy_rate_pct')}-${s('reaction_function_target_pct')})/${p('credibility_stance_scale_pct')})`);
-  put('credibility_score', `'Assumptions'!$D$69*${s('inflation_performance')}+'Assumptions'!$D$70*${s('stance_adequacy')}+'Assumptions'!$D$71*${s('guidance_followthrough_score')}`);
+  put('credibility_score', `'Assumptions'!$D$${weightsRow}*${s('inflation_performance')}+'Assumptions'!$D$${weightsRow + 1}*${s('stance_adequacy')}+'Assumptions'!$D$${weightsRow + 2}*${s('guidance_followthrough_score')}`);
   put('credibility', clamp(`${prev('credibility')}+${p('credibility_adjustment')}*(${s('credibility_score')}-${prev('credibility')})`, 0, 1));
   put('current_hardship', `${p('public_inflation_burden_weight')}*ABS(${s('four_quarter_inflation_pct')}-${p('inflation_target_pct')})+${p('public_unemployment_burden_weight')}*MAX(0,${s('unemployment_rate_pct')}-${s('structural_unemployment_pct')})`);
   put('public_hardship_memory', `${p('public_hardship_memory_persistence')}*${prev('public_hardship_memory')}+(1-${p('public_hardship_memory_persistence')})*${s('current_hardship')}`);
@@ -440,6 +459,30 @@ for (const [reference, shift] of [[0.25, -0.5], [99.75, 0.5]]) {
 cell(assumptions, referenceInput, referenceValue); cell(shocks, referenceShock, referenceShockValue); workbook.recalculate();
 assert.ok(verifyTrace('restored labor boundaries', [cases[2].initial_state, ...cases[2].quarters.map(x => x.state)]) < 1e-7);
 console.log('PASS: labor endpoints, invalid reference shifts and restored model parity');
+// Recovery controls share the engine's domains and remain auditable after edits.
+for (const [key, value, affected] of [
+  ['deferred_demand_share', 1.1, 'deferred_demand_pct'],
+  ['demand_release_base_fraction', 0.3, 'demand_release_pct'],
+  ['demand_cancellation_fraction', 0.9, 'demand_release_pct'],
+  ['demand_release_backlog_scale_pct', 0, 'demand_release_pct'],
+  ['demand_release_financing_scale_pct', 0, 'demand_release_pct'],
+  ['short_expectation_anchor_weight', 1.1, 'expected_short_inflation_pct'],
+  ['r_star_reversion_persistence', 1.1, 'r_star_pct'],
+]) {
+  const address = `C${parameterRow.get(key)}`, prior = assumptions.getRange(address).values[0][0];
+  cell(assumptions, address, value); workbook.recalculate();
+  assert.equal(economy.getRange(`E${R[affected]}`).values[0][0], '#N/A', `Invalid recovery assumption stays unavailable: ${key}`);
+  cell(assumptions, address, prior);
+}
+const structuralRateInput = `E${shockRows.get('r_star_reference_change_pct') + 3}`;
+const structuralRatePrior = shocks.getRange(structuralRateInput).values[0][0];
+cell(shocks, structuralRateInput, 0.5); workbook.recalculate();
+assert.equal(economy.getRange(`E${R.r_star_reference_pct}`).values[0][0], 2, 'Permanent neutral-rate shift changes its separate centre');
+assert.equal(economy.getRange(`F${R.r_star_reference_pct}`).values[0][0], 2, 'Permanent centre is not erased next quarter');
+cell(shocks, structuralRateInput, structuralRatePrior); workbook.recalculate();
+assert.ok(verifyTrace('restored recovery inputs', [cases[2].initial_state, ...cases[2].quarters.map(x => x.state)]) < 1e-7);
+console.log('PASS: recovery domains, permanent structural reference and restored full parity');
+
 console.log('PASS: four policy edits, blank/zero distinction, missing-case isolation, invalid funding and later-period causality');
 await fs.writeFile(new URL('workbook-parity.json', evidence), JSON.stringify(checks, null, 2));
 console.log((await workbook.inspect({ kind: 'table', range: 'Policy Lab!B11:D17', include: 'values,formulas', tableMaxRows: 8, tableMaxCols: 4 })).ndjson);
@@ -447,7 +490,7 @@ console.log((await workbook.inspect({ kind: 'match', searchTerm: '#REF!|#DIV/0!|
 await fs.mkdir(out, { recursive: true });
 const xlsx = await SpreadsheetFile.exportXlsx(workbook);
 await xlsx.save(fileURLToPath(new URL('Federal Reserve Policy Lab.xlsx', out)));
-for (const [sheetName, range, file] of [['Policy Lab', 'A1:P55', 'lab'], ['Policy', 'A1:M26', 'policy'], ['Assumptions', 'A1:J18', 'assumptions'], ['Economy', 'A1:L23', 'economy'], ['Shocks', 'A1:L22', 'shocks']]) {
+for (const [sheetName, range, file] of [['Policy Lab', 'A1:P55', 'lab'], ['Policy', 'A1:M26', 'policy'], ['Assumptions', 'A1:J18', 'assumptions'], ['Economy', 'A1:L23', 'economy'], ['Shocks', 'A1:L22', 'shocks'], ['Assumptions', `B${source.parameters.length - 2}:H${weightsRow + 2}`, 'recovery-assumptions'], ['Economy', 'B77:L84', 'recovery-equations']]) {
   const preview = await workbook.render({ sheetName, range, scale: 1, format: 'png' });
   await fs.writeFile(new URL(`workbook-${file}.png`, evidence), new Uint8Array(await preview.arrayBuffer()));
 }

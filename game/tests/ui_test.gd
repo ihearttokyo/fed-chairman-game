@@ -936,6 +936,9 @@ func run() -> void:
 	var help_text: TextEdit = help.get_child(0)
 	check(help_text.text.contains("Every career includes seeded background disturbances") and help_text.text.contains("baseline starts at equilibrium") and help_text.text.contains("no scheduled scenario events"), "help explains the seeded baseline and scheduled-event distinction")
 	check(help_text.text.contains("same scenario and seed") and help_text.text.contains("same engine and model"), "help qualifies every input needed to reproduce the path")
+	check(help_text.text.contains("Deferred demand") and help_text.text.contains("not all lost consumption") and help_text.text.contains("no guaranteed return to 2%"), "help distinguishes catch-up spending from forced recovery")
+	check(help_text.text.contains("structural reference") and help_text.text.to_lower().contains("short expectations") and help_text.text.contains("prior long"), "help explains separate structural and expectation restoration channels")
+	check(game.briefing.text.contains("Deferred demand") and game.briefing.text.contains("% potential"), "dispatch exposes the known deferred-demand stock with its unit")
 	check(game.career.encode() == before_cancel and game._policy() == staged_before_cancel, "reading seeded help leaves the active career and staged policy unchanged")
 	help.get_ok_button().pressed.emit()
 	await process_frame

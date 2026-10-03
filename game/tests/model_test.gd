@@ -509,6 +509,7 @@ func _test_unemployment_physical_domain() -> void:
 	var fixed: Dictionary = params.duplicate(true)
 	fixed.output_gap_persistence = 1.0
 	fixed.real_rate_output_sensitivity = 0.0
+	fixed.deferred_demand_share = 0.0 # Isolate an actually constant activity gap.
 	fixed.inflation_output_gap_sensitivity = 0.0
 	fixed.unemployment_gap_persistence = 0.0
 	var outcomes: Array[float] = []
@@ -535,6 +536,7 @@ func _test_unemployment_physical_domain() -> void:
 				if not result.ok:
 					break
 				constant = result.state
+				expect_close(constant.output_gap_pct, pair[0], "fixed-gap fixture truly preserves the activity gap")
 			expect_close(constant.unemployment_rate_pct, pair[1], "constant gap converges without perpetual unemployment drift")
 	fixed.unemployment_gap_persistence = 0.0
 	fixed.unemployment_gap_sensitivity = 0.0
@@ -690,7 +692,7 @@ func _test_price_physical_domain() -> void:
 		for invalid in [-100.0, -100.1]:
 			expect_true(not initial_state(params, {key: invalid}).ok, "nonpositive gross inflation/expectation inputs remain rejected")
 	for rate in [-90.0, -5.0, 2.0, 30.0]:
-		var start: Dictionary = initial_state(params, {"annualized_quarterly_inflation_pct": rate, "expected_short_inflation_pct": rate}).state
+		var start: Dictionary = initial_state(params, {"annualized_quarterly_inflation_pct": rate, "expected_short_inflation_pct": rate, "expected_long_inflation_pct": rate}).state
 		var result: Dictionary = step(start, policy_at(3.5, 3.5), {}, params)
 		expect_true(result.ok, "unforced off-target blend remains physical")
 		if result.ok:
@@ -706,10 +708,11 @@ func _test_price_physical_domain() -> void:
 			expect_true(result.ok, "gross blend weight endpoints remain physical")
 			if result.ok:
 				expect_close(result.state.annualized_quarterly_inflation_pct, 4.0 if persistence == 1.0 else 10.0, "inflation weight endpoints select the stated input")
-				expect_close(result.state.expected_short_inflation_pct, 4.0 if recent_weight == 1.0 else 10.0, "expectation weight endpoints select the stated input")
+				var anchored_recent: float = (1.0 - endpoint.short_expectation_anchor_weight * start.credibility) * 4.0 + endpoint.short_expectation_anchor_weight * start.credibility * start.expected_long_inflation_pct
+				expect_close(result.state.expected_short_inflation_pct, anchored_recent if recent_weight == 1.0 else 10.0, "expectation weight endpoints select the disclosed hybrid or prior short input")
 	# Central differences test percent-unit slopes at the 2% equilibrium.
 	var epsilon := 0.001
-	for driver in ["annualized_quarterly_inflation_pct", "expected_short_inflation_pct", "output_gap_pct", "supply_innovation_pct"]:
+	for driver in ["annualized_quarterly_inflation_pct", "expected_short_inflation_pct", "expected_long_inflation_pct", "output_gap_pct", "supply_innovation_pct"]:
 		var inflation: Array[float] = []
 		var short: Array[float] = []
 		for delta in [-epsilon, epsilon]:
@@ -726,7 +729,7 @@ func _test_price_physical_domain() -> void:
 				return
 			inflation.append(result.state.annualized_quarterly_inflation_pct)
 			short.append(result.state.expected_short_inflation_pct)
-		var inflation_slope: float = {"annualized_quarterly_inflation_pct": params.inflation_persistence, "expected_short_inflation_pct": 1.0 - params.inflation_persistence, "output_gap_pct": params.inflation_output_gap_sensitivity, "supply_innovation_pct": params.inflation_supply_sensitivity}[driver]
-		var short_slope: float = {"annualized_quarterly_inflation_pct": params.short_expectation_recent_weight, "expected_short_inflation_pct": 1.0 - params.short_expectation_recent_weight, "output_gap_pct": 0.0, "supply_innovation_pct": params.short_expectation_supply_sensitivity}[driver]
+		var inflation_slope: float = {"annualized_quarterly_inflation_pct": params.inflation_persistence, "expected_short_inflation_pct": 1.0 - params.inflation_persistence, "expected_long_inflation_pct": 0.0, "output_gap_pct": params.inflation_output_gap_sensitivity, "supply_innovation_pct": params.inflation_supply_sensitivity}[driver]
+		var short_slope: float = {"annualized_quarterly_inflation_pct": params.short_expectation_recent_weight * (1.0 - params.short_expectation_anchor_weight * params.initial_credibility), "expected_short_inflation_pct": 1.0 - params.short_expectation_recent_weight, "expected_long_inflation_pct": params.short_expectation_recent_weight * params.short_expectation_anchor_weight * params.initial_credibility, "output_gap_pct": 0.0, "supply_innovation_pct": params.short_expectation_supply_sensitivity}[driver]
 		expect_true(abs((inflation[1] - inflation[0]) / (2.0 * epsilon) - inflation_slope) < 1e-6, "inflation retains its local percent-unit slope for " + driver)
-		expect_true(abs((short[1] - short[0]) / (2.0 * epsilon) - short_slope) < 1e-6, "short expectations retain their local percent-unit slope for " + driver)
+		expect_true(abs((short[1] - short[0]) / (2.0 * epsilon) - short_slope) < 1e-6, "short expectations follow their disclosed hybrid local slope for " + driver)
