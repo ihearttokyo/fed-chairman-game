@@ -607,10 +607,33 @@ func check_city_redraw(game: Control, viewport: SubViewport) -> void:
 	check(viewport.render_target_update_mode == SubViewport.UPDATE_ALWAYS, "visible animated city continues after visibility change")
 	motion.button_pressed = false
 	game.city.rotation.y = rotation
+func check_initial_window_size(game: Control, window_size_before: Vector2i, window_position_before: Vector2i) -> void:
+	check(game.has_method("_initial_window_size"), "shared startup sizing exists")
+	if not game.has_method("_initial_window_size"):
+		return
+	var design := Vector2i(1440, 960)
+	check(game._initial_window_size(design, 2.0, Vector2i(3420, 2082)) == Vector2i(2880, 1920), "Retina startup preserves intended logical design size")
+	check(game._initial_window_size(design, 1.0, Vector2i(1920, 1048)) == design, "standard-density startup retains its existing dimensions")
+	check(game._initial_window_size(design, 2.0, Vector2i(2560, 1536)) == Vector2i(2304, 1536), "smaller usable screens uniformly fit without changing aspect or omitting titlebar space")
+	check(game._initial_window_size(design, 2.0, Vector2i(2000, 2000)) == Vector2i(2000, 1333), "width-limited startup rounds within the usable screen")
+	if DisplayServer.get_name() == "headless" or OS.get_cmdline_user_args().has("--preserve-startup-window"):
+		check(root.size == window_size_before, "headless or explicitly configured startup preserves initial size")
+		check(root.position == window_position_before, "headless or explicitly configured startup preserves initial position")
+
 func run() -> void:
+	var window_size_before := root.size
+	var window_position_before := root.position
 	var game = load("res://main.tscn").instantiate()
 	root.add_child(game)
 	await process_frame
+	check_initial_window_size(game, window_size_before, window_position_before)
+	if OS.get_cmdline_user_args().has("--window-size-only"):
+		print("STARTUP_WINDOW: " + JSON.stringify({"pid": OS.get_process_id(), "display": DisplayServer.get_name(), "arguments": OS.get_cmdline_args(), "size_before": str(window_size_before), "size_after": str(root.size), "position_before": str(window_position_before), "position_after": str(root.position)}))
+		if failures == 0:
+			print("PASS: DPI-aware startup sizing and explicit/headless preservation")
+		game.free()
+		quit(1 if failures else 0)
+		return
 	check_score_feedback(game)
 	if OS.get_cmdline_user_args().has("--score-feedback-only"):
 		if failures == 0:
