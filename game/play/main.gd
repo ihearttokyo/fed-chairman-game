@@ -507,7 +507,7 @@ func _decision_briefing() -> String:
 	for index in [0, 3, 7]:
 		var choice: Dictionary = selected.states[index]
 		var baseline: Dictionary = held.states[index]
-		text += "Q+%d: Inflation %+.3f pp · unemployment %+.3f pp\nOutput gap %+.3f pp\n\n" % [index + 1, choice.four_quarter_inflation_pct - baseline.four_quarter_inflation_pct, choice.unemployment_rate_pct - baseline.unemployment_rate_pct, choice.output_gap_pct - baseline.output_gap_pct]
+		text += "Q+%d: Inflation %s · unemployment %s\nOutput gap %s\n\n" % [index + 1, _change_text(choice.four_quarter_inflation_pct - baseline.four_quarter_inflation_pct, 3, "pp"), _change_text(choice.unemployment_rate_pct - baseline.unemployment_rate_pct, 3, "pp"), _change_text(choice.output_gap_pct - baseline.output_gap_pct, 3, "pp")]
 	var last: Dictionary = selected.states[-1]
 	var baseline: Dictionary = held.states[-1]
 	text += "Q+8 / SELECTED VS HOLD\nCredibility %.1f vs %.1f / 100\nPublic support %.1f vs %.1f / 100\n\n" % [100 * last.credibility, 100 * baseline.credibility, last.public_support, baseline.public_support]
@@ -528,7 +528,7 @@ func _decision_briefing() -> String:
 			continue
 		var reference_first: Dictionary = path.states[0]
 		var reference_last: Dictionary = path.states[-1]
-		text += "Q+1 long yield %+.3f pp; credit spread %+.3f pp\nQ+8 inflation %+.3f pp; unemployment %+.3f pp; credibility %+.2f points; support %+.2f points\n\n" % [first.long_yield_pct - reference_first.long_yield_pct, first.credit_spread_pct - reference_first.credit_spread_pct, last.four_quarter_inflation_pct - reference_last.four_quarter_inflation_pct, last.unemployment_rate_pct - reference_last.unemployment_rate_pct, 100 * (last.credibility - reference_last.credibility), last.public_support - reference_last.public_support]
+		text += "Q+1 long yield %s; credit spread %s\nQ+8 inflation %s; unemployment %s; credibility %s; support %s\n\n" % [_change_text(first.long_yield_pct - reference_first.long_yield_pct, 3, "pp"), _change_text(first.credit_spread_pct - reference_first.credit_spread_pct, 3, "pp"), _change_text(last.four_quarter_inflation_pct - reference_last.four_quarter_inflation_pct, 3, "pp"), _change_text(last.unemployment_rate_pct - reference_last.unemployment_rate_pct, 3, "pp"), _change_text(100 * (last.credibility - reference_last.credibility), 2), _change_text(last.public_support - reference_last.public_support, 2)]
 	text += "REFERENCE AND LIMITS\nHold today's rate, guide to that rate with data dependence, and request no new asset flows or loans. Both paths use the same current shock and no new future shocks. After this meeting, each holds its own applied rate and makes no new asset flows or loans. Existing holdings, loans and policy lags carry forward.\n\nThese are combined effects of the staged controls, not an optimal-policy recommendation or a confidence interval. Positive differences mean a higher value, not necessarily a better outcome. Policy lags can leave first-quarter inflation unchanged even when later outcomes differ."
 	return text
 
@@ -545,12 +545,13 @@ func _staff_rule() -> void:
 	_preview()
 	status_label.text = "Staff benchmark selected. This simple rule is a comparison, not an optimal policy. Other tools are unchanged."
 
-func _score_change(change: float) -> String:
+func _change_text(change: float, decimals := 1, unit := "points") -> String:
 	if change == 0:
 		return "unchanged"
-	if abs(change) < 0.05:
-		return ("up" if change > 0 else "down") + " <0.05 points"
-	return "%+.1f points" % change
+	var threshold := 0.5 / pow(10, decimals)
+	if abs(change) < threshold:
+		return ("up" if change > 0 else "down") + " <" + String.num(threshold, decimals + 1) + " " + unit
+	return ("%+." + str(decimals) + "f " + unit) % change
 
 func _advance() -> void:
 	_apply_policy_inputs()
@@ -561,7 +562,7 @@ func _advance() -> void:
 		return
 	_refresh(true)
 	var s: Dictionary = career.state
-	consequence.text = "Q%d OUTCOME  ·  Inflation %+.2f pp; unemployment %+.2f pp.\nApplied rate %.2f%%. Public support %s; credibility %s. Your earlier decisions remain in the transmission pipeline." % [s.quarter_index, s.four_quarter_inflation_pct - before.four_quarter_inflation_pct, s.unemployment_rate_pct - before.unemployment_rate_pct, s.policy_rate_pct, _score_change(s.public_support - before.public_support), _score_change((s.credibility - before.credibility) * 100)]
+	consequence.text = "Q%d OUTCOME  ·  Inflation %s; unemployment %s.\nApplied rate %.2f%%. Public support %s; credibility %s. Your earlier decisions remain in the transmission pipeline." % [s.quarter_index, _change_text(s.four_quarter_inflation_pct - before.four_quarter_inflation_pct, 2, "pp"), _change_text(s.unemployment_rate_pct - before.unemployment_rate_pct, 2, "pp"), s.policy_rate_pct, _change_text(s.public_support - before.public_support), _change_text((s.credibility - before.credibility) * 100)]
 	if before.guidance_active:
 		consequence.text += "\nPrevious promise follow-through: %.1f / 100." % (100 * s.guidance_followthrough_score)
 	status_label.text = "Quarter %d completed. Unsaved changes · %s" % [s.quarter_index, career.cases[career.scenario_id].label]
