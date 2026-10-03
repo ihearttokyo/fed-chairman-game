@@ -119,58 +119,26 @@ func check_recurring_crises() -> void:
 	var original: Dictionary = career.cases.duplicate(true)
 	var parameters: Dictionary = career.params.duplicate(true)
 	var signatures := {}
-	var polarities := {"demand": {}, "supply": {}}
-	var strengths := {}
 	for seed_number in [0, 1, 17, 41, 417, -2147483647, 2147483647, -9223372036854775807, 9223372036854775807]:
-		var path: Array = career.model.seeded_shock_path(seed_number, scenario, 240)
-		var background: Array = career.model.seeded_shock_path(seed_number, {"id": "base", "events": []}, 240)
+		var generated: Dictionary = career.model.seeded_campaign(seed_number, scenario, 240)
+		check(generated.ok, "curated campaign generation succeeds")
+		var path: Array = generated.shocks
+		var background: Array = career.model.seeded_shock_path(seed_number, {"id":"base","events":[]}, 240)
 		check(path == career.model.seeded_shock_path(seed_number, scenario, 240), "same seed exactly reproduces all campaign shocks")
 		check(path.slice(0, 48) == career.model.seeded_shock_path(seed_number, scenario, 48), "short campaign is an exact horizon prefix")
 		check(path == career.model.seeded_shock_path(seed_number, scenario, 1000).slice(0, 240), "exporter horizon preserves the campaign prefix")
-		var onsets: Array = []
-		var types: Array = []
-		var bag := {}
-		var q := 0
-		while q < path.size():
-			check(career.model._validate_shocks(path[q]).ok, "campaign shock stays within native input bounds")
-			var demand: float = path[q].demand_shock_pct - background[q].demand_shock_pct
-			var supply: float = path[q].supply_innovation_pct - background[q].supply_innovation_pct
-			var funding: float = path[q].get("funding_need_pct_initial_gdp", 0.0)
-			check(path[q].r_star_change_pct == background[q].r_star_change_pct, "episode RNG does not perturb background neutral-rate innovations")
-			if abs(demand) < 0.2 and abs(supply) < 0.05 and funding == 0.0:
+		var occupied := {}
+		for episode in generated.episodes:
+			for q in range(int(episode.quarter_index), mini(240, int(episode.quarter_index + episode.duration_quarters))):
+				occupied[q] = true
+		for q in range(path.size()):
+			check(career.model._validate_shocks(path[q]).ok, "curated profile plus background stays within native shock domains")
+			if not occupied.has(q):
 				check(path[q] == background[q], "non-episode quarter retains the exact background path")
-				q += 1
-				continue
-			var kind := "demand" if abs(demand) >= 0.2 else "supply" if abs(supply) >= 0.05 else "funding"
-			check(q >= 12 and q <= 20 if onsets.is_empty() else q - onsets[-1] >= 12 and q - onsets[-1] <= 20, "first and recurring onsets are 12 to 20 quarters apart")
-			check(not bag.has(kind), "each crisis type appears once before the bag refills")
-			bag[kind] = true
-			if bag.size() == 3:
-				bag.clear()
-			onsets.append(q)
-			types.append(kind)
-			var strength: float = abs(demand) / 1.2 if kind == "demand" else abs(supply) / 1.8 if kind == "supply" else funding / 3.0
-			check(strength >= 0.75 - 1e-6 and strength <= 1.25 + 1e-6, "episode strength is 0.75 to 1.25 times its existing template")
-			strengths[snappedf(strength, 0.001)] = true
-			if kind != "funding":
-				polarities[kind][signf(demand if kind == "demand" else supply)] = true
-			if q + 1 < path.size():
-				var next: Dictionary = path[q + 1]
-				check(career.model._validate_shocks(next).ok and next.r_star_change_pct == background[q + 1].r_star_change_pct, "second episode quarter has valid, unchanged background inputs")
-				if kind == "demand":
-					check(is_equal_approx(next.demand_shock_pct - background[q + 1].demand_shock_pct, demand / 2.0) and supply == 0.0, "paired demand pulses preserve their sign and template ratio")
-				elif kind == "supply":
-					check(is_equal_approx(next.supply_innovation_pct - background[q + 1].supply_innovation_pct, supply * 0.5 / 1.8) and demand == 0.0, "paired supply pulses preserve their sign and template ratio")
-				else:
-					check(is_equal_approx(next.funding_need_pct_initial_gdp, 2.0 * strength) and demand == 0.0 and supply == 0.0, "funding episode retains its paired financing needs")
-					check(is_equal_approx(path[q].eligible_collateral_pct_initial_gdp, 6.0 * strength) and is_equal_approx(next.eligible_collateral_pct_initial_gdp, 4.0 * strength), "funding collateral scales with the existing template")
-					check(path[q].collateral_haircut_pct == 25.0 and next.collateral_haircut_pct == 25.0 and path[q].liquidity_eligibility_pct == 100.0 and next.liquidity_eligibility_pct == 100.0 and is_equal_approx(path[q].solvency_risk_innovation_pct, 0.6 * strength), "liquidity safeguards and separate solvency impairment remain intact")
-			q += 2
-		check(onsets.size() >= 11 and onsets[-1] > 200, "major crises continue through the late career")
-		signatures[str(onsets) + str(types)] = true
+		check(generated.episodes.size() >= 11 and generated.episodes[-1].quarter_index > 200, "named episodes continue through the late career")
+		signatures[var_to_bytes(path).hex_encode().sha256_text()] = true
 	check(signatures.size() >= 8, "seeds materially vary episode timing and order")
-	check(polarities.demand.size() == 2 and polarities.supply.size() == 2 and strengths.size() >= 20, "demand and supply include both signs and varied episode strengths")
-	check(career.cases == original and career.params == parameters, "campaign generation cannot mutate templates or parameters")
+	check(career.cases == original and career.params == parameters, "campaign generation cannot mutate concepts or parameters")
 	seed(1729)
 	var global_first := randi()
 	var global_second := randi()
@@ -193,7 +161,7 @@ func check_recurring_crises() -> void:
 	old_model.model_digest = "5736a1b7d39bebe2ddc436a4b92d0a8762afe03e1c5e5001ed4fe2a1c3be2edd"
 	check(not career.restore(old_model).ok and career.encode() == preserved, "previous model save is rejected without replacing the active campaign")
 	var funding_quarter := 0
-	while funding_quarter < Career.MAX_QUARTERS and career.shocks[funding_quarter].get("funding_need_pct_initial_gdp", 0.0) <= 0.1:
+	while funding_quarter < Career.MAX_QUARTERS and (career.shocks[funding_quarter].get("funding_need_pct_initial_gdp", 0.0) <= 0.1 or career.shocks[funding_quarter].get("eligible_collateral_pct_initial_gdp", 0.0) <= 0.0 or career.shocks[funding_quarter].get("liquidity_eligibility_pct", 0.0) <= 0.0):
 		check(career.advance(career.model.benchmark_policy(career.state, career.params, "feedback")).ok, "actual prefix advances toward a recurring funding episode")
 		funding_quarter += 1
 	check(funding_quarter < Career.MAX_QUARTERS, "actual career contains a recurring funding episode")
@@ -207,7 +175,7 @@ func check_recurring_crises() -> void:
 	choice.liquidity_request_pct_initial_gdp = 5.0
 	check(assisted.advance(choice).ok, "paired late lending decision advances")
 	check(assisted.state.uncovered_funding_pct_initial_gdp < career.state.uncovered_funding_pct_initial_gdp and assisted.state.credit_spread_pct < career.state.credit_spread_pct, "late eligible lending lowers uncovered need and the funding spread")
-	check(assisted.state.solvency_risk_wedge_pct == career.state.solvency_risk_wedge_pct and assisted.state.solvency_risk_wedge_pct > 0.0, "lending cannot erase late credit impairment")
+	check(assisted.state.solvency_risk_wedge_pct == career.state.solvency_risk_wedge_pct, "lending neither creates nor erases existing credit impairment")
 	for kind in ["hold", "feedback"]:
 		var completed := Career.new()
 		completed.start("mixed_crises", 417)

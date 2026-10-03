@@ -11,6 +11,7 @@ var state: Dictionary = {}
 var history: Array = []
 var decisions: Array = []
 var shocks: Array = []
+var episodes: Array = []
 
 func start(case_id: String, seed_number: int) -> Dictionary:
 	if seed_number < -2147483647 or seed_number > 2147483647:
@@ -20,12 +21,16 @@ func start(case_id: String, seed_number: int) -> Dictionary:
 	var initial: Dictionary = model.initial_state(params, cases[case_id].initial)
 	if not initial.ok:
 		return initial
+	var generated := model.seeded_campaign(seed_number, cases[case_id], MAX_QUARTERS)
+	if not generated.ok:
+		return generated
 	scenario_id = case_id
 	seed_value = seed_number
 	state = initial.state
 	history = [state.duplicate(true)]
 	decisions = []
-	shocks = model.seeded_shock_path(seed_number, cases[case_id], MAX_QUARTERS)
+	shocks = generated.shocks
+	episodes = generated.episodes
 	return {"ok": true}
 
 func advance(policy: Dictionary) -> Dictionary:
@@ -41,6 +46,25 @@ func advance(policy: Dictionary) -> Dictionary:
 
 func current_briefing() -> Dictionary:
 	return shocks[decisions.size()].duplicate(true) if decisions.size() < shocks.size() else {}
+
+func current_shock_episode() -> Dictionary:
+	var current := current_briefing()
+	for episode in episodes:
+		var phase: int = decisions.size() - int(episode.quarter_index)
+		if phase < 0 or phase >= int(episode.duration_quarters) or decisions.size() >= shocks.size():
+			continue
+		# Saved realized inputs remain authoritative after an audit edit. Attribute
+		# only the current pulse, allowing the disclosed background innovations.
+		var keys := current.keys()
+		for key in episode.shock_profile[phase]:
+			if not keys.has(key):
+				keys.append(key)
+		for key in keys:
+			var tolerance := 0.18000000001 if key == "demand_shock_pct" else 0.04000000001 if key == "supply_innovation_pct" else 0.01000000001 if key == "r_star_change_pct" else 0.0
+			if abs(current.get(key, 0.0) - episode.shock_profile[phase].get(key, 0.0)) > tolerance:
+				return {}
+		return {"title":episode.title,"policy_dilemma":episode.policy_dilemma}
+	return {}
 
 func situation_briefing() -> String:
 	if state.is_empty():
@@ -64,7 +88,11 @@ func situation_briefing() -> String:
 		funding = "Funding aftermath: outstanding loans still unwind through repayment."
 	if not decisions.is_empty():
 		funding += " Last decision: lending %.2f; uncovered %.2f (%% initial GDP)." % [state.liquidity_applied_pct_initial_gdp, state.uncovered_funding_pct_initial_gdp]
-	return "MARKETS / %s\nPUBLIC / %s\nFUNDING / %s" % [market, public, funding]
+	var text := "MARKETS / %s\nPUBLIC / %s\nFUNDING / %s" % [market, public, funding]
+	var episode := current_shock_episode()
+	if not episode.is_empty():
+		text += "\nEXOGENOUS / %s · %s" % [episode.title, episode.policy_dilemma]
+	return text
 
 func forecast(policy: Dictionary) -> Dictionary:
 	var projected: Dictionary = state.duplicate(true)
@@ -102,11 +130,11 @@ func review_comparison() -> Dictionary:
 		"hold_rate": history[start].policy_rate_pct, "actual": summaries[0], "held": summaries[1]}
 
 func model_digest() -> String:
-	return (FileAccess.get_sha256("res://model/economy.gd") + FileAccess.get_sha256("res://model/parameters.json") + FileAccess.get_sha256("res://model/scenarios.json")).sha256_text()
+	return (FileAccess.get_sha256("res://model/economy.gd") + FileAccess.get_sha256("res://model/parameters.json") + FileAccess.get_sha256("res://model/scenarios.json") + FileAccess.get_sha256("res://model/exogenous_shocks.json")).sha256_text()
 
 func payload() -> Dictionary:
 	return {"version": 1, "model_digest": model_digest(), "scenario_id": scenario_id,
-		"seed": seed_value, "shocks": shocks.duplicate(true), "decisions": decisions.duplicate(true)}
+		"seed": seed_value, "shocks": shocks.duplicate(true), "episodes": episodes.duplicate(true), "decisions": decisions.duplicate(true)}
 
 func encode() -> PackedByteArray:
 	# Godot's native values retain exact floats; JSON parsing can move a value by one ULP.
@@ -129,6 +157,8 @@ func restore(data: Variant) -> Dictionary:
 	var begun: Dictionary = replay.start(data.scenario_id, int(data.seed))
 	if not begun.ok:
 		return begun
+	if data.get("episodes") != replay.episodes:
+		return {"ok":false,"error":"Save has inconsistent exogenous episode context. Current career is unchanged."}
 	replay.shocks = data.shocks.duplicate(true)
 	for policy in data.decisions:
 		if typeof(policy) != TYPE_DICTIONARY:
@@ -142,6 +172,7 @@ func restore(data: Variant) -> Dictionary:
 	history = replay.history
 	decisions = replay.decisions
 	shocks = replay.shocks
+	episodes = replay.episodes
 	return {"ok": true}
 
 func save_to(path: String) -> Dictionary:

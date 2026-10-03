@@ -472,28 +472,108 @@ func shock_for_quarter(scenario: Dictionary, quarter: int) -> Dictionary:
 	return {}
 
 
+func load_shock_catalogue(path: String = "res://model/exogenous_shocks.json") -> Dictionary:
+	var parsed := _read_json(path)
+	return validate_shock_catalogue(parsed.value) if parsed.ok else parsed
+
+
+func validate_shock_catalogue(records: Variant) -> Dictionary:
+	if typeof(records) != TYPE_ARRAY or records.size() != 150:
+		return {"ok":false,"error":"Shock catalogue requires150 ranked concepts."}
+	var categories := {"energy":0,"financial_funding":0,"financial_solvency":0,"food":0,"health":0,
+		"household_business_demand":0,"labor":0,"logistics_trade":0,"natural_disasters":0,"technology_productivity":0}
+	var ids := {}
+	var titles := {}
+	var profiles := {}
+	var accepted: Array = []
+	for i in range(records.size()):
+		var row: Variant = records[i]
+		if typeof(row) != TYPE_DICTIONARY:
+			return {"ok":false,"error":"Shock concept must be an object."}
+		for field in ["id","title","category","mechanism","policy_dilemma","selection_reason"]:
+			if typeof(row.get(field)) != TYPE_STRING or row[field].strip_edges().is_empty():
+				return {"ok":false,"error":"Shock concept lacks %s." % field}
+		if not row.id.is_valid_identifier() or row.id != row.id.to_lower() or ids.has(row.id) or titles.has(row.title.to_lower()) or not categories.has(row.category):
+			return {"ok":false,"error":"Invalid or repeated shock identity/category."}
+		var total := 0
+		for score in ["distinctness","policy_tradeoff","recognizability","model_fit","replay_variety"]:
+			var value: Variant = row.get(score)
+			if typeof(value) not in [TYPE_INT,TYPE_FLOAT] or not is_finite(float(value)) or value < 0 or value > 5 or value != int(value):
+				return {"ok":false,"error":"Invalid editorial shock score."}
+			total += int(value)
+		if row.get("rank") != i + 1 or row.get("total") != total or typeof(row.get("accepted")) != TYPE_BOOL or row.accepted != (i < 50):
+			return {"ok":false,"error":"Shock ranking/selection must retain the exact top50."}
+		if i > 0 and not _shock_precedes(records[i - 1], row):
+			return {"ok":false,"error":"Shock ranking is not in the reviewed strict order."}
+		var duration: Variant = row.get("duration_quarters")
+		if typeof(duration) not in [TYPE_INT,TYPE_FLOAT] or not is_finite(float(duration)) or duration < 1 or duration > 4 or duration != int(duration) or typeof(row.get("shock_profile")) != TYPE_ARRAY or row.shock_profile.size() != int(duration):
+			return {"ok":false,"error":"Shock profile requires one to four consecutive quarters."}
+		for pulse in row.shock_profile:
+			if typeof(pulse) != TYPE_DICTIONARY or not _validate_shocks(pulse).ok:
+				return {"ok":false,"error":"Shock profile contains invalid economic inputs."}
+			if pulse.has("funding_need_pct_initial_gdp"):
+				for key in ["eligible_collateral_pct_initial_gdp","collateral_haircut_pct","liquidity_eligibility_pct"]:
+					if not pulse.has(key):
+						return {"ok":false,"error":"Funding concept must disclose collateral and eligibility."}
+		var profile: String = JSON.stringify(row.shock_profile)
+		if profiles.has(profile) or typeof(row.get("source_urls")) != TYPE_ARRAY or row.source_urls.is_empty():
+			return {"ok":false,"error":"Shock profiles must differ and retain channel sources."}
+		for url in row.source_urls:
+			if typeof(url) != TYPE_STRING or not url.begins_with("https://"):
+				return {"ok":false,"error":"Shock source must retain its HTTPS reference."}
+		ids[row.id] = true
+		titles[row.title.to_lower()] = true
+		profiles[profile] = true
+		categories[row.category] += 1
+		if row.accepted:
+			accepted.append(row)
+	for count in categories.values():
+		if count != 15:
+			return {"ok":false,"error":"Shock catalogue requires fifteen candidates per category."}
+	return {"ok":true,"records":records,"accepted":accepted}
+
+
+static func _shock_precedes(a: Dictionary, b: Dictionary) -> bool:
+	for key in ["total","policy_tradeoff","model_fit","distinctness","replay_variety","recognizability"]:
+		if a[key] != b[key]:
+			return a[key] > b[key]
+	return a.id < b.id
+
+
 func seeded_shock_path(seed: int, scenario: Dictionary, quarters: int) -> Array:
+	return seeded_campaign(seed, scenario, quarters).get("shocks", [])
+
+
+func seeded_campaign(seed: int, scenario: Dictionary, quarters: int) -> Dictionary:
+	var context: Array = []
 	if scenario.id == "mixed_crises":
+		var catalogue := load_shock_catalogue()
+		if not catalogue.ok:
+			return catalogue
 		scenario = scenario.duplicate(true)
-		var templates: Dictionary = load_scenarios().scenarios
+		var concepts := {}
+		var independent: Array = []
+		for concept in catalogue.accepted:
+			concepts[concept.id] = concept
+			if concept.id not in ["private_bank_recapitalization","stable_private_deposits_return"]:
+				independent.append(concept.id)
 		var episodes := RandomNumberGenerator.new()
 		episodes.seed = seed ^ 0x43414D50
 		var bag: Array = []
+		var followups: Array = []
 		var onset := episodes.randi_range(12, 20)
 		while onset < quarters:
 			if bag.is_empty():
-				bag = ["demand_boom", "supply_shock", "funding_stress"]
+				bag = independent.duplicate()
+				followups = ["private_bank_recapitalization","stable_private_deposits_return"]
 			var id: String = bag.pop_at(episodes.randi_range(0, bag.size() - 1))
-			var strength := episodes.randf_range(0.75, 1.25)
-			var polarity := 1.0 if id == "funding_stress" or episodes.randi_range(0, 1) == 1 else -1.0
-			var events: Array = templates[id].events
-			for template in events:
-				var event: Dictionary = template.duplicate(true)
-				event.quarter_index = onset + int(template.quarter_index) - int(events[0].quarter_index)
-				for key in ["demand_shock_pct", "supply_innovation_pct", "funding_need_pct_initial_gdp", "eligible_collateral_pct_initial_gdp", "solvency_risk_innovation_pct"]:
-					if event.has(key):
-						event[key] *= strength * polarity
-				scenario.events.append(event)
+			_append_shock_episode(scenario, context, concepts[id], onset)
+			var followup := "private_bank_recapitalization" if id in ["office_property_credit_losses","mortgage_lien_documentation_failure"] else "stable_private_deposits_return" if id in ["sound_bank_uninsured_run","bank_payment_float_failure","bank_dollar_rollover_squeeze"] else ""
+			var followup_onset: int = onset + int(concepts[id].duration_quarters) + 1
+			if followups.has(followup):
+				followups.erase(followup)
+				if followup_onset < quarters:
+					_append_shock_episode(scenario, context, concepts[followup], followup_onset, id)
 			onset += episodes.randi_range(12, 20)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
@@ -510,7 +590,17 @@ func seeded_shock_path(seed: int, scenario: Dictionary, quarters: int) -> Array:
 			shocks["collateral_haircut_pct"] = shocks.get("collateral_haircut_pct", 25.0)
 			shocks["liquidity_eligibility_pct"] = 100.0
 		path.append(shocks)
-	return path
+	return {"ok":true,"shocks":path,"episodes":context}
+
+
+static func _append_shock_episode(scenario: Dictionary, context: Array, concept: Dictionary, onset: int, trigger: String = "") -> void:
+	context.append({"id":concept.id,"quarter_index":onset,"trigger_id":trigger,
+		"title":concept.title,"policy_dilemma":concept.policy_dilemma,
+		"duration_quarters":concept.duration_quarters,"shock_profile":concept.shock_profile.duplicate(true)})
+	for q in range(concept.shock_profile.size()):
+		var event: Dictionary = concept.shock_profile[q].duplicate(true)
+		event.quarter_index = onset + q
+		scenario.events.append(event)
 
 
 static func _rate_on_grid(rate: float, increment: float) -> bool:

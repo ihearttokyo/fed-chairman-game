@@ -152,6 +152,7 @@ print('PASS: real Godot seven signed-rate boundaries, conditional delivery and r
 # Reference exports keep their wider seed and horizon contract, unlike careers.
 with tempfile.TemporaryDirectory(prefix='fed-campaign-reference-') as directory:
     paths = []
+    episodes = []
     for quarters in (48, 1000):
         output = Path(directory) / f'campaign-{quarters}.json'
         command = [godot, '--headless', '--path', str(ROOT / 'game'),
@@ -166,6 +167,11 @@ with tempfile.TemporaryDirectory(prefix='fed-campaign-reference-') as directory:
         assert document['seed'] == 9223372036854775807 and len(document['quarters']) == quarters
         assert [row['quarter_index'] for row in document['quarters']] == list(range(1, quarters + 1))
         paths.append(document['shock_path'])
+        episodes.append(document['episodes'])
     assert paths[0] == paths[1][:48], 'Campaign exporter must retain exact horizon prefixes'
-    assert any(shock.get('funding_need_pct_initial_gdp', 0) > 0.1 for shock in paths[1][900:]), 'Long reference keeps recurring late crises'
+    assert episodes[0] == [event for event in episodes[1] if event['quarter_index'] < 48], 'Named context retains the same horizon prefix'
+    accepted = {record['id'] for record in json.loads((ROOT / 'game/model/exogenous_shocks.json').read_text()) if record['accepted']}
+    assert all(event['id'] in accepted for event in episodes[1]), 'Only the accepted top50 enter exports'
+    assert any(event['quarter_index'] >= 900 for event in episodes[1]), 'Long reference keeps late curated episodes, not only funding events'
+    assert any(shock.get('funding_need_pct_initial_gdp', 0) > 0.1 for shock in paths[1]), 'Long reference retains funding variety as well'
 print('PASS: real campaign reference, int64 seed, 1000-quarter horizon and exact prefix')

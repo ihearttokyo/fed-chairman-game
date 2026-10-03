@@ -157,7 +157,7 @@ for (let i = 0; i < shockKeys.length; i++) {
 const shockNoteRow = 6 + shockKeys.length * caseStride;
 cell(shocks, `B${shockNoteRow}`, 'Seed 1 realized paths from Godot 4.7.2. Hypothetical disturbances; no historical calibration.');
 cell(shocks, `B${shockNoteRow + 1}`, 'Blank potential growth keeps the previous trend. All other active shock inputs must be numeric.');
-cell(shocks, `B${shockNoteRow + 2}`, 'Recurring crises: paired episodes every 12 to 20 quarters at 0.75 to 1.25 times the demand, supply or funding template.');
+cell(shocks, `B${shockNoteRow + 2}`, `Recurring crises: ${cases.find(x => x.scenario.id === 'mixed_crises').scenario.description}`);
 shocks.getRange(`E6:AZ${shockNoteRow - 2}`).setNumberFormat('0.000');
 
 const R = {
@@ -577,4 +577,10 @@ for (const [sheetName, range, file] of [['Policy Lab', 'A1:P55', 'lab'], ['Polic
   const preview = await workbook.render({ sheetName, range, scale: 1, format: 'png' });
   await fs.writeFile(new URL(`workbook-${file}.png`, evidence), new Uint8Array(await preview.arrayBuffer()));
 }
+cell(lab, 'C4', 7); workbook.recalculate();
+for (const [sheetName, range, file] of [['Policy Lab', 'A1:P55', 'curated-lab'], ['Shocks', 'A1:Z22', 'curated-shocks'], ['Shocks', `A${shockNoteRow}:P${shockNoteRow + 3}`, 'campaign-note']]) {
+  const preview = await workbook.render({ sheetName, range, scale: 1, format: 'png' });
+  await fs.writeFile(new URL(`workbook-${file}.png`, evidence), new Uint8Array(await preview.arrayBuffer()));
+}
+cell(lab, 'C4', 3); workbook.recalculate();
 console.log('EXPORTED Federal Reserve Policy Lab.xlsx');

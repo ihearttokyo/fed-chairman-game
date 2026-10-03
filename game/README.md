@@ -108,20 +108,26 @@ demand innovations in [-0.18, +0.18] percentage points, supply innovations in
 receives small funding needs with eligible collateral. These are design choices.
 Scheduled scenario events are added to that background path.
 
-The optional Recurring crises (advanced) case reuses the demand, supply and
-funding templates in two-quarter episodes throughout the career. First onset
-and subsequent onset intervals range from 12 to 20 quarters. Each episode is
-0.75 to 1.25 times its template; demand and supply can have either sign, while
-funding remains positive. Each bag includes all three types once before refill.
-A separate seed-derived local generator precomputes the episodes at start,
-without changing the background random sequence or any of the six earlier
-scenario paths. No background service or per-turn network work is required.
+The optional Recurring crises (advanced) case draws from the reviewed top fifty
+of [150 concrete concepts](../docs/EXOGENOUS_SHOCKS.md), including natural disasters,
+energy/food disruptions, labor and productive-capacity changes, funding needs,
+credit losses and favorable normalization. Forty-eight independent profiles use
+a no-repeat bag and 12–20-quarter onset intervals. Two conditional bank-finance
+follow-ups require qualifying prior stress and one quiet quarter after its end.
+Every profile retains its authored one-to-four-quarter sign/timing sequence;
+growth levels, haircuts and eligibility are not randomly rescaled. Separate
+seed-derived generation precomputes the numeric path and event context at start,
+without changing background randomness or the six earlier scenario paths.
 
-These incidence and magnitude choices are fictional game design, not empirical
-crisis frequencies. The shared seeded generator supplies the game, exports and
-workbook. Previews and dispatches still cannot inspect future episodes. Adding
-the campaign changes the model fingerprint; older saves are rejected without
-overwrite or silent migration. Previous release artifacts remain separate.
+Incidence and magnitude choices are fictional game design, not empirical crisis
+frequencies. The shared seeded generator supplies the game, exports and workbook.
+Current dispatch names an active event and its dilemma, never its future pulses,
+remaining duration or next episode. Previews use only the disclosed current shock.
+Private bank/deposit normalization is relief relative to continuing stress, not
+an unconditional negative-risk impulse: old impairment and loan repayment remain.
+The catalogue is fingerprinted; incompatible saves and altered context reject
+without overwrite or silent migration. Saved realized inputs remain authoritative;
+an audit-edited current pulse suppresses unsupported event attribution.
 
 The dispatch also interprets markets, public hardship and funding as an offline
 storyline. It reads only current information and completed history; replay
