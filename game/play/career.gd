@@ -85,9 +85,9 @@ func situation_briefing() -> String:
 	elif state.solvency_risk_wedge_pct > 0.1:
 		funding = "Funding aftermath: credit impairment remains; lending cannot repair capital."
 	elif state.outstanding_liquidity_pct_initial_gdp > 0.1:
-		funding = "Funding aftermath: outstanding loans still unwind through repayment."
+		funding = "Funding aftermath: prior short loans mature at the next settlement."
 	if not decisions.is_empty():
-		funding += " Last decision: lending %.2f; uncovered %.2f (%% initial GDP)." % [state.liquidity_applied_pct_initial_gdp, state.uncovered_funding_pct_initial_gdp]
+		funding += " Last decision: lending %.2f; uncovered %.2f (%% meeting GDP)." % [state.liquidity_applied_pct_initial_gdp / state.decision_nominal_gdp_ratio, state.uncovered_funding_pct_initial_gdp / state.decision_nominal_gdp_ratio]
 	var text := "MARKETS / %s\nPUBLIC / %s\nFUNDING / %s" % [market, public, funding]
 	var episode := current_shock_episode()
 	if not episode.is_empty():
@@ -99,6 +99,9 @@ func forecast(policy: Dictionary) -> Dictionary:
 	var states: Array = []
 	for q in range(8):
 		var choice: Dictionary = policy if q == 0 else model.benchmark_policy(projected, params, "hold")
+		if q > 0:
+			for key in Economy.POLICY_SWITCHES:
+				choice[key] = policy.get(key, Economy.POLICY_SWITCHES[key])
 		var result: Dictionary = model.step(projected, choice, current_briefing() if q == 0 else {}, params)
 		if not result.ok:
 			return result
@@ -130,7 +133,7 @@ func review_comparison() -> Dictionary:
 		"hold_rate": history[start].policy_rate_pct, "actual": summaries[0], "held": summaries[1]}
 
 func model_digest() -> String:
-	return (FileAccess.get_sha256("res://model/economy.gd") + FileAccess.get_sha256("res://model/parameters.json") + FileAccess.get_sha256("res://model/scenarios.json") + FileAccess.get_sha256("res://model/exogenous_shocks.json")).sha256_text()
+	return (FileAccess.get_sha256("res://model/economy.gd") + FileAccess.get_sha256("res://model/parameters.json") + FileAccess.get_sha256("res://model/scenarios.json") + FileAccess.get_sha256("res://model/exogenous_shocks.json") + FileAccess.get_sha256("res://model/portfolio_reference.json")).sha256_text()
 
 func payload() -> Dictionary:
 	return {"version": 1, "model_digest": model_digest(), "scenario_id": scenario_id,

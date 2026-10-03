@@ -61,6 +61,10 @@ func _initialize() -> void:
 		failures.append("canonical quarterly state/step API is missing")
 	elif OS.get_cmdline_user_args().has("--boundaries-only"):
 		_test_review_regressions()
+	elif OS.get_cmdline_user_args().has("--balance-tools-only"):
+		_test_validation_and_no_mutation()
+		_test_asset_purchases_change_financial_conditions()
+		_test_liquidity_limits_and_solvency_separation()
 	elif OS.get_cmdline_user_args().has("--channels-only"):
 		_test_demand_and_supply_channels()
 		_test_expectations_and_credibility()
@@ -138,7 +142,7 @@ func _test_review_regressions() -> void:
 	expect_true(malformed == snapshot, "rejected history leaves input unchanged")
 	malformed = initial_state(params, {"asset_stock_pct_initial_gdp": 99.0}).state
 	malformed.asset_stock_capacity_pct_initial_gdp = 1000.0
-	expect_true(not step(malformed, policy_at(3.5, 3.5, 100.0), {}, params).ok, "state cannot override the parameter-owned stock capacity")
+	expect_true(not step(malformed, policy_at(3.5, 3.5, 100.0), {}, params).ok, "retired capacity fields cannot enter the validated state schema")
 	var invalid_params: Dictionary = params.duplicate(true)
 	invalid_params.public_support_base = 120.0
 	expect_true(not initial_state(invalid_params).ok, "public support baseline respects its declared domain")
@@ -212,9 +216,9 @@ func _test_validation_and_no_mutation() -> void:
 	expect_true(state == before, "nonfinite policy does not mutate state")
 	bad = neutral_policy(state, loaded.values)
 	bad.asset_flow_request_pct_initial_gdp = 101.0
-	rejected = step(state, bad, {}, loaded.values)
-	expect_true(not rejected.ok, "out-of-range tool request rejected")
-	expect_true(state == before, "out-of-range tool request does not mutate state")
+	var expanded: Dictionary = step(state, bad, {}, loaded.values)
+	expect_true(expanded.ok and expanded.state.asset_flow_applied_pct_initial_gdp == 101.0, "valid large asset offer applies without the retired request ceiling")
+	expect_true(state == before, "accepted large offer leaves its input state unchanged")
 	rejected = step(state, neutral_policy(state, loaded.values), {"future_quarter_shock": 10.0}, loaded.values)
 	expect_true(not rejected.ok, "unknown or future exogenous input rejected")
 	expect_true(state == before, "invalid shock does not mutate state")
@@ -263,9 +267,11 @@ func _test_asset_purchases_change_financial_conditions() -> void:
 	var buy_result: Dictionary = step(bought, policy_buy, {}, loaded.values)
 	expect_true(base_result.ok and buy_result.ok, "paired asset-purchase steps are valid")
 	if base_result.ok and buy_result.ok:
-		expect_close(buy_result.state.asset_flow_applied_pct_initial_gdp, 2.0, "requested purchases obey quarterly flow cap")
-		expect_close(buy_result.state.term_premium_pct, 0.45, "holdings lower term premium relative to start stock")
+		expect_close(buy_result.state.asset_flow_applied_pct_initial_gdp, 4.0, "requested purchase applies fully without the retired quarterly quota")
+		expect_close(buy_result.state.term_premium_pct, base.term_premium_pct - loaded.values.portfolio_premium_max_shift_pct * tanh(4.0 / loaded.values.portfolio_premium_scale_pct_gdp), "purchase premium follows the disclosed smooth initial-reference exposure equation")
 		expect_true(buy_result.state.financial_restraint_gap_pct < base_result.state.financial_restraint_gap_pct, "lower term premium reduces real borrowing restraint")
+		var large: Dictionary = step(base, policy_at(3.5, 3.5, 150.0), {}, loaded.values)
+		expect_true(large.ok and large.state.term_premium_pct < 0.0 and large.state.term_premium_pct > base.term_premium_pct - loaded.values.portfolio_premium_max_shift_pct, "premium can cross zero while its response remains smoothly bounded rather than clamped")
 
 
 func _test_policy_impulse_and_peak() -> void:
@@ -430,22 +436,25 @@ func _test_liquidity_limits_and_solvency_separation() -> void:
 	var repay: Dictionary = step(on.state, neutral_policy(on.state, params), {}, params)
 	expect_true(repay.ok, "liquidity rolls down on the next quarter")
 	if repay.ok:
-		expect_close(repay.state.liquidity_repayment_pct_initial_gdp, 0.45, "repayment uses disclosed fraction")
-		expect_close(repay.state.outstanding_liquidity_pct_initial_gdp, 2.55, "outstanding loan declines by explicit repayment")
+		expect_close(repay.state.liquidity_repayment_pct_initial_gdp, on.state.outstanding_liquidity_pct_initial_gdp, "all prior short principal matures in the next settlement")
+		expect_close(repay.state.outstanding_liquidity_pct_initial_gdp, 0.0, "without new refinancing or funding advances no prior loan stock survives")
 	var limited: Dictionary = step(state_off, policy_at(3.5, 3.5, 0.0, 20.0), {"funding_need_pct_initial_gdp": 10.0, "eligible_collateral_pct_initial_gdp": 1.0, "collateral_haircut_pct": 50.0, "liquidity_eligibility_pct": 100.0}, params)
 	expect_true(limited.ok, "collateral-limited support path runs")
 	if limited.ok:
 		expect_close(limited.state.liquidity_applied_pct_initial_gdp, 0.5, "haircuts limit eligible lending capacity")
 	var stock_override: Dictionary = initial_state(params, {"asset_stock_pct_initial_gdp": 99.0}).state
 	var capped: Dictionary = step(stock_override, policy_at(3.5, 3.5, 4.0), {}, params)
-	expect_true(capped.ok, "asset-stock-cap path runs")
+	expect_true(capped.ok, "large initialized portfolio accepts the same uncapped purchase")
 	if capped.ok:
-		expect_close(capped.state.asset_flow_applied_pct_initial_gdp, 1.0, "purchases stop at stock capacity")
+		expect_close(capped.state.asset_flow_applied_pct_initial_gdp, 4.0, "portfolio size cannot manufacture a purchase quota")
+		expect_close(capped.state.asset_stock_pct_initial_gdp, 103.0, "principal stock increases by the full purchase")
 		var runoff: Dictionary = step(capped.state, policy_at(capped.state.policy_rate_pct, capped.state.guidance_rate_pct, -100.0), {}, params)
 		expect_true(runoff.ok, "asset runoff remains available")
 		if runoff.ok:
-			expect_close(runoff.state.asset_flow_applied_pct_initial_gdp, -2.0, "runoff respects flow limit")
-			expect_true(runoff.state.term_premium_pct < 0.0, "term premium can cross below zero without a clamp")
+			var fraction: float = params.mbs_base_repayment_fraction * (1.0 + params.mbs_repayment_relative_response * tanh((capped.state.initial_mbs_financing_rate_pct - capped.state.long_yield_pct - capped.state.credit_spread_pct) / params.mbs_repayment_rate_scale_pct))
+			var due: float = capped.state.treasury_cohorts_pct_initial_gdp[0] + capped.state.mbs_stock_pct_initial_gdp * fraction + capped.state.bill_cohorts_pct_initial_gdp[0]
+			expect_close(runoff.state.asset_flow_applied_pct_initial_gdp, -minf(100.0, due), "requested runoff applies only the independently computed actual principal due")
+			expect_true(runoff.state.term_premium_pct > capped.state.term_premium_pct, "duration runoff raises the premium relative to the matched purchased portfolio")
 
 
 func _test_public_support_recovers_without_reset() -> void:

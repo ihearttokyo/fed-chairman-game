@@ -143,7 +143,12 @@ func _test_conditional_relief() -> void:
 		for pulse in concepts[pair[0]].shock_profile:
 			state = model.step(state, policy, pulse, params).state
 		policy.liquidity_request_pct_initial_gdp = 0.0
-		state = model.step(state, policy, {}, params).state
+		var prior_loans: float = state.outstanding_liquidity_pct_initial_gdp
+		var quiet := model.step(state, policy, {}, params)
+		check(quiet.ok and quiet.state.liquidity_repayment_pct_initial_gdp == prior_loans and quiet.state.outstanding_liquidity_pct_initial_gdp == 0.0, "quiet interval records full short-loan maturity, not shock-driven forgiveness")
+		if pair[1] == "stable_private_deposits_return":
+			check(prior_loans > 0.0, "funding normalization fixture really begins with funded principal")
+		state = quiet.state
 		var continuing := state.duplicate(true)
 		var normalized := state.duplicate(true)
 		var profile: Array = concepts[pair[1]].shock_profile
@@ -160,4 +165,4 @@ func _test_conditional_relief() -> void:
 		if pair[1] == "private_bank_recapitalization":
 			check(normalized.solvency_risk_wedge_pct > 0.0, "old bank losses remain after reduced new credit pressure")
 		else:
-			check(normalized.outstanding_liquidity_pct_initial_gdp > 0.0 and normalized.outstanding_liquidity_pct_initial_gdp == continuing.outstanding_liquidity_pct_initial_gdp, "stable funding does not erase loans; existing exposure repays gradually")
+			check(normalized.outstanding_liquidity_pct_initial_gdp == 0.0 and continuing.outstanding_liquidity_pct_initial_gdp == 0.0, "private normalization cannot change recorded repayment or manufacture new loan exposure")

@@ -81,6 +81,16 @@ func run() -> void:
 		for index in range(order.size() - 1, -1, -1):
 			await key(root, KEY_TAB, false, true)
 			check(root.gui_get_focus_owner() == order[index], "Shift-Tab reverses the complete focus cycle")
+	for pair in [[game.reinvestment, "reinvest_principal"], [game.reserve_maintenance, "maintain_ample_reserves"], [game.sterilization, "sterilize_purchases"]]:
+		var control: CheckBox = pair[0]
+		var mode: String = pair[1]
+		var previous_mode: bool = game._policy()[mode]
+		control.grab_focus()
+		await key(root, KEY_SPACE)
+		check(game._policy()[mode] == not previous_mode and control.button_pressed == not previous_mode, "focused Space toggles each actual staged portfolio mode")
+		check(game.career.encode() == start, "keyboard portfolio mode changes never adopt a quarter")
+		await key(root, KEY_SPACE)
+		check(game._policy()[mode] == previous_mode and game.career.encode() == start, "keyboard mode toggles restore exactly without economic mutation")
 	game.commitment.grab_focus()
 	await key(root, KEY_SPACE)
 	await key(game.commitment.get_popup(), KEY_DOWN)

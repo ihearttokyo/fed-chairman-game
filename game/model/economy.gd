@@ -7,9 +7,8 @@ const PARAMETER_KEYS := [
 	"initial_expected_long_inflation_pct", "initial_policy_rate_pct", "initial_r_star_pct",
 	"initial_structural_unemployment_pct", "initial_unemployment_pct", "initial_output_gap_pct",
 	"initial_credibility", "initial_public_support", "initial_asset_stock_pct_initial_gdp",
-	"initial_term_premium_pct", "asset_stock_capacity_pct_initial_gdp",
-	"asset_flow_quarter_limit_pct_initial_gdp", "asset_flow_request_limit_pct_initial_gdp",
-	"term_premium_asset_sensitivity", "minimum_rate_increment_pct", "negative_rate_efficacy_scale_pct",
+	"initial_term_premium_pct",
+	"minimum_rate_increment_pct", "negative_rate_efficacy_scale_pct",
 	"policy_inflation_response", "policy_output_gap_response",
 	"guidance_sensitivity_limit", "long_yield_current_rate_weight", "real_rate_short_weight",
 	"real_rate_gap_persistence", "output_gap_persistence", "real_rate_output_sensitivity",
@@ -21,8 +20,7 @@ const PARAMETER_KEYS := [
 	"credibility_miss_persistence", "credibility_miss_tolerance_pct",
 	"credibility_stance_scale_pct", "credibility_followthrough_tolerance_pct",
 	"solvency_risk_persistence", "funding_spread_sensitivity",
-	"normal_credit_spread_pct", "liquidity_repayment_fraction",
-	"liquidity_flow_quarter_limit_pct_initial_gdp", "liquidity_request_limit_pct_initial_gdp",
+	"normal_credit_spread_pct",
 	"public_support_base", "public_inflation_burden_weight",
 	"public_unemployment_burden_weight", "public_hardship_memory_persistence",
 	"public_hardship_memory_weight", "public_support_adjustment",
@@ -30,6 +28,11 @@ const PARAMETER_KEYS := [
 	"demand_release_base_fraction", "demand_release_max_fraction",
 	"demand_release_backlog_scale_pct", "demand_release_financing_scale_pct",
 	"r_star_reversion_persistence", "short_expectation_anchor_weight",
+	"portfolio_premium_max_shift_pct", "portfolio_premium_scale_pct_gdp",
+	"treasury_duration_years", "mbs_duration_years", "treasury_reinvestment_maturity_quarters",
+	"mbs_base_repayment_fraction", "mbs_repayment_rate_scale_pct", "mbs_repayment_relative_response",
+	"initial_reserves_pct_initial_gdp", "initial_currency_pct_initial_gdp", "initial_treasury_account_pct_initial_gdp",
+	"reserve_buffer_pct_current_gdp", "reserve_clear_pct_current_gdp", "reserve_scarcity_sensitivity_pct",
 ]
 const POLICY_KEYS := [
 	"policy_rate_request_pct", "guidance_rate_pct", "guidance_inflation_sensitivity",
@@ -43,8 +46,11 @@ const SHOCK_LIMITS := {
 	"r_star_change_pct": 1.0,
 	"r_star_reference_change_pct": 1.0,
 	"structural_unemployment_change_pct": 0.5,
-	"funding_need_pct_initial_gdp": 100.0,
-	"eligible_collateral_pct_initial_gdp": 100.0,
+	"funding_need_pct_initial_gdp": INF,
+	"refinancing_need_pct_initial_gdp": INF,
+	"rrp_encumbered_collateral_pct_initial_gdp": INF,
+	"rrp_uptake_fraction": 1.0,
+	"eligible_collateral_pct_initial_gdp": INF,
 	"collateral_haircut_pct": 100.0,
 	"liquidity_eligibility_pct": 100.0,
 	"credit_risk_innovation_pct": 5.0,
@@ -58,6 +64,39 @@ const INITIAL_OVERRIDE_KEYS := [
 	"supply_pressure_pct", "solvency_risk_wedge_pct", "public_hardship_memory",
 	"deferred_demand_pct", "r_star_reference_pct",
 ]
+const POLICY_SWITCHES := {"reinvest_principal":true, "maintain_ample_reserves":true, "sterilize_purchases":false}
+const BALANCE_STOCK_KEYS := [
+	"initial_actual_output_index", "initial_price_index", "initial_duration_equivalent_pct_initial_gdp",
+	"initial_portfolio_premium_pct", "initial_mbs_financing_rate_pct",
+	"mbs_stock_pct_initial_gdp", "reserves_pct_initial_gdp", "reverse_repo_pct_initial_gdp",
+	"currency_pct_initial_gdp", "treasury_account_pct_initial_gdp", "capital_other_pct_initial_gdp",
+]
+const BALANCE_DIAGNOSTICS := [
+	"decision_nominal_gdp_ratio", "ending_nominal_gdp_ratio", "duration_equivalent_pct_initial_gdp",
+	"total_assets_pct_initial_gdp", "total_asset_change_pct_initial_gdp", "principal_due_pct_initial_gdp",
+	"treasury_redemption_pct_initial_gdp", "treasury_funding_transfer_pct_initial_gdp",
+	"mbs_repayment_pct_initial_gdp", "bill_redemption_pct_initial_gdp", "bill_funding_transfer_pct_initial_gdp", "mbs_repayment_fraction",
+	"principal_runoff_pct_initial_gdp", "principal_reinvestment_pct_initial_gdp",
+	"treasury_reinvestment_pct_initial_gdp", "mbs_reinvestment_pct_initial_gdp", "bill_rollover_pct_initial_gdp",
+	"long_securities_runoff_pct_initial_gdp", "discretionary_purchase_pct_initial_gdp",
+	"reserve_maintenance_purchase_pct_initial_gdp", "currency_conversion_pct_initial_gdp",
+	"reverse_repo_closed_pct_initial_gdp", "reserves_before_accommodation_pct_initial_gdp",
+	"reserve_buffer_pct_initial_gdp", "reserve_clear_pct_initial_gdp", "reserve_scarcity_wedge_pct",
+	"local_access_wedge_pct", "refinancing_request_pct_initial_gdp", "refinancing_need_pct_initial_gdp",
+	"eligible_local_need_pct_initial_gdp", "lending_collateral_capacity_pct_initial_gdp",
+	"liquidity_local_applied_pct_initial_gdp", "liquidity_refinancing_applied_pct_initial_gdp",
+	"liquidity_new_need_applied_pct_initial_gdp", "liquidity_aggregate_applied_pct_initial_gdp",
+	"liquidity_aggregate_need_pct_initial_gdp", "liquidity_aggregate_offer_binding", "liquidity_aggregate_collateral_binding",
+	"uncovered_new_funding_pct_initial_gdp", "uncovered_refinancing_pct_initial_gdp",
+	"liquidity_offer_binding", "liquidity_collateral_binding", "liquidity_eligibility_binding",
+	"sterilization_requested_pct_initial_gdp", "sterilization_planned_pct_initial_gdp",
+	"sterilization_applied_pct_initial_gdp", "sterilization_unfulfilled_pct_initial_gdp",
+	"sterilization_collateral_available_pct_initial_gdp", "sterilization_uptake_fraction",
+	"sterilization_uptake_binding", "sterilization_collateral_binding", "sterilization_reserve_binding",
+	"sterilized_principal_runoff_pct_initial_gdp", "sterilized_principal_reinvestment_pct_initial_gdp",
+	"principal_ledger_error_pct_initial_gdp",
+]
+
 const POLICY_REQUIRED_HINT := "policy requires all six disclosed controls"
 
 
@@ -170,7 +209,6 @@ func initial_state(params: Dictionary, override: Dictionary = {}) -> Dictionary:
 		"financial_restraint_gap_pct": 0.0,
 		"asset_stock_pct_initial_gdp": params.initial_asset_stock_pct_initial_gdp,
 		"initial_asset_stock_pct_initial_gdp": params.initial_asset_stock_pct_initial_gdp,
-		"asset_stock_capacity_pct_initial_gdp": params.asset_stock_capacity_pct_initial_gdp,
 		"term_premium_pct": params.initial_term_premium_pct,
 		"asset_flow_request_pct_initial_gdp": 0.0,
 		"asset_flow_applied_pct_initial_gdp": 0.0,
@@ -205,8 +243,38 @@ func initial_state(params: Dictionary, override: Dictionary = {}) -> Dictionary:
 	state.credit_risk_wedge_pct = state.solvency_risk_wedge_pct
 	state.credit_spread_pct = params.normal_credit_spread_pct + state.credit_risk_wedge_pct
 	state.actual_output_index = state.potential_output_index * (1.0 + state.output_gap_pct / 100.0)
-	if override.has("asset_stock_pct_initial_gdp") and not override.has("term_premium_pct"):
-		state.term_premium_pct = params.initial_term_premium_pct - params.term_premium_asset_sensitivity * (state.asset_stock_pct_initial_gdp - state.initial_asset_stock_pct_initial_gdp)
+	var reference := load_portfolio_reference()
+	if not reference.ok:
+		return reference
+	var ref: Dictionary = reference.value
+	var treasury_share: float = float(ref.source_treasury_principal_usd) / (float(ref.source_treasury_principal_usd) + float(ref.mbs_stock_billion_usd) * 1e9)
+	var treasuries: Array = []
+	for weight in ref.treasury_maturity_weights:
+		treasuries.append(state.asset_stock_pct_initial_gdp * treasury_share * float(weight))
+	state.treasury_cohorts_pct_initial_gdp = treasuries
+	state.sterilized_treasury_cohorts_pct_initial_gdp = _zero_cohorts(120)
+	state.bill_cohorts_pct_initial_gdp = _zero_cohorts(4)
+	state.mbs_stock_pct_initial_gdp = state.asset_stock_pct_initial_gdp * (1.0 - treasury_share)
+	state.initial_asset_stock_pct_initial_gdp = state.asset_stock_pct_initial_gdp
+	state.initial_actual_output_index = state.actual_output_index
+	state.initial_price_index = state.price_index
+	state.initial_portfolio_premium_pct = state.term_premium_pct
+	state.initial_duration_equivalent_pct_initial_gdp = _cohort_sum(treasuries) + state.mbs_stock_pct_initial_gdp * (params.mbs_duration_years / params.treasury_duration_years)
+	state.reserves_pct_initial_gdp = params.initial_reserves_pct_initial_gdp
+	state.reverse_repo_pct_initial_gdp = 0.0
+	state.currency_pct_initial_gdp = params.initial_currency_pct_initial_gdp
+	state.treasury_account_pct_initial_gdp = params.initial_treasury_account_pct_initial_gdp
+	# Reconcile only once; transitions preserve this signed principal residual.
+	state.capital_other_pct_initial_gdp = state.asset_stock_pct_initial_gdp - state.reserves_pct_initial_gdp - state.currency_pct_initial_gdp - state.treasury_account_pct_initial_gdp
+	for key in BALANCE_DIAGNOSTICS:
+		state[key] = 0.0
+	state.decision_nominal_gdp_ratio = 1.0
+	state.ending_nominal_gdp_ratio = 1.0
+	state.duration_equivalent_pct_initial_gdp = state.initial_duration_equivalent_pct_initial_gdp
+	state.total_assets_pct_initial_gdp = state.asset_stock_pct_initial_gdp
+	state.reserve_buffer_pct_initial_gdp = params.reserve_buffer_pct_current_gdp
+	state.reserve_clear_pct_initial_gdp = params.reserve_clear_pct_current_gdp
+	state.sterilization_uptake_fraction = 1.0
 	state.guidance_rate_pct = state.policy_rate_pct
 	state.last_policy_rate_request_pct = state.policy_rate_pct
 	var annual_rate: float = 1.0 + state.annualized_quarterly_inflation_pct / 100.0
@@ -218,6 +286,7 @@ func initial_state(params: Dictionary, override: Dictionary = {}) -> Dictionary:
 		state.price_history.append(state.price_index / pow(q_price_ratio, age))
 	state.four_quarter_inflation_pct = _four_quarter_inflation(state.price_history, params.percent_multiplier)
 	state.merge(_rate_conditions(state, state.policy_rate_pct, state.policy_rate_pct, state.term_premium_pct, state.credit_spread_pct, state.r_star_pct, params), true)
+	state.initial_mbs_financing_rate_pct = state.long_yield_pct + state.credit_spread_pct
 	var checked := _validate_state(state, params)
 	if not checked.ok:
 		return checked
@@ -243,26 +312,23 @@ func step(state: Dictionary, policy: Dictionary, shocks: Dictionary, params: Dic
 	var next: Dictionary = state.duplicate(true)
 	var rate_request: float = policy.policy_rate_request_pct
 	var rate: float = rate_request
+	var balance := _balance_sheet_step(state, policy, shocks, params)
+	if not balance.ok:
+		return balance
+	var ledger: Dictionary = balance.updates
 	var asset_request: float = policy.asset_flow_request_pct_initial_gdp
-	var asset_limit: float = params.asset_flow_quarter_limit_pct_initial_gdp
-	var asset_delta: float = clamp(asset_request, -min(asset_limit, state.asset_stock_pct_initial_gdp), min(asset_limit, state.asset_stock_capacity_pct_initial_gdp - state.asset_stock_pct_initial_gdp))
-	var asset_stock: float = state.asset_stock_pct_initial_gdp + asset_delta
-	var term_premium: float = state.term_premium_pct - params.term_premium_asset_sensitivity * asset_delta
-
+	var asset_delta: float = ledger.asset_flow_applied_pct_initial_gdp
+	var asset_stock: float = ledger.asset_stock_pct_initial_gdp
+	var term_premium: float = ledger.term_premium_pct
 	var liquidity_request: float = policy.liquidity_request_pct_initial_gdp
-	var repayment: float = state.outstanding_liquidity_pct_initial_gdp * params.liquidity_repayment_fraction
-	var outstanding_after_repayment: float = state.outstanding_liquidity_pct_initial_gdp - repayment
+	var repayment: float = ledger.liquidity_repayment_pct_initial_gdp
 	var funding_need: float = shocks.get("funding_need_pct_initial_gdp", 0.0)
 	var collateral: float = shocks.get("eligible_collateral_pct_initial_gdp", 0.0)
-	var haircut: float = shocks.get("collateral_haircut_pct", 0.0)
-	var eligibility: float = shocks.get("liquidity_eligibility_pct", 0.0)
-	var eligible_capacity: float = collateral * (1.0 - haircut / 100.0) * (eligibility / 100.0)
-	var lending_headroom: float = max(0.0, eligible_capacity - outstanding_after_repayment)
-	var liquidity_delta: float = min(liquidity_request, funding_need, params.liquidity_flow_quarter_limit_pct_initial_gdp, lending_headroom)
-	var outstanding_liquidity: float = outstanding_after_repayment + liquidity_delta
-	var uncovered_funding: float = max(0.0, funding_need - liquidity_delta)
+	var liquidity_delta: float = ledger.liquidity_applied_pct_initial_gdp
+	var outstanding_liquidity: float = ledger.outstanding_liquidity_pct_initial_gdp
+	var uncovered_funding: float = ledger.uncovered_funding_pct_initial_gdp
 	var solvency_wedge: float = state.solvency_risk_wedge_pct * params.solvency_risk_persistence + shocks.get("solvency_risk_innovation_pct", 0.0)
-	var credit_wedge: float = params.funding_spread_sensitivity * uncovered_funding + solvency_wedge + shocks.get("credit_risk_innovation_pct", 0.0)
+	var credit_wedge: float = ledger.reserve_scarcity_wedge_pct + ledger.local_access_wedge_pct + solvency_wedge + shocks.get("credit_risk_innovation_pct", 0.0)
 	var credit_spread: float = params.normal_credit_spread_pct + credit_wedge
 
 	var guide_rate: float = policy.guidance_rate_pct
@@ -394,9 +460,11 @@ func step(state: Dictionary, policy: Dictionary, shocks: Dictionary, params: Dic
 		"public_hardship_memory": hardship_memory,
 		"current_hardship": hardship,
 	}
+	updates.merge(ledger, true)
 	updates.merge(rate_conditions, true)
 	for key in updates:
 		next[key] = updates[key]
+	next.ending_nominal_gdp_ratio = nominal_gdp_ratio(next)
 	var final_check := _validate_state(next, params)
 	if not final_check.ok:
 		return {"ok": false, "error": "invalid transition result: %s" % final_check.error}
@@ -431,8 +499,268 @@ func step(state: Dictionary, policy: Dictionary, shocks: Dictionary, params: Dic
 		"credibility": next_credibility,
 		"public_support": support,
 	}
+	for key in BALANCE_DIAGNOSTICS:
+		trace[key] = next[key]
 	trace.merge(rate_conditions, true)
 	return {"ok": true, "state": next, "trace": trace}
+
+
+func load_portfolio_reference(path: String = "res://model/portfolio_reference.json") -> Dictionary:
+	var parsed := _read_json(path)
+	if not parsed.ok:
+		return parsed
+	var valid := _validate_portfolio_reference(parsed.value)
+	return parsed if valid.ok else valid
+
+
+func _validate_portfolio_reference(reference: Variant) -> Dictionary:
+	if typeof(reference) != TYPE_DICTIONARY or reference.get("schema_version") != 1:
+		return {"ok":false,"error":"invalid portfolio reference schema"}
+	var weights: Variant = reference.get("treasury_maturity_weights")
+	if typeof(weights) != TYPE_ARRAY or weights.size() != 120:
+		return {"ok":false,"error":"Treasury reference requires120 maturity weights"}
+	for weight in weights:
+		if typeof(weight) not in [TYPE_INT, TYPE_FLOAT] or not is_finite(float(weight)) or weight < 0.0:
+			return {"ok":false,"error":"invalid Treasury maturity weight"}
+	if abs(_cohort_sum(weights) - 1.0) > 1e-12:
+		return {"ok":false,"error":"Treasury maturity weights must be normalized"}
+	var principal: Variant = reference.get("source_treasury_principal_usd")
+	if typeof(principal) != TYPE_STRING or not principal.is_valid_float() or not is_finite(float(principal)) or float(principal) <= 0.0:
+		return {"ok":false,"error":"invalid observed Treasury principal"}
+	for key in ["mbs_monthly_principal_billion_usd", "mbs_stock_billion_usd", "market_treasury_wam_years", "treasury_duration_years", "mbs_duration_years"]:
+		if not reference.has(key) or typeof(reference[key]) not in [TYPE_INT, TYPE_FLOAT] or not is_finite(float(reference[key])) or reference[key] <= 0.0:
+			return {"ok":false,"error":"invalid portfolio observation: %s" % key}
+	return {"ok":true}
+
+
+func nominal_gdp_ratio(state: Dictionary) -> float:
+	# Actual initial output includes the initial scenario gap. PCE proxies the GDP deflator.
+	return (state.actual_output_index / state.initial_actual_output_index) * (state.price_index / state.initial_price_index)
+
+
+func _portfolio_premium(exposure_difference: float, nominal_ratio: float, anchor: float, params: Dictionary) -> float:
+	if exposure_difference == 0.0:
+		return anchor
+	var log_ratio: float = log(abs(exposure_difference)) - log(nominal_ratio) - log(params.portfolio_premium_scale_pct_gdp)
+	var response := signf(exposure_difference) if log_ratio > log(20.0) else tanh(signf(exposure_difference) * exp(log_ratio))
+	return anchor - params.portfolio_premium_max_shift_pct * response
+
+
+func _mbs_repayment_fraction(state: Dictionary, params: Dictionary) -> float:
+	var lagged_financing: float = state.long_yield_pct + state.credit_spread_pct
+	return params.mbs_base_repayment_fraction * (1.0 + params.mbs_repayment_relative_response * tanh((state.initial_mbs_financing_rate_pct - lagged_financing) / params.mbs_repayment_rate_scale_pct))
+
+
+func _zero_cohorts(count: int) -> Array:
+	var cohorts: Array = []
+	cohorts.resize(count)
+	cohorts.fill(0.0)
+	return cohorts
+
+
+func _cohort_sum(cohorts: Array) -> float:
+	var total := 0.0
+	for principal in cohorts:
+		total += float(principal)
+	return total
+
+
+func _aged_cohorts(cohorts: Array) -> Array:
+	var aged := cohorts.slice(1)
+	aged.append(0.0)
+	return aged
+
+
+func _add_treasury(cohorts: Array, principal: float, maturity: float) -> void:
+	var lower := int(floor(maturity))
+	var upper_weight := maturity - lower
+	cohorts[lower - 1] += principal * (1.0 - upper_weight)
+	if upper_weight > 0.0:
+		cohorts[lower] += principal * upper_weight
+
+
+func _principal_net(legs: Array) -> float:
+	# Cancel opposite principal legs before summing: large simultaneous flows need not overflow.
+	var credits: Array = []
+	var debits: Array = []
+	for leg in legs:
+		if not is_finite(float(leg)):
+			return NAN
+		if leg > 0.0:
+			credits.append(float(leg))
+		elif leg < 0.0:
+			debits.append(-float(leg))
+	credits.sort()
+	debits.sort()
+	while not credits.is_empty() and not debits.is_empty():
+		var credit: float = credits.pop_back()
+		var debit: float = debits.pop_back()
+		if credit > debit:
+			credits.append(credit - debit)
+		elif debit > credit:
+			debits.append(debit - credit)
+	return _cohort_sum(credits) - _cohort_sum(debits)
+
+
+func _validate_balance_state(state: Dictionary) -> Dictionary:
+	for key in ["treasury_cohorts_pct_initial_gdp", "sterilized_treasury_cohorts_pct_initial_gdp", "bill_cohorts_pct_initial_gdp"]:
+		var count := 4 if key == "bill_cohorts_pct_initial_gdp" else 120
+		if not state.has(key) or typeof(state[key]) != TYPE_ARRAY or state[key].size() != count:
+			return {"ok":false,"error":"invalid balance cohort shape: %s" % key}
+		for principal in state[key]:
+			if typeof(principal) not in [TYPE_INT, TYPE_FLOAT] or not is_finite(float(principal)) or principal < 0.0:
+				return {"ok":false,"error":"invalid balance cohort principal: %s" % key}
+	for q in range(120):
+		if state.sterilized_treasury_cohorts_pct_initial_gdp[q] > state.treasury_cohorts_pct_initial_gdp[q]:
+			return {"ok":false,"error":"sterilized Treasury tag exceeds actual cohort"}
+	for key in ["mbs_stock_pct_initial_gdp", "reserves_pct_initial_gdp", "reverse_repo_pct_initial_gdp", "currency_pct_initial_gdp", "treasury_account_pct_initial_gdp", "initial_duration_equivalent_pct_initial_gdp"]:
+		if state[key] < 0.0:
+			return {"ok":false,"error":"negative principal stock: %s" % key}
+	if state.initial_actual_output_index <= 0.0 or state.initial_price_index <= 0.0 or not is_finite(nominal_gdp_ratio(state)) or nominal_gdp_ratio(state) <= 0.0:
+		return {"ok":false,"error":"observed nominal GDP ratio must be positive and representable"}
+	var tagged_total := _cohort_sum(state.sterilized_treasury_cohorts_pct_initial_gdp)
+	if state.reverse_repo_pct_initial_gdp > tagged_total + 1e-12 * tagged_total:
+		return {"ok":false,"error":"policy RRP liability exceeds tagged Treasury principal"}
+	var securities: float = _cohort_sum(state.treasury_cohorts_pct_initial_gdp) + _cohort_sum(state.bill_cohorts_pct_initial_gdp) + state.mbs_stock_pct_initial_gdp
+	var assets: float = securities + state.outstanding_liquidity_pct_initial_gdp
+	var liabilities: float = state.reserves_pct_initial_gdp + state.reverse_repo_pct_initial_gdp + state.currency_pct_initial_gdp + state.treasury_account_pct_initial_gdp
+	var tolerance: float = 1e-7 + 1e-12 * max(assets, liabilities, abs(state.capital_other_pct_initial_gdp))
+	if not is_finite(assets) or not is_finite(liabilities) or abs(securities - state.asset_stock_pct_initial_gdp) > tolerance or abs(assets - liabilities - state.capital_other_pct_initial_gdp) > tolerance:
+		return {"ok":false,"error":"principal ledger does not reconcile or is unrepresentable"}
+	if abs(state.total_assets_pct_initial_gdp - assets) > tolerance:
+		return {"ok":false,"error":"total assets diagnostic conflicts with principal ledger"}
+	return {"ok":true}
+
+
+func _balance_sheet_step(state: Dictionary, policy: Dictionary, shocks: Dictionary, params: Dictionary) -> Dictionary:
+	var n := nominal_gdp_ratio(state)
+	var reinvest: bool = policy.get("reinvest_principal", POLICY_SWITCHES.reinvest_principal)
+	var maintain: bool = policy.get("maintain_ample_reserves", POLICY_SWITCHES.maintain_ample_reserves)
+	var sterilize: bool = policy.get("sterilize_purchases", POLICY_SWITCHES.sterilize_purchases)
+	var request: float = policy.asset_flow_request_pct_initial_gdp
+	var purchase := maxf(0.0, request)
+	var repayment_fraction := _mbs_repayment_fraction(state, params)
+	var treasury_due: float = state.treasury_cohorts_pct_initial_gdp[0]
+	var mbs_due: float = state.mbs_stock_pct_initial_gdp * repayment_fraction
+	var bill_due: float = state.bill_cohorts_pct_initial_gdp[0]
+	var due: float = treasury_due + mbs_due + bill_due
+	var runoff: float = minf(-request, due) if request < 0.0 else (0.0 if reinvest else due)
+	var runoff_share: float = runoff / due if due > 0.0 else 0.0
+	var treasury_runoff := treasury_due * runoff_share
+	var mbs_runoff := mbs_due * runoff_share
+	var reinvest_share := 1.0 - runoff_share
+	var treasury_roll := treasury_due * reinvest_share
+	var mbs_roll := mbs_due * reinvest_share
+	var bill_roll := bill_due * reinvest_share
+	var treasury := _aged_cohorts(state.treasury_cohorts_pct_initial_gdp)
+	var bills := _aged_cohorts(state.bill_cohorts_pct_initial_gdp)
+	_add_treasury(treasury, treasury_roll, params.treasury_reinvestment_maturity_quarters)
+	_add_treasury(treasury, purchase, params.treasury_reinvestment_maturity_quarters)
+	bills[3] += bill_roll
+	var mbs: float = state.mbs_stock_pct_initial_gdp - mbs_runoff
+	var tags := _aged_cohorts(state.sterilized_treasury_cohorts_pct_initial_gdp) if sterilize else _zero_cohorts(120)
+	var tagged_due: float = state.sterilized_treasury_cohorts_pct_initial_gdp[0] if sterilize else 0.0
+	var tagged_runoff := tagged_due * runoff_share
+	var tagged_roll := tagged_due * reinvest_share
+	if sterilize:
+		_add_treasury(tags, tagged_roll, params.treasury_reinvestment_maturity_quarters)
+		_add_treasury(tags, purchase, params.treasury_reinvestment_maturity_quarters)
+	var desired_absorption := _cohort_sum(tags)
+	var uptake: float = shocks.get("rrp_uptake_fraction", 1.0)
+	# Exclude next-quarter maturity; quarterly snapshots assume repeated overnight renewal.
+	var available_collateral: float = maxf(0.0, _principal_net([_cohort_sum(treasury), _cohort_sum(bills), -float(treasury[0]), -float(bills[0]), -float(shocks.get("rrp_encumbered_collateral_pct_initial_gdp", 0.0))]))
+	var uptake_absorption := desired_absorption * uptake
+	var planned_absorption := minf(uptake_absorption, available_collateral)
+	var currency: float = params.initial_currency_pct_initial_gdp * n
+	var currency_conversion: float = currency - state.currency_pct_initial_gdp
+	var old_loan_due: float = state.outstanding_liquidity_pct_initial_gdp
+	# Treasury redemption and its assumed private funding leg exactly net at TGA.
+	var reserve_base := _principal_net([state.reserves_pct_initial_gdp, state.reverse_repo_pct_initial_gdp, purchase, -runoff, -old_loan_due, -currency_conversion])
+	var offer: float = policy.liquidity_request_pct_initial_gdp
+	var new_need: float = shocks.get("funding_need_pct_initial_gdp", 0.0)
+	var refinancing_request: float = shocks.get("refinancing_need_pct_initial_gdp", 0.0)
+	var refinancing_need := minf(refinancing_request, old_loan_due)
+	var collateral: float = shocks.get("eligible_collateral_pct_initial_gdp", 0.0)
+	var eligibility: float = shocks.get("liquidity_eligibility_pct", 0.0) / 100.0
+	var capacity: float = collateral * (1.0 - float(shocks.get("collateral_haircut_pct", 0.0)) / 100.0) * eligibility
+	var eligible_refinancing := refinancing_need * eligibility
+	var eligible_new := new_need * eligibility
+	var eligible_local := eligible_refinancing + eligible_new
+	var local: float = minf(offer, minf(capacity, eligible_local))
+	var local_refinancing := minf(local, eligible_refinancing)
+	var local_new := local - local_refinancing
+	var uncovered_new := new_need - local_new
+	var uncovered_refinancing := refinancing_need - local_refinancing
+	var uncovered := uncovered_new + uncovered_refinancing
+	var buffer: float = params.reserve_buffer_pct_current_gdp * n
+	var clear: float = params.reserve_clear_pct_current_gdp * n
+	var aggregate := 0.0
+	var aggregate_need := 0.0
+	var maintenance := 0.0
+	var absorption := planned_absorption
+	var local_after_absorption := _principal_net([reserve_base, local, -planned_absorption])
+	if maintain:
+		maintenance = maxf(0.0, _principal_net([buffer, -local_after_absorption]))
+	else:
+		aggregate_need = maxf(0.0, _principal_net([clear, -local_after_absorption]))
+		aggregate = minf(maxf(0.0, offer - local), minf(maxf(0.0, capacity - local), aggregate_need))
+		absorption = minf(planned_absorption, maxf(0.0, _principal_net([reserve_base, local, aggregate])))
+	var loans := local + aggregate
+	var reserves := _principal_net([reserve_base, local, aggregate, -absorption, maintenance])
+	if not is_finite(reserves) or not is_finite(currency) or not is_finite(buffer) or not is_finite(clear) or clear <= 0.0 or not is_finite(eligible_local) or not is_finite(uncovered) or not is_finite(loans):
+		return {"ok":false,"error":"unrepresentable principal ledger quantity"}
+	if reserves < 0.0 or state.treasury_account_pct_initial_gdp < 0.0:
+		return {"ok":false,"error":"infeasible mandatory settlement after simultaneous principal netting"}
+	bills[3] += maintenance
+	var scarcity: float = 0.0 if reserves >= clear else params.reserve_scarcity_sensitivity_pct * pow(1.0 - reserves / clear, 2.0)
+	var local_access: float = params.funding_spread_sensitivity * uncovered
+	var duration: float = _cohort_sum(treasury) + mbs * (params.mbs_duration_years / params.treasury_duration_years)
+	var securities: float = _principal_net([state.asset_stock_pct_initial_gdp, purchase, -runoff, maintenance])
+	var assets: float = securities + loans
+	var ledger_error := _principal_net([assets, -reserves, -absorption, -currency, -state.treasury_account_pct_initial_gdp, -state.capital_other_pct_initial_gdp])
+	var updates := {
+		"treasury_cohorts_pct_initial_gdp":treasury, "sterilized_treasury_cohorts_pct_initial_gdp":tags,
+		"bill_cohorts_pct_initial_gdp":bills, "mbs_stock_pct_initial_gdp":mbs,
+		"reserves_pct_initial_gdp":reserves, "reverse_repo_pct_initial_gdp":absorption,
+		"currency_pct_initial_gdp":currency, "treasury_account_pct_initial_gdp":state.treasury_account_pct_initial_gdp,
+		"capital_other_pct_initial_gdp":state.capital_other_pct_initial_gdp,
+		"asset_stock_pct_initial_gdp":securities, "asset_flow_applied_pct_initial_gdp":purchase - runoff,
+		"term_premium_pct":_portfolio_premium(duration - state.initial_duration_equivalent_pct_initial_gdp, n, state.initial_portfolio_premium_pct, params),
+		"outstanding_liquidity_pct_initial_gdp":loans, "liquidity_repayment_pct_initial_gdp":old_loan_due,
+		"liquidity_applied_pct_initial_gdp":loans, "uncovered_funding_pct_initial_gdp":uncovered,
+		"decision_nominal_gdp_ratio":n, "duration_equivalent_pct_initial_gdp":duration,
+		"total_assets_pct_initial_gdp":assets, "total_asset_change_pct_initial_gdp":assets - state.total_assets_pct_initial_gdp,
+		"principal_due_pct_initial_gdp":due, "treasury_redemption_pct_initial_gdp":treasury_due,
+		"treasury_funding_transfer_pct_initial_gdp":treasury_due, "mbs_repayment_pct_initial_gdp":mbs_due,
+		"bill_redemption_pct_initial_gdp":bill_due, "bill_funding_transfer_pct_initial_gdp":bill_due, "mbs_repayment_fraction":repayment_fraction,
+		"principal_runoff_pct_initial_gdp":runoff, "principal_reinvestment_pct_initial_gdp":due - runoff,
+		"treasury_reinvestment_pct_initial_gdp":treasury_roll, "mbs_reinvestment_pct_initial_gdp":mbs_roll,
+		"bill_rollover_pct_initial_gdp":bill_roll, "long_securities_runoff_pct_initial_gdp":treasury_runoff + mbs_runoff,
+		"discretionary_purchase_pct_initial_gdp":purchase, "reserve_maintenance_purchase_pct_initial_gdp":maintenance,
+		"currency_conversion_pct_initial_gdp":currency_conversion, "reverse_repo_closed_pct_initial_gdp":state.reverse_repo_pct_initial_gdp,
+		"reserves_before_accommodation_pct_initial_gdp":reserve_base,
+		"reserve_buffer_pct_initial_gdp":buffer, "reserve_clear_pct_initial_gdp":clear,
+		"reserve_scarcity_wedge_pct":scarcity, "local_access_wedge_pct":local_access,
+		"refinancing_request_pct_initial_gdp":refinancing_request, "refinancing_need_pct_initial_gdp":refinancing_need,
+		"eligible_local_need_pct_initial_gdp":eligible_local, "lending_collateral_capacity_pct_initial_gdp":capacity,
+		"liquidity_local_applied_pct_initial_gdp":local, "liquidity_refinancing_applied_pct_initial_gdp":local_refinancing,
+		"liquidity_new_need_applied_pct_initial_gdp":local_new, "liquidity_aggregate_applied_pct_initial_gdp":aggregate,
+		"liquidity_aggregate_need_pct_initial_gdp":aggregate_need,
+		"liquidity_aggregate_offer_binding":float(aggregate < aggregate_need and aggregate == maxf(0.0, offer - local)),
+		"liquidity_aggregate_collateral_binding":float(aggregate < aggregate_need and aggregate == maxf(0.0, capacity - local)),
+		"uncovered_new_funding_pct_initial_gdp":uncovered_new, "uncovered_refinancing_pct_initial_gdp":uncovered_refinancing,
+		"liquidity_offer_binding":float(local < eligible_local and local == offer),
+		"liquidity_collateral_binding":float(local < eligible_local and local == capacity), "liquidity_eligibility_binding":float(eligibility < 1.0 and (new_need > 0.0 or refinancing_need > 0.0)),
+		"sterilization_requested_pct_initial_gdp":desired_absorption, "sterilization_planned_pct_initial_gdp":planned_absorption,
+		"sterilization_applied_pct_initial_gdp":absorption, "sterilization_unfulfilled_pct_initial_gdp":desired_absorption - absorption,
+		"sterilization_collateral_available_pct_initial_gdp":available_collateral, "sterilization_uptake_fraction":uptake,
+		"sterilization_uptake_binding":float(uptake_absorption < desired_absorption),
+		"sterilization_collateral_binding":float(available_collateral < uptake_absorption),
+		"sterilization_reserve_binding":float(absorption < planned_absorption),
+		"sterilized_principal_runoff_pct_initial_gdp":tagged_runoff, "sterilized_principal_reinvestment_pct_initial_gdp":tagged_roll,
+		"principal_ledger_error_pct_initial_gdp":ledger_error,
+	}
+	return {"ok":true,"updates":updates}
 
 
 func conditional_commitment(state: Dictionary, params: Dictionary) -> float:
@@ -641,12 +969,15 @@ func _rate_conditions(state: Dictionary, rate: float, guide: float, premium: flo
 
 
 func _validate_parameters(params: Dictionary) -> Dictionary:
+	for key in params:
+		if key not in PARAMETER_KEYS:
+			return {"ok":false,"error":"unknown parameter: %s" % key}
 	for key in PARAMETER_KEYS:
 		if not params.has(key) or typeof(params[key]) not in [TYPE_INT, TYPE_FLOAT] or not is_finite(float(params[key])):
 			return {"ok": false, "error": "missing or nonfinite parameter: %s" % key}
 	if params.public_support_base < 0.0 or params.public_support_base > 100.0 or params.public_support_adjustment < 0.0 or params.public_support_adjustment > 1.0 or params.normal_credit_spread_pct < 0.0:
 		return {"ok": false, "error": "invalid public-support or normal-spread parameter"}
-	for key in ["real_rate_gap_persistence", "output_gap_persistence", "inflation_persistence", "short_expectation_recent_weight", "supply_pressure_persistence", "long_expectation_adjustment", "unemployment_gap_persistence", "credibility_adjustment", "credibility_miss_persistence", "solvency_risk_persistence", "liquidity_repayment_fraction", "public_hardship_memory_persistence", "real_rate_short_weight", "long_yield_current_rate_weight"]:
+	for key in ["real_rate_gap_persistence", "output_gap_persistence", "inflation_persistence", "short_expectation_recent_weight", "supply_pressure_persistence", "long_expectation_adjustment", "unemployment_gap_persistence", "credibility_adjustment", "credibility_miss_persistence", "solvency_risk_persistence", "public_hardship_memory_persistence", "real_rate_short_weight", "long_yield_current_rate_weight"]:
 		if params[key] < 0.0 or params[key] > 1.0:
 			return {"ok": false, "error": "share parameter out of range: %s" % key}
 	for key in ["deferred_demand_share", "demand_cancellation_fraction", "demand_release_base_fraction", "demand_release_max_fraction", "r_star_reversion_persistence", "short_expectation_anchor_weight"]:
@@ -654,7 +985,7 @@ func _validate_parameters(params: Dictionary) -> Dictionary:
 			return {"ok": false, "error": "recovery fraction out of range: %s" % key}
 	if params.demand_release_base_fraction > params.demand_release_max_fraction or params.demand_release_max_fraction + params.demand_cancellation_fraction > 1.0 or params.demand_release_backlog_scale_pct <= 0.0 or params.demand_release_financing_scale_pct <= 0.0:
 		return {"ok": false, "error": "inconsistent demand-release fractions or nonpositive recovery scale"}
-	if params.minimum_rate_increment_pct <= 0.0 or params.negative_rate_efficacy_scale_pct <= 0.0 or params.initial_asset_stock_pct_initial_gdp < 0.0 or params.asset_stock_capacity_pct_initial_gdp < params.initial_asset_stock_pct_initial_gdp or params.inflation_target_pct != 2.0:
+	if params.minimum_rate_increment_pct <= 0.0 or params.negative_rate_efficacy_scale_pct <= 0.0 or params.initial_asset_stock_pct_initial_gdp < 0.0 or params.inflation_target_pct != 2.0:
 		return {"ok": false, "error": "inconsistent bounds or unsupported target parameter"}
 	if params.quarters_per_year != 4.0 or params.percent_multiplier != 100.0 or params.initial_output_index <= 0.0 or params.initial_price_index <= 0.0 or params.initial_structural_unemployment_pct <= 0.0 or params.initial_structural_unemployment_pct >= 100.0:
 		return {"ok": false, "error": "invalid scale or initial reference parameter"}
@@ -662,9 +993,16 @@ func _validate_parameters(params: Dictionary) -> Dictionary:
 		return {"ok": false, "error": "invalid initial inflation, output gap or rate"}
 	if params.initial_credibility < 0.0 or params.initial_credibility > 1.0 or params.initial_public_support < 0.0 or params.initial_public_support > 100.0 or params.initial_unemployment_pct < 0.0 or params.initial_unemployment_pct > 100.0:
 		return {"ok": false, "error": "initial bounded state outside its domain"}
-	for key in ["asset_flow_quarter_limit_pct_initial_gdp", "asset_flow_request_limit_pct_initial_gdp", "liquidity_flow_quarter_limit_pct_initial_gdp", "liquidity_request_limit_pct_initial_gdp", "guidance_sensitivity_limit", "policy_inflation_response", "policy_output_gap_response", "credibility_miss_tolerance_pct", "credibility_stance_scale_pct", "credibility_followthrough_tolerance_pct", "real_rate_output_sensitivity", "inflation_output_gap_sensitivity", "inflation_supply_sensitivity", "short_expectation_supply_sensitivity", "supply_output_gap_sensitivity", "unemployment_gap_sensitivity", "term_premium_asset_sensitivity", "funding_spread_sensitivity", "public_inflation_burden_weight", "public_unemployment_burden_weight", "public_hardship_memory_weight"]:
+	for key in ["guidance_sensitivity_limit", "policy_inflation_response", "policy_output_gap_response", "credibility_miss_tolerance_pct", "credibility_stance_scale_pct", "credibility_followthrough_tolerance_pct", "real_rate_output_sensitivity", "inflation_output_gap_sensitivity", "inflation_supply_sensitivity", "short_expectation_supply_sensitivity", "supply_output_gap_sensitivity", "unemployment_gap_sensitivity", "funding_spread_sensitivity", "public_inflation_burden_weight", "public_unemployment_burden_weight", "public_hardship_memory_weight"]:
 		if params[key] < 0.0:
 			return {"ok": false, "error": "negative sensitivity, scale or capacity: %s" % key}
+	for key in ["portfolio_premium_max_shift_pct", "portfolio_premium_scale_pct_gdp", "treasury_duration_years", "mbs_duration_years", "mbs_repayment_rate_scale_pct", "reserve_clear_pct_current_gdp"]:
+		if params[key] <= 0.0:
+			return {"ok":false,"error":"balance transmission scale must be positive: %s" % key}
+	if params.reserve_buffer_pct_current_gdp < params.reserve_clear_pct_current_gdp or params.initial_reserves_pct_initial_gdp < params.reserve_clear_pct_current_gdp or params.initial_currency_pct_initial_gdp < 0.0 or params.initial_treasury_account_pct_initial_gdp < 0.0 or params.reserve_scarcity_sensitivity_pct < 0.0:
+		return {"ok":false,"error":"inconsistent reserve buffer, clear threshold or initial liabilities"}
+	if params.mbs_base_repayment_fraction <= 0.0 or params.mbs_repayment_relative_response < 0.0 or params.mbs_repayment_relative_response >= 1.0 or params.mbs_base_repayment_fraction * (1.0 + params.mbs_repayment_relative_response) > 1.0 or params.treasury_reinvestment_maturity_quarters < 1.0 or params.treasury_reinvestment_maturity_quarters > 120.0:
+		return {"ok":false,"error":"invalid physical MBS repayment or Treasury replacement maturity"}
 	if params.credibility_miss_tolerance_pct == 0.0 or params.credibility_stance_scale_pct == 0.0 or params.credibility_followthrough_tolerance_pct == 0.0:
 		return {"ok": false, "error": "credibility scales must be positive"}
 	return {"ok": true}
@@ -677,7 +1015,7 @@ func _validate_state(state: Dictionary, params: Dictionary) -> Dictionary:
 		"annualized_quarterly_inflation_pct", "four_quarter_inflation_pct", "expected_short_inflation_pct",
 		"expected_long_inflation_pct", "unemployment_rate_pct", "structural_unemployment_pct", "r_star_pct",
 		"policy_rate_pct", "last_policy_rate_request_pct", "long_yield_pct", "financial_restraint_gap_pct",
-		"asset_stock_pct_initial_gdp", "initial_asset_stock_pct_initial_gdp", "asset_stock_capacity_pct_initial_gdp",
+		"asset_stock_pct_initial_gdp", "initial_asset_stock_pct_initial_gdp",
 		"term_premium_pct", "asset_flow_request_pct_initial_gdp", "asset_flow_applied_pct_initial_gdp",
 		"funding_need_pct_initial_gdp", "eligible_collateral_pct_initial_gdp", "outstanding_liquidity_pct_initial_gdp",
 		"liquidity_repayment_pct_initial_gdp", "liquidity_request_pct_initial_gdp", "liquidity_applied_pct_initial_gdp",
@@ -690,6 +1028,11 @@ func _validate_state(state: Dictionary, params: Dictionary) -> Dictionary:
 		"effective_policy_rate_pct", "spot_financial_gap_pct", "stance_target_gap_pct",
 		"stance_distance_pct", "stance_best_feasible_distance_pct", "stance_adequacy_score",
 	]
+	keys.append_array(BALANCE_STOCK_KEYS)
+	keys.append_array(BALANCE_DIAGNOSTICS)
+	for key in state:
+		if key not in keys and key not in ["price_history", "guidance_active", "treasury_cohorts_pct_initial_gdp", "sterilized_treasury_cohorts_pct_initial_gdp", "bill_cohorts_pct_initial_gdp"]:
+			return {"ok":false,"error":"unknown state field: %s" % key}
 	for key in keys:
 		if not state.has(key) or typeof(state[key]) not in [TYPE_INT, TYPE_FLOAT] or not is_finite(float(state[key])):
 			return {"ok": false, "error": "missing or nonfinite state field: %s" % key}
@@ -702,8 +1045,6 @@ func _validate_state(state: Dictionary, params: Dictionary) -> Dictionary:
 		return {"ok": false, "error": "price history conflicts with current price or four-quarter inflation"}
 	if abs(annualized_growth(state.price_history[4], state.price_history[3]) - state.annualized_quarterly_inflation_pct) > 1e-7:
 		return {"ok": false, "error": "quarterly inflation conflicts with price history"}
-	if state.asset_stock_capacity_pct_initial_gdp != params.asset_stock_capacity_pct_initial_gdp:
-		return {"ok": false, "error": "state asset capacity conflicts with parameter capacity"}
 	if state.quarter_index < 0 or float(state.quarter_index) != int(state.quarter_index) or state.initial_annual_gdp_index <= 0.0 or state.potential_output_index <= 0.0 or state.actual_output_index <= 0.0 or state.price_index <= 0.0 or state.output_gap_pct <= -100.0 or state.structural_unemployment_pct <= 0.0 or state.structural_unemployment_pct >= 100.0 or state.unemployment_rate_pct < 0.0 or state.unemployment_rate_pct > 100.0 or state.credibility < 0.0 or state.credibility > 1.0 or state.public_support < 0.0 or state.public_support > 100.0:
 		return {"ok": false, "error": "state violates positive-scale or bounded-domain invariant"}
 	for quote in [state.policy_rate_pct, state.last_policy_rate_request_pct, state.guidance_rate_pct]:
@@ -713,12 +1054,13 @@ func _validate_state(state: Dictionary, params: Dictionary) -> Dictionary:
 		return {"ok": false, "error": "invalid effective-stance diagnostics"}
 	if state.expected_short_inflation_pct <= -100.0 or state.expected_long_inflation_pct <= -100.0 or state.annualized_quarterly_inflation_pct <= -100.0 or abs(state.guidance_inflation_sensitivity) > params.guidance_sensitivity_limit or abs(state.guidance_output_gap_sensitivity) > params.guidance_sensitivity_limit:
 		return {"ok": false, "error": "state inflation or guidance outside declared bounds"}
-	if state.asset_stock_pct_initial_gdp < 0.0 or state.asset_stock_pct_initial_gdp > state.asset_stock_capacity_pct_initial_gdp or state.asset_stock_capacity_pct_initial_gdp < 0.0 or state.initial_asset_stock_pct_initial_gdp < 0.0 or state.outstanding_liquidity_pct_initial_gdp < 0.0 or state.funding_need_pct_initial_gdp < 0.0 or state.eligible_collateral_pct_initial_gdp < 0.0 or state.liquidity_repayment_pct_initial_gdp < 0.0 or state.liquidity_applied_pct_initial_gdp < 0.0 or state.uncovered_funding_pct_initial_gdp < 0.0:
+	if state.asset_stock_pct_initial_gdp < 0.0 or state.initial_asset_stock_pct_initial_gdp < 0.0 or state.outstanding_liquidity_pct_initial_gdp < 0.0 or state.funding_need_pct_initial_gdp < 0.0 or state.eligible_collateral_pct_initial_gdp < 0.0 or state.liquidity_repayment_pct_initial_gdp < 0.0 or state.liquidity_applied_pct_initial_gdp < 0.0 or state.uncovered_funding_pct_initial_gdp < 0.0:
 		return {"ok": false, "error": "asset or liquidity stock outside physical capacity"}
 	if state.credit_spread_pct < 0.0 or state.credit_risk_wedge_pct < 0.0 or state.solvency_risk_wedge_pct < 0.0 or state.inflation_miss_memory_pct < 0.0 or state.public_hardship_memory < 0.0 or state.current_hardship < 0.0:
 		return {"ok": false, "error": "risk, inflation memory or hardship memory outside domain"}
-	if state.asset_stock_capacity_pct_initial_gdp < state.initial_asset_stock_pct_initial_gdp or state.initial_asset_stock_pct_initial_gdp > params.asset_stock_capacity_pct_initial_gdp:
-		return {"ok": false, "error": "asset stock baseline exceeds declared capacity"}
+	var balance_check := _validate_balance_state(state)
+	if not balance_check.ok:
+		return balance_check
 	var implied_output: float = state.potential_output_index * (1.0 + state.output_gap_pct / 100.0)
 	if abs(implied_output - state.actual_output_index) > 1e-7:
 		return {"ok": false, "error": "actual output index conflicts with potential output and gap"}
@@ -730,14 +1072,17 @@ func _validate_policy(policy: Dictionary, params: Dictionary) -> Dictionary:
 		if not policy.has(key) or typeof(policy[key]) not in [TYPE_INT, TYPE_FLOAT] or not is_finite(float(policy[key])):
 			return {"ok": false, "error": "%s: missing or nonfinite %s" % [POLICY_REQUIRED_HINT, key]}
 	for key in policy:
-		if key not in POLICY_KEYS:
+		if key in POLICY_SWITCHES:
+			if typeof(policy[key]) != TYPE_BOOL:
+				return {"ok":false,"error":"optional %s must be boolean" % key}
+		elif key not in POLICY_KEYS:
 			return {"ok": false, "error": "unknown policy control: %s" % key}
 	for quote in [policy.policy_rate_request_pct, policy.guidance_rate_pct]:
 		if not _rate_on_grid(quote, params.minimum_rate_increment_pct):
 			return {"ok": false, "error": "rate and guidance quotes require %.4f pp increments" % params.minimum_rate_increment_pct}
 	if abs(policy.guidance_inflation_sensitivity) > params.guidance_sensitivity_limit or abs(policy.guidance_output_gap_sensitivity) > params.guidance_sensitivity_limit:
 		return {"ok": false, "error": "guidance sensitivity outside declared bounds"}
-	if abs(policy.asset_flow_request_pct_initial_gdp) > params.asset_flow_request_limit_pct_initial_gdp or policy.liquidity_request_pct_initial_gdp < 0.0 or policy.liquidity_request_pct_initial_gdp > params.liquidity_request_limit_pct_initial_gdp:
+	if policy.liquidity_request_pct_initial_gdp < 0.0:
 		return {"ok": false, "error": "tool request outside declared bounds"}
 	return {"ok": true}
 

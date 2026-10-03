@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import shutil
@@ -37,6 +38,25 @@ def run_tool(command, log_path, completion):
         raise ValueError(f'Tool did not report completion; inspect {log_path}')
 
 
+def validated_portfolio(path):
+    raw = path.read_bytes()
+    reference = json.loads(raw)
+    weights = reference.get('treasury_maturity_weights', [])
+    if (reference.get('schema_version') != 1 or len(weights) != 120
+            or any(type(v) not in (int, float) or not math.isfinite(v) or v < 0 for v in weights)
+            or abs(sum(weights) - 1) > 1e-12):
+        raise ValueError('Invalid source-bound Treasury maturity ladder')
+    principal = float(reference['source_treasury_principal_usd'])
+    if not math.isfinite(principal) or principal <= 0:
+        raise ValueError('Invalid source Treasury principal')
+    for key in ('mbs_monthly_principal_billion_usd', 'mbs_stock_billion_usd',
+                'market_treasury_wam_years', 'treasury_duration_years', 'mbs_duration_years'):
+        value = reference.get(key)
+        if type(value) not in (int, float) or not math.isfinite(value) or value <= 0:
+            raise ValueError(f'Invalid portfolio observation: {key}')
+    return reference, hashlib.sha256(raw).hexdigest()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('output', help='new absolute directory outside Git')
@@ -55,6 +75,8 @@ def main():
     version = subprocess.check_output([str(args.godot), '--version'], text=True).strip()
     if not version.startswith('4.7.2.stable'):
         raise ValueError('Workbook reference paths require Godot 4.7.2')
+    portfolio_path = ROOT / 'game/model/portfolio_reference.json'
+    portfolio, portfolio_hash = validated_portfolio(portfolio_path)
     output.mkdir(parents=True)  # Atomic reservation; an existing destination is never reused.
     references = output / 'reference-v1'
     evidence = output / 'evidence'
@@ -64,6 +86,8 @@ def main():
     builder = ROOT / 'scripts/spreadsheet/build-policy-lab.mjs'
     execution_copy = output / builder.name
     shutil.copyfile(builder, execution_copy)
+    shutil.copyfile(portfolio_path, references / 'portfolio-reference.json')
+    (references / 'portfolio-reference.sha256').write_text(portfolio_hash + '\n')
     for case in CASES:
         run_tool([str(args.godot), '--headless', '--path', str(ROOT / 'game'),
                   '--script', 'res://tests/export_reference.gd', '--', '--output',
@@ -82,13 +106,25 @@ def main():
               '--script', 'res://tests/export_policy_variants.gd', '--', '--output',
               str(references / 'rate-boundaries.json'), '--rate-boundaries'],
              evidence / 'rate-boundaries.log', 'EXPORTED seven signed-rate boundary traces')
+    run_tool([str(args.godot), '--headless', '--path', str(ROOT / 'game'),
+              '--script', 'res://tests/export_policy_variants.gd', '--', '--output',
+              str(references / 'balance-boundaries.json'), '--balance-boundaries'],
+             evidence / 'balance-boundaries.log', 'EXPORTED fifteen balance-sheet boundary traces')
+    for path in references.glob('*.json'):
+        if path.name == 'portfolio-reference.json':
+            continue
+        document = json.loads(path.read_text())
+        for record in document if isinstance(document, list) else [document]:
+            if record.get('portfolio_reference_json') != portfolio_path.read_text() or json.loads(record['portfolio_reference_json']) != portfolio or record.get('portfolio_reference_sha256') != portfolio_hash:
+                raise ValueError(f'Native reference source binding mismatch: {path.name}')
     run_tool([str(args.node), str(execution_copy)], evidence / 'workbook-build.log',
              'EXPORTED Federal Reserve Policy Lab.xlsx')
     run_tool([sys.executable, str(ROOT / 'scripts/spreadsheet/check-workbook.py'),
               str(output / 'Federal Reserve Policy Lab.xlsx'), '--reference',
               str(references / 'supply_shock.json'), '--map',
               str(evidence / 'workbook-model-map.json'), '--campaign-reference',
-              str(references / 'mixed_crises.json')],
+              str(references / 'mixed_crises.json'), '--portfolio-reference',
+              str(references / 'portfolio-reference.json')],
              evidence / 'workbook-export-check.log', 'PASS ')
     run_tool([sys.executable, str(ROOT / 'scripts/tests/test-workbook-file.py'),
               str(output / 'Federal Reserve Policy Lab.xlsx'),
@@ -99,6 +135,7 @@ def main():
     assert digest(builder) == digest(execution_copy), 'Execution copy differs from source'
     provenance = {
         'git_head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
+        'portfolio_reference_sha256': portfolio_hash,
         'godot_version': version, 'builder_sha256': digest(builder),
         'node_version': subprocess.check_output([str(args.node), '--version'], text=True).strip(),
         'source_sha256': {name: digest(ROOT / name) for name in (
@@ -107,7 +144,7 @@ def main():
             'game/tests/export_policy_variants.gd', 'scripts/tests/test-workbook-file.py')},
         'workbook_sha256': digest(output / 'Federal Reserve Policy Lab.xlsx'),
         'model_sha256': {name: digest(ROOT / 'game/model' / name)
-                         for name in ('economy.gd', 'parameters.json', 'scenarios.json', 'exogenous_shocks.json')},
+                         for name in ('economy.gd', 'parameters.json', 'scenarios.json', 'exogenous_shocks.json', 'portfolio_reference.json')},
         'references_sha256': {path.name: digest(path) for path in sorted(references.glob('*.json'))},
         'native_recalculation': 'not performed by this command',
     }

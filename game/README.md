@@ -60,13 +60,17 @@ a link to managed dependencies. References, logs, previews and source hashes
 stay beside the new workbook rather than entering Git. Failed builds are kept
 for diagnosis; rerun with a new destination instead of replacing one.
 
-Seven seed-1, 48-quarter reference careers, four one-variable policy edits and
-seven signed-rate boundary traces come from the current Godot equations.
-Signed fixtures cover both signs, initial negative rates, credibility-priced
-guidance, deep constrained effort, zero current-rate loading and conditional
-promise delivery. The builder checks every state against its formula chain,
-exercises input boundaries and causality, exports four editable charts and
-renders all five sheets. These are hypothetical design assumptions,
+Seven seed-1, 48-quarter careers, four one-variable policy edits, three price,
+seven signed-rate and fifteen balance-sheet boundary traces come from the
+current Godot equations. Balance fixtures cover natural/capped runoff, large
+offers, full/partial sterilization, actual tagged maturity, loan refinancing,
+reserve scarcity and nonzero initial output gaps. The single formula chain
+checks every state and cohort, exercises input boundaries and causality,
+exports four editable charts and renders all five sheets. Policy offers use
+current meeting GDP; exogenous nominal shocks retain initial-GDP units so
+policy edits cannot change the shared shock path. Original portfolio JSON bytes
+and their hash bind every native export; the decoded snapshot alone is not an
+exact decimal serialization of that source. These are hypothetical design assumptions,
 not historically calibrated forecasts. Generating a file does not prove native
 spreadsheet usability or human playability.
 
@@ -94,9 +98,12 @@ better. These are presentation rules, not changes to the simulation.
 
 `model/economy.gd` owns the equations. `parameters.json` records each parameter's
 units and source classification; `scenarios.json` contains seven hypothetical
-cases. Rates and inflation use percent units: 2 means 2 percent. Asset and loan
-amounts use percent of **initial annual GDP**, so growth does not silently change
-their denominator. Output and price levels start at index 100.
+cases. Rates and inflation use percent units: 2 means 2 percent. Internal asset and loan
+amounts use percent of **initial annual GDP**. The cockpit accepts offers in percent
+of observed current annual nominal GDP and converts once before commitment. Flow
+displays use meeting GDP; ending stocks use ending GDP. Output and price levels
+start at index 100. The [portfolio and funding specification](../docs/BALANCE_SHEET.md)
+owns principal, maturity, reserve and sterilization equations.
 
 ## Scenarios and background disturbances
 
@@ -150,11 +157,15 @@ their background shocks; it is not a forecast or the game's concealed future.
    flow and liquidity request. `step` receives realized exogenous inputs
    separately. It validates inputs and returns a new state without changing the
    supplied state. Benchmark policies cannot inspect future shocks.
-2. Apply the full nominal rate on the quoted grid and retain asset-capacity limits. Roll the term premium forward
-   from its prior value using the applied asset flow. Repay part of outstanding
-   loans, then limit new lending by new funding need, flow capacity and remaining
-   eligible collateral after haircuts. Funding need denotes new financing needed
-   during this quarter. Lending does not remove the solvency-risk wedge.
+2. Apply the full nominal rate on the quote grid. Age the Treasury/bill ladders,
+   calculate financing-sensitive MBS paydown, and reinvest or allow principal
+   runoff. Negative offers cap runoff at actual principal due; purchases have no
+   invented ceiling. Prior short loans mature in full. Jointly settle eligible
+   local/aggregate advances, reverse-repo absorption, currency conversion and
+   optional reserve-maintenance bills. Principal assets and liabilities reconcile
+   without resetting capital. The bounded duration-premium response and one
+   nonlinear reserve-scarcity channel affect financing; lending cannot erase
+   solvency risk. New funding and requested refinancing remain distinct.
 3. Price nominal guidance according to prior credibility, then apply diminishing
    negative-rate transmission to the spot and priced guidance rates separately. Form short and long real-rate
    gaps, add the credit spread, subtract the neutral real rate and smooth the
@@ -394,7 +405,9 @@ release gates.
 
 Choose one of seven scenarios, inspect the current meeting dispatch and stage a
 rate, guidance, asset-flow and lending decision. The preview uses the known
-current shock, then assumes no new shocks and holds the rate for eight quarters.
+current shock, then assumes no new shocks and holds the rate and staged portfolio
+switches for eight quarters. One-time offers do not repeat. Principal, loan
+repayment and optional reserve maintenance still operate.
 It cannot read the realized future shock path. The staff rate rule is a disclosed
 benchmark rather than an optimal-play recommendation.
 

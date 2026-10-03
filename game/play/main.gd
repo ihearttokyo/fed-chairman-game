@@ -20,6 +20,9 @@ var rate: SpinBox
 var guidance: SpinBox
 var assets: SpinBox
 var liquidity: SpinBox
+var reinvestment: CheckBox
+var reserve_maintenance: CheckBox
+var sterilization: CheckBox
 var commitment: OptionButton
 var custom_guidance: VBoxContainer
 var inflation_response: SpinBox
@@ -398,6 +401,18 @@ func _spin(parent: Node, title: String, low: float, high: float, step_size: floa
 		keyboard_controls.append(edit)
 	return input
 
+func _portfolio_switch(parent: Node, title: String, enabled: bool, tip: String) -> CheckBox:
+	var control := CheckBox.new()
+	control.text = title
+	control.button_pressed = enabled
+	control.accessibility_name = title
+	control.tooltip_text = tip
+	control.accessibility_description = tip
+	control.toggled.connect(func(_enabled: bool): _preview())
+	parent.add_child(control)
+	keyboard_controls.append(control)
+	return control
+
 func _build_policy(parent: Node, actions: Node) -> void:
 	var panel := _panel(parent)
 	panel.custom_minimum_size.x = 380
@@ -424,9 +439,18 @@ func _build_policy(parent: Node, actions: Node) -> void:
 	activity_response = _spin(custom_guidance, "Output-gap response", -bound, bound, 0.1, "Adjust the announced rate by this many percentage points for each 1 pp change in the output gap since the announcement.")
 	var units := _label(custom_guidance, "Rate pp per 1 pp change since your announcement. Negative responses reverse the direction; these are game-design choices.", 11, MUTED)
 	units.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	assets = _spin(box, "Asset purchases / runoff", -2, 2, 0.25, "Percent of initial annual GDP. Purchases lower the term premium; runoff raises it. Stock capacity applies.")
-	liquidity = _spin(box, "New liquidity lending", 0, 5, 0.25, "Percent of initial annual GDP. New loans are limited by funding need, eligibility and collateral. They do not cure insolvency.")
-	_label(box, "Asset and loan units: % of initial annual GDP", 11, MUTED)
+	assets = _spin(box, "Purchases / runoff cap", -2, 2, 0.25, "Percent of current annual GDP. Positive: purchase long Treasuries. Negative: cap runoff at actual principal due; reinvest the remainder. No purchase or stock ceiling.")
+	assets.allow_lesser = true
+	assets.allow_greater = true
+	var modes := _vbox(box, 0)
+	var portfolio_row := HBoxContainer.new()
+	modes.add_child(portfolio_row)
+	reinvestment = _portfolio_switch(portfolio_row, "Reinvest principal", true, "With zero or positive purchases, roll principal on or allow natural runoff off. A negative runoff cap overrides either setting; no unmatured securities are sold.")
+	sterilization = _portfolio_switch(portfolio_row, "Sterilize purchases", false, "Absorb purchase-created reserves through overnight reverse repos. Securities remain assets; duration effects persist. Uptake, collateral and settlement can limit absorption.")
+	reserve_maintenance = _portfolio_switch(modes, "Maintain ample reserves", true, "Buy short bills after runoff, currency conversion, lending and absorption to meet the modeled reserve buffer. Bills can change funding conditions but are excluded from the long-duration channel.")
+	liquidity = _spin(box, "Liquidity offer", 0, 5, 0.25, "Desired concurrent exposure, percent of current annual GDP. No offer ceiling. Borrower need, eligibility, haircut-adjusted collateral and settlement limit advances; loans do not create bank capital.")
+	liquidity.allow_greater = true
+	_label(box, "Asset and loan units: % of current annual GDP", 11, MUTED)
 	_button(box, "Use staff rate rule", _staff_rule, KEY_R)
 	forecast_label = _label(box, "", 13, MINT)
 	forecast_label.custom_minimum_size.y = 114
@@ -438,10 +462,12 @@ func _build_policy(parent: Node, actions: Node) -> void:
 	explanation.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
 func _policy() -> Dictionary:
+	var n: float = career.model.nominal_gdp_ratio(career.state) if not career.state.is_empty() else 1.0
 	return {"policy_rate_request_pct": rate.value, "guidance_rate_pct": guidance.value,
 		"guidance_inflation_sensitivity": inflation_response.value if commitment.selected == 2 else (career.params.policy_inflation_response if commitment.selected == 0 else 0.0),
 		"guidance_output_gap_sensitivity": activity_response.value if commitment.selected == 2 else (career.params.policy_output_gap_response if commitment.selected == 0 else 0.0),
-		"asset_flow_request_pct_initial_gdp": assets.value, "liquidity_request_pct_initial_gdp": liquidity.value}
+		"asset_flow_request_pct_initial_gdp": assets.value * n, "liquidity_request_pct_initial_gdp": liquidity.value * n,
+		"reinvest_principal": reinvestment.button_pressed, "maintain_ample_reserves": reserve_maintenance.button_pressed, "sterilize_purchases": sterilization.button_pressed}
 
 func _apply_policy_inputs() -> void:
 	loading_controls = true
@@ -499,7 +525,8 @@ func _refresh(reset_controls := false) -> void:
 	var s: Dictionary = career.state
 	var complete := career.decisions.size() >= Career.MAX_QUARTERS
 	case_title.text = career.cases[career.scenario_id].label
-	case_detail.text = "Holdings %.1f%% · Loans %.2f%%\nUnits: initial annual GDP" % [s.asset_stock_pct_initial_gdp, s.outstanding_liquidity_pct_initial_gdp]
+	var n: float = career.model.nominal_gdp_ratio(s)
+	case_detail.text = "Holdings %.1f%% · Loans %.2f%% · Reserves %.2f%% · RRP %.2f%%\nUnits: current annual GDP" % [s.asset_stock_pct_initial_gdp / n, s.outstanding_liquidity_pct_initial_gdp / n, s.reserves_pct_initial_gdp / n, s.reverse_repo_pct_initial_gdp / n]
 	quarter_label.text = "CAREER COMPLETE · %d MEETINGS" % Career.MAX_QUARTERS if complete else "YEAR %02d / Q%d   ·   MEETING %d" % [int(s.quarter_index / 4) + 1, int(s.quarter_index) % 4 + 1, s.quarter_index + 1]
 	stats[0][0].text = "%.2f%%" % s.four_quarter_inflation_pct
 	stats[0][1].text = "Target 2%"
@@ -518,7 +545,7 @@ func _refresh(reset_controls := false) -> void:
 		chart.history = career.history
 		chart.queue_redraw()
 	var shock: Dictionary = career.current_briefing()
-	briefing.text = "Demand impulse %+.2f pp · supply innovation %+.2f pp.\nFunding need %.2f; eligible collateral %.2f (%% initial GDP). Current output gap %+.2f%%. %s" % [shock.get("demand_shock_pct", 0), shock.get("supply_innovation_pct", 0), shock.get("funding_need_pct_initial_gdp", 0), shock.get("eligible_collateral_pct_initial_gdp", 0), s.output_gap_pct, "Lending cannot erase solvency risk." if shock.get("funding_need_pct_initial_gdp", 0) > 0.1 else "Policy works through a lagged real-rate channel."]
+	briefing.text = "Demand impulse %+.2f pp · supply innovation %+.2f pp.\nFunding need %.2f; collateral before haircut %.2f (%% current GDP). Current output gap %+.2f%%. %s" % [shock.get("demand_shock_pct", 0), shock.get("supply_innovation_pct", 0), shock.get("funding_need_pct_initial_gdp", 0) / n, shock.get("eligible_collateral_pct_initial_gdp", 0) / n, s.output_gap_pct, "Lending cannot erase solvency risk." if shock.get("funding_need_pct_initial_gdp", 0) > 0.1 else "Policy works through a lagged real-rate channel."]
 	briefing.text += "\nDeferred demand %+.2f%% potential · prior release %+.2f pp." % [s.deferred_demand_pct, s.demand_release_pct]
 	briefing.text += "\n\n" + career.situation_briefing()
 	if reset_controls:
@@ -529,6 +556,10 @@ func _refresh(reset_controls := false) -> void:
 		guidance.value = s.policy_rate_pct
 		assets.value = 0
 		liquidity.value = 0
+		var prior: Dictionary = career.decisions[-1] if not career.decisions.is_empty() else {}
+		reinvestment.button_pressed = prior.get("reinvest_principal", true)
+		reserve_maintenance.button_pressed = prior.get("maintain_ample_reserves", true)
+		sterilization.button_pressed = prior.get("sterilize_purchases", false)
 		inflation_response.value = s.guidance_inflation_sensitivity if s.guidance_active else career.params.policy_inflation_response
 		activity_response.value = s.guidance_output_gap_sensitivity if s.guidance_active else career.params.policy_output_gap_response
 		commitment.select(0)
@@ -556,7 +587,8 @@ func _preview() -> void:
 	var rate_text := "Rate %.2f%%" % first.policy_rate_pct
 	if first.policy_rate_pct < 0.0:
 		rate_text += " (effective %.2f%%)" % first.effective_policy_rate_pct
-	forecast_label.text = "APPLIED NOW\n%s · assets %+.2f · lending %.2f\n\nCONDITIONAL Q+8\nInflation %.2f%% · unemployment %.2f%%\nOutput gap %+.2f%%" % [rate_text, first.asset_flow_applied_pct_initial_gdp, first.liquidity_applied_pct_initial_gdp, last.four_quarter_inflation_pct, last.unemployment_rate_pct, last.output_gap_pct]
+	var n: float = first.decision_nominal_gdp_ratio
+	forecast_label.text = "APPLIED NOW\n%s · assets %+.2f · lending %.2f\nRunoff %.2f · RMP %.2f · RRP %.2f\nUnsterilized %.2f · uncovered funding %.2f\n\nCONDITIONAL Q+8\nInflation %.2f%% · unemployment %.2f%% · output gap %+.2f%%" % [rate_text, first.asset_flow_applied_pct_initial_gdp / n, first.liquidity_applied_pct_initial_gdp / n, first.long_securities_runoff_pct_initial_gdp / n, first.reserve_maintenance_purchase_pct_initial_gdp / n, first.sterilization_applied_pct_initial_gdp / n, first.sterilization_unfulfilled_pct_initial_gdp / n, first.uncovered_funding_pct_initial_gdp / n, last.four_quarter_inflation_pct, last.unemployment_rate_pct, last.output_gap_pct]
 
 func _decision_briefing() -> String:
 	var policy := _policy()
@@ -566,7 +598,10 @@ func _decision_briefing() -> String:
 		return "Comparison unavailable: " + (selected.error if not selected.ok else held.error)
 	var first: Dictionary = selected.states[0]
 	var reference: Dictionary = held.states[0]
-	var text := "CURRENT MEETING / REQUESTED AND APPLIED\nRequested rate %.2f%% · Applied rate %.2f%%\nRequested assets %+.2f · Applied assets %+.2f\nRequested lending %.2f · Applied lending %.2f\n\nNominal rates apply in full on a 1bp quote grid; arrow convenience is 25bp. Negative policy is a U.S. counterfactual with diminishing effective borrowing-rate benefits. Asset flows are limited by quarterly capacity and holdings. Lending is limited by funding need, eligible collateral after haircuts, existing loans and quarterly capacity. Asset and lending units are %% of initial annual GDP.\n\n" % [policy.policy_rate_request_pct, first.policy_rate_pct, policy.asset_flow_request_pct_initial_gdp, first.asset_flow_applied_pct_initial_gdp, policy.liquidity_request_pct_initial_gdp, first.liquidity_applied_pct_initial_gdp]
+	var n: float = first.decision_nominal_gdp_ratio
+	var text := "CURRENT MEETING / REQUESTED AND APPLIED\nRequested rate %.2f%% · Applied rate %.2f%%\nRequested assets %+.2f · Applied assets %+.2f\nRequested lending %.2f · Applied lending %.2f\n\nNominal rates apply in full on a 1bp quote grid; arrow convenience is 25bp. Negative policy is a U.S. counterfactual with diminishing effective borrowing-rate benefits. No invented purchase, stock or lending-offer ceilings. Runoff cannot exceed principal due. Lending is limited by borrower demand, eligibility, lending value and settlement. Asset and loan amounts here use %% of current annual GDP.\n\n" % [policy.policy_rate_request_pct, first.policy_rate_pct, policy.asset_flow_request_pct_initial_gdp / n, first.asset_flow_applied_pct_initial_gdp / n, policy.liquidity_request_pct_initial_gdp / n, first.liquidity_applied_pct_initial_gdp / n]
+	text += "PORTFOLIO AND FUNDING / CURRENT MEETING\nPrincipal due %.2f; runoff %.2f; reinvested %.2f\nLong runoff %.2f; reserve-maintenance bills %.2f; total-asset change %+.2f\nSterilization requested %.2f; applied RRP %.2f; unfulfilled %.2f\nLoan principal repaid %.2f; refinancing %.2f; new local lending %.2f; aggregate lending %.2f\nEnding reserves %.2f; reserve-scarcity premium %.3f pp\n\n" % [first.principal_due_pct_initial_gdp / n, first.principal_runoff_pct_initial_gdp / n, first.principal_reinvestment_pct_initial_gdp / n, first.long_securities_runoff_pct_initial_gdp / n, first.reserve_maintenance_purchase_pct_initial_gdp / n, first.total_asset_change_pct_initial_gdp / n, first.sterilization_requested_pct_initial_gdp / n, first.sterilization_applied_pct_initial_gdp / n, first.sterilization_unfulfilled_pct_initial_gdp / n, first.liquidity_repayment_pct_initial_gdp / n, first.liquidity_refinancing_applied_pct_initial_gdp / n, first.liquidity_new_need_applied_pct_initial_gdp / n, first.liquidity_aggregate_applied_pct_initial_gdp / n, first.reserves_pct_initial_gdp / first.ending_nominal_gdp_ratio, first.reserve_scarcity_wedge_pct]
+	text += "Lending value %.2f; Eligible local demand %.2f; aggregate demand %.2f\nBinding constraints: lending offer %s, collateral %s, eligibility %s; RRP uptake %s, collateral %s, reserves %s\n\n" % [first.lending_collateral_capacity_pct_initial_gdp / n, first.eligible_local_need_pct_initial_gdp / n, first.liquidity_aggregate_need_pct_initial_gdp / n, "yes" if first.liquidity_offer_binding or first.liquidity_aggregate_offer_binding else "no", "yes" if first.liquidity_collateral_binding or first.liquidity_aggregate_collateral_binding else "no", "yes" if first.liquidity_eligibility_binding else "no", "yes" if first.sterilization_uptake_binding else "no", "yes" if first.sterilization_collateral_binding else "no", "yes" if first.sterilization_reserve_binding else "no"]
 	var s: Dictionary = career.state
 	text += "COMMITTEE DELIBERATION / FEASIBLE RATE ALTERNATIVES\nFictional viewpoints, not votes or advice. Test a higher rate for inflation risk, a lower rate for employment risk, and continuity while past decisions work. Every other staged tool and the new quote stay unchanged. Each path uses the disclosed current shock, then no new shocks and its own applied-rate hold.\n\n"
 	for alternative in [["Selected", policy.policy_rate_request_pct], ["Tighter rate", first.policy_rate_pct + 0.25], ["Gentler rate", first.policy_rate_pct - 0.25], ["Rate continuity", s.policy_rate_pct]]:
@@ -588,7 +623,7 @@ func _decision_briefing() -> String:
 	text += "\nNew quote %.2f%%; inflation response %.2f, output-gap response %.2f.\nA new announcement does not erase the previous obligation. Conditions affect next meeting's follow-through, not an immediate credibility bonus. Follow-through is one component of credibility, alongside inflation performance and policy stance.\n\n" % [policy.guidance_rate_pct, policy.guidance_inflation_sensitivity, policy.guidance_output_gap_sensitivity]
 	text += "Q+1 / WHY CREDIBILITY AND SUPPORT MOVE\nSELECTED vs HOLD\nCredibility %.1f vs %.1f / 100\nPublic support %.1f vs %.1f / 100\nInflation-miss memory %.3f vs %.3f pp\nEffective rate %.3f%% vs %.3f%%\nDesired real restraint %+.3f vs %+.3f pp\nEffective-stance distance %.3f vs %.3f pp\nTransmission-frontier shortfall %.3f vs %.3f pp\nStance adequacy %.1f vs %.1f / 100\nPrior-promise follow-through %.1f vs %.1f / 100\nCurrent hardship %.3f vs %.3f support points\nHardship memory %.3f vs %.3f support points\n\n" % [100 * first.credibility, 100 * reference.credibility, first.public_support, reference.public_support, first.inflation_miss_memory_pct, reference.inflation_miss_memory_pct, first.effective_policy_rate_pct, reference.effective_policy_rate_pct, first.stance_target_gap_pct, reference.stance_target_gap_pct, first.stance_distance_pct, reference.stance_distance_pct, first.stance_best_feasible_distance_pct, reference.stance_best_feasible_distance_pct, 100 * first.stance_adequacy_score, 100 * reference.stance_adequacy_score, 100 * first.guidance_followthrough_score, 100 * reference.guidance_followthrough_score, first.current_hardship, reference.current_hardship, first.public_hardship_memory, reference.public_hardship_memory]
 	text += "Credibility combines 40%% inflation performance, 40%% stance, 20%% follow-through. Remembered inflation misses reduce performance. Stance compares current effective financing restraint with the unsaturated desired real gap. Other staged tools and the quote are held fixed when calculating the relaxed continuous transmission frontier. The 1bp grid can leave a small remaining distance. Unattainable restraint reduces adequacy even at best effort; extreme nominal cuts cannot earn full credit merely by matching a nominal rule. Inflation memory and the desired gap use prior observations; current market inputs are disclosed. Without a prior announcement, follow-through is neutral. Credibility closes %.0f%% of the distance to its combined score each quarter.\n\nPublic support closes %.0f%% of the distance to its hardship-implied level each quarter. Current inflation/deflation and employment hardship reduce that level; weighted hardship memory prolongs the effect after conditions improve. These scores and the stance rule are game assumptions, not an optimal policy or a measured institutional reputation.\n\n" % [100 * career.params.credibility_adjustment, 100 * career.params.public_support_adjustment]
-	text += "CURRENT TRANSMISSION / SELECTED VS HOLD\nLong yield %.3f%% vs %.3f%%\nCredit spread %.3f%% vs %.3f%%\nUncovered funding %.2f vs %.2f\n\n" % [first.long_yield_pct, reference.long_yield_pct, first.credit_spread_pct, reference.credit_spread_pct, first.uncovered_funding_pct_initial_gdp, reference.uncovered_funding_pct_initial_gdp]
+	text += "CURRENT TRANSMISSION / SELECTED VS HOLD\nLong yield %.3f%% vs %.3f%%\nCredit spread %.3f%% vs %.3f%%\nUncovered funding %.2f vs %.2f\n\n" % [first.long_yield_pct, reference.long_yield_pct, first.credit_spread_pct, reference.credit_spread_pct, first.uncovered_funding_pct_initial_gdp / n, reference.uncovered_funding_pct_initial_gdp / n]
 	text += "DIFFERENCE FROM HOLD / SELECTED MINUS REFERENCE\n"
 	for index in [0, 3, 7]:
 		var choice: Dictionary = selected.states[index]
@@ -601,8 +636,8 @@ func _decision_briefing() -> String:
 	var alternatives := [
 		["Rate / alternative request today's rate", "policy_rate_request_pct", s.policy_rate_pct, "%"],
 		["Guidance quote / alternative quote applied rate", "guidance_rate_pct", first.policy_rate_pct, "%"],
-		["Asset flow / alternative no new flow", "asset_flow_request_pct_initial_gdp", 0.0, "% of initial annual GDP"],
-		["Lending / alternative no new loans", "liquidity_request_pct_initial_gdp", 0.0, "% of initial annual GDP"],
+		["Asset flow / alternative no new flow", "asset_flow_request_pct_initial_gdp", 0.0, "% of current annual GDP"],
+		["Lending / alternative no new loans", "liquidity_request_pct_initial_gdp", 0.0, "% of current annual GDP"],
 	]
 	for alternative in alternatives:
 		var other: Dictionary = policy.duplicate()
@@ -615,7 +650,7 @@ func _decision_briefing() -> String:
 		var reference_first: Dictionary = path.states[0]
 		var reference_last: Dictionary = path.states[-1]
 		text += "Q+1 long yield %s; credit spread %s\nQ+8 inflation %s; unemployment %s; credibility %s; support %s\n\n" % [_change_text(first.long_yield_pct - reference_first.long_yield_pct, 3, "pp"), _change_text(first.credit_spread_pct - reference_first.credit_spread_pct, 3, "pp"), _change_text(last.four_quarter_inflation_pct - reference_last.four_quarter_inflation_pct, 3, "pp"), _change_text(last.unemployment_rate_pct - reference_last.unemployment_rate_pct, 3, "pp"), _change_text(100 * (last.credibility - reference_last.credibility), 2), _change_text(last.public_support - reference_last.public_support, 2)]
-	text += "REFERENCE AND LIMITS\nHold today's rate, guide to that rate with data dependence, and request no new asset flows or loans. Both paths use the same current shock and no new future shocks. After this meeting, each holds its own applied rate and makes no new asset flows or loans. Existing holdings, loans and policy lags carry forward.\n\nThese are combined effects of the staged controls, not an optimal-policy recommendation or a confidence interval. Positive differences mean a higher value, not necessarily a better outcome. Policy lags can leave first-quarter inflation unchanged even when later outcomes differ."
+	text += "REFERENCE AND LIMITS\nHold today's rate, guide to that rate with data dependence, and request no new asset flows or loans. Both paths use the same current shock and no new future shocks. After this meeting, each holds its own applied rate and portfolio switches, with no new asset flows or loans. Principal, short-loan repayment, reserve maintenance and policy lags still operate. The HOLD reference uses default reinvestment/maintenance and no sterilization.\n\nThese are combined effects of the staged controls, not an optimal-policy recommendation or a confidence interval. Positive differences mean a higher value, not necessarily a better outcome. Policy lags can leave first-quarter inflation unchanged even when later outcomes differ."
 	return text
 
 func _staff_rule() -> void:
@@ -767,14 +802,14 @@ func _review() -> void:
 	var actual: Dictionary = compared.actual
 	var held: Dictionary = compared.held
 	var text := "REALIZED PATHS / Q%d–Q%d\nYOUR POLICY vs HOLD REFERENCE\n\nAverage absolute distance from 2%% inflation: %.3f vs %.3f pp\nAverage unemployment above structural reference: %.3f vs %.3f pp\nEnding credibility: %.1f vs %.1f / 100\nEnding public support: %.1f vs %.1f / 100\n\n" % [compared.from_quarter + 1, compared.to_quarter, actual.inflation_miss, held.inflation_miss, actual.employment_shortfall, held.employment_shortfall, 100 * actual.credibility, 100 * held.credibility, actual.public_support, held.public_support]
-	text += "Both paths start at your actual Q%d state and use only shocks that already occurred. The reference holds %.2f%%, guides to that rate with data dependence, and makes no new asset flows or loans. Existing stocks, loans, expectations and policy lags carry forward. This is a hindsight comparison, not a forecast or proof of optimal policy.\n\n" % [compared.from_quarter, compared.hold_rate]
+	text += "Both paths start at your actual Q%d state and use only shocks that already occurred. The reference holds %.2f%%, guides to that rate with data dependence, and makes no new asset flows or loans. Default reinvestment and reserve maintenance stay on; sterilization stays off. Principal and short-loan repayments still settle. Existing stocks, expectations and policy lags carry forward. This is a hindsight comparison, not a forecast or proof of optimal policy.\n\n" % [compared.from_quarter, compared.hold_rate]
 	text += "Lower average inflation distance and employment shortfall mean lower costs on those measures. There is no single combined score: reducing one cost can increase the other. Structural unemployment is a model assumption, not a known real-world employment target.\n\nCurrent inflation %.2f%%; unemployment %.2f%%; output gap %+.2f%%.\n\nThere is no dismissal threshold. Credibility and public forgiveness are gradual, and earlier decisions keep working after this review." % [s.four_quarter_inflation_pct, s.unemployment_rate_pct, s.output_gap_pct]
 	_text_dialog("Your %d-quarter policy review" % (compared.to_quarter - compared.from_quarter), text)
 
 func _journal() -> void:
-	var text := "%s · seed %d\nRates and changes are percentage units. Asset and lending flows use %% of initial annual GDP.\n\n" % [career.cases[career.scenario_id].label, career.seed_value]
+	var text := "%s · seed %d\nRates and changes are percentage units. Asset and lending flows below use %% of each meeting's current annual GDP; ending stocks use ending GDP.\n\n" % [career.cases[career.scenario_id].label, career.seed_value]
 	for s in career.history:
-		text += "Q%03d | inflation %.2f%% | unemployment %.2f%% | rate %.2f%% | output gap %+.2f%%\nCredibility %.1f | support %.1f | assets %+.2f | loans %.2f\n\n" % [s.quarter_index, s.four_quarter_inflation_pct, s.unemployment_rate_pct, s.policy_rate_pct, s.output_gap_pct, s.credibility * 100, s.public_support, s.asset_flow_applied_pct_initial_gdp, s.liquidity_applied_pct_initial_gdp]
+		text += "Q%03d | inflation %.2f%% | unemployment %.2f%% | rate %.2f%% | output gap %+.2f%%\nCredibility %.1f | support %.1f | assets %+.2f | loans %.2f\n\n" % [s.quarter_index, s.four_quarter_inflation_pct, s.unemployment_rate_pct, s.policy_rate_pct, s.output_gap_pct, s.credibility * 100, s.public_support, s.asset_flow_applied_pct_initial_gdp / s.decision_nominal_gdp_ratio, s.liquidity_applied_pct_initial_gdp / s.decision_nominal_gdp_ratio]
 	var dialog := _text_dialog("Economic history and policy journal", text)
 	var review := dialog.add_button("Review realized policy")
 	review.disabled = career.decisions.is_empty()
@@ -791,7 +826,7 @@ func _journal() -> void:
 	)
 
 func _help() -> void:
-	_text_dialog("How to play", KEYBOARD_HELP + "Your role\nGuide a simplified FOMC policy decision. The target-rate midpoint is an abstraction; a real chair does not unilaterally set the market rate.\n\nEvery career includes seeded background disturbances. The baseline starts at equilibrium with no scheduled scenario events, but its playable path is not shock-free. The same scenario and seed reproduce the path within the same engine and model.\n\n1. Read the dispatch. It describes current conditions, not future shocks.\n2. Set the target rate. Higher real rates restrain demand gradually; inflation reacts with a lag. A supply shock can raise prices while weakening activity.\n3. Choose guidance. A firm promise is easier to understand but costly to break. Data dependence adjusts the prior promise when inflation and the output gap change.\n4. Use asset purchases or runoff to change the term premium. Liquidity lending addresses eligible funding needs, not insolvency.\n5. Inspect applied amounts and the eight-quarter preview, then adopt. The preview assumes no new future shocks and no later rate changes.\n\nRates and guidance\nNominal rates apply in full; quotes use 1bp increments and arrows move 25bp. Negative rates are a U.S. counterfactual. Their effective financing rate is s*tanh(i/s) below zero, unchanged above zero; the illustrative scale s=1 percentage point is not an estimated lower bound. Credibility prices the nominal guidance quote before this transmission. Deep cuts have diminishing benefits. Stance credibility compares effective restraint with an unsaturated real-gap objective: constrained best effort receives partial credit, not full adequacy. Conditional implied quotes round to the same 1bp grid before nominal promise follow-through.\n\nRecovery channels\nDeferred demand tracks postponed durable/replacement purchases, not all lost consumption. Positive stock supports catch-up spending; negative stock means purchases were brought forward. Financing restraint delays release; growth changes the denominator, and obsolete plans decay. The stock uses percent of quarterly potential output. Short expectations gradually mix observed inflation with prior long expectations in proportion to credibility. Transitory neutral-rate deviations revert toward a structural reference; permanent structural shifts change it. These channels provide a recovery impulse, with no guaranteed return to 2% under persistent restraint.\n\nCredibility changes how markets price guidance and long-run inflation expectations. Public support remembers both inflation/deflation hardship and unemployment. It recovers gradually, without term resets or a game-over threshold.\n\nSave preserves a career in this game's separate storage. New career and Load ask before replacing unsaved play. Tab navigates controls; charts also have exact values in Data & journal. Animation is off by default.\n\nModel limits\nSeven hypothetical scenarios. Recurring crises draws from 50 curated exogenous events: disasters, demand/supply changes, funding and credit losses, and favorable developments. Forty-eight independent profiles use a no-repeat bag; two private-bank normalization events require prior eligible stress. The current dispatch names an active event, never its future pulses. Private normalization cannot erase old losses or loans. Incidence and behavioral coefficients are design assumptions. Only the 2% objective is source-defined. Hypothetical economy; coefficients are design assumptions, not empirical forecasts or financial advice. No Federal Reserve affiliation. See the repository's FED_RESEARCH and model README for primary sources and equations.\n\nCredits\nOriginal procedural Blender city by the project. Godot Engine is MIT-licensed.\n\n" + Engine.get_license_text())
+	_text_dialog("How to play", KEYBOARD_HELP + "Your role\nGuide a simplified FOMC policy decision. The target-rate midpoint is an abstraction; a real chair does not unilaterally set the market rate.\n\nEvery career includes seeded background disturbances. The baseline starts at equilibrium with no scheduled scenario events, but its playable path is not shock-free. The same scenario and seed reproduce the path within the same engine and model.\n\n1. Read the dispatch. It describes current conditions, not future shocks.\n2. Set the target rate. Higher real rates restrain demand gradually; inflation reacts with a lag. A supply shock can raise prices while weakening activity.\n3. Choose guidance. A firm promise is easier to understand but costly to break. Data dependence adjusts the prior promise when inflation and the output gap change.\n4. Set purchases or a runoff cap; choose reinvestment, reserve maintenance and sterilization. Offer secured liquidity for eligible funding, not insolvency.\n5. Inspect applied amounts and the eight-quarter preview, then adopt. The preview assumes no new future shocks and no later rate changes.\n\nRates and guidance\nNominal rates apply in full; quotes use 1bp increments and arrows move 25bp. Negative rates are a U.S. counterfactual. Their effective financing rate is s*tanh(i/s) below zero, unchanged above zero; the illustrative scale s=1 percentage point is not an estimated lower bound. Credibility prices the nominal guidance quote before this transmission. Deep cuts have diminishing benefits. Stance credibility compares effective restraint with an unsaturated real-gap objective: constrained best effort receives partial credit, not full adequacy. Conditional implied quotes round to the same 1bp grid before nominal promise follow-through.\n\nBalance sheet and funding\nAsset and lending offers are percent of current annual GDP, converted once at the meeting. Purchases have no invented ceiling; their duration-premium effect diminishes with scale. A negative offer caps runoff at actual maturing Treasury, MBS and bill principal; it is not a sale of unmatured holdings. With a zero or positive offer, reinvestment on rolls principal and off allows natural runoff. MBS paydown responds nonlinearly to lagged financing; Treasury timing uses a source-backed maturity ladder.\n\nMaintain ample reserves buys short bills after all other transactions to meet the disclosed reserve buffer. Bills are excluded from the long-duration channel but can ease funding scarcity; long runoff can coexist with unchanged total assets. Sterilized purchases retain securities and duration effects while replacing reserves with overnight reverse repo liabilities. Uptake, Treasury collateral and settlement can leave absorption incomplete. Tagged principal rolls without accumulating a new absorption target.\n\nThe liquidity offer is desired concurrent exposure, not accumulated quarterly turnover. Prior representative overnight/short loans mature next quarter. New needs and requested refinancing are separate; eligible refinancing receives priority. Default zero refinancing assumes private repayment funds. Eligibility and haircut-adjusted collateral limit advances; excess offers do not become loans. Lending can relieve funding scarcity, not erase losses or create capital. Inspect applied amounts, RRP, reserve-maintenance purchases (RMP), and uncovered funding before adopting. Portfolio switches persist through the preview and subsequent meetings; one-time purchase and lending offers reset.\n\nRecovery channels\nDeferred demand tracks postponed durable/replacement purchases, not all lost consumption. Positive stock supports catch-up spending; negative stock means purchases were brought forward. Financing restraint delays release; growth changes the denominator, and obsolete plans decay. The stock uses percent of quarterly potential output. Short expectations gradually mix observed inflation with prior long expectations in proportion to credibility. Transitory neutral-rate deviations revert toward a structural reference; permanent structural shifts change it. These channels provide a recovery impulse, with no guaranteed return to 2% under persistent restraint.\n\nCredibility changes how markets price guidance and long-run inflation expectations. Public support remembers both inflation/deflation hardship and unemployment. It recovers gradually, without term resets or a game-over threshold.\n\nSave preserves a career in this game's separate storage. New career and Load ask before replacing unsaved play. Tab navigates controls; charts also have exact values in Data & journal. Animation is off by default.\n\nModel limits\nSeven hypothetical scenarios. Recurring crises draws from 50 curated exogenous events: disasters, demand/supply changes, funding and credit losses, and favorable developments. Forty-eight independent profiles use a no-repeat bag; two private-bank normalization events require prior eligible stress. The current dispatch names an active event, never its future pulses. Private normalization cannot erase old losses or loans. Incidence and behavioral coefficients are design assumptions. Only the 2% objective is source-defined. Hypothetical economy; coefficients are design assumptions, not empirical forecasts or financial advice. No Federal Reserve affiliation. See the repository's FED_RESEARCH and model README for primary sources and equations.\n\nCredits\nOriginal procedural Blender city by the project. Godot Engine is MIT-licensed.\n\n" + Engine.get_license_text())
 
 func _process(delta: float) -> void:
 	if city != null and not reduced_motion:

@@ -21,7 +21,8 @@ assert valid.returncode == 0, valid.stdout + valid.stderr
 with tempfile.TemporaryDirectory(prefix='fed-chart-regression-') as directory:
     defects = [('blank-chart', 'missing chart series'),
                ('axis-precision', 'ambiguous value-axis precision'),
-               ('linked-axis', 'ambiguous value-axis precision')]
+               ('linked-axis', 'ambiguous value-axis precision'),
+               ('cohort-cache', 'full-state parity')]
     if campaign:
         defects.append(('campaign-note', 'stale or missing campaign explanation'))
     for defect, error in defects:
@@ -42,7 +43,19 @@ with tempfile.TemporaryDirectory(prefix='fed-chart-regression-') as directory:
                             break
                     if changed:
                         data = ET.tostring(part, encoding='utf-8', xml_declaration=True)
-                if not changed and defect != 'campaign-note' and info.filename in charts:
+                if not changed and defect == 'cohort-cache' and info.filename.startswith('xl/worksheets/'):
+                    part = ET.fromstring(data)
+                    target_row = json.loads(row_map.read_text())['treasury_cohorts_pct_initial_gdp_0']
+                    for cell in part.findall('.//{http://schemas.openxmlformats.org/spreadsheetml/2006/main}c'):
+                        if cell.attrib.get('r') == f'E{target_row}':
+                            value = cell.find('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}v')
+                            if value is not None and cell.find('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}f') is not None:
+                                value.text = str(float(value.text) + 0.01)
+                                changed = True
+                                break
+                    if changed:
+                        data = ET.tostring(part, encoding='utf-8', xml_declaration=True)
+                if not changed and defect not in ('campaign-note', 'cohort-cache') and info.filename in charts:
                     chart = ET.fromstring(data)
                     namespace = '{http://schemas.openxmlformats.org/drawingml/2006/chart}'
                     if defect == 'blank-chart':

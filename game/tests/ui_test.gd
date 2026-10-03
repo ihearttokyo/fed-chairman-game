@@ -830,14 +830,14 @@ func run() -> void:
 		var held: Dictionary = game.career.forecast(game.career.model.benchmark_policy(game.career.state, game.career.params, "hold"))
 		var report: String = game._decision_briefing()
 		check(report.contains("Requested rate 8.00%"), "briefing shows the requested instrument")
-		check(report.contains("Applied rate %.2f%%" % selected.states[0].policy_rate_pct), "briefing shows actual capped rate")
-		check(report.contains("Applied lending %.2f" % selected.states[0].liquidity_applied_pct_initial_gdp), "briefing shows collateral-constrained lending")
+		check(report.contains("Applied rate %.2f%%" % selected.states[0].policy_rate_pct), "briefing shows the fully applied nominal rate")
+		check(report.contains("Applied lending %.2f" % (selected.states[0].liquidity_applied_pct_initial_gdp / selected.states[0].decision_nominal_gdp_ratio)), "briefing shows collateral-constrained lending")
 		check(report.contains("ONE-CONTROL CONTRASTS / SELECTED MINUS ALTERNATIVE"), "comparison isolates staged tools")
 		var alternatives := [
 			["Rate / alternative request today's rate", "policy_rate_request_pct", game.career.state.policy_rate_pct, "%"],
 			["Guidance quote / alternative quote applied rate", "guidance_rate_pct", selected.states[0].policy_rate_pct, "%"],
-			["Asset flow / alternative no new flow", "asset_flow_request_pct_initial_gdp", 0.0, "% of initial annual GDP"],
-			["Lending / alternative no new loans", "liquidity_request_pct_initial_gdp", 0.0, "% of initial annual GDP"],
+			["Asset flow / alternative no new flow", "asset_flow_request_pct_initial_gdp", 0.0, "% of current annual GDP"],
+			["Lending / alternative no new loans", "liquidity_request_pct_initial_gdp", 0.0, "% of current annual GDP"],
 		]
 		for alternative in alternatives:
 			var other: Dictionary = game._policy().duplicate()

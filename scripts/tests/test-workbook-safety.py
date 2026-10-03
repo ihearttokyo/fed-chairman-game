@@ -1,5 +1,6 @@
 """Exercise workbook output and process boundaries without authoring a workbook."""
 import importlib.util
+import hashlib
 import json
 import math
 import os
@@ -175,3 +176,50 @@ with tempfile.TemporaryDirectory(prefix='fed-campaign-reference-') as directory:
     assert any(event['quarter_index'] >= 900 for event in episodes[1]), 'Long reference keeps late curated episodes, not only funding events'
     assert any(shock.get('funding_need_pct_initial_gdp', 0) > 0.1 for shock in paths[1]), 'Long reference retains funding variety as well'
 print('PASS: real campaign reference, int64 seed, 1000-quarter horizon and exact prefix')
+
+# Balance fixtures share the same source-bound native exports and file safeguards.
+portfolio_bytes = (ROOT / 'game/model/portfolio_reference.json').read_bytes()
+portfolio_hash = hashlib.sha256(portfolio_bytes).hexdigest()
+portfolio = json.loads(portfolio_bytes)
+with tempfile.TemporaryDirectory(prefix='fed-balance-boundaries-') as directory:
+    output = Path(directory) / 'balance-boundaries.json'
+    command = [godot, '--headless', '--path', str(ROOT / 'game'),
+               '--script', 'res://tests/export_policy_variants.gd', '--',
+               '--output', str(output), '--balance-boundaries']
+    result = subprocess.run(command, capture_output=True, text=True)
+    assert result.returncode == 0 and 'EXPORTED fifteen' in result.stdout and not any(
+        marker in result.stdout + result.stderr for marker in ('SCRIPT ERROR:', 'ERROR:', 'FAIL:')), result.stdout + result.stderr
+    fixtures = json.loads(output.read_text())
+    assert len(fixtures) == 15 and len({f['name'] for f in fixtures}) == 15
+    for fixture in fixtures:
+        assert json.loads(fixture['portfolio_reference_json']) == portfolio and fixture['portfolio_reference_json'].encode() == portfolio_bytes and fixture['portfolio_reference_sha256'] == portfolio_hash
+        assert len(fixture['states']) == len(fixture['policies']) + 1
+        for state in fixture['states']:
+            for field, count in [('treasury_cohorts_pct_initial_gdp', 120),
+                                 ('sterilized_treasury_cohorts_pct_initial_gdp', 120),
+                                 ('bill_cohorts_pct_initial_gdp', 4), ('price_history', 5)]:
+                assert len(state[field]) == count and all(math.isfinite(v) for v in state[field])
+            assert all(tag <= holding for tag, holding in zip(state['sterilized_treasury_cohorts_pct_initial_gdp'], state['treasury_cohorts_pct_initial_gdp']))
+            assert all(math.isfinite(v) for value in state.values() for v in (value if isinstance(value, list) else [value]))
+    by_name = {f['name']: f for f in fixtures}
+    omitted = by_name['omitted_liquidity_eligibility']
+    assert 'liquidity_eligibility_pct' not in omitted['shocks'][0]
+    assert omitted['states'][1]['liquidity_applied_pct_initial_gdp'] == 0
+    assert omitted['states'][1]['uncovered_funding_pct_initial_gdp'] == 3
+    assert by_name['natural_runoff']['states'][1]['principal_runoff_pct_initial_gdp'] > 0
+    assert by_name['negative_cap_on']['states'][1] == by_name['negative_cap_off']['states'][1]
+    assert by_name['uncapped_purchase']['states'][1]['asset_flow_applied_pct_initial_gdp'] == 150
+    loans = by_name['uncapped_loan_refinancing']['states']
+    assert loans[1]['liquidity_applied_pct_initial_gdp'] == 90
+    assert loans[2]['liquidity_repayment_pct_initial_gdp'] == 90 and loans[2]['liquidity_refinancing_applied_pct_initial_gdp'] == 90 and loans[2]['liquidity_new_need_applied_pct_initial_gdp'] == 5
+    assert len(by_name['tagged_reinvestment_26']['states']) == 27
+    assert any(s['sterilized_principal_runoff_pct_initial_gdp'] > 0 for s in by_name['tagged_runoff_release']['states']), 'Tagged runoff fixture must actually mature tagged principal'
+    assert by_name['initial_gap_gdp']['states'][0]['initial_actual_output_index'] == 95
+    before = output.read_bytes()
+    result = subprocess.run(command, capture_output=True, text=True)
+    assert result.returncode == 1 and output.read_bytes() == before
+print('PASS: real Godot15 source-bound balance traces, zero-access default, maturity/refinancing/cohorts and replacement refusal')
+
+# Exact raw JSON avoids formatting loss in an otherwise valid native numeric snapshot.
+assert all(f['portfolio_reference_json'].encode() == portfolio_bytes for f in fixtures)
+print('PASS: exact source JSON bytes and hashes retained in every native balance trace')
