@@ -15,15 +15,9 @@ func expect_true(condition: bool, context: String) -> void:
 		failures.append(context)
 
 
-func neutral_policy(state: Dictionary) -> Dictionary:
-	return {
-		"policy_rate_request_pct": state.r_star_pct + state.expected_short_inflation_pct,
-		"guidance_rate_pct": state.r_star_pct + state.expected_short_inflation_pct,
-		"guidance_inflation_sensitivity": 1.5,
-		"guidance_output_gap_sensitivity": 0.5,
-		"asset_flow_request_pct_initial_gdp": 0.0,
-		"liquidity_request_pct_initial_gdp": 0.0,
-	}
+func neutral_policy(state: Dictionary, params: Dictionary) -> Dictionary:
+	var rate: float = roundf((state.r_star_pct + state.expected_short_inflation_pct) / params.minimum_rate_increment_pct) * params.minimum_rate_increment_pct
+	return policy_at(rate, rate)
 
 
 func load_parameters() -> Dictionary:
@@ -67,6 +61,9 @@ func _initialize() -> void:
 		failures.append("canonical quarterly state/step API is missing")
 	elif OS.get_cmdline_user_args().has("--boundaries-only"):
 		_test_review_regressions()
+	elif OS.get_cmdline_user_args().has("--channels-only"):
+		_test_demand_and_supply_channels()
+		_test_expectations_and_credibility()
 	elif OS.get_cmdline_user_args().has("--guidance-only"):
 		_test_conditional_guidance()
 		_test_benchmark_guidance_attainability()
@@ -122,12 +119,12 @@ func _test_review_regressions() -> void:
 	var params: Dictionary = load_parameters().values
 	var state: Dictionary = initial_state(params).state
 	var premium: Dictionary = initial_state(params, {"term_premium_pct": 1.5}).state
-	var held: Dictionary = step(premium, neutral_policy(premium), {}, params)
+	var held: Dictionary = step(premium, neutral_policy(premium, params), {}, params)
 	expect_true(held.ok, "nondefault initial term premium permits a hold")
 	if held.ok:
 		expect_close(held.state.term_premium_pct, 1.5, "no asset flow preserves the initial term premium")
 	var low_support: Dictionary = initial_state(params, {"public_support": 10.0}).state
-	var recovering: Dictionary = step(low_support, neutral_policy(low_support), {}, params)
+	var recovering: Dictionary = step(low_support, neutral_policy(low_support, params), {}, params)
 	expect_true(recovering.ok, "low initial support permits recovery")
 	if recovering.ok:
 		expect_true(recovering.state.public_support > 10.0 and recovering.state.public_support < 30.0, "initial public support recovers gradually without an instant reset")
@@ -137,7 +134,7 @@ func _test_review_regressions() -> void:
 	var malformed: Dictionary = state.duplicate(true)
 	malformed.annualized_quarterly_inflation_pct = 50.0
 	var snapshot: Dictionary = malformed.duplicate(true)
-	expect_true(not step(malformed, neutral_policy(state), {}, params).ok, "quarterly inflation must reconcile with price history")
+	expect_true(not step(malformed, neutral_policy(state, params), {}, params).ok, "quarterly inflation must reconcile with price history")
 	expect_true(malformed == snapshot, "rejected history leaves input unchanged")
 	malformed = initial_state(params, {"asset_stock_pct_initial_gdp": 99.0}).state
 	malformed.asset_stock_capacity_pct_initial_gdp = 1000.0
@@ -159,7 +156,7 @@ func _test_equilibrium_and_pure_step() -> void:
 	var state: Dictionary = initialized.state
 	var start: Dictionary = state.duplicate(true)
 	for q in range(240):
-		var result: Dictionary = step(state, neutral_policy(state), {}, loaded.values)
+		var result: Dictionary = step(state, neutral_policy(state, loaded.values), {}, loaded.values)
 		expect_true(result.ok, "equilibrium step %d: %s" % [q, result.get("error", "")])
 		if not result.ok:
 			return
@@ -184,7 +181,7 @@ func _test_accounting() -> void:
 	if not initialized.ok:
 		return
 	var state: Dictionary = initialized.state
-	var result: Dictionary = step(state, neutral_policy(state), {"demand_shock_pct": 0.84}, loaded.values)
+	var result: Dictionary = step(state, neutral_policy(state, loaded.values), {"demand_shock_pct": 0.84}, loaded.values)
 	expect_true(result.ok, "constant-gap accounting step")
 	if result.ok:
 		var next: Dictionary = result.state
@@ -203,22 +200,22 @@ func _test_validation_and_no_mutation() -> void:
 		return
 	var state: Dictionary = initialized.state
 	var before: Dictionary = state.duplicate(true)
-	var bad := neutral_policy(state)
+	var bad := neutral_policy(state, loaded.values)
 	bad.erase("policy_rate_request_pct")
 	var rejected: Dictionary = step(state, bad, {}, loaded.values)
 	expect_true(not rejected.ok, "missing policy rate rejected")
 	expect_true(state == before, "invalid step does not mutate state")
-	bad = neutral_policy(state)
+	bad = neutral_policy(state, loaded.values)
 	bad.policy_rate_request_pct = NAN
 	rejected = step(state, bad, {}, loaded.values)
 	expect_true(not rejected.ok, "nonfinite policy rate rejected")
 	expect_true(state == before, "nonfinite policy does not mutate state")
-	bad = neutral_policy(state)
+	bad = neutral_policy(state, loaded.values)
 	bad.asset_flow_request_pct_initial_gdp = 101.0
 	rejected = step(state, bad, {}, loaded.values)
 	expect_true(not rejected.ok, "out-of-range tool request rejected")
 	expect_true(state == before, "out-of-range tool request does not mutate state")
-	rejected = step(state, neutral_policy(state), {"future_quarter_shock": 10.0}, loaded.values)
+	rejected = step(state, neutral_policy(state, loaded.values), {"future_quarter_shock": 10.0}, loaded.values)
 	expect_true(not rejected.ok, "unknown or future exogenous input rejected")
 	expect_true(state == before, "invalid shock does not mutate state")
 
@@ -233,8 +230,8 @@ func _test_market_lag_parameter() -> void:
 	params_slow.real_rate_gap_persistence = 0.85
 	var fast: Dictionary = initial_state(params_fast).state
 	var slow: Dictionary = initial_state(params_slow).state
-	var fast_policy := neutral_policy(fast)
-	var slow_policy := neutral_policy(slow)
+	var fast_policy := neutral_policy(fast, params_fast)
+	var slow_policy := neutral_policy(slow, params_slow)
 	fast_policy.policy_rate_request_pct = 4.25
 	slow_policy.policy_rate_request_pct = 4.25
 	var fast_result: Dictionary = step(fast, fast_policy, {}, params_fast)
@@ -249,7 +246,7 @@ func _test_signed_supply_relief() -> void:
 	if not loaded.ok:
 		return
 	var state: Dictionary = initial_state(loaded.values).state
-	var result: Dictionary = step(state, neutral_policy(state), {"supply_innovation_pct": -0.01}, loaded.values)
+	var result: Dictionary = step(state, neutral_policy(state, loaded.values), {"supply_innovation_pct": -0.01}, loaded.values)
 	expect_true(result.ok, "signed supply improvements should be valid exogenous shocks")
 
 
@@ -259,8 +256,8 @@ func _test_asset_purchases_change_financial_conditions() -> void:
 		return
 	var base: Dictionary = initial_state(loaded.values).state
 	var bought: Dictionary = base.duplicate(true)
-	var policy_base := neutral_policy(base)
-	var policy_buy := neutral_policy(bought)
+	var policy_base := neutral_policy(base, loaded.values)
+	var policy_buy := neutral_policy(bought, loaded.values)
 	policy_buy.asset_flow_request_pct_initial_gdp = 4.0
 	var base_result: Dictionary = step(base, policy_base, {}, loaded.values)
 	var buy_result: Dictionary = step(bought, policy_buy, {}, loaded.values)
@@ -311,16 +308,16 @@ func _test_demand_and_supply_channels() -> void:
 	var baseline: Dictionary = initial_state(params).state
 	var demand: Dictionary = initial_state(params).state
 	var supply: Dictionary = initial_state(params).state
-	var base_result: Dictionary = step(baseline, neutral_policy(baseline), {}, params)
-	var demand_result: Dictionary = step(demand, neutral_policy(demand), {"demand_shock_pct": 1.2}, params)
-	var supply_result: Dictionary = step(supply, neutral_policy(supply), {"supply_innovation_pct": 1.8}, params)
+	var base_result: Dictionary = step(baseline, neutral_policy(baseline, params), {}, params)
+	var demand_result: Dictionary = step(demand, neutral_policy(demand, params), {"demand_shock_pct": 1.2}, params)
+	var supply_result: Dictionary = step(supply, neutral_policy(supply, params), {"supply_innovation_pct": 1.8}, params)
 	expect_true(base_result.ok and demand_result.ok and supply_result.ok, "demand and supply pulses run")
 	if not base_result.ok or not demand_result.ok or not supply_result.ok:
 		return
 	expect_true(demand_result.state.output_gap_pct > base_result.state.output_gap_pct, "positive demand shock lifts activity")
 	expect_true(supply_result.state.annualized_quarterly_inflation_pct > base_result.state.annualized_quarterly_inflation_pct, "adverse supply shock raises inflation")
 	expect_true(supply_result.state.output_gap_pct < base_result.state.output_gap_pct and supply_result.state.unemployment_rate_pct > base_result.state.unemployment_rate_pct, "adverse supply shock weakens activity and labor")
-	var supply_again: Dictionary = step(supply_result.state, neutral_policy(supply_result.state), {}, params)
+	var supply_again: Dictionary = step(supply_result.state, neutral_policy(supply_result.state, params), {}, params)
 	expect_true(supply_again.ok and supply_again.state.supply_pressure_pct > 0.0, "policy cannot erase the persistent exogenous supply shock")
 	if supply_again.ok:
 		expect_true(supply_again.state.annualized_quarterly_inflation_pct > 2.0, "supply-cost effect persists into the following quarter")
@@ -330,10 +327,10 @@ func _test_expectations_and_credibility() -> void:
 	var params: Dictionary = load_parameters().values
 	var high: Dictionary = initial_state(params, {"credibility": 0.9}).state
 	var low: Dictionary = initial_state(params, {"credibility": 0.2}).state
-	var high1: Dictionary = step(high, neutral_policy(high), {"supply_innovation_pct": 1.0}, params).state
-	var low1: Dictionary = step(low, neutral_policy(low), {"supply_innovation_pct": 1.0}, params).state
-	var high2: Dictionary = step(high1, neutral_policy(high1), {}, params).state
-	var low2: Dictionary = step(low1, neutral_policy(low1), {}, params).state
+	var high1: Dictionary = step(high, neutral_policy(high, params), {"supply_innovation_pct": 1.0}, params).state
+	var low1: Dictionary = step(low, neutral_policy(low, params), {"supply_innovation_pct": 1.0}, params).state
+	var high2: Dictionary = step(high1, neutral_policy(high1, params), {}, params).state
+	var low2: Dictionary = step(low1, neutral_policy(low1, params), {}, params).state
 	expect_true(high1.expected_short_inflation_pct > 2.0, "short expectation reacts to temporary supply pressure")
 	expect_true(high2.expected_long_inflation_pct - high.expected_long_inflation_pct < low2.expected_long_inflation_pct - low.expected_long_inflation_pct, "long expectation is more anchored at high credibility")
 	var positive: Dictionary = initial_state(params, {"credibility": 0.2}).state
@@ -345,7 +342,7 @@ func _test_expectations_and_credibility() -> void:
 	expect_true(positive.expected_long_inflation_pct > 2.0 and negative.expected_long_inflation_pct < 2.0, "long expectations preserve both inflationary and disinflationary risk")
 	var unanchored: Dictionary = initial_state(params, {"credibility": 0.0, "expected_long_inflation_pct": 2.0}).state
 	for q in range(240):
-		var result: Dictionary = step(unanchored, neutral_policy(unanchored), {"supply_innovation_pct": 0.01}, params)
+		var result: Dictionary = step(unanchored, neutral_policy(unanchored, params), {"supply_innovation_pct": 0.01}, params)
 		expect_true(result.ok, "zero-credibility long-expectation path stays finite q%d" % q)
 		if not result.ok:
 			return
@@ -382,7 +379,8 @@ func _test_conditional_guidance() -> void:
 	var revised_rate: float = changed.guidance_rate_pct \
 		+ changed.guidance_inflation_sensitivity * (changed.four_quarter_inflation_pct - changed.guidance_reference_inflation_pct) \
 		+ changed.guidance_output_gap_sensitivity * (changed.output_gap_pct - changed.guidance_reference_output_gap_pct)
-	var follows: Dictionary = step(changed, policy_at(revised_rate, revised_rate), {}, params)
+	var revised_quote: float = roundf(revised_rate / params.minimum_rate_increment_pct) * params.minimum_rate_increment_pct
+	var follows: Dictionary = step(changed, policy_at(revised_quote, revised_quote), {}, params)
 	var breaks: Dictionary = step(changed, policy_at(changed.guidance_rate_pct, changed.guidance_rate_pct), {}, params)
 	expect_true(follows.ok and breaks.ok, "conditional guidance allows both data-dependent and broken paths")
 	if follows.ok and breaks.ok:
@@ -401,18 +399,16 @@ func _test_benchmark_guidance_attainability() -> void:
 			expect_true(result.ok, "%s %s benchmark is valid" % [case_id, kind])
 			if not result.ok:
 				continue
-			var low: float = max(params.policy_rate_min_pct, result.state.policy_rate_pct - params.policy_rate_change_limit_pct)
-			var high: float = min(params.policy_rate_max_pct, result.state.policy_rate_pct + params.policy_rate_change_limit_pct)
-			expect_true(policy.guidance_rate_pct >= low and policy.guidance_rate_pct <= high, "%s %s quote is reachable next meeting with unchanged observations" % [case_id, kind])
+			expect_close(policy.guidance_rate_pct, policy.policy_rate_request_pct, "%s %s benchmark quotes the fully applied nominal rate" % [case_id, kind])
 			if case_id == "unanchored_inflation" and kind == "feedback":
 				expect_close(policy.policy_rate_request_pct, 10.05, "staff still discloses the distant requested rate")
-				expect_close(result.state.policy_rate_pct, 4.25, "current applied rate still respects the cap")
+				expect_close(result.state.policy_rate_pct, 10.05, "current applied rate has no artificial ramp cap")
 				var following: Dictionary = step(result.state, model.benchmark_policy(result.state, params, kind), {}, params)
 				print("Staff guidance diagnostic: requested %.3f, applied %.3f, quote %.3f, next follow-through %.6f" % [policy.policy_rate_request_pct, result.state.policy_rate_pct, policy.guidance_rate_pct, following.state.guidance_followthrough_score])
 	var state: Dictionary = initial_state(params, cases.unanchored_inflation.initial).state
 	var pledged: Dictionary = step(state, policy_at(10.05, 10.05, 0.0, 0.0, 0.0, 0.0), {}, params)
-	var delivered: Dictionary = step(pledged.state, policy_at(10.05, 10.05), {}, params)
-	expect_true(delivered.state.guidance_followthrough_score < 0.001, "manual unreachable firm promise still loses follow-through")
+	var delivered: Dictionary = step(pledged.state, policy_at(3.5, 3.5), {}, params)
+	expect_true(delivered.state.guidance_followthrough_score < 0.001, "a genuinely broken firm nominal promise still loses follow-through")
 
 
 func _test_liquidity_limits_and_solvency_separation() -> void:
@@ -420,7 +416,7 @@ func _test_liquidity_limits_and_solvency_separation() -> void:
 	var state_off: Dictionary = initial_state(params).state
 	var state_on: Dictionary = initial_state(params).state
 	var funding := {"funding_need_pct_initial_gdp": 3.0, "eligible_collateral_pct_initial_gdp": 6.0, "collateral_haircut_pct": 25.0, "liquidity_eligibility_pct": 100.0, "solvency_risk_innovation_pct": 0.6}
-	var off: Dictionary = step(state_off, neutral_policy(state_off), funding, params)
+	var off: Dictionary = step(state_off, neutral_policy(state_off, params), funding, params)
 	var on: Dictionary = step(state_on, policy_at(3.5, 3.5, 0.0, 20.0), funding, params)
 	expect_true(off.ok and on.ok, "paired liquidity support runs")
 	if not off.ok or not on.ok:
@@ -431,7 +427,7 @@ func _test_liquidity_limits_and_solvency_separation() -> void:
 	expect_true(off.state.credit_spread_pct > on.state.credit_spread_pct, "uncovered funding need widens credit spreads")
 	expect_close(off.state.solvency_risk_wedge_pct, on.state.solvency_risk_wedge_pct, "liquidity does not repair insolvency risk")
 	expect_true(off.state.output_gap_pct < on.state.output_gap_pct, "uncovered funding stress weakens activity")
-	var repay: Dictionary = step(on.state, neutral_policy(on.state), {}, params)
+	var repay: Dictionary = step(on.state, neutral_policy(on.state, params), {}, params)
 	expect_true(repay.ok, "liquidity rolls down on the next quarter")
 	if repay.ok:
 		expect_close(repay.state.liquidity_repayment_pct_initial_gdp, 0.45, "repayment uses disclosed fraction")
@@ -455,11 +451,11 @@ func _test_liquidity_limits_and_solvency_separation() -> void:
 func _test_public_support_recovers_without_reset() -> void:
 	var params: Dictionary = load_parameters().values
 	var state: Dictionary = initial_state(params, {"public_support": 63.0, "public_hardship_memory": 20.0}).state
-	var first: Dictionary = step(state, neutral_policy(state), {}, params)
+	var first: Dictionary = step(state, neutral_policy(state, params), {}, params)
 	expect_true(first.ok, "post-hardship recovery step runs")
 	if not first.ok:
 		return
-	var second: Dictionary = step(first.state, neutral_policy(first.state), {}, params)
+	var second: Dictionary = step(first.state, neutral_policy(first.state, params), {}, params)
 	expect_true(second.ok, "second recovery step runs")
 	if second.ok:
 		expect_true(second.state.public_support > first.state.public_support and second.state.public_support < 70.0, "support recovers gradually as hardship memory decays")
@@ -515,7 +511,7 @@ func _test_unemployment_physical_domain() -> void:
 	var outcomes: Array[float] = []
 	for gap in [-90.0, -4.5, -0.0001, 0.0, 0.0001, 4.5, 10.0, 100.0]:
 		var state: Dictionary = initial_state(fixed, {"output_gap_pct": gap}).state
-		var result: Dictionary = step(state, neutral_policy(state), {}, fixed)
+		var result: Dictionary = step(state, neutral_policy(state, fixed), {}, fixed)
 		expect_true(result.ok, "fixed gap %.4f has a physical labor transition" % gap)
 		if result.ok:
 			var unemployment: float = result.state.unemployment_rate_pct
@@ -531,7 +527,7 @@ func _test_unemployment_physical_domain() -> void:
 			fixed.unemployment_gap_persistence = params.unemployment_gap_persistence
 			var constant: Dictionary = initial_state(fixed, {"output_gap_pct": pair[0]}).state
 			for q in range(96):
-				var result: Dictionary = step(constant, neutral_policy(constant), {}, fixed)
+				var result: Dictionary = step(constant, neutral_policy(constant, fixed), {}, fixed)
 				expect_true(result.ok, "fixed-gap convergence remains valid")
 				if not result.ok:
 					break
@@ -542,7 +538,7 @@ func _test_unemployment_physical_domain() -> void:
 	fixed.unemployment_gap_sensitivity = 0.0
 	for gap in [-90.0, 100.0]:
 		var zero: Dictionary = initial_state(fixed, {"output_gap_pct": gap}).state
-		var result: Dictionary = step(zero, neutral_policy(zero), {}, fixed)
+		var result: Dictionary = step(zero, neutral_policy(zero, fixed), {}, fixed)
 		expect_true(result.ok, "zero labor sensitivity remains valid")
 		if result.ok:
 			expect_close(result.state.unemployment_rate_pct, 4.5, "zero sensitivity retains the reference at either gap sign")
@@ -550,7 +546,7 @@ func _test_unemployment_physical_domain() -> void:
 		var endpoint: Dictionary = initial_state(params, {"unemployment_rate_pct": rate})
 		expect_true(endpoint.ok, "physical unemployment endpoint %.0f is valid" % rate)
 		if endpoint.ok:
-			expect_true(step(endpoint.state, neutral_policy(endpoint.state), {}, params).ok, "endpoint permits ordinary adjustment")
+			expect_true(step(endpoint.state, neutral_policy(endpoint.state, params), {}, params).ok, "endpoint permits ordinary adjustment")
 	for rate in [-0.01, 100.01]:
 		expect_true(not initial_state(params, {"unemployment_rate_pct": rate}).ok, "nonphysical unemployment is rejected")
 	for reference in [0.0, 100.0]:
@@ -561,16 +557,16 @@ func _test_unemployment_physical_domain() -> void:
 	for pair in [[0.25, -0.5], [99.75, 0.5]]:
 		var boundary: Dictionary = initial_state(params, {"structural_unemployment_pct": pair[0]}).state
 		var before: Dictionary = boundary.duplicate(true)
-		expect_true(not step(boundary, neutral_policy(boundary), {"structural_unemployment_change_pct": pair[1]}, params).ok, "invalid structural shift rejects before target division")
+		expect_true(not step(boundary, neutral_policy(boundary, params), {"structural_unemployment_change_pct": pair[1]}, params).ok, "invalid structural shift rejects before target division")
 		expect_true(boundary == before, "invalid shift preserves input")
 	var state: Dictionary = initial_state(params).state
 	fixed.unemployment_gap_persistence = 1.0
-	var persistent: Dictionary = step(state, neutral_policy(state), {"structural_unemployment_change_pct": 0.5}, fixed)
+	var persistent: Dictionary = step(state, neutral_policy(state, fixed), {"structural_unemployment_change_pct": 0.5}, fixed)
 	expect_true(persistent.ok, "full labor persistence accepts valid reference shift")
 	if persistent.ok:
 		expect_close(persistent.state.unemployment_rate_pct, state.unemployment_rate_pct, "full persistence retains actual rate rather than instantly shifting it")
 	fixed.unemployment_gap_persistence = 0.0
-	var immediate: Dictionary = step(state, neutral_policy(state), {"structural_unemployment_change_pct": 0.5}, fixed)
+	var immediate: Dictionary = step(state, neutral_policy(state, fixed), {"structural_unemployment_change_pct": 0.5}, fixed)
 	expect_true(immediate.ok, "zero labor persistence accepts valid reference shift")
 	if immediate.ok:
 		expect_close(immediate.state.unemployment_rate_pct, 5.0, "zero persistence adjusts to the new reference")
@@ -661,7 +657,7 @@ func _test_price_physical_domain() -> void:
 	var cases: Dictionary = load_scenarios().scenarios
 	var Career = preload("res://play/career.gd")
 	for id in cases:
-		for rate in [params.policy_rate_min_pct, params.policy_rate_max_pct]:
+		for rate in [0.0, 15.0]: # Retain both historical extreme pegs; not bounds on the new quote domain.
 			var career = Career.new()
 			expect_true(career.start(id, 1).ok, "price-domain career initializes")
 			var policy := policy_at(rate, rate, 0.0, 0.0, 0.0, 0.0)

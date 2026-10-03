@@ -60,10 +60,13 @@ a link to managed dependencies. References, logs, previews and source hashes
 stay beside the new workbook rather than entering Git. Failed builds are kept
 for diagnosis; rerun with a new destination instead of replacing one.
 
-Seven seed-1, 48-quarter reference careers and four one-variable policy edits come
-from the current Godot equations. The builder checks every state against its
-formula chain, exercises input boundaries and causality, exports four editable
-charts and renders all five sheets. These are hypothetical design assumptions,
+Seven seed-1, 48-quarter reference careers, four one-variable policy edits and
+seven signed-rate boundary traces come from the current Godot equations.
+Signed fixtures cover both signs, initial negative rates, credibility-priced
+guidance, deep constrained effort, zero current-rate loading and conditional
+promise delivery. The builder checks every state against its formula chain,
+exercises input boundaries and causality, exports four editable charts and
+renders all five sheets. These are hypothetical design assumptions,
 not historically calibrated forecasts. Generating a file does not prove native
 spreadsheet usability or human playability.
 
@@ -141,12 +144,13 @@ their background shocks; it is not a forecast or the game's concealed future.
    flow and liquidity request. `step` receives realized exogenous inputs
    separately. It validates inputs and returns a new state without changing the
    supplied state. Benchmark policies cannot inspect future shocks.
-2. Apply rate-change and asset-capacity limits. Roll the term premium forward
+2. Apply the full nominal rate on the quoted grid and retain asset-capacity limits. Roll the term premium forward
    from its prior value using the applied asset flow. Repay part of outstanding
    loans, then limit new lending by new funding need, flow capacity and remaining
    eligible collateral after haircuts. Funding need denotes new financing needed
    during this quarter. Lending does not remove the solvency-risk wedge.
-3. Price guidance according to prior credibility. Form short and long real-rate
+3. Price nominal guidance according to prior credibility, then apply diminishing
+   negative-rate transmission to the spot and priced guidance rates separately. Form short and long real-rate
    gaps, add the credit spread, subtract the neutral real rate and smooth the
    result into financial restraint. Output responds gradually to restraint and
    separately to demand and supply disturbances. Deferred durable/replacement
@@ -165,8 +169,9 @@ their background shocks; it is not a forecast or the game's concealed future.
 6. Update credibility from inflation performance, stance adequacy and conditional
    follow-through, weighted 40/40/20. These weights and the policy reaction rule
    are game-design assumptions, not an estimated Federal Reserve objective.
-   Guidance promises are evaluated against delivery; an unreachable promise can
-   lose credibility. The game interface must disclose that consequence.
+   Conditional implied promises round to the same nominal quote grid before
+   evaluating delivery; genuinely broken promises lose follow-through. Effective
+   stance adequacy is distinct from this nominal accountability.
 7. Calculate current hardship and its decaying memory. Public support closes
    25 percent of the distance to hardship-implied support each quarter. It can
    recover without a term reset and has no legal dismissal meaning. It never
@@ -178,6 +183,49 @@ term-premium policy channel, excluding routine reserve-management purchases.
 Liquidity eligibility is supplied externally and represents soundness and
 collateral restrictions. Emergency lending authorities and bank recapitalization
 are outside this model.
+
+## Signed rate choices and effective stance
+
+Nominal rate and guidance quotes use a 0.01-percentage-point grid (1bp), with
+0.25-point arrow convenience. There is no nominal range or quarterly ramp cap.
+Benchmark and conditional implied quotes round to nearest grid value, ties away
+from zero. The pure engine rejects sub-grid requests before changing state.
+Quote discretization is a game-design choice, not a U.S. legal restriction.
+Physical positivity and finite-precision limits still apply to resulting paths.
+The cockpit adds the effective rate beside a negative nominal choice; it omits
+that duplicate when nonnegative transmission is unchanged. The comparison
+retains effective-rate, financing and stance diagnostics for both paths.
+
+Negative rates are a U.S. counterfactual. The effective borrowing-rate map is
+`phi(i)=i` above zero and `s*tanh(i/s)` below zero, with illustrative `s=1pp`.
+Its slope is continuous at zero and falls toward zero for deep negative cuts.
+Prior credibility first prices nominal guidance as `i+C*(g-i)`; the map then
+transforms spot and priced guidance separately before the existing long-yield
+weighting. This is a reduced-form cash/deposit friction, not an estimated lower
+bound or a model of reserves, bank margins or a universal reversal rate.
+Retained research notes cite [Fischer](https://www.federalreserve.gov/newsevents/speech/fischer20160103a.htm),
+[the FEDS policy-rate survey](https://www.federalreserve.gov/econres/feds/issues-regarding-the-use-of-the-policy-rate-tool.htm)
+and [ECB evidence](https://www.ecb.europa.eu/press/economic-bulletin/articles/2020/html/ecb.ebart202003_02~4768be84e7.en.html)
+for these directional limits, not the chosen scale or equation.
+
+Desired current real restraint is `z=inflation_response*(prior_pi-target)+gap_response*prior_gap`,
+without saturation. Actual spot restraint includes effective rates, prior
+expectations, current term/credit conditions and the current neutral rate. Hold
+other staged tools and the guidance quote fixed. The monotone current-rate
+channel has an analytic negative-rate frontier; its upper limit is unbounded
+unless the rate loading is exactly zero, when its feasible set is a point.
+Credibility one makes priced guidance independent of the current rate.
+
+Let `d` be actual distance to `z`, `d0` the shortfall at the relaxed continuous
+transmission frontier, and `sigma` the existing positive stance tolerance.
+The score is `exp(-max(0,d-d0)/sigma)*sigma/(sigma+d0)`. The frontier is a lower
+bound on achievable distance, not a discrete 1bp optimum or a promise that a
+finite nominal cut reaches the limiting effective rate. Remaining grid/finite
+choice distance still reduces the score. An unattainable objective cannot earn
+full adequacy even at constrained best effort. Identical effective financing
+conditions receive identical stance scores; nominal promise follow-through
+remains separate. Parameters, scoring weights and this frontier rule are
+explicit design assumptions, not an optimal policy or measured reputation.
 
 ## Physical labor bounds
 
@@ -278,8 +326,9 @@ neutral nominal peg can remain unstable; feasible feedback stabilizes small
 perturbations locally. This is conditional stability around balanced growth,
 not stability under arbitrary policy or a guaranteed return to 2%. Persistent
 financial restraint can leave an off-target economy despite finite catch-up
-spending. Tool constraints and nominal-only stance scoring remain separate
-repairs; this slice does not claim to remove them.
+spending. The recovery-only experiment retained the old tool constraints and
+nominal stance score. The subsequent rate-transmission slice below changes
+rate choices and stance accounting; balance-sheet constraints remain separate.
 
 ## What the tests establish
 
@@ -303,7 +352,7 @@ fit an impulse response to data. In that earlier model, inflation was still
 declining at quarter 240 under an unresponsive nominal-rate peg. That historical
 result is not a trace of the current recovery equations.
 
-Matched 240-quarter engine runs use the same realized funding-stress shocks at
+The recovery-only slice at commit 14e7c5c ran matched 240-quarter engine paths with the same realized funding-stress shocks at
 seeds 1, 417 and 2026. Early feedback reaches sustained terminal-window recovery
 in all three baseline and revised runs. After 96 quarters of an 8% rate and
 guidance, neither a zero-rate peg nor feedback meets that criterion in either
@@ -316,6 +365,17 @@ removing deferred spending or short-expectation anchoring worsens late outcomes,
 while neutral-rate reversion does not improve every seed. No coefficient was
 selected to make a benchmark win. These simulated paths do not establish global
 stability or empirical calibration.
+
+The subsequent signed-rate slice compares nonnegative and signed feedback with
+the same current equations, parameters and 240-quarter funding-stress shocks at
+seeds 1, 417 and 2026. Early feedback is identical and reaches sustained recovery
+in both domains. After a shared 96-quarter 8% restrictive prefix, signed feedback
+meets the final 16-quarter criterion in all three seeds; nonnegative feedback
+does so in one. Signed ending inflation is 1.92% to 1.93%, with cumulative hardship
+about 16% to 19% lower than the matched nonnegative path. The initial 8% choice now
+applies fully, so this prefix is different from the earlier ramp-limited
+experiment. These twelve simulated careers demonstrate this conditional
+recovery channel, with no global or empirical stability claim.
 
 The 2 percent inflation objective is source-defined. Other behavioral
 coefficients, initial conditions, constraints, shock sizes and support scores
@@ -332,11 +392,11 @@ current shock, then assumes no new shocks and holds the rate for eight quarters.
 It cannot read the realized future shock path. The staff rate rule is a disclosed
 benchmark rather than an optimal-play recommendation.
 
-The staff rule retains its requested rate but bounds its guidance quote to the
-next meeting's reachable interval after the current rate cap, assuming unchanged
-reference observations. Workbook blank guidance follows the same benchmark.
-Later data can still change the conditional promise. A manually entered firm
-promise is not clipped or forgiven merely because it is unreachable.
+The staff rule rounds its requested rate and matching guidance to the 1bp quote
+grid. Workbook blank guidance follows the same benchmark. Later data changes
+the conditional implied promise, rounded to the same grid before delivery is
+evaluated. Nominal promises are not forgiven because financing transmission is
+weak; effective stance adequacy is a separate score.
 
 Comparison and adoption stay in the bottom action bar while the cockpit scrolls.
 Career status and the complete quarterly outcome also stay visible in that bar,
@@ -355,7 +415,7 @@ responses range from -2 to +2 rate percentage points per 1 percentage-point
 change since the announcement. They adjust the promise evaluated at the next
 meeting, rather than granting an immediate credibility bonus. The comparison
 shows the previous condition-adjusted promise, projected follow-through and
-any binding rate cap. Announcing a new path does not erase the previous promise.
+the current transmission frontier. Announcing a new path does not erase the previous promise.
 Committed conditions survive adoption and lossless replay; a new career restores
 the defaults. These quantitative conditions are game-design choices, not a
 claim about the FOMC's current communication practice.
@@ -366,8 +426,9 @@ differences from holding policy. The reference holds today's rate, uses
 data-dependent guidance and requests no new asset flows or lending. Both paths
 use the same current shock and no future innovations. The briefing also compares
 credibility and public support and explains binding tool limits. Its Q+1
-diagnostics expose inflation-miss memory, the model stance target and applied-rate
-distance, prior-promise follow-through, current hardship and remembered hardship
+diagnostics expose inflation-miss memory, effective borrowing rates, desired real
+restraint, actual stance distance and transmission-frontier shortfall,
+prior-promise follow-through, current hardship and remembered hardship
 for both paths. The stance rule and score weights are disclosed game assumptions,
 not an optimal policy or a measured institutional reputation. The briefing does
 not change the career or select a policy for the player.
@@ -422,8 +483,8 @@ no per-turn sizing, GPU readback or background service is required.
 The comparison report includes a Deliberation section. It shows your selected
 path, nearby tighter and gentler applied rates, and rate continuity while keeping
 all other staged tools and the new guidance quote unchanged. Nearby choices use
-the existing 0.25-point control increment inside this meeting's feasible rate
-range. A limit warning explains a direction with no additional feasible move.
+the existing 0.25-point arrow convenience, without a nominal rate or ramp cap.
+Unavailable numerical paths remain explicit rather than being silently clipped.
 Each path uses the disclosed current shock, then no future shocks and its own
 applied-rate hold. The report shows actual Q+8 inflation, unemployment, credibility
 and public support without choosing a winner or changing your staged decision.

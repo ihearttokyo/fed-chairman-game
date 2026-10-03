@@ -9,8 +9,8 @@ const PARAMETER_KEYS := [
 	"initial_credibility", "initial_public_support", "initial_asset_stock_pct_initial_gdp",
 	"initial_term_premium_pct", "asset_stock_capacity_pct_initial_gdp",
 	"asset_flow_quarter_limit_pct_initial_gdp", "asset_flow_request_limit_pct_initial_gdp",
-	"term_premium_asset_sensitivity", "policy_rate_min_pct", "policy_rate_max_pct",
-	"policy_rate_change_limit_pct", "policy_inflation_response", "policy_output_gap_response",
+	"term_premium_asset_sensitivity", "minimum_rate_increment_pct", "negative_rate_efficacy_scale_pct",
+	"policy_inflation_response", "policy_output_gap_response",
 	"guidance_sensitivity_limit", "long_yield_current_rate_weight", "real_rate_short_weight",
 	"real_rate_gap_persistence", "output_gap_persistence", "real_rate_output_sensitivity",
 	"inflation_persistence", "short_expectation_recent_weight",
@@ -167,7 +167,6 @@ func initial_state(params: Dictionary, override: Dictionary = {}) -> Dictionary:
 		"demand_release_pct": 0.0,
 		"policy_rate_pct": params.initial_policy_rate_pct,
 		"last_policy_rate_request_pct": params.initial_policy_rate_pct,
-		"long_yield_pct": params.initial_policy_rate_pct + params.initial_term_premium_pct,
 		"financial_restraint_gap_pct": 0.0,
 		"asset_stock_pct_initial_gdp": params.initial_asset_stock_pct_initial_gdp,
 		"initial_asset_stock_pct_initial_gdp": params.initial_asset_stock_pct_initial_gdp,
@@ -195,7 +194,6 @@ func initial_state(params: Dictionary, override: Dictionary = {}) -> Dictionary:
 		"guidance_reference_inflation_pct": params.initial_inflation_rate_pct,
 		"guidance_reference_output_gap_pct": params.initial_output_gap_pct,
 		"guidance_followthrough_score": 1.0,
-		"reaction_function_target_pct": params.initial_policy_rate_pct,
 		"public_support": params.initial_public_support,
 		"public_hardship_memory": 0.0,
 		"current_hardship": 0.0,
@@ -209,7 +207,6 @@ func initial_state(params: Dictionary, override: Dictionary = {}) -> Dictionary:
 	state.actual_output_index = state.potential_output_index * (1.0 + state.output_gap_pct / 100.0)
 	if override.has("asset_stock_pct_initial_gdp") and not override.has("term_premium_pct"):
 		state.term_premium_pct = params.initial_term_premium_pct - params.term_premium_asset_sensitivity * (state.asset_stock_pct_initial_gdp - state.initial_asset_stock_pct_initial_gdp)
-	state.long_yield_pct = state.policy_rate_pct + state.term_premium_pct
 	state.guidance_rate_pct = state.policy_rate_pct
 	state.last_policy_rate_request_pct = state.policy_rate_pct
 	var annual_rate: float = 1.0 + state.annualized_quarterly_inflation_pct / 100.0
@@ -220,6 +217,7 @@ func initial_state(params: Dictionary, override: Dictionary = {}) -> Dictionary:
 	for age in range(4, -1, -1):
 		state.price_history.append(state.price_index / pow(q_price_ratio, age))
 	state.four_quarter_inflation_pct = _four_quarter_inflation(state.price_history, params.percent_multiplier)
+	state.merge(_rate_conditions(state, state.policy_rate_pct, state.policy_rate_pct, state.term_premium_pct, state.credit_spread_pct, state.r_star_pct, params), true)
 	var checked := _validate_state(state, params)
 	if not checked.ok:
 		return checked
@@ -243,10 +241,8 @@ func step(state: Dictionary, policy: Dictionary, shocks: Dictionary, params: Dic
 	# Timeline: observe state[q], choose policy[q] and observe shocks[q]; current
 	# market conditions then drive output[q+1], and lagged resources drive prices.
 	var next: Dictionary = state.duplicate(true)
-	var prior_rate: float = state.policy_rate_pct
 	var rate_request: float = policy.policy_rate_request_pct
-	var rate_change: float = params.policy_rate_change_limit_pct
-	var rate: float = clamp(rate_request, max(params.policy_rate_min_pct, prior_rate - rate_change), min(params.policy_rate_max_pct, prior_rate + rate_change))
+	var rate: float = rate_request
 	var asset_request: float = policy.asset_flow_request_pct_initial_gdp
 	var asset_limit: float = params.asset_flow_quarter_limit_pct_initial_gdp
 	var asset_delta: float = clamp(asset_request, -min(asset_limit, state.asset_stock_pct_initial_gdp), min(asset_limit, state.asset_stock_capacity_pct_initial_gdp - state.asset_stock_pct_initial_gdp))
@@ -274,19 +270,13 @@ func step(state: Dictionary, policy: Dictionary, shocks: Dictionary, params: Dic
 	var guide_gap_sensitivity: float = policy.guidance_output_gap_sensitivity
 	var prior_commitment := rate
 	if state.guidance_active:
-		prior_commitment = state.guidance_rate_pct \
-			+ state.guidance_inflation_sensitivity * (state.four_quarter_inflation_pct - state.guidance_reference_inflation_pct) \
-			+ state.guidance_output_gap_sensitivity * (state.output_gap_pct - state.guidance_reference_output_gap_pct)
+		prior_commitment = conditional_commitment(state, params)
 	var followthrough := exp(-abs(rate - prior_commitment) / params.credibility_followthrough_tolerance_pct) if state.guidance_active else 1.0
 	var credibility: float = state.credibility
-	var priced_guidance: float = rate + credibility * (guide_rate - rate)
-	var expected_policy_path: float = params.long_yield_current_rate_weight * rate + (1.0 - params.long_yield_current_rate_weight) * priced_guidance
-	var long_yield: float = expected_policy_path + term_premium
 	var rstar_reference: float = state.r_star_reference_pct + shocks.get("r_star_reference_change_pct", 0.0)
 	var rstar: float = rstar_reference + params.r_star_reversion_persistence * (state.r_star_pct - state.r_star_reference_pct) + shocks.get("r_star_change_pct", 0.0)
-	var spot_financial_gap: float = params.real_rate_short_weight * (rate - state.expected_short_inflation_pct) \
-		+ (1.0 - params.real_rate_short_weight) * (long_yield - params.initial_term_premium_pct - state.expected_long_inflation_pct) \
-		+ (credit_spread - params.normal_credit_spread_pct) - rstar
+	var rate_conditions := _rate_conditions(state, rate, guide_rate, term_premium, credit_spread, rstar, params)
+	var spot_financial_gap: float = rate_conditions.spot_financial_gap_pct
 	var financial_gap: float = params.real_rate_gap_persistence * state.financial_restraint_gap_pct \
 		+ (1.0 - params.real_rate_gap_persistence) * spot_financial_gap
 
@@ -336,13 +326,10 @@ func step(state: Dictionary, policy: Dictionary, shocks: Dictionary, params: Dic
 	var long_anchor: float = credibility * params.inflation_target_pct + (1.0 - credibility) * state.four_quarter_inflation_pct
 	var expected_long: float = state.expected_long_inflation_pct \
 		+ params.long_expectation_adjustment * (long_anchor - state.expected_long_inflation_pct)
-	var reaction_target: float = rstar + state.expected_short_inflation_pct \
-		+ params.policy_inflation_response * (state.four_quarter_inflation_pct - params.inflation_target_pct) \
-		+ params.policy_output_gap_response * state.output_gap_pct
 	var miss_memory: float = params.credibility_miss_persistence * state.inflation_miss_memory_pct \
 		+ (1.0 - params.credibility_miss_persistence) * abs(state.four_quarter_inflation_pct - params.inflation_target_pct)
 	var inflation_performance := exp(-miss_memory / params.credibility_miss_tolerance_pct)
-	var stance_adequacy := exp(-abs(rate - reaction_target) / params.credibility_stance_scale_pct)
+	var stance_adequacy: float = rate_conditions.stance_adequacy_score
 	var credibility_score := 0.4 * inflation_performance + 0.4 * stance_adequacy + 0.2 * followthrough
 	var next_credibility: float = clamp(credibility + params.credibility_adjustment * (credibility_score - credibility), 0.0, 1.0)
 	var hardship: float = params.public_inflation_burden_weight * abs(four_quarter - params.inflation_target_pct) \
@@ -378,7 +365,6 @@ func step(state: Dictionary, policy: Dictionary, shocks: Dictionary, params: Dic
 		"demand_release_pct": demand_release,
 		"last_policy_rate_request_pct": rate_request,
 		"policy_rate_pct": rate,
-		"long_yield_pct": long_yield,
 		"financial_restraint_gap_pct": financial_gap,
 		"asset_stock_pct_initial_gdp": asset_stock,
 		"term_premium_pct": term_premium,
@@ -404,11 +390,11 @@ func step(state: Dictionary, policy: Dictionary, shocks: Dictionary, params: Dic
 		"guidance_reference_inflation_pct": state.four_quarter_inflation_pct,
 		"guidance_reference_output_gap_pct": state.output_gap_pct,
 		"guidance_followthrough_score": followthrough,
-		"reaction_function_target_pct": reaction_target,
 		"public_support": support,
 		"public_hardship_memory": hardship_memory,
 		"current_hardship": hardship,
 	}
+	updates.merge(rate_conditions, true)
 	for key in updates:
 		next[key] = updates[key]
 	var final_check := _validate_state(next, params)
@@ -423,7 +409,6 @@ func step(state: Dictionary, policy: Dictionary, shocks: Dictionary, params: Dic
 		"demand_release_pct": demand_release,
 		"guidance_rate_pct": guide_rate,
 		"guidance_followthrough_score": followthrough,
-		"long_yield_pct": long_yield,
 		"financial_restraint_gap_pct": financial_gap,
 		"asset_flow_request_pct_initial_gdp": asset_request,
 		"asset_flow_applied_pct_initial_gdp": asset_delta,
@@ -446,7 +431,15 @@ func step(state: Dictionary, policy: Dictionary, shocks: Dictionary, params: Dic
 		"credibility": next_credibility,
 		"public_support": support,
 	}
+	trace.merge(rate_conditions, true)
 	return {"ok": true, "state": next, "trace": trace}
+
+
+func conditional_commitment(state: Dictionary, params: Dictionary) -> float:
+	var implied: float = state.guidance_rate_pct \
+		+ state.guidance_inflation_sensitivity * (state.four_quarter_inflation_pct - state.guidance_reference_inflation_pct) \
+		+ state.guidance_output_gap_sensitivity * (state.output_gap_pct - state.guidance_reference_output_gap_pct)
+	return roundf(implied / params.minimum_rate_increment_pct) * params.minimum_rate_increment_pct
 
 
 func benchmark_policy(state: Dictionary, params: Dictionary, kind: String = "feedback") -> Dictionary:
@@ -459,12 +452,10 @@ func benchmark_policy(state: Dictionary, params: Dictionary, kind: String = "fee
 			+ params.policy_output_gap_response * state.output_gap_pct
 	elif kind != "hold":
 		return {"ok": false, "error": "unknown benchmark policy: %s" % kind}
-	target = clamp(target, params.policy_rate_min_pct, params.policy_rate_max_pct)
-	var applied_rate: float = clamp(target, max(params.policy_rate_min_pct, state.policy_rate_pct - params.policy_rate_change_limit_pct), min(params.policy_rate_max_pct, state.policy_rate_pct + params.policy_rate_change_limit_pct))
-	var reachable_quote: float = clamp(target, max(params.policy_rate_min_pct, applied_rate - params.policy_rate_change_limit_pct), min(params.policy_rate_max_pct, applied_rate + params.policy_rate_change_limit_pct))
+	target = roundf(target / params.minimum_rate_increment_pct) * params.minimum_rate_increment_pct
 	return {
 		"policy_rate_request_pct": target,
-		"guidance_rate_pct": reachable_quote,
+		"guidance_rate_pct": target,
 		"guidance_inflation_sensitivity": params.policy_inflation_response,
 		"guidance_output_gap_sensitivity": params.policy_output_gap_response,
 		"asset_flow_request_pct_initial_gdp": 0.0,
@@ -522,6 +513,43 @@ func seeded_shock_path(seed: int, scenario: Dictionary, quarters: int) -> Array:
 	return path
 
 
+static func _rate_on_grid(rate: float, increment: float) -> bool:
+	var units := rate / increment
+	return is_finite(units) and abs(units - round(units)) < 1e-6
+
+
+static func _effective_rate(rate: float, scale: float) -> float:
+	return rate if rate >= 0.0 else scale * tanh(rate / scale)
+
+
+func _rate_conditions(state: Dictionary, rate: float, guide: float, premium: float, spread: float, rstar: float, params: Dictionary) -> Dictionary:
+	var scale: float = params.negative_rate_efficacy_scale_pct
+	var effective_rate := _effective_rate(rate, scale)
+	var priced_guide: float = rate + state.credibility * (guide - rate)
+	var effective_guide := _effective_rate(priced_guide, scale)
+	var current_weight: float = params.long_yield_current_rate_weight
+	var short_weight: float = params.real_rate_short_weight
+	var long_yield: float = current_weight * effective_rate + (1.0 - current_weight) * effective_guide + premium
+	var spread_gap: float = spread - params.normal_credit_spread_pct
+	var spot: float = short_weight * (effective_rate - state.expected_short_inflation_pct) \
+		+ (1.0 - short_weight) * (long_yield - params.initial_term_premium_pct - state.expected_long_inflation_pct) + spread_gap - rstar
+	var target: float = params.policy_inflation_response * (state.four_quarter_inflation_pct - params.inflation_target_pct) + params.policy_output_gap_response * state.output_gap_pct
+	# Hold other staged tools/guide fixed. Credibility1 makes the quote independent of rate.
+	var floor_guide: float = _effective_rate(guide, scale) if state.credibility == 1.0 else -scale
+	var floor_long: float = -current_weight * scale + (1.0 - current_weight) * floor_guide + premium
+	var floor_spot: float = short_weight * (-scale - state.expected_short_inflation_pct) \
+		+ (1.0 - short_weight) * (floor_long - params.initial_term_premium_pct - state.expected_long_inflation_pct) + spread_gap - rstar
+	var upward_loading: float = short_weight + (1.0 - short_weight) * (current_weight + (1.0 - current_weight) * (1.0 - state.credibility))
+	var distance: float = abs(spot - target)
+	var best_distance: float = abs(spot - target) if upward_loading == 0.0 else max(0.0, floor_spot - target)
+	var tolerance: float = params.credibility_stance_scale_pct
+	var adequacy := exp(-max(0.0, distance - best_distance) / tolerance) * tolerance / (tolerance + best_distance)
+	return {"effective_policy_rate_pct":effective_rate,"long_yield_pct":long_yield,
+		"spot_financial_gap_pct":spot,"stance_target_gap_pct":target,"stance_distance_pct":distance,
+		"stance_best_feasible_distance_pct":best_distance,"stance_adequacy_score":adequacy,
+		"reaction_function_target_pct":rstar + state.expected_short_inflation_pct + target}
+
+
 func _validate_parameters(params: Dictionary) -> Dictionary:
 	for key in PARAMETER_KEYS:
 		if not params.has(key) or typeof(params[key]) not in [TYPE_INT, TYPE_FLOAT] or not is_finite(float(params[key])):
@@ -536,15 +564,15 @@ func _validate_parameters(params: Dictionary) -> Dictionary:
 			return {"ok": false, "error": "recovery fraction out of range: %s" % key}
 	if params.demand_release_base_fraction > params.demand_release_max_fraction or params.demand_release_max_fraction + params.demand_cancellation_fraction > 1.0 or params.demand_release_backlog_scale_pct <= 0.0 or params.demand_release_financing_scale_pct <= 0.0:
 		return {"ok": false, "error": "inconsistent demand-release fractions or nonpositive recovery scale"}
-	if params.policy_rate_min_pct < 0.0 or params.policy_rate_max_pct <= params.policy_rate_min_pct or params.initial_asset_stock_pct_initial_gdp < 0.0 or params.asset_stock_capacity_pct_initial_gdp < params.initial_asset_stock_pct_initial_gdp or params.inflation_target_pct != 2.0:
+	if params.minimum_rate_increment_pct <= 0.0 or params.negative_rate_efficacy_scale_pct <= 0.0 or params.initial_asset_stock_pct_initial_gdp < 0.0 or params.asset_stock_capacity_pct_initial_gdp < params.initial_asset_stock_pct_initial_gdp or params.inflation_target_pct != 2.0:
 		return {"ok": false, "error": "inconsistent bounds or unsupported target parameter"}
 	if params.quarters_per_year != 4.0 or params.percent_multiplier != 100.0 or params.initial_output_index <= 0.0 or params.initial_price_index <= 0.0 or params.initial_structural_unemployment_pct <= 0.0 or params.initial_structural_unemployment_pct >= 100.0:
 		return {"ok": false, "error": "invalid scale or initial reference parameter"}
-	if params.initial_inflation_rate_pct <= -100.0 or params.initial_expected_short_inflation_pct <= -100.0 or params.initial_expected_long_inflation_pct <= -100.0 or params.initial_output_gap_pct <= -100.0 or params.initial_policy_rate_pct < params.policy_rate_min_pct or params.initial_policy_rate_pct > params.policy_rate_max_pct:
+	if params.initial_inflation_rate_pct <= -100.0 or params.initial_expected_short_inflation_pct <= -100.0 or params.initial_expected_long_inflation_pct <= -100.0 or params.initial_output_gap_pct <= -100.0 or not _rate_on_grid(params.initial_policy_rate_pct, params.minimum_rate_increment_pct):
 		return {"ok": false, "error": "invalid initial inflation, output gap or rate"}
 	if params.initial_credibility < 0.0 or params.initial_credibility > 1.0 or params.initial_public_support < 0.0 or params.initial_public_support > 100.0 or params.initial_unemployment_pct < 0.0 or params.initial_unemployment_pct > 100.0:
 		return {"ok": false, "error": "initial bounded state outside its domain"}
-	for key in ["asset_flow_quarter_limit_pct_initial_gdp", "asset_flow_request_limit_pct_initial_gdp", "liquidity_flow_quarter_limit_pct_initial_gdp", "liquidity_request_limit_pct_initial_gdp", "policy_rate_change_limit_pct", "guidance_sensitivity_limit", "policy_inflation_response", "policy_output_gap_response", "credibility_miss_tolerance_pct", "credibility_stance_scale_pct", "credibility_followthrough_tolerance_pct", "real_rate_output_sensitivity", "inflation_output_gap_sensitivity", "inflation_supply_sensitivity", "short_expectation_supply_sensitivity", "supply_output_gap_sensitivity", "unemployment_gap_sensitivity", "term_premium_asset_sensitivity", "funding_spread_sensitivity", "public_inflation_burden_weight", "public_unemployment_burden_weight", "public_hardship_memory_weight"]:
+	for key in ["asset_flow_quarter_limit_pct_initial_gdp", "asset_flow_request_limit_pct_initial_gdp", "liquidity_flow_quarter_limit_pct_initial_gdp", "liquidity_request_limit_pct_initial_gdp", "guidance_sensitivity_limit", "policy_inflation_response", "policy_output_gap_response", "credibility_miss_tolerance_pct", "credibility_stance_scale_pct", "credibility_followthrough_tolerance_pct", "real_rate_output_sensitivity", "inflation_output_gap_sensitivity", "inflation_supply_sensitivity", "short_expectation_supply_sensitivity", "supply_output_gap_sensitivity", "unemployment_gap_sensitivity", "term_premium_asset_sensitivity", "funding_spread_sensitivity", "public_inflation_burden_weight", "public_unemployment_burden_weight", "public_hardship_memory_weight"]:
 		if params[key] < 0.0:
 			return {"ok": false, "error": "negative sensitivity, scale or capacity: %s" % key}
 	if params.credibility_miss_tolerance_pct == 0.0 or params.credibility_stance_scale_pct == 0.0 or params.credibility_followthrough_tolerance_pct == 0.0:
@@ -569,6 +597,8 @@ func _validate_state(state: Dictionary, params: Dictionary) -> Dictionary:
 		"guidance_reference_output_gap_pct", "guidance_followthrough_score", "reaction_function_target_pct",
 		"public_support", "public_hardship_memory", "current_hardship",
 		"deferred_demand_pct", "demand_release_pct", "r_star_reference_pct",
+		"effective_policy_rate_pct", "spot_financial_gap_pct", "stance_target_gap_pct",
+		"stance_distance_pct", "stance_best_feasible_distance_pct", "stance_adequacy_score",
 	]
 	for key in keys:
 		if not state.has(key) or typeof(state[key]) not in [TYPE_INT, TYPE_FLOAT] or not is_finite(float(state[key])):
@@ -586,8 +616,11 @@ func _validate_state(state: Dictionary, params: Dictionary) -> Dictionary:
 		return {"ok": false, "error": "state asset capacity conflicts with parameter capacity"}
 	if state.quarter_index < 0 or float(state.quarter_index) != int(state.quarter_index) or state.initial_annual_gdp_index <= 0.0 or state.potential_output_index <= 0.0 or state.actual_output_index <= 0.0 or state.price_index <= 0.0 or state.output_gap_pct <= -100.0 or state.structural_unemployment_pct <= 0.0 or state.structural_unemployment_pct >= 100.0 or state.unemployment_rate_pct < 0.0 or state.unemployment_rate_pct > 100.0 or state.credibility < 0.0 or state.credibility > 1.0 or state.public_support < 0.0 or state.public_support > 100.0:
 		return {"ok": false, "error": "state violates positive-scale or bounded-domain invariant"}
-	if state.policy_rate_pct < params.policy_rate_min_pct or state.policy_rate_pct > params.policy_rate_max_pct or state.last_policy_rate_request_pct < params.policy_rate_min_pct or state.last_policy_rate_request_pct > params.policy_rate_max_pct or state.guidance_rate_pct < params.policy_rate_min_pct or state.guidance_rate_pct > params.policy_rate_max_pct:
-		return {"ok": false, "error": "state rate outside declared bounds"}
+	for quote in [state.policy_rate_pct, state.last_policy_rate_request_pct, state.guidance_rate_pct]:
+		if not _rate_on_grid(quote, params.minimum_rate_increment_pct):
+			return {"ok": false, "error": "state nominal rate or guidance outside quote grid"}
+	if state.stance_distance_pct < 0.0 or state.stance_best_feasible_distance_pct < 0.0 or state.stance_adequacy_score < 0.0 or state.stance_adequacy_score > 1.0:
+		return {"ok": false, "error": "invalid effective-stance diagnostics"}
 	if state.expected_short_inflation_pct <= -100.0 or state.expected_long_inflation_pct <= -100.0 or state.annualized_quarterly_inflation_pct <= -100.0 or abs(state.guidance_inflation_sensitivity) > params.guidance_sensitivity_limit or abs(state.guidance_output_gap_sensitivity) > params.guidance_sensitivity_limit:
 		return {"ok": false, "error": "state inflation or guidance outside declared bounds"}
 	if state.asset_stock_pct_initial_gdp < 0.0 or state.asset_stock_pct_initial_gdp > state.asset_stock_capacity_pct_initial_gdp or state.asset_stock_capacity_pct_initial_gdp < 0.0 or state.initial_asset_stock_pct_initial_gdp < 0.0 or state.outstanding_liquidity_pct_initial_gdp < 0.0 or state.funding_need_pct_initial_gdp < 0.0 or state.eligible_collateral_pct_initial_gdp < 0.0 or state.liquidity_repayment_pct_initial_gdp < 0.0 or state.liquidity_applied_pct_initial_gdp < 0.0 or state.uncovered_funding_pct_initial_gdp < 0.0:
@@ -609,8 +642,9 @@ func _validate_policy(policy: Dictionary, params: Dictionary) -> Dictionary:
 	for key in policy:
 		if key not in POLICY_KEYS:
 			return {"ok": false, "error": "unknown policy control: %s" % key}
-	if policy.policy_rate_request_pct < params.policy_rate_min_pct or policy.policy_rate_request_pct > params.policy_rate_max_pct or policy.guidance_rate_pct < params.policy_rate_min_pct or policy.guidance_rate_pct > params.policy_rate_max_pct:
-		return {"ok": false, "error": "rate control outside declared bounds"}
+	for quote in [policy.policy_rate_request_pct, policy.guidance_rate_pct]:
+		if not _rate_on_grid(quote, params.minimum_rate_increment_pct):
+			return {"ok": false, "error": "rate and guidance quotes require %.4f pp increments" % params.minimum_rate_increment_pct}
 	if abs(policy.guidance_inflation_sensitivity) > params.guidance_sensitivity_limit or abs(policy.guidance_output_gap_sensitivity) > params.guidance_sensitivity_limit:
 		return {"ok": false, "error": "guidance sensitivity outside declared bounds"}
 	if abs(policy.asset_flow_request_pct_initial_gdp) > params.asset_flow_request_limit_pct_initial_gdp or policy.liquidity_request_pct_initial_gdp < 0.0 or policy.liquidity_request_pct_initial_gdp > params.liquidity_request_limit_pct_initial_gdp:

@@ -44,8 +44,17 @@ func _initialize() -> void:
 	check(not loaded.restore(serialized).ok, "invalid future shock rejected at load")
 	check(loaded.state == career.state, "late invalid input cannot partially replace career")
 	var clean: Dictionary = career.payload()
-	clean.decisions[0].policy_rate_request_pct = -1
-	check(not loaded.restore(clean).ok, "invalid decision rejected during replay")
+	clean.decisions[0].policy_rate_request_pct = -1.001
+	check(not loaded.restore(clean).ok, "off-grid decision rejected during replay")
+	check(loaded.state == career.state, "off-grid replay cannot replace the active career")
+	var signed := Career.new()
+	signed.start("base", 417)
+	var signed_policy: Dictionary = signed.model.benchmark_policy(signed.state, signed.params, "hold")
+	signed_policy.policy_rate_request_pct = -1.0
+	signed_policy.guidance_rate_pct = -1.0
+	check(signed.advance(signed_policy).ok, "signed nominal policy advances a career")
+	var signed_replay := Career.new()
+	check(signed_replay.restore(bytes_to_var(signed.encode())).ok and signed_replay.state == signed.state, "negative rates survive full validated replay")
 	var forecast_before: Dictionary = career.forecast(policy)
 	career.shocks[2].demand_shock_pct = 10.0
 	check(career.forecast(policy) == forecast_before, "preview cannot inspect future shocks")
