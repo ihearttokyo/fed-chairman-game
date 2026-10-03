@@ -232,6 +232,14 @@ func check_situation_ui(game: Control) -> void:
 	check(game.briefing.text == text, "shared load refresh restores identical situation text")
 	game._start_career("base", 41)
 	check(game.briefing.text.contains("No major new funding pressure") and not game.briefing.text.contains("Funding pressure continues"), "new career cannot retain the previous crisis storyline")
+	game._start_career("mixed_crises", 417)
+	check(not game.briefing.text.contains("EXOGENOUS /"), "initial cockpit cannot reveal the upcoming curated event")
+	while game.career.current_shock_episode().is_empty() and game.career.decisions.size() < 24:
+		game.career.advance(game.career.model.benchmark_policy(game.career.state, game.career.params))
+	game._refresh(true)
+	var episode: Dictionary = game.career.current_shock_episode()
+	check(not episode.is_empty() and game.briefing.text.contains("EXOGENOUS / %s · %s" % [episode.get("title", "missing"), episode.get("policy_dilemma", "missing")]), "actual cockpit refresh names the known event and concise policy dilemma")
+	check(not game.briefing.text.contains("shock_profile") and not game.briefing.text.contains("duration_quarters"), "event readout omits hidden future metadata")
 	game._start_career("supply_shock", 1)
 func check_unrestricted_rate_controls(game: Control) -> void:
 	var preserved: PackedByteArray = game.career.encode()
@@ -959,6 +967,7 @@ func run() -> void:
 	check(help_text.text.contains("Every career includes seeded background disturbances") and help_text.text.contains("baseline starts at equilibrium") and help_text.text.contains("no scheduled scenario events"), "help explains the seeded baseline and scheduled-event distinction")
 	check(help_text.text.contains("same scenario and seed") and help_text.text.contains("same engine and model"), "help qualifies every input needed to reproduce the path")
 	check(help_text.text.contains("1bp increments") and help_text.text.contains("U.S. counterfactual") and help_text.text.contains("diminishing benefits") and help_text.text.contains("Conditional implied quotes"), "help explains quote precision, negative-rate transmission and nominal promise accountability")
+	check(help_text.text.contains("draws from 50 curated exogenous events") and not help_text.text.contains("precomputes50"), "help describes the event pool, not fifty events in every career")
 	check(help_text.text.contains("Deferred demand") and help_text.text.contains("not all lost consumption") and help_text.text.contains("no guaranteed return to 2%"), "help distinguishes catch-up spending from forced recovery")
 	check(help_text.text.contains("structural reference") and help_text.text.to_lower().contains("short expectations") and help_text.text.contains("prior long"), "help explains separate structural and expectation restoration channels")
 	check(game.briefing.text.contains("Deferred demand") and game.briefing.text.contains("% potential"), "dispatch exposes the known deferred-demand stock with its unit")

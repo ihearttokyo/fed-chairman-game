@@ -10,6 +10,7 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('workbooks', nargs='+', type=Path)
 parser.add_argument('--reference', required=True, type=Path)
 parser.add_argument('--map', required=True, type=Path)
+parser.add_argument('--campaign-reference', type=Path, help='Validate saved campaign explanation against its native export')
 args = parser.parse_args()
 NS = {
     's': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main',
@@ -38,6 +39,21 @@ for filename in args.workbooks:
         for sheet in workbook.find('s:sheets', NS):
             target = targets[sheet.attrib['{' + NS['r'] + '}id']]
             sheets[sheet.attrib['name']] = target.lstrip('/') if target.startswith('/') else posixpath.normpath('xl/' + target)
+        if args.campaign_reference:
+            campaign = json.loads(args.campaign_reference.read_text())
+            assert campaign['scenario']['id'] == 'mixed_crises', 'Campaign reference must be Recurring crises'
+            expected_note = 'Recurring crises: ' + campaign['scenario']['description']
+            shared = [ ''.join(t.text or '' for t in item.findall('.//s:t', NS))
+                       for item in ET.fromstring(archive.read('xl/sharedStrings.xml')) ] if 'xl/sharedStrings.xml' in archive.namelist() else []
+            values = []
+            for cell in ET.fromstring(archive.read(sheets['Shocks'])).findall('.//s:c', NS):
+                if cell.attrib.get('t') == 's':
+                    values.append(shared[int(cell.find('s:v', NS).text)])
+                elif cell.attrib.get('t') == 'str':
+                    values.append(cell.find('s:v', NS).text or '')
+                else:
+                    values.append(''.join(t.text or '' for t in cell.findall('.//s:t', NS)))
+            assert expected_note in values, 'stale or missing campaign explanation'
         cells = {c.attrib['r']: c for c in ET.fromstring(archive.read(sheets['Economy'])).findall('.//s:c', NS)}
         worst = 0
         for quarter, state in enumerate([reference['initial_state']] + [r['state'] for r in reference['quarters']]):

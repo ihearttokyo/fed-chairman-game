@@ -42,7 +42,12 @@ func _initialize() -> void:
 	var seed: int = int(options.values.get("seed", "1"))
 	var quarters: int = int(options.values.get("quarters", "48"))
 	var policy_kind: String = options.values.get("policy", "feedback")
-	var shocks: Array = model.seeded_shock_path(seed, scenario, quarters)
+	var generated := model.seeded_campaign(seed, scenario, quarters)
+	if not generated.ok:
+		printerr(generated.error)
+		quit(1)
+		return
+	var shocks: Array = generated.shocks
 	var state: Dictionary = initial.state
 	var rows: Array = []
 	for q in range(quarters):
@@ -82,6 +87,7 @@ func _initialize() -> void:
 		"policy_kind": policy_kind,
 		"initial_state": initial.state,
 		"shock_path": shocks,
+		"episodes": generated.episodes,
 		"quarters": rows,
 	}
 	output.store_string(JSON.stringify(document, "\t"))

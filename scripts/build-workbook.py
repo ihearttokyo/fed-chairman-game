@@ -87,11 +87,13 @@ def main():
     run_tool([sys.executable, str(ROOT / 'scripts/spreadsheet/check-workbook.py'),
               str(output / 'Federal Reserve Policy Lab.xlsx'), '--reference',
               str(references / 'supply_shock.json'), '--map',
-              str(evidence / 'workbook-model-map.json')],
+              str(evidence / 'workbook-model-map.json'), '--campaign-reference',
+              str(references / 'mixed_crises.json')],
              evidence / 'workbook-export-check.log', 'PASS ')
     run_tool([sys.executable, str(ROOT / 'scripts/tests/test-workbook-file.py'),
               str(output / 'Federal Reserve Policy Lab.xlsx'),
-              str(references / 'supply_shock.json'), str(evidence / 'workbook-model-map.json')],
+              str(references / 'supply_shock.json'), str(evidence / 'workbook-model-map.json'),
+              str(references / 'mixed_crises.json')],
              evidence / 'workbook-file-regression.log', 'PASS: real workbook accepted')
     digest = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
     assert digest(builder) == digest(execution_copy), 'Execution copy differs from source'
@@ -105,7 +107,7 @@ def main():
             'game/tests/export_policy_variants.gd', 'scripts/tests/test-workbook-file.py')},
         'workbook_sha256': digest(output / 'Federal Reserve Policy Lab.xlsx'),
         'model_sha256': {name: digest(ROOT / 'game/model' / name)
-                         for name in ('economy.gd', 'parameters.json', 'scenarios.json')},
+                         for name in ('economy.gd', 'parameters.json', 'scenarios.json', 'exogenous_shocks.json')},
         'references_sha256': {path.name: digest(path) for path in sorted(references.glob('*.json'))},
         'native_recalculation': 'not performed by this command',
     }
