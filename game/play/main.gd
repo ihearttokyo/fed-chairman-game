@@ -374,7 +374,7 @@ func _spin(parent: Node, title: String, low: float, high: float, step_size: floa
 	edit.gui_input.connect(func(event: InputEvent):
 		# LineEdit consumes Return before button shortcuts, including modified Return.
 		if event is InputEventKey and event.pressed and not event.alt_pressed and event.is_command_or_control_pressed() and event.keycode in [KEY_ENTER, KEY_KP_ENTER] and input.get_window() == get_window():
-			if not event.echo:
+			if not event.echo and not decision_button.disabled:
 				_advance()
 			edit.accept_event()
 			return
@@ -507,6 +507,7 @@ func _refresh(reset_controls := false) -> void:
 	stats[3][1].text = "Hardship memory %.2f" % s.public_hardship_memory
 	var metric_details := ["Four-quarter inflation; 2% annual objective.", "Unemployment rate; uncertain structural reference, not a fixed employment target.", stats[2][1].text, stats[3][1].text]
 	for index in range(stats.size()):
+		stats[index][0].accessibility_name = "%s %s" % [stats[index][0].get_parent().get_child(0).text, stats[index][0].text]
 		stats[index][0].tooltip_text = metric_details[index]
 		stats[index][0].accessibility_description = metric_details[index]
 	for chart in charts:

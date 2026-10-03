@@ -228,9 +228,20 @@ func run() -> void:
 	for q in range(1, game.career.MAX_QUARTERS):
 		check(game.career.advance(game.career.model.benchmark_policy(game.career.state, game.career.params, "feedback")).ok, "terminal keyboard fixture uses actual valid economic decisions")
 	game._refresh(true)
+	await process_frame
+	await process_frame
 	adopted = game.career.encode()
 	check(not game._keyboard_focus_order().has(game.decision_button), "disabled terminal adoption leaves the keyboard focus cycle")
+	game.rate.get_line_edit().grab_focus()
+	await process_frame
+	await process_frame
+	var terminal_status: String = game.status_label.text
+	var terminal_feedback: String = game.consequence.text
+	var terminal_rate: float = game.rate.value
+	var pending_terminal_rate := "%.2f" % (terminal_rate + 0.25)
+	game.rate.get_line_edit().text = pending_terminal_rate
 	await key(root, KEY_ENTER, true)
+	check(game.rate.value == terminal_rate and game.rate.get_line_edit().text == pending_terminal_rate and game.status_label.text == terminal_status and game.consequence.text == terminal_feedback, "disabled terminal shortcut preserves pending fields and completed feedback")
 	check(game.career.encode() == adopted and game.career.state.quarter_index == 240, "terminal adoption accelerator cannot create meeting 241")
 	game.free()
 	if failures == 0:
