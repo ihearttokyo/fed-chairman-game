@@ -1,11 +1,37 @@
 import fs from 'node:fs/promises';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Workbook, SpreadsheetFile } from '@oai/artifact-tool';
 
 const ids = ['base', 'demand_boom', 'supply_shock', 'funding_stress', 'unanchored_inflation', 'lower_bound_slump', 'mixed_crises'];
 const cases = await Promise.all(ids.map(async id => JSON.parse(await fs.readFile(new URL(`./reference-v1/${id}.json`, import.meta.url), 'utf8'))));
 const source = cases[0];
+const portfolioBytes = await fs.readFile(new URL('./reference-v1/portfolio-reference.json', import.meta.url));
+const portfolio = JSON.parse(portfolioBytes);
+const portfolioHash = createHash('sha256').update(portfolioBytes).digest('hex');
+assert.equal(portfolioHash, (await fs.readFile(new URL('./reference-v1/portfolio-reference.sha256', import.meta.url), 'utf8')).trim(), 'Resident portfolio source hash');
+assert.equal(portfolio.schema_version, 1);
+assert.equal(portfolio.treasury_maturity_weights.length, 120);
+assert.ok(portfolio.treasury_maturity_weights.every(x => typeof x === 'number' && Number.isFinite(x) && x >= 0));
+assert.ok(Math.abs(portfolio.treasury_maturity_weights.reduce((a, b) => a + b, 0) - 1) <= 1e-12);
+for (const document of cases) {
+  // Godot numeric formatting can lose source decimal digits; original bytes bind exactly.
+  assert.equal(document.portfolio_reference_json, portfolioBytes.toString('utf8'), 'Exact native source JSON bytes');
+  assert.deepEqual(JSON.parse(document.portfolio_reference_json), portfolio, 'Exact native portfolio source binding');
+  assert.equal(document.portfolio_reference_sha256, portfolioHash);
+}
+const arrayShapes = { price_history: 5, treasury_cohorts_pct_initial_gdp: 120, sterilized_treasury_cohorts_pct_initial_gdp: 120, bill_cohorts_pct_initial_gdp: 4 };
+const arrayField = (key, i) => key === 'price_history' ? `price_h${i}` : `${key}_${i}`;
+const flattenState = state => Object.fromEntries(Object.entries(state).flatMap(([key, value]) => {
+  if (!Array.isArray(value)) return [[key, value]];
+  assert.equal(value.length, arrayShapes[key], `Native array schema: ${key}`);
+  return value.map((item, i) => [arrayField(key, i), item]);
+}));
+const nominalKeys = new Set(['asset_flow_request_pct_initial_gdp', 'liquidity_request_pct_initial_gdp', 'funding_need_pct_initial_gdp', 'eligible_collateral_pct_initial_gdp', 'refinancing_need_pct_initial_gdp', 'rrp_encumbered_collateral_pct_initial_gdp']);
+const nominalRatio = state => (state.actual_output_index / state.initial_actual_output_index) * (state.price_index / state.initial_price_index);
+const shockDefault = key => key === 'potential_growth_pct' ? null : key === 'rrp_uptake_fraction' ? 1 : 0;
+assert.equal(shockDefault('liquidity_eligibility_pct'), 0, 'Omitted liquidity eligibility must match native zero-access default');
 const out = new URL('./', import.meta.url);
 const evidence = new URL('./evidence/', import.meta.url);
 const workbook = Workbook.create();
@@ -68,8 +94,15 @@ for (let i = 0; i < source.parameters.length; i++) {
     domain = `IF(AND(${domain},ISNUMBER(${increment})),ABS(${ref}/${increment}-ROUND(${ref}/${increment},0))<0.000001,FALSE)`;
   }
   else if (['initial_inflation_rate_pct', 'initial_expected_short_inflation_pct', 'initial_expected_long_inflation_pct'].includes(record.key)) domain = `AND(${domain},${ref}>-100)`;
-  else if (/tolerance|_scale_pct|_increment_pct|initial_output_index|initial_price_index/.test(record.key)) domain = `AND(${domain},${ref}>0)`;
+  else if (/tolerance|_scale_pct|_increment_pct|initial_output_index|initial_price_index/.test(record.key) || ['portfolio_premium_max_shift_pct', 'treasury_duration_years', 'mbs_duration_years', 'reserve_clear_pct_current_gdp'].includes(record.key)) domain = `AND(${domain},${ref}>0)`;
   else if (/sensitivity|limit|capacity|normal_credit|burden_weight|hardship_memory_weight/.test(record.key)) domain = `AND(${domain},${ref}>=0)`;
+  if (['initial_asset_stock_pct_initial_gdp', 'initial_currency_pct_initial_gdp', 'initial_treasury_account_pct_initial_gdp', 'normal_credit_spread_pct', 'policy_inflation_response', 'policy_output_gap_response'].includes(record.key)) domain = `AND(${domain},${ref}>=0)`;
+  if (record.key === 'initial_output_gap_pct') domain = `AND(${domain},${ref}>-100)`;
+  if (record.key === 'mbs_base_repayment_fraction') domain = `AND(${domain},${ref}>0,${ref}*(1+C${parameterRow.get('mbs_repayment_relative_response')})<=1)`;
+  if (record.key === 'mbs_repayment_relative_response') domain = `AND(${domain},${ref}>=0,${ref}<1,C${parameterRow.get('mbs_base_repayment_fraction')}*(1+${ref})<=1)`;
+  if (record.key === 'treasury_reinvestment_maturity_quarters') domain = `AND(${domain},${ref}>=1,${ref}<=120)`;
+  if (record.key === 'reserve_buffer_pct_current_gdp') domain = `AND(${domain},${ref}>=C${parameterRow.get('reserve_clear_pct_current_gdp')})`;
+  if (record.key === 'initial_reserves_pct_initial_gdp') domain = `AND(${domain},${ref}>=C${parameterRow.get('reserve_clear_pct_current_gdp')})`;
   if (record.key === 'demand_release_base_fraction') domain = `AND(${domain},${ref}<=C${parameterRow.get('demand_release_max_fraction')})`;
   if (record.key === 'demand_release_max_fraction') domain = `AND(${domain},${ref}+C${parameterRow.get('demand_cancellation_fraction')}<=1)`;
   cell(assumptions, `D${row}`, `=IF(${domain},${ref},NA())`, true);
@@ -105,11 +138,10 @@ const initialParameter = {
   asset_stock_pct_initial_gdp: 'initial_asset_stock_pct_initial_gdp', term_premium_pct: 'initial_term_premium_pct',
 };
 const initialRows = new Map();
-const initialFields = [...new Set(cases.flatMap(x => Object.keys(x.scenario.initial)))];
+const initialFields = [...new Set([...Object.keys(initialParameter), ...cases.flatMap(x => Object.keys(x.scenario.initial)), 'supply_pressure_pct', 'solvency_risk_wedge_pct', 'public_hardship_memory', 'deferred_demand_pct', 'r_star_reference_pct'])];
 const caseStride = cases.length + 2;
 let initialRow = weightsRow + 8;
 for (const key of initialFields) {
-  assert.ok(initialParameter[key], `Undocumented initial case driver ${key}`);
   initialRows.set(key, initialRow);
   cell(assumptions, `B${initialRow}`, `${human(key)}: active`);
   const choices = cases.map((_, i) => `D${initialRow + i + 1}`).join(',');
@@ -118,20 +150,25 @@ for (const key of initialFields) {
   const numeric = `CHOOSE('Policy Lab'!$C$4,${present})`;
   const valid = key === 'unemployment_rate_pct' ? `AND(${numeric},${selected}>=0,${selected}<=100)`
     : ['annualized_quarterly_inflation_pct', 'expected_short_inflation_pct', 'expected_long_inflation_pct'].includes(key) ? `AND(${numeric},${selected}>-100)`
-    : key === 'policy_rate_pct' ? `AND(${numeric},${onGrid(selected)})` : numeric;
+    : key === 'policy_rate_pct' ? `AND(${numeric},${onGrid(selected)})`
+    : key === 'output_gap_pct' ? `AND(${numeric},${selected}>-100)`
+    : ['asset_stock_pct_initial_gdp', 'supply_pressure_pct', 'solvency_risk_wedge_pct', 'public_hardship_memory'].includes(key) && key !== 'supply_pressure_pct' ? `AND(${numeric},${selected}>=0)`
+    : key === 'credibility' ? `AND(${numeric},${selected}>=0,${selected}<=1)`
+    : key === 'public_support' ? `AND(${numeric},${selected}>=0,${selected}<=100)`
+    : key === 'structural_unemployment_pct' ? `AND(${numeric},${selected}>0,${selected}<100)` : numeric;
   cell(assumptions, `D${initialRow}`, `=IF(${valid},${selected},NA())`, true);
   assumptions.getRange(`B${initialRow}:F${initialRow}`).format.fill = C.pale;
   for (let i = 0; i < cases.length; i++) {
     const row = initialRow + i + 1, value = cases[i].scenario.initial[key];
     cell(assumptions, `B${row}`, cases[i].scenario.label);
-    if (value === undefined) cell(assumptions, `D${row}`, `=${p(initialParameter[key])}`, true);
+    if (value === undefined) cell(assumptions, `D${row}`, `=${initialParameter[key] ? p(initialParameter[key]) : key === 'r_star_reference_pct' ? `D${initialRows.get('r_star_pct') + i + 1}` : '0'}`, true);
     else { cell(assumptions, `D${row}`, value); input(assumptions, `D${row}`); }
   }
   initialRow += caseStride;
 }
 const initial = key => initialRows.has(key) ? `'Assumptions'!$D$${initialRows.get(key)}` : initialParameter[key] ? p(initialParameter[key]) : '0';
 
-const shockKeys = ['demand_shock_pct', 'supply_innovation_pct', 'potential_growth_pct', 'r_star_change_pct', 'r_star_reference_change_pct', 'structural_unemployment_change_pct', 'funding_need_pct_initial_gdp', 'eligible_collateral_pct_initial_gdp', 'collateral_haircut_pct', 'liquidity_eligibility_pct', 'credit_risk_innovation_pct', 'solvency_risk_innovation_pct'];
+const shockKeys = ['demand_shock_pct', 'supply_innovation_pct', 'potential_growth_pct', 'r_star_change_pct', 'r_star_reference_change_pct', 'structural_unemployment_change_pct', 'funding_need_pct_initial_gdp', 'eligible_collateral_pct_initial_gdp', 'collateral_haircut_pct', 'liquidity_eligibility_pct', 'credit_risk_innovation_pct', 'solvency_risk_innovation_pct', 'refinancing_need_pct_initial_gdp', 'rrp_uptake_fraction', 'rrp_encumbered_collateral_pct_initial_gdp'];
 const shockRows = new Map();
 for (let i = 0; i < shockKeys.length; i++) {
   const key = shockKeys[i], row = 6 + i * caseStride;
@@ -140,15 +177,15 @@ for (let i = 0; i < shockKeys.length; i++) {
   shocks.getRange(`B${row}:AZ${row}`).format.fill = C.pale;
   for (let n = 0; n < cases.length; n++) {
     cell(shocks, `B${row + n + 1}`, cases[n].scenario.label);
-    shocks.getRange(`E${row + n + 1}:AZ${row + n + 1}`).values = [cases[n].shock_path.map(x => x[key] ?? (key === 'potential_growth_pct' ? null : 0))];
+    shocks.getRange(`E${row + n + 1}:AZ${row + n + 1}`).values = [cases[n].shock_path.map(x => x[key] ?? shockDefault(key))];
     input(shocks, `E${row + n + 1}:AZ${row + n + 1}`);
   }
   const formulas = Array.from({ length: 48 }, (_, q) => {
     const col = column(q + 5), refs = cases.map((_, n) => `${col}${row + n + 1}`);
     const choose = values => `CHOOSE('Policy Lab'!$C$4,${values.join(',')})`;
-    const limit = { demand_shock_pct: 10, supply_innovation_pct: 5, potential_growth_pct: 20, r_star_change_pct: 1, r_star_reference_change_pct: 1, structural_unemployment_change_pct: 0.5, credit_risk_innovation_pct: 5, solvency_risk_innovation_pct: 5 }[key] ?? 100;
+    const limit = { rrp_uptake_fraction: 1, demand_shock_pct: 10, supply_innovation_pct: 5, potential_growth_pct: 20, r_star_change_pct: 1, r_star_reference_change_pct: 1, structural_unemployment_change_pct: 0.5, credit_risk_innovation_pct: 5, solvency_risk_innovation_pct: 5 }[key] ?? 100;
     const signed = ['demand_shock_pct', 'supply_innovation_pct', 'potential_growth_pct', 'r_star_change_pct', 'r_star_reference_change_pct', 'structural_unemployment_change_pct'].includes(key);
-    const valid = choose(refs.map(ref => `AND(ISNUMBER(${ref}),${ref}>=${signed ? -limit : 0},${ref}<=${limit})`));
+    const valid = choose(refs.map(ref => `AND(ISNUMBER(${ref}),${ref}>=${signed ? -limit : 0}${nominalKeys.has(key) ? '' : `,${ref}<=${limit}`})`));
     const numeric = `IF(${valid},${choose(refs)},NA())`;
     return `=${key === 'potential_growth_pct' ? `IF(${choose(refs.map(ref => `ISBLANK(${ref})`))},"unchanged",${numeric})` : numeric}`;
   });
@@ -167,7 +204,7 @@ const R = {
   expected_long_inflation_pct: 15, unemployment_rate_pct: 16, structural_unemployment_pct: 17, r_star_pct: 18,
   last_policy_rate_request_pct: 19, policy_rate_pct: 20, long_yield_pct: 21, financial_restraint_gap_pct: 22,
   asset_flow_request_pct_initial_gdp: 23, asset_flow_applied_pct_initial_gdp: 24, asset_stock_pct_initial_gdp: 25,
-  initial_asset_stock_pct_initial_gdp: 26, asset_stock_capacity_pct_initial_gdp: 27, term_premium_pct: 28,
+  initial_asset_stock_pct_initial_gdp: 26, term_premium_pct: 28,
   funding_need_pct_initial_gdp: 29, eligible_collateral_pct_initial_gdp: 30, outstanding_liquidity_pct_initial_gdp: 31,
   liquidity_repayment_pct_initial_gdp: 32, liquidity_request_pct_initial_gdp: 33, liquidity_applied_pct_initial_gdp: 34,
   uncovered_funding_pct_initial_gdp: 35, credit_spread_pct: 36, credit_risk_wedge_pct: 37, solvency_risk_wedge_pct: 38,
@@ -178,14 +215,37 @@ const R = {
   initial_annual_gdp_index: 53, price_h0: 54, price_h1: 55, price_h2: 56, price_h3: 57, price_h4: 58,
   prior_commitment: 60, priced_guidance: 61, expected_policy_path: 62, spot_financial_gap_pct: 63, inflation_pressure: 64,
   long_anchor: 65, inflation_performance: 66, stance_adequacy_score: 67, credibility_score: 68, support_target: 69,
-  eligible_capacity: 70, loan_remaining: 71, lending_headroom: 72, policy_valid: 73, benchmark_rate: 75,
+  policy_valid: 73, benchmark_rate: 75,
   deferred_demand_pct: 77, demand_release_pct: 78, r_star_reference_pct: 79, underlying_gap: 80,
   available_demand: 81, release_fraction: 82, recent_expectation_base: 83, short_anchor_weight: 84,
   effective_policy_rate_pct: 85, effective_priced_guidance_pct: 86, stance_target_gap_pct: 87,
   stance_distance_pct: 88, stance_best_feasible_distance_pct: 89, floor_guide_pct: 90,
   floor_long_yield_pct: 91, floor_spot_gap_pct: 92, upward_rate_loading: 93,
 };
-await fs.writeFile(new URL('workbook-model-map.json', evidence), JSON.stringify(R, null, 2));
+let nextModelRow = 100;
+const register = key => { if (!R[key]) R[key] = nextModelRow++; return R[key]; };
+for (const key of Object.keys(flattenState(source.initial_state))) register(key);
+for (const key of ['reinvest_principal', 'maintain_ample_reserves', 'sterilize_purchases', 'runoff_share', 'reinvest_share', 'tagged_due', 'uptake_absorption', 'local_after_absorption', 'settlement_reserves', 'duration_difference', 'premium_log_ratio', 'ending_securities_pct_current_gdp', 'ending_reserves_pct_current_gdp', 'ending_loans_pct_current_gdp', 'ending_rrp_pct_current_gdp']) register(key);
+const sourceStart = initialRow + 5;
+cell(assumptions, `B${sourceStart - 4}`, 'Observed Treasury principal (USD)'); cell(assumptions, `C${sourceStart - 4}`, Number(portfolio.source_treasury_principal_usd));
+cell(assumptions, `B${sourceStart - 3}`, 'Observed MBS stock (billion USD)'); cell(assumptions, `C${sourceStart - 3}`, portfolio.mbs_stock_billion_usd);
+cell(assumptions, `B${sourceStart - 2}`, 'Initial Treasury share: source principal');
+cell(assumptions, `D${sourceStart - 2}`, `=IF(AND(ISNUMBER(C${sourceStart - 4}),C${sourceStart - 4}>0,ISNUMBER(C${sourceStart - 3}),C${sourceStart - 3}>0),C${sourceStart - 4}/(C${sourceStart - 4}+C${sourceStart - 3}*1000000000),NA())`, true);
+cell(assumptions, `B${sourceStart - 1}`, 'Source ladder valid (120 model-quarter bins)');
+cell(assumptions, `D${sourceStart - 1}`, `=AND(COUNT(C${sourceStart}:C${sourceStart + 119})=120,MIN(C${sourceStart}:C${sourceStart + 119})>=0,ABS(SUM(C${sourceStart}:C${sourceStart + 119})-1)<=0.000000000001)`, true);
+for (const [i, weight] of portfolio.treasury_maturity_weights.entries()) {
+  cell(assumptions, `B${sourceStart + i}`, `Treasury principal due in model quarter ${i + 1}`);
+  cell(assumptions, `C${sourceStart + i}`, weight);
+  cell(assumptions, `D${sourceStart + i}`, `=IF($D$${sourceStart - 1},C${sourceStart + i},NA())`, true);
+}
+for (const [i, [key, value]] of Object.entries(portfolio).filter(([key]) => key !== 'treasury_maturity_weights').entries()) {
+  cell(assumptions, `H${sourceStart + i}`, human(key)); cell(assumptions, `J${sourceStart + i}`, value);
+}
+cell(assumptions, `H${sourceStart - 1}`, 'Portfolio reference SHA256'); cell(assumptions, `J${sourceStart - 1}`, portfolioHash);
+assumptions.getRange(`B${sourceStart - 4}:J${sourceStart + 119}`).format = { font: { name: 'Arial', size: 10, color: C.ink }, rowHeight: 22, verticalAlignment: 'center' };
+assumptions.getRange(`B${sourceStart - 4}:B${sourceStart + 119}`).format.columnWidth = 54;
+assumptions.getRange(`H${sourceStart - 1}:J${sourceStart + 20}`).format.wrapText = true;
+assumptions.getRange(`H${sourceStart - 1}:J${sourceStart + 20}`).format.rowHeight = 48;
 for (const [key, row] of Object.entries(R)) cell(economy, `B${row}`, human(key));
 cell(economy, 'B64', 'Annual gross price growth');
 for (const [row, label] of [
@@ -201,7 +261,7 @@ for (const [row, label] of [
 ]) cell(economy, `B${row}`, label);
 headers(economy, 'B4:AZ4');
 economy.getRange('D5:AZ93').setNumberFormat('0.000');
-const f = (col, key) => `${col}${R[key]}`;
+const f = (col, key) => { assert.ok(R[key], `Unmapped formula field ${key}`); return `${col}${R[key]}`; };
 // Same rate equations at the initial state and each transition, with prior observations explicit.
 const writeRateConditions = (s, prior, put) => {
   const scale = p('negative_rate_efficacy_scale_pct'), current = p('long_yield_current_rate_weight'), short = p('real_rate_short_weight');
@@ -223,34 +283,164 @@ const writeRateConditions = (s, prior, put) => {
   put('stance_adequacy_score', `EXP(-MAX(0,${s('stance_distance_pct')}-${s('stance_best_feasible_distance_pct')})/${tolerance})*${tolerance}/(${tolerance}+${s('stance_best_feasible_distance_pct')})`);
   put('reaction_function_target_pct', `${s('r_star_pct')}+${prior('expected_short_inflation_pct')}+${s('stance_target_gap_pct')}`);
 };
+// Scalar cancellation follows the native principal-net helper without summing huge
+// opposite gross legs first. Helpers are visible in the same calculation chain.
+const principalNet = (label, legs, s, put) => {
+  const n = legs.length, key = suffix => `net_${label}_${suffix}`;
+  const emit = (suffix, formula) => { register(key(suffix)); put(key(suffix), formula); return s(key(suffix)); };
+  const credits = legs.map((leg, i) => emit(`credit_${i}`, `MAX(0,${leg})`));
+  const debits = legs.map((leg, i) => emit(`debit_${i}`, `MAX(0,-(${leg}))`));
+  const cr = `${credits[0]}:${credits.at(-1)}`, dr = `${debits[0]}:${debits.at(-1)}`;
+  let ci = emit('ci_0', '1'), di = emit('di_0', '1');
+  let c = emit('c_0', `LARGE(${cr},1)`), d = emit('d_0', `LARGE(${dr},1)`);
+  for (let i = 1; i <= n; i++) {
+    const stopped = `OR(${c}=0,${d}=0)`;
+    const nc = emit(`ci_${i}`, `IF(${stopped},${ci},${ci}+IF(${c}<=${d},1,0))`);
+    const nd = emit(`di_${i}`, `IF(${stopped},${di},${di}+IF(${d}<=${c},1,0))`);
+    const cc = emit(`c_${i}`, `IF(${stopped},${c},IF(${c}>${d},${c}-${d},IF(${nc}>${n},0,LARGE(${cr},${nc}))))`);
+    const dd = emit(`d_${i}`, `IF(${stopped},${d},IF(${d}>${c},${d}-${c},IF(${nd}>${n},0,LARGE(${dr},${nd}))))`);
+    ci = nc; di = nd; c = cc; d = dd;
+  }
+  const rest = (range, index) => Array.from({ length: n }, (_, k) => `IF(${k + 1}>${index},LARGE(${range},${k + 1}),0)`).reverse();
+  return emit('result', `SUM(${rest(cr, ci).join(',')},${c})-SUM(${rest(dr, di).join(',')},${d})`);
+};
+const cohortSum = (s, key, count) => `SUM(${s(arrayField(key, 0))}:${s(arrayField(key, count - 1))})`;
+const treasuryKey = 'treasury_cohorts_pct_initial_gdp', tagKey = 'sterilized_treasury_cohorts_pct_initial_gdp', billKey = 'bill_cohorts_pct_initial_gdp';
+const writeBalance = (s, prev, shock, put) => {
+  const net = (label, legs) => principalNet(label, legs, s, put);
+  put('mbs_repayment_fraction', `${p('mbs_base_repayment_fraction')}*(1+${p('mbs_repayment_relative_response')}*TANH((${prev('initial_mbs_financing_rate_pct')}-(${prev('long_yield_pct')}+${prev('credit_spread_pct')}))/${p('mbs_repayment_rate_scale_pct')}))`);
+  put('treasury_redemption_pct_initial_gdp', prev(arrayField(treasuryKey, 0)));
+  put('mbs_repayment_pct_initial_gdp', `${prev('mbs_stock_pct_initial_gdp')}*${s('mbs_repayment_fraction')}`);
+  put('bill_redemption_pct_initial_gdp', prev(arrayField(billKey, 0)));
+  put('principal_due_pct_initial_gdp', `${s('treasury_redemption_pct_initial_gdp')}+${s('mbs_repayment_pct_initial_gdp')}+${s('bill_redemption_pct_initial_gdp')}`);
+  put('discretionary_purchase_pct_initial_gdp', `MAX(0,${s('asset_flow_request_pct_initial_gdp')})`);
+  put('principal_runoff_pct_initial_gdp', `IF(${s('asset_flow_request_pct_initial_gdp')}<0,MIN(-${s('asset_flow_request_pct_initial_gdp')},${s('principal_due_pct_initial_gdp')}),IF(${s('reinvest_principal')},0,${s('principal_due_pct_initial_gdp')}))`);
+  put('runoff_share', `IF(${s('principal_due_pct_initial_gdp')}>0,${s('principal_runoff_pct_initial_gdp')}/${s('principal_due_pct_initial_gdp')},0)`);
+  put('reinvest_share', `1-${s('runoff_share')}`);
+  put('principal_reinvestment_pct_initial_gdp', `${s('principal_due_pct_initial_gdp')}-${s('principal_runoff_pct_initial_gdp')}`);
+  for (const [target, due] of [['treasury_reinvestment_pct_initial_gdp', 'treasury_redemption_pct_initial_gdp'], ['mbs_reinvestment_pct_initial_gdp', 'mbs_repayment_pct_initial_gdp'], ['bill_rollover_pct_initial_gdp', 'bill_redemption_pct_initial_gdp']]) put(target, `${s(due)}*${s('reinvest_share')}`);
+  put('long_securities_runoff_pct_initial_gdp', `${s('treasury_redemption_pct_initial_gdp')}*${s('runoff_share')}+${s('mbs_repayment_pct_initial_gdp')}*${s('runoff_share')}`);
+  put('mbs_stock_pct_initial_gdp', `${prev('mbs_stock_pct_initial_gdp')}-${s('mbs_repayment_pct_initial_gdp')}*${s('runoff_share')}`);
+  put('tagged_due', `IF(${s('sterilize_purchases')},${prev(arrayField(tagKey, 0))},0)`);
+  put('sterilized_principal_runoff_pct_initial_gdp', `${s('tagged_due')}*${s('runoff_share')}`);
+  put('sterilized_principal_reinvestment_pct_initial_gdp', `${s('tagged_due')}*${s('reinvest_share')}`);
+  const maturity = p('treasury_reinvestment_maturity_quarters');
+  const binWeight = i => `IF(${i}=INT(${maturity})-1,1-(${maturity}-INT(${maturity})),IF(${i}=INT(${maturity}),${maturity}-INT(${maturity}),0))`;
+  for (let i = 0; i < 120; i++) {
+    put(arrayField(treasuryKey, i), `${i < 119 ? prev(arrayField(treasuryKey, i + 1)) : '0'}+${s('treasury_reinvestment_pct_initial_gdp')}*${binWeight(i)}+${s('discretionary_purchase_pct_initial_gdp')}*${binWeight(i)}`);
+    put(arrayField(tagKey, i), `IF(${s('sterilize_purchases')},${i < 119 ? prev(arrayField(tagKey, i + 1)) : '0'}+${s('sterilized_principal_reinvestment_pct_initial_gdp')}*${binWeight(i)}+${s('discretionary_purchase_pct_initial_gdp')}*${binWeight(i)},0)`);
+  }
+  // Maintenance is added only to the fourth bill bin after joint funding clears.
+  for (let i = 0; i < 3; i++) put(arrayField(billKey, i), prev(arrayField(billKey, i + 1)));
+  put('sterilization_requested_pct_initial_gdp', cohortSum(s, tagKey, 120));
+  put('sterilization_uptake_fraction', shock('rrp_uptake_fraction'));
+  put('sterilization_collateral_available_pct_initial_gdp', `MAX(0,${net('rrp_collateral', [cohortSum(s, treasuryKey, 120), `${s(arrayField(billKey, 0))}+${s(arrayField(billKey, 1))}+${s(arrayField(billKey, 2))}+${s('bill_rollover_pct_initial_gdp')}`, `-${s(arrayField(treasuryKey, 0))}`, `-${s(arrayField(billKey, 0))}`, `-${shock('rrp_encumbered_collateral_pct_initial_gdp')}`])})`);
+  put('uptake_absorption', `${s('sterilization_requested_pct_initial_gdp')}*${s('sterilization_uptake_fraction')}`);
+  put('sterilization_planned_pct_initial_gdp', `MIN(${s('uptake_absorption')},${s('sterilization_collateral_available_pct_initial_gdp')})`);
+  put('currency_pct_initial_gdp', `${p('initial_currency_pct_initial_gdp')}*${s('decision_nominal_gdp_ratio')}`);
+  put('currency_conversion_pct_initial_gdp', `${s('currency_pct_initial_gdp')}-${prev('currency_pct_initial_gdp')}`);
+  put('liquidity_repayment_pct_initial_gdp', prev('outstanding_liquidity_pct_initial_gdp'));
+  put('reverse_repo_closed_pct_initial_gdp', prev('reverse_repo_pct_initial_gdp'));
+  put('reserves_before_accommodation_pct_initial_gdp', net('reserve_base', [prev('reserves_pct_initial_gdp'), prev('reverse_repo_pct_initial_gdp'), s('discretionary_purchase_pct_initial_gdp'), `-${s('principal_runoff_pct_initial_gdp')}`, `-${s('liquidity_repayment_pct_initial_gdp')}`, `-${s('currency_conversion_pct_initial_gdp')}`]));
+  put('funding_need_pct_initial_gdp', shock('funding_need_pct_initial_gdp'));
+  put('eligible_collateral_pct_initial_gdp', shock('eligible_collateral_pct_initial_gdp'));
+  put('refinancing_request_pct_initial_gdp', shock('refinancing_need_pct_initial_gdp'));
+  put('refinancing_need_pct_initial_gdp', `MIN(${s('refinancing_request_pct_initial_gdp')},${s('liquidity_repayment_pct_initial_gdp')})`);
+  put('lending_collateral_capacity_pct_initial_gdp', `${s('eligible_collateral_pct_initial_gdp')}*(1-${shock('collateral_haircut_pct')}/100)*${shock('liquidity_eligibility_pct')}/100`);
+  put('eligible_local_need_pct_initial_gdp', `${s('refinancing_need_pct_initial_gdp')}*${shock('liquidity_eligibility_pct')}/100+${s('funding_need_pct_initial_gdp')}*${shock('liquidity_eligibility_pct')}/100`);
+  put('liquidity_local_applied_pct_initial_gdp', `MIN(${s('liquidity_request_pct_initial_gdp')},MIN(${s('lending_collateral_capacity_pct_initial_gdp')},${s('eligible_local_need_pct_initial_gdp')}))`);
+  put('liquidity_refinancing_applied_pct_initial_gdp', `MIN(${s('liquidity_local_applied_pct_initial_gdp')},${s('refinancing_need_pct_initial_gdp')}*${shock('liquidity_eligibility_pct')}/100)`);
+  put('liquidity_new_need_applied_pct_initial_gdp', `${s('liquidity_local_applied_pct_initial_gdp')}-${s('liquidity_refinancing_applied_pct_initial_gdp')}`);
+  put('uncovered_new_funding_pct_initial_gdp', `${s('funding_need_pct_initial_gdp')}-${s('liquidity_new_need_applied_pct_initial_gdp')}`);
+  put('uncovered_refinancing_pct_initial_gdp', `${s('refinancing_need_pct_initial_gdp')}-${s('liquidity_refinancing_applied_pct_initial_gdp')}`);
+  put('uncovered_funding_pct_initial_gdp', `${s('uncovered_new_funding_pct_initial_gdp')}+${s('uncovered_refinancing_pct_initial_gdp')}`);
+  put('reserve_buffer_pct_initial_gdp', `${p('reserve_buffer_pct_current_gdp')}*${s('decision_nominal_gdp_ratio')}`);
+  put('reserve_clear_pct_initial_gdp', `${p('reserve_clear_pct_current_gdp')}*${s('decision_nominal_gdp_ratio')}`);
+  put('local_after_absorption', net('local_after_absorption', [s('reserves_before_accommodation_pct_initial_gdp'), s('liquidity_local_applied_pct_initial_gdp'), `-${s('sterilization_planned_pct_initial_gdp')}`]));
+  put('reserve_maintenance_purchase_pct_initial_gdp', `IF(${s('maintain_ample_reserves')},MAX(0,${net('maintenance', [s('reserve_buffer_pct_initial_gdp'), `-${s('local_after_absorption')}`])}),0)`);
+  put('liquidity_aggregate_need_pct_initial_gdp', `IF(${s('maintain_ample_reserves')},0,MAX(0,${net('aggregate_need', [s('reserve_clear_pct_initial_gdp'), `-${s('local_after_absorption')}`])}))`);
+  put('liquidity_aggregate_applied_pct_initial_gdp', `IF(${s('maintain_ample_reserves')},0,MIN(MAX(0,${s('liquidity_request_pct_initial_gdp')}-${s('liquidity_local_applied_pct_initial_gdp')}),MIN(MAX(0,${s('lending_collateral_capacity_pct_initial_gdp')}-${s('liquidity_local_applied_pct_initial_gdp')}),${s('liquidity_aggregate_need_pct_initial_gdp')})))`);
+  put('sterilization_applied_pct_initial_gdp', `IF(${s('maintain_ample_reserves')},${s('sterilization_planned_pct_initial_gdp')},MIN(${s('sterilization_planned_pct_initial_gdp')},MAX(0,${net('absorption_reserves', [s('reserves_before_accommodation_pct_initial_gdp'), s('liquidity_local_applied_pct_initial_gdp'), s('liquidity_aggregate_applied_pct_initial_gdp')])})))`);
+  put('settlement_reserves', net('reserve_final', [s('reserves_before_accommodation_pct_initial_gdp'), s('liquidity_local_applied_pct_initial_gdp'), s('liquidity_aggregate_applied_pct_initial_gdp'), `-${s('sterilization_applied_pct_initial_gdp')}`, s('reserve_maintenance_purchase_pct_initial_gdp')]));
+  put('reserves_pct_initial_gdp', `IF(AND(${s('settlement_reserves')}>=0,${prev('treasury_account_pct_initial_gdp')}>=0),${s('settlement_reserves')},NA())`);
+  put(arrayField(billKey, 3), `${s('bill_rollover_pct_initial_gdp')}+${s('reserve_maintenance_purchase_pct_initial_gdp')}`);
+  put('reverse_repo_pct_initial_gdp', s('sterilization_applied_pct_initial_gdp'));
+  put('outstanding_liquidity_pct_initial_gdp', `${s('liquidity_local_applied_pct_initial_gdp')}+${s('liquidity_aggregate_applied_pct_initial_gdp')}`);
+  put('liquidity_applied_pct_initial_gdp', s('outstanding_liquidity_pct_initial_gdp'));
+  put('asset_stock_pct_initial_gdp', net('securities', [prev('asset_stock_pct_initial_gdp'), s('discretionary_purchase_pct_initial_gdp'), `-${s('principal_runoff_pct_initial_gdp')}`, s('reserve_maintenance_purchase_pct_initial_gdp')]));
+  put('asset_flow_applied_pct_initial_gdp', `${s('discretionary_purchase_pct_initial_gdp')}-${s('principal_runoff_pct_initial_gdp')}`);
+  put('total_assets_pct_initial_gdp', `${s('asset_stock_pct_initial_gdp')}+${s('outstanding_liquidity_pct_initial_gdp')}`);
+  put('total_asset_change_pct_initial_gdp', `${s('total_assets_pct_initial_gdp')}-${prev('total_assets_pct_initial_gdp')}`);
+  put('principal_ledger_error_pct_initial_gdp', net('ledger', [s('total_assets_pct_initial_gdp'), `-${s('reserves_pct_initial_gdp')}`, `-${s('reverse_repo_pct_initial_gdp')}`, `-${s('currency_pct_initial_gdp')}`, `-${prev('treasury_account_pct_initial_gdp')}`, `-${prev('capital_other_pct_initial_gdp')}`]));
+  put('reserve_scarcity_wedge_pct', `IF(${s('reserves_pct_initial_gdp')}>=${s('reserve_clear_pct_initial_gdp')},0,${p('reserve_scarcity_sensitivity_pct')}*POWER(1-${s('reserves_pct_initial_gdp')}/${s('reserve_clear_pct_initial_gdp')},2))`);
+  put('local_access_wedge_pct', `${p('funding_spread_sensitivity')}*${s('uncovered_funding_pct_initial_gdp')}`);
+  put('duration_equivalent_pct_initial_gdp', `${cohortSum(s, treasuryKey, 120)}+${s('mbs_stock_pct_initial_gdp')}*(${p('mbs_duration_years')}/${p('treasury_duration_years')})`);
+  put('duration_difference', `${s('duration_equivalent_pct_initial_gdp')}-${s('initial_duration_equivalent_pct_initial_gdp')}`);
+  put('premium_log_ratio', `IF(${s('duration_difference')}=0,0,LN(ABS(${s('duration_difference')}))-LN(${s('decision_nominal_gdp_ratio')})-LN(${p('portfolio_premium_scale_pct_gdp')}))`);
+  put('term_premium_pct', `IF(${s('duration_difference')}=0,${s('initial_portfolio_premium_pct')},${s('initial_portfolio_premium_pct')}-${p('portfolio_premium_max_shift_pct')}*IF(${s('premium_log_ratio')}>LN(20),SIGN(${s('duration_difference')}),TANH(SIGN(${s('duration_difference')})*EXP(${s('premium_log_ratio')}))))`);
+  for (const key of ['treasury', 'bill']) put(`${key}_funding_transfer_pct_initial_gdp`, s(`${key}_redemption_pct_initial_gdp`));
+  for (const [key, condition] of [
+    ['liquidity_offer_binding', `${s('liquidity_local_applied_pct_initial_gdp')}<${s('eligible_local_need_pct_initial_gdp')},${s('liquidity_local_applied_pct_initial_gdp')}=${s('liquidity_request_pct_initial_gdp')}`],
+    ['liquidity_collateral_binding', `${s('liquidity_local_applied_pct_initial_gdp')}<${s('eligible_local_need_pct_initial_gdp')},${s('liquidity_local_applied_pct_initial_gdp')}=${s('lending_collateral_capacity_pct_initial_gdp')}`],
+    ['liquidity_aggregate_offer_binding', `${s('liquidity_aggregate_applied_pct_initial_gdp')}<${s('liquidity_aggregate_need_pct_initial_gdp')},${s('liquidity_aggregate_applied_pct_initial_gdp')}=MAX(0,${s('liquidity_request_pct_initial_gdp')}-${s('liquidity_local_applied_pct_initial_gdp')})`],
+    ['liquidity_aggregate_collateral_binding', `${s('liquidity_aggregate_applied_pct_initial_gdp')}<${s('liquidity_aggregate_need_pct_initial_gdp')},${s('liquidity_aggregate_applied_pct_initial_gdp')}=MAX(0,${s('lending_collateral_capacity_pct_initial_gdp')}-${s('liquidity_local_applied_pct_initial_gdp')})`],
+    ['liquidity_eligibility_binding', `${shock('liquidity_eligibility_pct')}<100,OR(${s('funding_need_pct_initial_gdp')}>0,${s('refinancing_need_pct_initial_gdp')}>0)`],
+    ['sterilization_uptake_binding', `${s('uptake_absorption')}<${s('sterilization_requested_pct_initial_gdp')}`],
+    ['sterilization_collateral_binding', `${s('sterilization_collateral_available_pct_initial_gdp')}<${s('uptake_absorption')}`],
+    ['sterilization_reserve_binding', `${s('sterilization_applied_pct_initial_gdp')}<${s('sterilization_planned_pct_initial_gdp')}`],
+  ]) put(key, `IF(AND(${condition}),1,0)`);
+  put('sterilization_unfulfilled_pct_initial_gdp', `${s('sterilization_requested_pct_initial_gdp')}-${s('sterilization_applied_pct_initial_gdp')}`);
+};
 for (let q = 0; q <= 48; q++) {
   const col = column(q + 4), previous = column(q + 3), s = key => f(col, key), prev = key => f(previous, key);
   const put = (key, formula) => cell(economy, s(key), `=${formula}`, true);
   cell(economy, s('quarter_index'), q);
   if (q === 0) {
-    for (const key of Object.keys(source.initial_state).filter(k => R[k] && k !== 'quarter_index')) put(key, '0');
+    for (const key of Object.keys(flattenState(source.initial_state)).filter(k => k !== 'quarter_index')) put(key, '0');
     for (const key of Object.keys(initialParameter)) put(key, initial(key));
-    // The engine validates the default rate parameter even when a scenario overrides it.
-    put('policy_rate_pct', `IF(ISNUMBER(${p('initial_policy_rate_pct')}),${initial('policy_rate_pct')},NA())`);
     put('r_star_reference_pct', s('r_star_pct'));
     put('potential_output_index', p('initial_output_index'));
-    put('actual_output_index', `${s('potential_output_index')}*(1+${s('output_gap_pct')}/100)`);
+    put('actual_output_index', `IF(AND(${s('output_gap_pct')}>-100,${s('potential_output_index')}>0),${s('potential_output_index')}*(1+${s('output_gap_pct')}/100),NA())`);
     for (const key of ['potential_growth_pct', 'annualized_potential_growth_pct', 'annualized_actual_growth_pct']) put(key, p('initial_potential_growth_pct'));
     put('price_index', p('initial_price_index'));
     put('initial_annual_gdp_index', p('initial_output_index'));
-    put('initial_asset_stock_pct_initial_gdp', p('initial_asset_stock_pct_initial_gdp'));
-    put('asset_stock_capacity_pct_initial_gdp', p('asset_stock_capacity_pct_initial_gdp'));
+    for (const key of initialFields) put(key, initial(key));
+    // Keep this guard after initialFields so a scenario cannot overwrite it.
+    put('policy_rate_pct', `IF(ISNUMBER(${p('initial_policy_rate_pct')}),${initial('policy_rate_pct')},NA())`);
+    put('initial_asset_stock_pct_initial_gdp', s('asset_stock_pct_initial_gdp'));
+    put('initial_actual_output_index', s('actual_output_index'));
+    put('initial_price_index', s('price_index'));
+    for (let i = 0; i < 120; i++) {
+      put(arrayField(treasuryKey, i), `${s('asset_stock_pct_initial_gdp')}*'Assumptions'!$D$${sourceStart - 2}*'Assumptions'!$D$${sourceStart + i}`);
+      put(arrayField(tagKey, i), '0');
+    }
+    for (let i = 0; i < 4; i++) put(arrayField(billKey, i), '0');
+    put('mbs_stock_pct_initial_gdp', `${s('asset_stock_pct_initial_gdp')}*(1-'Assumptions'!$D$${sourceStart - 2})`);
+    put('initial_duration_equivalent_pct_initial_gdp', `${cohortSum(s, treasuryKey, 120)}+${s('mbs_stock_pct_initial_gdp')}*(${p('mbs_duration_years')}/${p('treasury_duration_years')})`);
+    put('duration_equivalent_pct_initial_gdp', s('initial_duration_equivalent_pct_initial_gdp'));
+    put('initial_portfolio_premium_pct', s('term_premium_pct'));
+    put('reserves_pct_initial_gdp', p('initial_reserves_pct_initial_gdp'));
+    put('currency_pct_initial_gdp', p('initial_currency_pct_initial_gdp'));
+    put('treasury_account_pct_initial_gdp', p('initial_treasury_account_pct_initial_gdp'));
+    put('capital_other_pct_initial_gdp', `${s('asset_stock_pct_initial_gdp')}-${s('reserves_pct_initial_gdp')}-${s('currency_pct_initial_gdp')}-${s('treasury_account_pct_initial_gdp')}`);
+    put('total_assets_pct_initial_gdp', s('asset_stock_pct_initial_gdp'));
+    put('decision_nominal_gdp_ratio', '1'); put('ending_nominal_gdp_ratio', '1');
+    put('reserve_buffer_pct_initial_gdp', p('reserve_buffer_pct_current_gdp')); put('reserve_clear_pct_initial_gdp', p('reserve_clear_pct_current_gdp'));
+    put('sterilization_uptake_fraction', '1'); put('guidance_active', 'FALSE');
     put('last_policy_rate_request_pct', s('policy_rate_pct'));
     put('guidance_rate_pct', s('policy_rate_pct'));
     put('guidance_reference_inflation_pct', p('initial_inflation_rate_pct'));
     put('guidance_reference_output_gap_pct', p('initial_output_gap_pct'));
     put('guidance_followthrough_score', '1');
-    put('credit_spread_pct', `${p('normal_credit_spread_pct')}+${s('solvency_risk_wedge_pct')}`);
+    put('credit_risk_wedge_pct', s('solvency_risk_wedge_pct'));
+    put('credit_spread_pct', `${p('normal_credit_spread_pct')}+${s('credit_risk_wedge_pct')}`);
     for (let age = 0; age < 5; age++) put(`price_h${age}`, `${s('price_index')}/POWER(1+${s('annualized_quarterly_inflation_pct')}/100,${(4 - age) / 4})`);
     put('four_quarter_inflation_pct', `100*(${s('price_h4')}/${s('price_h0')}-1)`);
     writeRateConditions(s, s, put);
+    put('initial_mbs_financing_rate_pct', `${s('long_yield_pct')}+${s('credit_spread_pct')}`);
     continue;
   }
+  put('decision_nominal_gdp_ratio', `(${prev('actual_output_index')}/${prev('initial_actual_output_index')})*(${prev('price_index')}/${prev('initial_price_index')})`);
   const shock = key => `'Shocks'!${col}${shockRows.get(key)}`;
   const override = (row, fallback) => `IF(ISBLANK('Policy'!${col}${row}),${fallback},'Policy'!${col}${row})`;
   const requested = `CHOOSE('Policy Lab'!$C$6,${prev('r_star_pct')}+${prev('expected_short_inflation_pct')}+${p('policy_inflation_response')}*(${prev('four_quarter_inflation_pct')}-${p('inflation_target_pct')})+${p('policy_output_gap_response')}*${prev('output_gap_pct')},${prev('policy_rate_pct')})`;
@@ -259,26 +449,16 @@ for (let q = 0; q <= 48; q++) {
   put('guidance_rate_pct', override(7, s('benchmark_rate')));
   put('guidance_inflation_sensitivity', override(8, p('policy_inflation_response')));
   put('guidance_output_gap_sensitivity', override(9, p('policy_output_gap_response')));
-  put('asset_flow_request_pct_initial_gdp', `IF(ISNUMBER('Policy'!${col}10),'Policy'!${col}10,NA())`);
-  put('liquidity_request_pct_initial_gdp', `IF(ISNUMBER('Policy'!${col}11),'Policy'!${col}11,NA())`);
+  put('asset_flow_request_pct_initial_gdp', `IF(ISNUMBER('Policy'!${col}10),'Policy'!${col}10*${s('decision_nominal_gdp_ratio')},NA())`);
+  put('liquidity_request_pct_initial_gdp', `IF(ISNUMBER('Policy'!${col}11),'Policy'!${col}11*${s('decision_nominal_gdp_ratio')},NA())`);
+  for (const [i, key] of ['reinvest_principal', 'maintain_ample_reserves', 'sterilize_purchases'].entries()) put(key, `IF(ISLOGICAL('Policy'!${col}${12 + i}),'Policy'!${col}${12 + i},NA())`);
   const controls = ['last_policy_rate_request_pct', 'guidance_rate_pct', 'guidance_inflation_sensitivity', 'guidance_output_gap_sensitivity', 'asset_flow_request_pct_initial_gdp', 'liquidity_request_pct_initial_gdp'];
-  put('policy_valid', `AND(${controls.map(k => `ISNUMBER(${s(k)})`).join(',')},${onGrid(s('last_policy_rate_request_pct'))},${onGrid(s('guidance_rate_pct'))},ABS(${s('guidance_inflation_sensitivity')})<=${p('guidance_sensitivity_limit')},ABS(${s('guidance_output_gap_sensitivity')})<=${p('guidance_sensitivity_limit')},ABS(${s('asset_flow_request_pct_initial_gdp')})<=${p('asset_flow_request_limit_pct_initial_gdp')},${s('liquidity_request_pct_initial_gdp')}>=0,${s('liquidity_request_pct_initial_gdp')}<=${p('liquidity_request_limit_pct_initial_gdp')})`);
+  put('policy_valid', `AND(${controls.map(k => `ISNUMBER(${s(k)})`).join(',')},${onGrid(s('last_policy_rate_request_pct'))},${onGrid(s('guidance_rate_pct'))},ABS(${s('guidance_inflation_sensitivity')})<=${p('guidance_sensitivity_limit')},ABS(${s('guidance_output_gap_sensitivity')})<=${p('guidance_sensitivity_limit')},${s('liquidity_request_pct_initial_gdp')}>=0,${['reinvest_principal', 'maintain_ample_reserves', 'sterilize_purchases'].map(k => `ISLOGICAL(${s(k)})`).join(',')})`);
   put('policy_rate_pct', `IF(${s('policy_valid')},${s('last_policy_rate_request_pct')},NA())`);
-  for (const key of ['initial_annual_gdp_index', 'initial_asset_stock_pct_initial_gdp', 'asset_stock_capacity_pct_initial_gdp']) put(key, prev(key));
-  put('asset_flow_applied_pct_initial_gdp', clamp(s('asset_flow_request_pct_initial_gdp'), `-MIN(${p('asset_flow_quarter_limit_pct_initial_gdp')},${prev('asset_stock_pct_initial_gdp')})`, `MIN(${p('asset_flow_quarter_limit_pct_initial_gdp')},${prev('asset_stock_capacity_pct_initial_gdp')}-${prev('asset_stock_pct_initial_gdp')})`));
-  put('asset_stock_pct_initial_gdp', `${prev('asset_stock_pct_initial_gdp')}+${s('asset_flow_applied_pct_initial_gdp')}`);
-  put('term_premium_pct', `${prev('term_premium_pct')}-${p('term_premium_asset_sensitivity')}*${s('asset_flow_applied_pct_initial_gdp')}`);
-  put('liquidity_repayment_pct_initial_gdp', `${prev('outstanding_liquidity_pct_initial_gdp')}*${p('liquidity_repayment_fraction')}`);
-  put('loan_remaining', `${prev('outstanding_liquidity_pct_initial_gdp')}-${s('liquidity_repayment_pct_initial_gdp')}`);
-  put('funding_need_pct_initial_gdp', shock('funding_need_pct_initial_gdp'));
-  put('eligible_collateral_pct_initial_gdp', shock('eligible_collateral_pct_initial_gdp'));
-  put('eligible_capacity', `${s('eligible_collateral_pct_initial_gdp')}*(1-${shock('collateral_haircut_pct')}/100)*${shock('liquidity_eligibility_pct')}/100`);
-  put('lending_headroom', `MAX(0,${s('eligible_capacity')}-${s('loan_remaining')})`);
-  put('liquidity_applied_pct_initial_gdp', `MIN(${s('liquidity_request_pct_initial_gdp')},${s('funding_need_pct_initial_gdp')},${p('liquidity_flow_quarter_limit_pct_initial_gdp')},${s('lending_headroom')})`);
-  put('outstanding_liquidity_pct_initial_gdp', `${s('loan_remaining')}+${s('liquidity_applied_pct_initial_gdp')}`);
-  put('uncovered_funding_pct_initial_gdp', `MAX(0,${s('funding_need_pct_initial_gdp')}-${s('liquidity_applied_pct_initial_gdp')})`);
+  for (const key of ['initial_annual_gdp_index', 'initial_asset_stock_pct_initial_gdp', 'initial_actual_output_index', 'initial_price_index', 'initial_duration_equivalent_pct_initial_gdp', 'initial_portfolio_premium_pct', 'initial_mbs_financing_rate_pct', 'treasury_account_pct_initial_gdp', 'capital_other_pct_initial_gdp']) put(key, prev(key));
+  writeBalance(s, prev, shock, put);
   put('solvency_risk_wedge_pct', `${prev('solvency_risk_wedge_pct')}*${p('solvency_risk_persistence')}+${shock('solvency_risk_innovation_pct')}`);
-  put('credit_risk_wedge_pct', `${p('funding_spread_sensitivity')}*${s('uncovered_funding_pct_initial_gdp')}+${s('solvency_risk_wedge_pct')}+${shock('credit_risk_innovation_pct')}`);
+  put('credit_risk_wedge_pct', `${s('reserve_scarcity_wedge_pct')}+${s('local_access_wedge_pct')}+${s('solvency_risk_wedge_pct')}+${shock('credit_risk_innovation_pct')}`);
   put('credit_spread_pct', `${p('normal_credit_spread_pct')}+${s('credit_risk_wedge_pct')}`);
   const impliedPromise = `${prev('guidance_rate_pct')}+${prev('guidance_inflation_sensitivity')}*(${prev('four_quarter_inflation_pct')}-${prev('guidance_reference_inflation_pct')})+${prev('guidance_output_gap_sensitivity')}*(${prev('output_gap_pct')}-${prev('guidance_reference_output_gap_pct')})`;
   put('prior_commitment', `IF(${prev('guidance_active')},${quote(impliedPromise)},${s('policy_rate_pct')})`);
@@ -320,7 +500,8 @@ for (let q = 0; q <= 48; q++) {
   put('public_hardship_memory', `${p('public_hardship_memory_persistence')}*${prev('public_hardship_memory')}+(1-${p('public_hardship_memory_persistence')})*${s('current_hardship')}`);
   put('support_target', clamp(`${p('public_support_base')}-${s('current_hardship')}-${p('public_hardship_memory_weight')}*${s('public_hardship_memory')}`, 0, 100));
   put('public_support', `${prev('public_support')}+${p('public_support_adjustment')}*(${s('support_target')}-${prev('public_support')})`);
-  put('actual_output_index', `${s('potential_output_index')}*(1+${s('output_gap_pct')}/100)`);
+  put('actual_output_index', `IF(AND(${s('output_gap_pct')}>-100,${s('potential_output_index')}>0),${s('potential_output_index')}*(1+${s('output_gap_pct')}/100),NA())`);
+  put('ending_nominal_gdp_ratio', `(${s('actual_output_index')}/${s('initial_actual_output_index')})*(${s('price_index')}/${s('initial_price_index')})`);
   put('annualized_actual_growth_pct', `100*(POWER(${s('actual_output_index')}/${prev('actual_output_index')},4)-1)`);
   put('annualized_potential_growth_pct', `100*(POWER(${s('potential_output_index')}/${prev('potential_output_index')},4)-1)`);
   put('guidance_active', 'TRUE');
@@ -328,22 +509,39 @@ for (let q = 0; q <= 48; q++) {
   put('guidance_reference_output_gap_pct', prev('output_gap_pct'));
 }
 
+for (const [key, row] of Object.entries(R)) cell(economy, `B${row}`, human(key));
+economy.getRange(`B100:AZ${nextModelRow - 1}`).format = { font: { name: 'Arial', size: 10, color: C.ink }, rowHeight: 22, verticalAlignment: 'center' };
+economy.getRange(`B100:B${nextModelRow - 1}`).format.columnWidth = 54;
+economy.getRange(`D100:AZ${nextModelRow - 1}`).setNumberFormat('0.000');
+for (let q = 0; q <= 48; q++) {
+  const col = column(q + 4);
+  for (const [label, key] of [['securities', 'asset_stock_pct_initial_gdp'], ['reserves', 'reserves_pct_initial_gdp'], ['loans', 'outstanding_liquidity_pct_initial_gdp'], ['rrp', 'reverse_repo_pct_initial_gdp']]) cell(economy, f(col, `ending_${label}_pct_current_gdp`), `=${f(col, key)}/${f(col, 'ending_nominal_gdp_ratio')}`, true);
+}
+await fs.writeFile(new URL('workbook-model-map.json', evidence), JSON.stringify(R, null, 2));
+
 // Player controls remain separate from the one calculation chain.
 for (const sheet of [policy, shocks]) {
   sheet.getRange('E4:AZ4').values = [Array.from({ length: 48 }, (_, q) => q + 1)]; headers(sheet, 'B4:AZ4');
   cell(sheet, 'B4', 'Decision quarter');
 }
-for (const [row, label] of [[6, 'Rate request (%)'], [7, 'Next-quarter guidance (%)'], [8, 'Guidance: inflation response'], [9, 'Guidance: output-gap response'], [10, 'Asset flow (% initial GDP)'], [11, 'New liquidity (% initial GDP)']]) {
+for (const [row, label] of [[6, 'Rate request (%)'], [7, 'Next-quarter guidance (%)'], [8, 'Guidance: inflation response'], [9, 'Guidance: output-gap response'], [10, 'Purchases / runoff cap (% current GDP)'], [11, 'Liquidity offer (% current GDP)'], [12, 'Reinvest principal'], [13, 'Maintain ample reserves'], [14, 'Sterilize purchases']]) {
   cell(policy, `B${row}`, label); input(policy, `E${row}:AZ${row}`);
-  if (row >= 10) policy.getRange(`E${row}:AZ${row}`).values = [[0]];
+  if (row >= 10) policy.getRange(`E${row}:AZ${row}`).values = [[row < 12 ? 0 : row !== 14]];
 }
-cell(policy, 'B13', 'Blanks in rows 6–9 follow the benchmark. Zero is an explicit override.');
-cell(policy, 'B14', 'Rate/guidance quotes use1bp increments. Conditional promises round to that grid before delivery is scored.');
-for (const [i, key] of ['policy_rate_pct', 'prior_commitment', 'guidance_followthrough_score', 'asset_flow_applied_pct_initial_gdp', 'liquidity_applied_pct_initial_gdp', 'outstanding_liquidity_pct_initial_gdp', 'credit_spread_pct', 'four_quarter_inflation_pct', 'unemployment_rate_pct', 'public_support'].entries()) {
-  const row = 16 + i; cell(policy, `B${row}`, human(key));
-  policy.getRange(`E${row}:AZ${row}`).formulas = [Array.from({ length: 48 }, (_, q) => `='Economy'!${column(q + 5)}${R[key]}`)];
+cell(policy, 'B16', 'Blanks in6–9 use the benchmark; zero is explicit. Rate/guidance grid:1bp.');
+cell(policy, 'B17', 'Modes require TRUE/FALSE. Negative purchases cap actual principal runoff.');
+cell(policy, 'B18', 'Offers and flows: current meeting GDP; ending stocks: ending GDP.');
+const endingStocks = new Set(['outstanding_liquidity_pct_initial_gdp', 'asset_stock_pct_initial_gdp', 'reserves_pct_initial_gdp', 'reverse_repo_pct_initial_gdp', 'total_assets_pct_initial_gdp']);
+const policyOutputs = ['policy_rate_pct', 'prior_commitment', 'guidance_followthrough_score', 'asset_flow_applied_pct_initial_gdp', 'liquidity_applied_pct_initial_gdp', 'outstanding_liquidity_pct_initial_gdp', 'credit_spread_pct', 'four_quarter_inflation_pct', 'unemployment_rate_pct', 'public_support', 'principal_due_pct_initial_gdp', 'principal_runoff_pct_initial_gdp', 'principal_reinvestment_pct_initial_gdp', 'long_securities_runoff_pct_initial_gdp', 'reserve_maintenance_purchase_pct_initial_gdp', 'sterilization_applied_pct_initial_gdp', 'sterilization_unfulfilled_pct_initial_gdp', 'reserves_pct_initial_gdp', 'reverse_repo_pct_initial_gdp', 'total_assets_pct_initial_gdp'];
+for (const [i, key] of policyOutputs.entries()) {
+  const row = 20 + i; cell(policy, `B${row}`, human(key).replace('initial GDP', 'current GDP'));
+  policy.getRange(`E${row}:AZ${row}`).formulas = [Array.from({ length: 48 }, (_, q) => {
+    const col = column(q + 5), denominator = endingStocks.has(key) ? 'ending_nominal_gdp_ratio' : 'decision_nominal_gdp_ratio';
+    return `='Economy'!${col}${R[key]}${key.endsWith('_pct_initial_gdp') ? `/'Economy'!${col}${R[denominator]}` : ''}`;
+  })];
 }
-policy.getRange('E6:AZ25').setNumberFormat('0.00');
+policy.getRange('E6:AZ11').setNumberFormat('0.00');
+policy.getRange('E20:AZ39').setNumberFormat('0.00');
 
 // Compact output table and editable native charts, with a single linked plot table.
 lab.getRange('B11:D11').values = [['At selected quarter', 'Value', 'Unit']]; headers(lab, 'B11:D11');
@@ -386,15 +584,12 @@ const verifyTrace = (label, states) => {
   let worst = 0;
   for (const [q, state] of states.entries()) {
     const col = column(q + 4);
-    for (const [key, expected] of Object.entries(state)) {
-      if (key === 'price_history') {
-        expected.forEach((price, age) => assert.ok(Math.abs(economy.getRange(`${col}${R[`price_h${age}`]}`).values[0][0] - price) < 1e-7, `${label} q${q} price history ${age}`));
-      } else {
-        assert.ok(R[key], `State field missing from workbook: ${key}`);
-        const actual = economy.getRange(`${col}${R[key]}`).values[0][0];
-        const error = Math.abs(Number(actual) - Number(expected)); worst = Math.max(worst, error);
-        assert.ok(Number.isFinite(Number(actual)) && error < 1e-7, `${label} q${q} ${key}: workbook ${actual}, Godot ${expected}`);
-      }
+    for (const [key, expected] of Object.entries(flattenState(state))) {
+      assert.ok(R[key], `State field missing from workbook: ${key}`);
+      const actual = economy.getRange(`${col}${R[key]}`).values[0][0];
+      if (typeof expected === 'boolean') assert.equal(typeof actual, 'boolean', `${label} q${q} boolean type: ${key}`);
+      const error = Math.abs(Number(actual) - Number(expected)); worst = Math.max(worst, error);
+      assert.ok(Number.isFinite(Number(actual)) && error < 1e-7, `${label} q${q} ${key}: workbook ${actual}, Godot ${expected}`);
     }
   }
   return worst;
@@ -414,7 +609,7 @@ const variants = JSON.parse(await fs.readFile(new URL('./reference-v1/policy-var
 for (const variant of variants) {
   cell(lab, 'C4', ids.indexOf(variant.case) + 1);
   const previous = policy.getRange(variant.cell).values[0][0];
-  cell(policy, variant.cell, variant.value); workbook.recalculate();
+  cell(policy, variant.cell, nominalKeys.has(variant.control) ? variant.value / nominalRatio(variant.states[variant.quarter]) : variant.value); workbook.recalculate();
   checks.push({ policyEdit: variant.name, maxAbsoluteError: verifyTrace(variant.name, variant.states) });
   cell(policy, variant.cell, previous);
 }
@@ -423,7 +618,7 @@ const priceBoundaries = JSON.parse(await fs.readFile(new URL('./reference-v1/pri
 cell(lab, 'C4', 1); cell(lab, 'C6', 2);
 for (const fixture of priceBoundaries) {
   const initialEdits = Object.keys(fixture.initial).map(key => [`D${initialRows.get(key) + 1}`, fixture.initial[key]]);
-  const shockEdits = shockKeys.map(key => [`E${shockRows.get(key) + 1}`, fixture.shocks[0][key] ?? (key === 'potential_growth_pct' ? null : 0)]);
+  const shockEdits = shockKeys.map(key => [`E${shockRows.get(key) + 1}`, fixture.shocks[0][key] ?? shockDefault(key)]);
   const saved = [...initialEdits, ...shockEdits].map(([ref, value], index) => {
     const sheet = index < initialEdits.length ? assumptions : shocks;
     const previous = sheet.getRange(ref).values[0][0];
@@ -518,13 +713,14 @@ console.log('PASS: recovery domains, permanent structural reference and restored
 const rateBoundaries = JSON.parse(await fs.readFile(new URL('./reference-v1/rate-boundaries.json', import.meta.url), 'utf8'));
 cell(lab, 'C4', 1); cell(lab, 'C6', 2);
 const policyRows = { policy_rate_request_pct: 6, guidance_rate_pct: 7, guidance_inflation_sensitivity: 8,
-  guidance_output_gap_sensitivity: 9, asset_flow_request_pct_initial_gdp: 10, liquidity_request_pct_initial_gdp: 11 };
-for (const fixture of rateBoundaries) {
+  guidance_output_gap_sensitivity: 9, asset_flow_request_pct_initial_gdp: 10, liquidity_request_pct_initial_gdp: 11, reinvest_principal: 12, maintain_ample_reserves: 13, sterilize_purchases: 14 };
+const balanceBoundaries = JSON.parse(await fs.readFile(new URL('./reference-v1/balance-boundaries.json', import.meta.url), 'utf8'));
+for (const [kind, fixtures] of [['rateBoundary', rateBoundaries], ['balanceBoundary', balanceBoundaries]]) for (const fixture of fixtures) {
   const edits = [
     ...Object.entries(fixture.initial).map(([key, value]) => [assumptions, `D${initialRows.get(key) + 1}`, value]),
     ...Object.entries(fixture.parameter_overrides ?? {}).map(([key, value]) => [assumptions, `C${parameterRow.get(key)}`, value]),
-    ...fixture.shocks.flatMap((shock, q) => shockKeys.map(key => [shocks, `${column(q + 5)}${shockRows.get(key) + 1}`, shock[key] ?? (key === 'potential_growth_pct' ? null : key === 'liquidity_eligibility_pct' ? 100 : 0)])),
-    ...fixture.policies.flatMap((decision, q) => Object.entries(decision).map(([key, value]) => [policy, `${column(q + 5)}${policyRows[key]}`, value])),
+    ...fixture.shocks.flatMap((shock, q) => shockKeys.map(key => [shocks, `${column(q + 5)}${shockRows.get(key) + 1}`, shock[key] ?? shockDefault(key)])),
+    ...fixture.policies.flatMap((decision, q) => Object.entries(decision).map(([key, value]) => [policy, `${column(q + 5)}${policyRows[key]}`, nominalKeys.has(key) ? value / nominalRatio(fixture.states[q]) : value])),
   ];
   const saved = edits.map(([sheet, ref, value]) => {
     assert.ok(!ref.includes('NaN') && !ref.includes('undefined'), `Unmapped boundary input ${ref}`);
@@ -533,7 +729,8 @@ for (const fixture of rateBoundaries) {
     return [sheet, ref, previous, formula];
   });
   workbook.recalculate();
-  checks.push({ rateBoundary: fixture.name, maxAbsoluteError: verifyTrace(fixture.name, fixture.states) });
+  checks.push({ [kind]: fixture.name, maxAbsoluteError: verifyTrace(fixture.name, fixture.states) });
+  console.log(`PASS: ${kind} ${fixture.name}`);
   for (const [sheet, ref, value, formula] of saved) cell(sheet, ref, formula || value, Boolean(formula));
 }
 for (const raw of [-3.505, 3.505]) {
@@ -573,7 +770,7 @@ console.log((await workbook.inspect({ kind: 'match', searchTerm: '#REF!|#DIV/0!|
 await fs.mkdir(out, { recursive: true });
 const xlsx = await SpreadsheetFile.exportXlsx(workbook);
 await xlsx.save(fileURLToPath(new URL('Federal Reserve Policy Lab.xlsx', out)));
-for (const [sheetName, range, file] of [['Policy Lab', 'A1:P55', 'lab'], ['Policy', 'A1:M26', 'policy'], ['Assumptions', 'A1:J18', 'assumptions'], ['Economy', 'A1:L23', 'economy'], ['Shocks', 'A1:L22', 'shocks'], ['Assumptions', `B${source.parameters.length - 2}:H${weightsRow + 2}`, 'recovery-assumptions'], ['Economy', 'B77:L93', 'recovery-rate-equations'], ['Assumptions', `B${parameterRow.get('minimum_rate_increment_pct')}:H${parameterRow.get('negative_rate_efficacy_scale_pct')}`, 'rate-assumptions']]) {
+for (const [sheetName, range, file] of [['Policy Lab', 'A1:P55', 'lab'], ['Policy', 'A1:M40', 'policy'], ['Assumptions', 'A1:J18', 'assumptions'], ['Economy', 'A1:L23', 'economy'], ['Shocks', 'A1:L22', 'shocks'], ['Assumptions', `B${source.parameters.length - 2}:H${weightsRow + 2}`, 'recovery-assumptions'], ['Economy', 'B77:L93', 'recovery-rate-equations'], ['Assumptions', `B${parameterRow.get('minimum_rate_increment_pct')}:H${parameterRow.get('negative_rate_efficacy_scale_pct')}`, 'rate-assumptions'], ['Assumptions', `B${sourceStart - 4}:F${sourceStart + 14}`, 'portfolio-ladder'], ['Assumptions', `B${sourceStart + 105}:F${sourceStart + 119}`, 'portfolio-ladder-tail']]) {
   const preview = await workbook.render({ sheetName, range, scale: 1, format: 'png' });
   await fs.writeFile(new URL(`workbook-${file}.png`, evidence), new Uint8Array(await preview.arrayBuffer()));
 }

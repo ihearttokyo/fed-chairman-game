@@ -7,9 +7,10 @@ const Exporter = preload("res://tests/export_reference.gd")
 func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
 	var price_boundaries := args.size() == 3 and args[2] == "--price-boundaries"
+	var balance_boundaries := args.size() == 3 and args[2] == "--balance-boundaries"
 	var rate_boundaries := args.size() == 3 and args[2] == "--rate-boundaries"
-	if (args.size() != 2 and not price_boundaries and not rate_boundaries) or args[0] != "--output":
-		printerr("usage: --output /absolute/path/outside/repository.json [--price-boundaries|--rate-boundaries]")
+	if (args.size() != 2 and not price_boundaries and not rate_boundaries and not balance_boundaries) or args[0] != "--output":
+		printerr("usage: --output /absolute/path/outside/repository.json [--price-boundaries|--rate-boundaries|--balance-boundaries]")
 		quit(1)
 		return
 	var output_path := args[1].simplify_path()
@@ -20,7 +21,8 @@ func _initialize() -> void:
 	var model := Economy.new()
 	var parameters := model.load_parameters()
 	var scenarios := model.load_scenarios()
-	if not parameters.ok or not scenarios.ok:
+	var portfolio := model.load_portfolio_reference()
+	if not parameters.ok or not scenarios.ok or not portfolio.ok:
 		printerr("model inputs failed validation")
 		quit(1)
 		return
@@ -54,6 +56,38 @@ func _initialize() -> void:
 			{"name":"unrestricted_positive","case":"base","initial":{},
 				"shocks":[{},{}],"policy_overrides":[{"policy_rate_request_pct":25.0,"guidance_rate_pct":30.0},{"policy_rate_request_pct":30.0,"guidance_rate_pct":25.0}]},
 		]
+	if balance_boundaries:
+		variants = [
+			{"name":"omitted_liquidity_eligibility","case":"base","shocks":[{"funding_need_pct_initial_gdp":3.0,"eligible_collateral_pct_initial_gdp":6.0}],"policy_overrides":[{"liquidity_request_pct_initial_gdp":3.0}]},
+			{"name":"natural_runoff","case":"base","shocks":[{}],"policy_overrides":[{"reinvest_principal":false,"maintain_ample_reserves":false}]},
+			{"name":"negative_cap_on","case":"base","shocks":[{}],"policy_overrides":[{"asset_flow_request_pct_initial_gdp":-0.25,"reinvest_principal":true,"maintain_ample_reserves":false}]},
+			{"name":"negative_cap_off","case":"base","shocks":[{}],"policy_overrides":[{"asset_flow_request_pct_initial_gdp":-0.25,"reinvest_principal":false,"maintain_ample_reserves":false}]},
+			{"name":"uncapped_purchase","case":"base","shocks":[{}],"policy_overrides":[{"asset_flow_request_pct_initial_gdp":150.0}]},
+			{"name":"uncapped_loan_refinancing","case":"base",
+				"shocks":[{"funding_need_pct_initial_gdp":100.0,"eligible_collateral_pct_initial_gdp":100.0,"collateral_haircut_pct":10.0,"liquidity_eligibility_pct":100.0},{"refinancing_need_pct_initial_gdp":90.0,"funding_need_pct_initial_gdp":5.0,"eligible_collateral_pct_initial_gdp":100.0,"liquidity_eligibility_pct":100.0},{}],
+				"policy_overrides":[{"liquidity_request_pct_initial_gdp":400.0},{"liquidity_request_pct_initial_gdp":400.0},{}]},
+			{"name":"encumbered_collateral","case":"base","shocks":[{"rrp_encumbered_collateral_pct_initial_gdp":1000000.0}],"policy_overrides":[{"asset_flow_request_pct_initial_gdp":2.0,"sterilize_purchases":true}]},
+			{"name":"initial_gap_gdp","case":"base","initial":{"output_gap_pct":-5.0},"shocks":[{},{},{}],"policy_overrides":[{}, {"asset_flow_request_pct_initial_gdp":2.0},{}]},
+		]
+		for uptake in [1.0, 0.25, 0.0]:
+			variants.append({"name":"sterilization_uptake_%s" % str(uptake),"case":"base","shocks":[{"rrp_uptake_fraction":uptake}],"policy_overrides":[{"asset_flow_request_pct_initial_gdp":2.0,"sterilize_purchases":true}]})
+		var tag_shocks: Array = []
+		var tag_policies: Array = []
+		for q in range(26):
+			tag_shocks.append({})
+			tag_policies.append({"asset_flow_request_pct_initial_gdp":2.0 if q == 0 else 0.0,"sterilize_purchases":true})
+		variants.append({"name":"tagged_reinvestment_26","case":"base","shocks":tag_shocks,"policy_overrides":tag_policies})
+		for maintain in [false, true]:
+			variants.append({"name":"joint_maintenance" if maintain else "joint_aggregate_scarcity","case":"base",
+				"parameter_overrides":{"initial_reserves_pct_initial_gdp":6.0},"shocks":[{"eligible_collateral_pct_initial_gdp":100.0,"liquidity_eligibility_pct":100.0}],
+				"policy_overrides":[{"asset_flow_request_pct_initial_gdp":1.0,"reinvest_principal":false,"sterilize_purchases":true,"maintain_ample_reserves":maintain,"liquidity_request_pct_initial_gdp":0.25}]})
+		var runoff_shocks: Array = []
+		var runoff_policies: Array = []
+		for q in range(27):
+			runoff_shocks.append({})
+			runoff_policies.append({"asset_flow_request_pct_initial_gdp":2.0 if q == 0 else -1.0 if q == 23 else 0.0,"sterilize_purchases":q < 25})
+		variants.append({"name":"tagged_runoff_release","case":"base","shocks":runoff_shocks,"policy_overrides":runoff_policies})
+
 	for variant in variants:
 		var scenario: Dictionary = scenarios.scenarios[variant.case]
 		var params: Dictionary = parameters.values.duplicate(true)
@@ -64,9 +98,16 @@ func _initialize() -> void:
 			quit(1)
 			return
 		var state: Dictionary = initial.state
+		variant.initial = variant.get("initial", scenario.initial).duplicate(true)
+		variant.initial_state = state.duplicate(true)
+		variant.parameters = parameters.records
+		variant.portfolio_reference = portfolio.value
+		variant.portfolio_reference_json = FileAccess.get_file_as_string("res://model/portfolio_reference.json")
+		variant.portfolio_reference_sha256 = FileAccess.get_sha256("res://model/portfolio_reference.json")
 		var states: Array = [state.duplicate(true)]
 		var shocks: Array = variant.get("shocks", model.seeded_shock_path(1, scenario, 48))
 		var policies: Array = []
+		var traces: Array = []
 		for quarter in range(shocks.size()):
 			var policy := model.benchmark_policy(state, params, variant.get("policy_kind", "feedback"))
 			if quarter == variant.get("quarter", -1):
@@ -85,9 +126,11 @@ func _initialize() -> void:
 			state = transition.state
 			states.append(state.duplicate(true))
 			policies.append(policy.duplicate(true))
+			traces.append(transition.trace.duplicate(true))
 		variant.states = states
-		if rate_boundaries:
-			variant.policies = policies
+		variant.policies = policies
+		variant.shocks = shocks
+		variant.traces = traces
 	var directory_error := DirAccess.make_dir_recursive_absolute(output_path.get_base_dir())
 	if directory_error != OK:
 		printerr("could not create export directory")
@@ -99,7 +142,7 @@ func _initialize() -> void:
 		quit(1)
 		return
 	# Near -100% inflation needs full precision for its large initial price-history levels.
-	output.store_string(JSON.stringify(variants, "\t", true, price_boundaries or rate_boundaries))
+	output.store_string(JSON.stringify(variants, "\t", true, true))
 	output.close()
-	print("EXPORTED seven signed-rate boundary traces" if rate_boundaries else ("EXPORTED three physical price boundary traces" if price_boundaries else "EXPORTED four one-variable policy traces"))
+	print("EXPORTED fifteen balance-sheet boundary traces" if balance_boundaries else "EXPORTED seven signed-rate boundary traces" if rate_boundaries else ("EXPORTED three physical price boundary traces" if price_boundaries else "EXPORTED four one-variable policy traces"))
 	quit(0)

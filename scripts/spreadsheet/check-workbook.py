@@ -1,5 +1,7 @@
 """Read-only checks of exported formulas, cached native calculations and charts."""
 import json
+import hashlib
+import math
 import argparse
 import posixpath
 from pathlib import Path
@@ -11,6 +13,7 @@ parser.add_argument('workbooks', nargs='+', type=Path)
 parser.add_argument('--reference', required=True, type=Path)
 parser.add_argument('--map', required=True, type=Path)
 parser.add_argument('--campaign-reference', type=Path, help='Validate saved campaign explanation against its native export')
+parser.add_argument('--portfolio-reference', type=Path, help='Resident source copy bound by the native export hash')
 args = parser.parse_args()
 NS = {
     's': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main',
@@ -20,6 +23,27 @@ NS = {
 }
 reference = json.loads(args.reference.read_text())
 rows = json.loads(args.map.read_text())
+portfolio = json.loads(reference['portfolio_reference_json'])
+assert len(portfolio['treasury_maturity_weights']) == 120
+if args.portfolio_reference:
+    assert args.portfolio_reference.read_bytes() == reference['portfolio_reference_json'].encode(), 'portfolio reference bytes differ from native source'
+    assert json.loads(args.portfolio_reference.read_text()) == portfolio, 'portfolio reference differs from native source'
+    assert hashlib.sha256(args.portfolio_reference.read_bytes()).hexdigest() == reference['portfolio_reference_sha256'], 'portfolio reference hash mismatch'
+
+
+def flatten_state(state):
+    fields = {}
+    shapes = {'price_history': 5, 'treasury_cohorts_pct_initial_gdp': 120,
+              'sterilized_treasury_cohorts_pct_initial_gdp': 120, 'bill_cohorts_pct_initial_gdp': 4}
+    for key, value in state.items():
+        if isinstance(value, list):
+            assert key in shapes and len(value) == shapes[key], f'Native array schema mismatch: {key}'
+            fields.update({f'price_h{i}' if key == 'price_history' else f'{key}_{i}': item
+                           for i, item in enumerate(value)})
+        else:
+            fields[key] = value
+    assert all(key in state for key in shapes), 'Native state lacks required arrays'
+    return fields
 
 
 def column(n):
@@ -57,14 +81,16 @@ for filename in args.workbooks:
         cells = {c.attrib['r']: c for c in ET.fromstring(archive.read(sheets['Economy'])).findall('.//s:c', NS)}
         worst = 0
         for quarter, state in enumerate([reference['initial_state']] + [r['state'] for r in reference['quarters']]):
-            for key, expected in state.items():
-                values = {f'price_h{i}': value for i, value in enumerate(expected)} if key == 'price_history' else {key: expected}
-                for field, value in values.items():
-                    cell = cells[f'{column(quarter + 4)}{rows[field]}']
-                    actual = float(cell.find('s:v', NS).text)
-                    error = abs(actual - float(value))
-                    worst = max(worst, error)
-                    assert error < 1e-7, (filename, quarter, field, actual, value)
+            for field, value in flatten_state(state).items():
+                assert field in rows, f'Full-state parity unmapped native field: {field}'
+                cell = cells[f'{column(quarter + 4)}{rows[field]}']
+                assert cell.find('s:v', NS) is not None, f'Full-state parity missing cache: {field}'
+                actual = float(cell.find('s:v', NS).text)
+                if isinstance(value, bool):
+                    assert cell.attrib.get('t') == 'b' and actual in (0, 1), f'Full-state parity boolean type: {field}'
+                error = abs(actual - float(value))
+                worst = max(worst, error)
+                assert math.isfinite(actual) and math.isfinite(float(value)) and error < 1e-7, ('full-state parity', filename, quarter, field, actual, value)
         errors = []
         for name, path in sheets.items():
             errors.extend((name, c.attrib['r'], c.find('s:v', NS).text)

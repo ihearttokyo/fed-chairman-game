@@ -17,14 +17,15 @@ func _initialize() -> void:
 		return
 	var output_path: String = options.values.output.simplify_path()
 	var root: String = ProjectSettings.globalize_path("res://").simplify_path()
-	if not output_is_outside_repository(output_path, root):
-		printerr("--output must be an absolute path outside the project/Git tree")
+	if not output_is_outside_repository(output_path, root) or FileAccess.file_exists(output_path):
+		printerr("--output must be a new absolute file outside the project/Git tree")
 		quit(1)
 		return
 	var model := Economy.new()
 	var parameters: Dictionary = model.load_parameters()
 	var scenarios_result: Dictionary = model.load_scenarios()
-	if not parameters.ok or not scenarios_result.ok:
+	var portfolio := model.load_portfolio_reference()
+	if not parameters.ok or not scenarios_result.ok or not portfolio.ok:
 		printerr(parameters.get("error", scenarios_result.get("error", "model inputs failed validation")))
 		quit(1)
 		return
@@ -82,6 +83,9 @@ func _initialize() -> void:
 	var document := {
 		"schema": "fed-economic-reference-v1",
 		"parameters": parameters.records,
+		"portfolio_reference": portfolio.value,
+		"portfolio_reference_json": FileAccess.get_file_as_string("res://model/portfolio_reference.json"),
+		"portfolio_reference_sha256": FileAccess.get_sha256("res://model/portfolio_reference.json"),
 		"scenario": scenario,
 		"seed": seed,
 		"policy_kind": policy_kind,
@@ -90,7 +94,7 @@ func _initialize() -> void:
 		"episodes": generated.episodes,
 		"quarters": rows,
 	}
-	output.store_string(JSON.stringify(document, "\t"))
+	output.store_string(JSON.stringify(document, "\t", true, true))
 	output.close()
 	print("EXPORTED %s scenario=%s seed=%d policy=%s quarters=%d" % [output_path, scenario_id, seed, policy_kind, quarters])
 	quit(0)
