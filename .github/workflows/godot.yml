@@ -18,6 +18,8 @@ jobs:
           unzip "$RUNNER_TEMP/godot.zip" -d "$RUNNER_TEMP/godot"
           ln -s "$RUNNER_TEMP/godot/Godot_v4.7.2-stable_linux.x86_64" "$RUNNER_TEMP/godot/godot"
           echo "$RUNNER_TEMP/godot" >> "$GITHUB_PATH"
+      - name: Focused model channels
+        run: scripts/test-model.sh --channels-only
       - name: Model and packaging safety tests
         run: |
           scripts/test-model.sh

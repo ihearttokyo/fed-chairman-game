@@ -68,6 +68,7 @@ func _initialize() -> void:
 	elif OS.get_cmdline_user_args().has("--channels-only"):
 		_test_demand_and_supply_channels()
 		_test_expectations_and_credibility()
+		_test_public_support_recovers_without_reset()
 	elif OS.get_cmdline_user_args().has("--guidance-only"):
 		_test_conditional_guidance()
 		_test_benchmark_guidance_attainability()
@@ -469,6 +470,57 @@ func _test_public_support_recovers_without_reset() -> void:
 	if second.ok:
 		expect_true(second.state.public_support > first.state.public_support and second.state.public_support < 70.0, "support recovers gradually as hardship memory decays")
 		expect_close(float(second.state.quarter_index), float(state.quarter_index + 2), "ordinary transitions do not reset the quarter history")
+	# Neutral macro conditions isolate rehabilitation from adverse-shock recovery.
+	var initialized: Dictionary = initial_state(params, {"credibility": 0.2, "public_support": 10.0, "public_hardship_memory": 20.0})
+	expect_true(initialized.ok, "low-trust post-hardship fixture initializes")
+	if not initialized.ok:
+		return
+	var rehabilitation: Dictionary = initialized.state
+	rehabilitation.inflation_miss_memory_pct = 3.0
+	var start: Dictionary = rehabilitation.duplicate(true)
+	var support_decay: float = 1.0 - params.public_support_adjustment
+	var hardship_decay: float = params.public_hardship_memory_persistence
+	var distinct_decays := support_decay > 0.0 and hardship_decay > 0.0 and abs(hardship_decay - support_decay) > 1e-8
+	expect_true(distinct_decays, "closed-form forgiveness fixture has nonzero distinct decays")
+	if not distinct_decays:
+		return
+	# Sum the geometric hardship forcing; do not reuse observed support as the oracle.
+	var hardship_coefficient: float = params.public_support_adjustment * params.public_hardship_memory_weight \
+		* start.public_hardship_memory * hardship_decay / (hardship_decay - support_decay)
+	var expected_credibility: float = start.credibility
+	for q in range(1, 49):
+		var snapshot: Dictionary = rehabilitation.duplicate(true)
+		var result: Dictionary = step(rehabilitation, policy_at(3.5, 3.5), {}, params)
+		expect_true(result.ok, "48-quarter rehabilitation step q%d runs" % q)
+		expect_true(rehabilitation == snapshot, "rehabilitation preserves input state q%d" % q)
+		if not result.ok:
+			return
+		rehabilitation = result.state
+		expect_close(float(rehabilitation.quarter_index), float(start.quarter_index + q), "rehabilitation quarter history q%d" % q)
+		expect_close(rehabilitation.output_gap_pct, 0.0, "rehabilitation equilibrium output gap q%d" % q)
+		expect_close(rehabilitation.unemployment_rate_pct, start.structural_unemployment_pct, "rehabilitation equilibrium unemployment q%d" % q)
+		for field in ["annualized_quarterly_inflation_pct", "four_quarter_inflation_pct", "expected_short_inflation_pct", "expected_long_inflation_pct"]:
+			expect_close(rehabilitation[field], params.inflation_target_pct, "rehabilitation equilibrium %s q%d" % [field, q])
+		var expected_miss: float = start.inflation_miss_memory_pct * pow(params.credibility_miss_persistence, q)
+		var expected_hardship: float = start.public_hardship_memory * pow(hardship_decay, q)
+		# Neutral stance and delivered promises contribute 0.4 + 0.2, independently of observed scores.
+		expected_credibility += params.credibility_adjustment \
+			* (0.4 * exp(-expected_miss / params.credibility_miss_tolerance_pct) + 0.6 - expected_credibility)
+		var expected_support: float = params.public_support_base \
+			+ (start.public_support - params.public_support_base) * pow(support_decay, q) \
+			- hardship_coefficient * (pow(hardship_decay, q) - pow(support_decay, q))
+		expect_close(rehabilitation.inflation_miss_memory_pct, expected_miss, "inflation-miss memory decays from initialized history q%d" % q)
+		expect_close(rehabilitation.current_hardship, 0.0, "neutral recovery adds no hardship q%d" % q)
+		expect_close(rehabilitation.public_hardship_memory, expected_hardship, "hardship memory decays from initialized history q%d" % q)
+		expect_close(rehabilitation.stance_adequacy_score, 1.0, "neutral rehabilitation stance is target-consistent q%d" % q)
+		expect_close(rehabilitation.guidance_followthrough_score, 1.0, "rehabilitation delivers nominal promises q%d" % q)
+		expect_close(rehabilitation.credibility, expected_credibility, "credibility matches independent rehabilitation recurrence q%d" % q)
+		expect_close(rehabilitation.public_support, expected_support, "support matches closed-form forgiveness q%d" % q)
+		if q == 1:
+			expect_true(rehabilitation.credibility > start.credibility and rehabilitation.credibility < 1.0, "first rehabilitation step repairs trust gradually")
+			expect_true(rehabilitation.public_support > start.public_support and rehabilitation.public_support < params.public_support_base, "first rehabilitation step repairs support gradually")
+	expect_true(rehabilitation.credibility > 0.9 and rehabilitation.credibility < 1.0, "48 neutral quarters substantially rehabilitate trust without an instant reset")
+	expect_true(rehabilitation.public_support > params.public_support_base - 0.1 and rehabilitation.public_support < params.public_support_base, "48 neutral quarters substantially forgive remembered hardship")
 
 
 func _run_policy_path(start: Dictionary, params: Dictionary, path: Array, policy_kind: String) -> Dictionary:
