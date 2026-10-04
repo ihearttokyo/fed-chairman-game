@@ -480,7 +480,7 @@ func _test_public_support_recovers_without_reset() -> void:
 	var start: Dictionary = rehabilitation.duplicate(true)
 	var support_decay: float = 1.0 - params.public_support_adjustment
 	var hardship_decay: float = params.public_hardship_memory_persistence
-	var distinct_decays := support_decay > 0.0 and hardship_decay > 0.0 and abs(hardship_decay - support_decay) > 1e-8
+	var distinct_decays: bool = support_decay > 0.0 and hardship_decay > 0.0 and abs(hardship_decay - support_decay) > 1e-8
 	expect_true(distinct_decays, "closed-form forgiveness fixture has nonzero distinct decays")
 	if not distinct_decays:
 		return
