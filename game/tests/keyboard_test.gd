@@ -318,6 +318,7 @@ func run() -> void:
 		var fields := [game.rate, game.guidance, game.assets, game.liquidity]
 		for index in range(fields.size()):
 			await type_number(root, fields[index], quotes[index])
+			check(fields[index].get_line_edit().is_editing(), "ordinary Return keeps the numeric field ready for further keyboard edits")
 			check(fields[index].value == quotes[index].to_float() and fields[index].get_line_edit().text.to_float() == quotes[index].to_float(), "key-entered signed and large quotes retain their numeric value and visible precision")
 			check(game.career.encode() == typed_start, "ordinary Return commits each boundary field without adopting")
 		var expected := {"policy_rate_request_pct": quotes[0].to_float(), "guidance_rate_pct": quotes[1].to_float(),
