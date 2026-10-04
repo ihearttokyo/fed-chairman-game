@@ -508,7 +508,11 @@ func _compare() -> void:
 	_link_focus([chooser, body, dialog.get_ok_button()])
 
 func _guidance_controls() -> void:
-	custom_guidance.visible = commitment.selected == 2
+	var use_custom := commitment.selected == 2
+	var focused: Control = get_viewport().gui_get_focus_owner()
+	if not use_custom and focused != null and custom_guidance.is_ancestor_of(focused):
+		commitment.grab_focus()
+	custom_guidance.visible = use_custom
 	_link_focus(_keyboard_focus_order())
 	_preview()
 
@@ -809,7 +813,7 @@ func _review() -> void:
 func _journal() -> void:
 	var text := "%s · seed %d\nRates and changes are percentage units. Asset and lending flows below use %% of each meeting's current annual GDP; ending stocks use ending GDP.\n\n" % [career.cases[career.scenario_id].label, career.seed_value]
 	for s in career.history:
-		text += "Q%03d | inflation %.2f%% | unemployment %.2f%% | rate %.2f%% | output gap %+.2f%%\nCredibility %.1f | support %.1f | assets %+.2f | loans %.2f\n\n" % [s.quarter_index, s.four_quarter_inflation_pct, s.unemployment_rate_pct, s.policy_rate_pct, s.output_gap_pct, s.credibility * 100, s.public_support, s.asset_flow_applied_pct_initial_gdp / s.decision_nominal_gdp_ratio, s.liquidity_applied_pct_initial_gdp / s.decision_nominal_gdp_ratio]
+		text += "Q%03d | inflation %.2f%% | long expectations %.2f%% | unemployment %.2f%% | structural reference %.2f%% | rate %.2f%% | output gap %+.2f%% | credibility %.1f | support %.1f | hardship memory %.2f | assets %+.2f | loans %.2f\n\n" % [s.quarter_index, s.four_quarter_inflation_pct, s.expected_long_inflation_pct, s.unemployment_rate_pct, s.structural_unemployment_pct, s.policy_rate_pct, s.output_gap_pct, s.credibility * 100, s.public_support, s.public_hardship_memory, s.asset_flow_applied_pct_initial_gdp / s.decision_nominal_gdp_ratio, s.liquidity_applied_pct_initial_gdp / s.decision_nominal_gdp_ratio]
 	var dialog := _text_dialog("Economic history and policy journal", text)
 	var review := dialog.add_button("Review realized policy")
 	review.disabled = career.decisions.is_empty()
