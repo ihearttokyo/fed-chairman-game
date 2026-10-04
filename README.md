@@ -23,10 +23,13 @@ hardship and recovers gradually. Policy lags, shocks and history carry through
 for 240 quarters. Exact journal values accompany the charts; city animation is
 optional and off by default.
 
-The optional Recurring crises campaign introduces paired demand, supply and
-funding episodes throughout the career. Their timing and strength vary with
-the seed; future episodes stay hidden from dispatches and previews. Crisis
-incidence is fictional game design, not a historical estimate.
+The optional Recurring crises campaign draws from a no-repeat bag of 48
+independent concepts, with two conditional bank-finance follow-ups. The seed
+determines selection and ordinary 12–20-quarter onset intervals; each authored one-to-four-quarter
+profile keeps its fixed magnitudes and timing. Seeded background disturbances
+remain unchanged. Dispatches show only the currently observed phase; future
+phases and episodes stay hidden from dispatches and previews. Crisis frequency
+is fictional game design, not a historical estimate.
 
 Save and Load use the game's separate FedChairmanPolicyLab storage. Loading
 validates and replays the career before replacing active play. There is no legacy

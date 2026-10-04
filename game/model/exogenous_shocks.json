@@ -36,7 +36,25 @@
     "total": 25,
     "selection_reason": "Accepted: Favorable innovation combines investment, capacity and unit-cost timing without claiming an estimated AI effect.",
     "rank": 1,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "AI adoption raises investment",
+        "policy_dilemma": "Investment is stronger and productive capacity is expanding. Separate new demand pressure from supply-led growth when setting restraint."
+      },
+      {
+        "title": "AI adoption lowers unit costs as investment continues",
+        "policy_dilemma": "Cost relief now accompanies stronger investment and capacity growth. Faster activity alone does not establish overheating."
+      },
+      {
+        "title": "AI-related cost relief continues",
+        "policy_dilemma": "Further cost relief accompanies slower capacity gains than previously observed. Judge inflation pressure alongside the expanding supply side."
+      },
+      {
+        "title": "AI-related capacity acceleration levels off",
+        "policy_dilemma": "Capacity growth has returned to its usual pace; earlier gains in capacity remain. Reassess policy from current inflation and demand rather than extrapolating the acceleration."
+      }
+    ]
   },
   {
     "id": "fertilizer_export_ban",
@@ -73,7 +91,25 @@
     "total": 25,
     "selection_reason": "Accepted: A lagged input-to-harvest shock differs from weather destroying the current crop.",
     "rank": 2,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Fertilizer export restrictions raise farm input costs",
+        "policy_dilemma": "Higher input costs squeeze farm spending while adding price pressure. Rate changes cannot reopen foreign exports; distinguish this constraint from excess demand."
+      },
+      {
+        "title": "Fertilizer shortages put more pressure on food production",
+        "policy_dilemma": "Food supply pressure has intensified while spending remains weak. Restraining demand does not replace missing fertilizer."
+      },
+      {
+        "title": "Food costs remain under pressure after fertilizer disruption",
+        "policy_dilemma": "New food cost pressure is smaller, but earlier supply pressure can persist. Check inflation expectations before treating weaker impulses as restored price stability."
+      },
+      {
+        "title": "Fertilizer-related food cost pressure begins to ease",
+        "policy_dilemma": "Partial cost relief has arrived after the disruption. Earlier price increases and supply pressure are not erased by a favorable innovation."
+      }
+    ]
   },
   {
     "id": "import_input_tariff",
@@ -107,7 +143,21 @@
     "total": 25,
     "selection_reason": "Accepted: A nonmonetary policy event tests cost pass-through and supply limits without assigning fiscal/trade powers to the player.",
     "rank": 3,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "New tariffs raise imported input costs",
+        "policy_dilemma": "Input costs rise while spending weakens. The Chair cannot repeal the tariff or presume that firms can instantly substitute other inputs."
+      },
+      {
+        "title": "Tariff-related cost pressure continues at a slower pace",
+        "policy_dilemma": "Firms still face higher input costs and weaker spending. Smaller new pressure does not mean the earlier price increase has reversed."
+      },
+      {
+        "title": "Tariff-related input pressure persists",
+        "policy_dilemma": "A smaller supply impulse remains after the initial tariff shock. Base restraint on broader inflation and expectations, without assuming the trade restriction has ended."
+      }
+    ]
   },
   {
     "id": "office_property_credit_losses",
@@ -144,7 +194,21 @@
     "total": 25,
     "selection_reason": "Accepted: A persistent loss wedge without funding need makes the liquidity-versus-capital distinction explicit.",
     "rank": 4,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Falling office demand damages property loans",
+        "policy_dilemma": "Loan impairment and tighter credit accompany weaker spending, without a new deposit run. Secured liquidity cannot create bank capital or viable office tenants."
+      },
+      {
+        "title": "Further office-loan losses add to credit restraint",
+        "policy_dilemma": "New losses are smaller but add to existing impairment. Distinguish demand support from a capital repair that monetary lending cannot provide."
+      },
+      {
+        "title": "Fresh office-loan credit pressure subsides",
+        "policy_dilemma": "No fresh credit-risk impulse is disclosed, but accumulated loan impairment remains. Reduced new stress is not a restored bank balance sheet."
+      }
+    ]
   },
   {
     "id": "oil_cartel_cut",
@@ -178,7 +242,21 @@
     "total": 25,
     "selection_reason": "Accepted: A familiar adverse supply event gives a strong inflation/activity conflict without assigning the Chair energy powers.",
     "rank": 5,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Foreign producers unexpectedly cut oil supply",
+        "policy_dilemma": "Fuel cost pressure rises while household purchasing power weakens. Rates can restrain spending but cannot create oil."
+      },
+      {
+        "title": "Oil supply cuts continue to squeeze spending",
+        "policy_dilemma": "Additional fuel cost pressure is smaller, yet spending remains weak. Weigh inflation expectations against the cost of further demand restraint."
+      },
+      {
+        "title": "Oil-related cost pressure begins to ease",
+        "policy_dilemma": "Partial supply relief has arrived after the oil shock. A favorable innovation does not undo earlier price increases or guarantee an immediate inflation return."
+      }
+    ]
   },
   {
     "id": "pandemic_contact_avoidance",
@@ -216,7 +294,25 @@
     "total": 25,
     "selection_reason": "Accepted: Combines a large demand interruption with supply limits and an explicit reopening phase.",
     "rank": 6,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "An epidemic deters face-to-face spending",
+        "policy_dilemma": "Spending falls while illness constrains work. Easier money can support demand but cannot remove infection risk or restore unavailable labor."
+      },
+      {
+        "title": "Contact avoidance continues to limit spending and work",
+        "policy_dilemma": "Demand and supply disruptions persist at lower intensity. Avoid reading weak activity as a pure demand shortfall."
+      },
+      {
+        "title": "Reopening releases spending as work disruption eases",
+        "policy_dilemma": "Spending is rebounding and supply pressure is easing after the interruption. Reassess accommodation against both signals rather than the earlier slump alone."
+      },
+      {
+        "title": "Reopened services retain a smaller spending rebound",
+        "policy_dilemma": "The demand rebound continues at a slower pace. Earlier supply damage and policy lags remain relevant even without a fresh supply impulse."
+      }
+    ]
   },
   {
     "id": "shipping_route_attacks",
@@ -253,7 +349,25 @@
     "total": 25,
     "selection_reason": "Accepted: Security-driven rerouting has a clear duration and cost channel, unlike a generic demand slowdown.",
     "rank": 7,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Attacks divert commercial ships onto longer routes",
+        "policy_dilemma": "Longer routes raise delivery costs and weaken production-related spending. Monetary policy cannot reopen the sea lane."
+      },
+      {
+        "title": "Shipping detours continue to raise costs",
+        "policy_dilemma": "Smaller new delivery-cost pressure still accompanies weak spending. Distinguish constrained cargo capacity from too many orders."
+      },
+      {
+        "title": "Shipping detours leave continuing cost pressure",
+        "policy_dilemma": "A smaller supply impulse remains after earlier disruption. Check persistent inflation pressure without assuming that deliveries have normalized."
+      },
+      {
+        "title": "Shipping-related cost pressure begins to ease",
+        "policy_dilemma": "Partial cost relief is now visible. Earlier delays and supply pressure can still affect activity and prices; relief is not a full reset."
+      }
+    ]
   },
   {
     "id": "sound_bank_uninsured_run",
@@ -295,7 +409,21 @@
     "total": 25,
     "selection_reason": "Accepted: The pure funding case cleanly tests liquidity versus stance and requires no invented bank recapitalization.",
     "rank": 8,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Uninsured withdrawals create a bank funding shortage",
+        "policy_dilemma": "The disclosed problem is cash funding at otherwise sound, eligible banks. Secured lending can bridge needs within collateral limits; rate cuts do not replace that diagnosis."
+      },
+      {
+        "title": "Bank withdrawals leave smaller new funding needs",
+        "policy_dilemma": "New cash needs are lower, but any prior advances still use collateral capacity. Separate fresh lending from refinancing obligations."
+      },
+      {
+        "title": "Residual bank funding needs remain after the run",
+        "policy_dilemma": "A smaller cash need is still disclosed. Scale support to current eligible needs and outstanding exposure rather than the peak of the run."
+      }
+    ]
   },
   {
     "id": "avian_flu_egg_supply",
@@ -329,7 +457,25 @@
     "total": 24,
     "selection_reason": "Accepted: Recognizable biological supply loss has a slower replenishment path and a narrow-price-versus-broad-policy dilemma.",
     "rank": 9,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Avian influenza removes egg-laying flocks",
+        "policy_dilemma": "Egg scarcity adds food price pressure without a disclosed demand boom. Check whether expectations broaden the shock before using economy-wide restraint."
+      },
+      {
+        "title": "Reduced egg supply continues to raise costs",
+        "policy_dilemma": "New food cost pressure is smaller while the flock loss remains relevant. Monetary restraint cannot supply replacement birds."
+      },
+      {
+        "title": "Egg-related cost pressure slows further",
+        "policy_dilemma": "Only a small new supply impulse is disclosed, but past pressure can persist. Avoid confusing slower price pressure with a return to earlier prices."
+      },
+      {
+        "title": "Egg supply recovery begins to ease costs",
+        "policy_dilemma": "Partial supply relief is now visible after the flock loss. Distinguish a food-specific improvement from weak aggregate demand."
+      }
+    ]
   },
   {
     "id": "canal_water_transit_limits",
@@ -361,7 +507,21 @@
     "total": 24,
     "selection_reason": "Accepted: A capacity constraint tied to lock water differs physically from security-driven detours and remains legible in the reduced form.",
     "rank": 10,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Water scarcity limits canal vessel transits",
+        "policy_dilemma": "Restricted lock capacity raises shipping costs and weakens spending. Rates cannot replenish canal water or remove draft limits."
+      },
+      {
+        "title": "Canal transit limits continue to raise costs",
+        "policy_dilemma": "A smaller cost impulse remains without a new demand surge. Diagnose transport scarcity rather than assuming firms are receiving too many orders."
+      },
+      {
+        "title": "Canal-related transport costs begin to ease",
+        "policy_dilemma": "Partial transport-cost relief follows the transit restriction. Past delays and persistent supply pressure need not disappear with the current favorable impulse."
+      }
+    ]
   },
   {
     "id": "flu_absenteeism_wave",
@@ -396,7 +556,21 @@
     "total": 24,
     "selection_reason": "Accepted: A health-driven labor-hours shock differs from voluntary avoidance of services.",
     "rank": 11,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Severe influenza removes working days",
+        "policy_dilemma": "Absenteeism slows capacity growth and raises costs while households postpone purchases. Easier policy cannot replace sick workers."
+      },
+      {
+        "title": "Flu-related cost pressure persists as capacity growth normalizes",
+        "policy_dilemma": "Capacity growth has returned to its usual pace, but new cost pressure remains. Distinguish recovered working time from an immediate inflation reversal."
+      },
+      {
+        "title": "Recovering work and purchases ease the flu disruption",
+        "policy_dilemma": "Supply pressure is easing and postponed spending is returning. Reassess accommodation using the recovery already visible, not only the earlier weakness."
+      }
+    ]
   },
   {
     "id": "fuel_pipeline_cyber_stop",
@@ -427,7 +601,17 @@
     "total": 24,
     "selection_reason": "Accepted: Short physical interruption and purchase payback make the event different from persistent foreign production cuts.",
     "rank": 12,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "A cyberattack halts fuel distribution",
+        "policy_dilemma": "Fuel scarcity and precautionary purchases raise pressure together. Avoid treating panic buying as durable demand; monetary tools cannot repair the pipeline."
+      },
+      {
+        "title": "Fuel distribution resumes and precautionary buying recedes",
+        "policy_dilemma": "Cost relief now accompanies purchase payback. Weaker spending after panic buying does not by itself identify a lasting demand slump."
+      }
+    ]
   },
   {
     "id": "gas_storage_cold_draw",
@@ -460,7 +644,21 @@
     "total": 24,
     "selection_reason": "Accepted: Demand for essential heating meets a delivery constraint, producing a different energy dilemma from pipeline damage.",
     "rank": 13,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "A cold snap strains deliverable gas supplies",
+        "policy_dilemma": "Heating demand rises against withdrawal and transport limits. Restraining aggregate demand cannot expand gas delivery capacity."
+      },
+      {
+        "title": "Gas delivery constraints weigh on industrial spending",
+        "policy_dilemma": "New cost pressure persists while spending weakens. Distinguish essential heating needs from the industrial demand lost to high bills."
+      },
+      {
+        "title": "Gas-related cost pressure eases after the cold snap",
+        "policy_dilemma": "Partial energy-cost relief is now visible. Reassess inflation pressure without treating the weather-related improvement as a permanent demand change."
+      }
+    ]
   },
   {
     "id": "grain_drought_crop_loss",
@@ -494,7 +692,21 @@
     "total": 24,
     "selection_reason": "Accepted: Broad grain and feed transmission makes a familiar food supply shock with a clear monetary limit.",
     "rank": 14,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Drought reduces grain yields",
+        "policy_dilemma": "Food and feed costs rise while real spending weakens. Monetary restraint cannot replace the lost crop."
+      },
+      {
+        "title": "Grain scarcity continues to squeeze purchasing power",
+        "policy_dilemma": "Additional food cost pressure and weaker spending persist at lower intensity. Weigh expectations against the demand cost of further restraint."
+      },
+      {
+        "title": "Grain-related cost pressure begins to ease",
+        "policy_dilemma": "Partial supply relief follows the crop loss. Earlier price rises remain relevant; lower new pressure does not establish restored purchasing power."
+      }
+    ]
   },
   {
     "id": "heat_outdoor_work",
@@ -528,7 +740,21 @@
     "total": 24,
     "selection_reason": "Accepted: A recognizable productivity interruption tests supply diagnosis without requiring a bank crisis.",
     "rank": 15,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Extreme heat shortens outdoor shifts",
+        "policy_dilemma": "Lost working hours slow capacity growth and raise costs. Avoid diagnosing the production constraint as vanished demand."
+      },
+      {
+        "title": "Heat continues to restrict productive hours",
+        "policy_dilemma": "Capacity growth remains slower than usual, with smaller new supply pressure. Rate cuts cannot make unsafe shifts workable."
+      },
+      {
+        "title": "Cooler conditions ease outdoor-work constraints",
+        "policy_dilemma": "Cost pressure is easing and capacity growth has normalized. Earlier lost output is not recreated by the return of workable conditions."
+      }
+    ]
   },
   {
     "id": "shared_cloud_ransomware",
@@ -559,7 +785,17 @@
     "total": 24,
     "selection_reason": "Accepted: Digital concentration transmits an operational shock broadly without requiring a fabricated solvency loss.",
     "rank": 16,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Ransomware disables shared business systems",
+        "policy_dilemma": "Ordering and production are disrupted together. Monetary accommodation cannot restore systems; stalled transactions need not mean final demand has vanished."
+      },
+      {
+        "title": "Restored cloud systems release postponed transactions",
+        "policy_dilemma": "Transactions are rebounding as operating costs ease. Separate this catch-up from a permanent spending boom; lost work has not been recreated."
+      }
+    ]
   },
   {
     "id": "vehicle_assembly_strike",
@@ -594,7 +830,21 @@
     "total": 24,
     "selection_reason": "Accepted: A production stoppage driven by bargaining differs from unavailable chips and has a concrete negotiated restart.",
     "rank": 17,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "A labor dispute stops vehicle assembly",
+        "policy_dilemma": "Scarce vehicles and delayed supplier orders combine supply pressure with weaker spending. Monetary policy cannot settle the wage contract."
+      },
+      {
+        "title": "Vehicle assembly disruption continues",
+        "policy_dilemma": "Smaller new cost pressure and weak orders persist. Do not interpret lost production as a pure demand collapse."
+      },
+      {
+        "title": "Vehicle assembly resumes and backlog orders return",
+        "policy_dilemma": "Production relief now accompanies returning orders. Distinguish backlog fulfillment from a sustained increase in underlying demand."
+      }
+    ]
   },
   {
     "id": "bank_payment_float_failure",
@@ -630,7 +880,17 @@
     "total": 24,
     "selection_reason": "Accepted: A cash-timing failure without assumed insolvency adds a different origin and short unwind to funding stress.",
     "rank": 18,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "A payment outage creates bank cash-timing gaps",
+        "policy_dilemma": "Eligible banks face outgoing commitments before incoming settlement. Secured lending can bridge the gap but cannot restore payment systems."
+      },
+      {
+        "title": "Residual cash-timing needs shrink after the payment failure",
+        "policy_dilemma": "A smaller funding gap remains. Any prior advances require repayment; check eligible needs and collateral headroom before extending fresh support."
+      }
+    ]
   },
   {
     "id": "cattle_liquidation_reversal",
@@ -665,7 +925,25 @@
     "total": 24,
     "selection_reason": "Accepted: The biological sign reversal creates a strong sequencing problem that a generic food-price increase would miss.",
     "rank": 19,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Herd sales increase current beef supply",
+        "policy_dilemma": "Herd liquidation is easing current food costs while farm spending weakens. One food-price decline does not establish broad demand weakness or lasting price stability."
+      },
+      {
+        "title": "A smaller cattle herd constrains beef production",
+        "policy_dilemma": "Supply scarcity is now visible after the earlier herd sales. Reassess inflation pressure rather than extrapolating the initial cost relief."
+      },
+      {
+        "title": "Reduced cattle numbers intensify beef supply pressure",
+        "policy_dilemma": "New food cost pressure has increased. Restraining demand cannot quickly expand the breeding herd; check whether expectations spread the shock."
+      },
+      {
+        "title": "Beef scarcity continues with smaller new cost pressure",
+        "policy_dilemma": "Supply pressure is still being added, though more slowly. A smaller impulse is not restored herd capacity or a reversal of earlier price increases."
+      }
+    ]
   },
   {
     "id": "corporate_accounting_fraud",
@@ -702,7 +980,21 @@
     "total": 24,
     "selection_reason": "Accepted: An external borrower-information shock separates credit losses from cash withdrawal pressure; aggregate size is fictional.",
     "rank": 20,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Accounting fraud exposes borrower losses",
+        "policy_dilemma": "Missing earnings produce creditor impairment, tighter credit and weaker spending. Lower financing costs cannot restore fabricated cash flow."
+      },
+      {
+        "title": "Further fraud-related impairment adds to credit restraint",
+        "policy_dilemma": "Smaller new losses add to damage already recognized. Demand support and bank capital repair remain different tasks."
+      },
+      {
+        "title": "Fresh fraud-related credit pressure subsides",
+        "policy_dilemma": "No new credit-risk impulse is disclosed, but prior creditor impairment remains. Do not treat quieter news as cancellation of realized losses."
+      }
+    ]
   },
   {
     "id": "dealer_repo_haircut_jump",
@@ -748,7 +1040,21 @@
     "total": 24,
     "selection_reason": "Accepted: Private haircut-driven cash needs show the hard counterparty boundary; model haircut is zero because no window-eligible collateral is pledged.",
     "rank": 21,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Private repo lenders demand more dealer cash",
+        "policy_dilemma": "Nonbank dealers face funding needs but have no modeled window eligibility. Securities collateral alone does not authorize direct lending to them."
+      },
+      {
+        "title": "Dealer funding pressure continues at lower intensity",
+        "policy_dilemma": "Cash needs and new credit pressure have shrunk, while counterparty ineligibility remains. Neither rate changes nor asset purchases erase every private funding constraint."
+      },
+      {
+        "title": "Fresh dealer funding and credit impulses subside",
+        "policy_dilemma": "No new dealer cash need is disclosed. Prior funding effects can remain, and the absence of fresh stress does not grant nonbanks lending eligibility."
+      }
+    ]
   },
   {
     "id": "effective_vaccine_reopening",
@@ -782,7 +1088,21 @@
     "total": 24,
     "selection_reason": "Accepted: Favorable reopening brings a genuine demand-versus-capacity sequencing problem; no vaccine-effect magnitude is claimed.",
     "rank": 22,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "A vaccine rollout restores spending and working capacity",
+        "policy_dilemma": "Returning demand accompanies relief from work disruption. Favorable health news alone does not justify further stimulus. Assess both demand and supply."
+      },
+      {
+        "title": "Reopening demand strains service staffing",
+        "policy_dilemma": "Spending remains stronger while new cost pressure has appeared. Reassess restraint using the staffing bottleneck now visible."
+      },
+      {
+        "title": "Service supply pressure eases after reopening",
+        "policy_dilemma": "A favorable supply impulse is now disclosed after the spending rebound. Earlier demand and policy lags still matter when evaluating inflation."
+      }
+    ]
   },
   {
     "id": "farm_commodity_price_defaults",
@@ -820,7 +1140,21 @@
     "total": 24,
     "selection_reason": "Accepted: Opposite consumer-price and financial-loss signals force a demand-versus-capital diagnosis.",
     "rank": 23,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Lower world crop prices trigger farm-loan losses",
+        "policy_dilemma": "Food cost relief coexists with weak farm spending and creditor impairment. Liquidity cannot recapitalize exposed lenders."
+      },
+      {
+        "title": "Farm-loan losses persist alongside food cost relief",
+        "policy_dilemma": "Smaller new losses still add to existing impairment while food costs ease. Distinguish consumer disinflation from financial recovery."
+      },
+      {
+        "title": "Fresh farm-loan credit pressure subsides",
+        "policy_dilemma": "No new credit-risk impulse is disclosed, but accumulated lender impairment remains. Earlier food cost relief did not erase the loan losses."
+      }
+    ]
   },
   {
     "id": "federal_shutdown_interruption",
@@ -853,7 +1187,21 @@
     "total": 24,
     "selection_reason": "Accepted: A fiscal interruption with pay timing and service loss gives an identifiable multi-quarter demand/supply puzzle.",
     "rank": 24,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "A federal shutdown interrupts pay and services",
+        "policy_dilemma": "Delayed pay weakens spending while stopped services constrain output. Monetary policy cannot pass an appropriation or restore government operations."
+      },
+      {
+        "title": "Federal reopening releases back pay and restores services",
+        "policy_dilemma": "Spending rebounds as service disruption eases. Back pay restores delayed cash receipts; it is not permanent income growth."
+      },
+      {
+        "title": "A smaller spending rebound follows federal reopening",
+        "policy_dilemma": "The demand pulse has slowed after back pay was released. Reassess accommodation without treating catch-up spending as a lasting expansion."
+      }
+    ]
   },
   {
     "id": "hurricane_housing_loss",
@@ -888,7 +1236,21 @@
     "total": 24,
     "selection_reason": "Accepted: Housing loss followed by rebuilding gives opposite activity signals across quarters and a clear limit to monetary tools.",
     "rank": 25,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "A hurricane destroys housing and interrupts work",
+        "policy_dilemma": "Displacement and interrupted work raise supply pressure while spending falls. Easier rates cannot restore usable homes or remove the physical constraint."
+      },
+      {
+        "title": "Hurricane rebuilding raises demand amid housing scarcity",
+        "policy_dilemma": "Rebuilding demand is now stronger while new supply pressure remains. Separate material and housing constraints from the demand that policy can restrain."
+      },
+      {
+        "title": "Hurricane rebuilding continues as supply pressure eases",
+        "policy_dilemma": "Replacement spending persists alongside partial cost relief. Neither stronger activity nor easing bottlenecks means that earlier housing losses have been erased."
+      }
+    ]
   },
   {
     "id": "migrant_worker_inflow",
@@ -924,7 +1286,21 @@
     "total": 24,
     "selection_reason": "Accepted: Favorable labor supply with concurrent demand requires diagnosis and preserves the Chair immigration-policy limit.",
     "rank": 26,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Working-age arrivals expand labor supply and spending",
+        "policy_dilemma": "More workers and consumers arrive together. Improved capacity and added demand pull differently on inflation; the Chair does not set immigration policy."
+      },
+      {
+        "title": "New arrivals continue to ease staffing pressure",
+        "policy_dilemma": "Smaller capacity gains and added spending still coexist. Diagnose the net pressure from current data rather than assuming that stronger activity is overheating."
+      },
+      {
+        "title": "Arrival-related capacity acceleration levels off",
+        "policy_dilemma": "Capacity growth has normalized after the inflow. Earlier capacity gains are not erased, and participation changes are not an automatic unemployment reduction."
+      }
+    ]
   },
   {
     "id": "robotics_skill_transition",
@@ -964,7 +1340,25 @@
     "total": 24,
     "selection_reason": "Accepted: Favorable productive capacity with temporary mismatch tests the difference between cyclical demand and structural adjustment.",
     "rank": 27,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Warehouse automation lowers costs but creates skills mismatch",
+        "policy_dilemma": "Productive capacity expands while displaced tasks raise the structural labor benchmark. Demand stimulus cannot by itself supply the missing skills."
+      },
+      {
+        "title": "Automation gains continue alongside further job mismatch",
+        "policy_dilemma": "Cost relief and capacity growth continue, with a smaller additional mismatch. Distinguish structural adjustment from deficient aggregate demand."
+      },
+      {
+        "title": "Skills mismatch begins to ease after automation",
+        "policy_dilemma": "The structural labor benchmark is improving and capacity growth has normalized. Earlier productivity gains remain; use the current benchmark when assessing employment."
+      },
+      {
+        "title": "Automation-related skills mismatch eases further",
+        "policy_dilemma": "Further matching improvement is now visible without a new capacity-growth impulse. Better matching does not alone establish a demand boom or justify automatic restraint."
+      }
+    ]
   },
   {
     "id": "wildfire_smoke_closures",
@@ -998,7 +1392,21 @@
     "total": 24,
     "selection_reason": "Accepted: Combines labor availability and lost services demand through smoke rather than direct asset destruction.",
     "rank": 28,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Wildfire smoke closes schools and outdoor businesses",
+        "policy_dilemma": "Caregiving and unsafe air reduce available work while leisure spending falls. Easier money cannot remove smoke or its health constraint."
+      },
+      {
+        "title": "Smoke-related work and spending disruption continues",
+        "policy_dilemma": "Smaller supply pressure and weaker spending persist. Avoid treating missed working time as a pure demand shortfall."
+      },
+      {
+        "title": "Clearing air permits work and spending to resume",
+        "policy_dilemma": "Supply relief now accompanies a spending rebound. Reassess accommodation against the reopening already observed rather than the earlier closures alone."
+      }
+    ]
   },
   {
     "id": "bumper_grain_harvest",
@@ -1029,7 +1437,17 @@
     "total": 24,
     "selection_reason": "Accepted: Favorable supply and household purchasing power provide a noncrisis food episode; magnitudes are authored.",
     "rank": 29,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "A bumper grain harvest lowers food and feed costs",
+        "policy_dilemma": "Lower costs support household spending while some growers receive less revenue. Stronger consumption during supply-led disinflation need not be overheating."
+      },
+      {
+        "title": "Abundant grain continues to ease costs",
+        "policy_dilemma": "Smaller food cost relief still accompanies stronger spending. Distinguish the supply gain from the demand pressure that monetary policy can influence."
+      }
+    ]
   },
   {
     "id": "chip_capacity_ramp",
@@ -1064,7 +1482,21 @@
     "total": 24,
     "selection_reason": "Accepted: Favorable intermediate-input relief connects an identifiable capacity expansion to the existing supply field.",
     "rank": 30,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Qualified chip capacity relieves assembly shortages",
+        "policy_dilemma": "Better input availability lowers costs and expands capacity while orders strengthen. Faster production alone does not establish excess demand."
+      },
+      {
+        "title": "Chip supply continues to ease production costs",
+        "policy_dilemma": "Further cost relief accompanies smaller capacity gains. Separate supply-led growth from inflationary spending pressure."
+      },
+      {
+        "title": "Chip-related capacity acceleration levels off",
+        "policy_dilemma": "Capacity growth has normalized after the expansion. Earlier productive gains remain even without another favorable supply innovation."
+      }
+    ]
   },
   {
     "id": "external_fiscal_rebate",
@@ -1096,7 +1528,21 @@
     "total": 24,
     "selection_reason": "Accepted: Favorable household cash relief creates a finite demand pulse and a clear fiscal-versus-monetary boundary.",
     "rank": 31,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "A household rebate raises spending",
+        "policy_dilemma": "The external payment adds demand pressure. The Chair can adjust monetary conditions but cannot authorize or redirect the fiscal transfer."
+      },
+      {
+        "title": "Rebate-related spending continues at a slower pace",
+        "policy_dilemma": "A smaller demand impulse remains after the payment. Distinguish one-time cash support from a lasting rise in household income."
+      },
+      {
+        "title": "Rebate-related spending recedes",
+        "policy_dilemma": "The earlier spending boost has receded and a negative demand impulse is now disclosed. Adjust to current demand rather than extrapolating the payment's initial effect."
+      }
+    ]
   },
   {
     "id": "bank_dollar_rollover_squeeze",
@@ -1140,7 +1586,21 @@
     "total": 23,
     "selection_reason": "Accepted: Mixed eligibility and working-capital demand create a distinct partial-coverage dilemma; shares are fictional aggregate design.",
     "rank": 32,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Foreign lenders withdraw dollar funding from banks",
+        "policy_dilemma": "Funding needs weaken trade activity, and only the disclosed bank share is eligible. Target secured support without promising direct loans to ineligible counterparties."
+      },
+      {
+        "title": "Dollar rollover pressure continues at lower intensity",
+        "policy_dilemma": "Smaller funding needs still weigh on spending. Eligibility and collateral restrictions still apply; any prior advances also use capacity."
+      },
+      {
+        "title": "Residual dollar funding needs remain",
+        "policy_dilemma": "A smaller cash need persists without a new demand impulse. Match support to current eligibility, collateral headroom and repayment obligations."
+      }
+    ]
   },
   {
     "id": "battery_process_cost_gain",
@@ -1177,7 +1637,25 @@
     "total": 23,
     "selection_reason": "Accepted: A favorable manufactured-input efficiency gain offers a clear adoption-before-cost-relief sequence.",
     "rank": 33,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Battery producers invest in new process equipment",
+        "policy_dilemma": "Equipment purchases are adding demand pressure. Assess that spending on current evidence; investment alone does not establish lower production costs or broad price relief."
+      },
+      {
+        "title": "The new battery process lowers input costs",
+        "policy_dilemma": "Cost relief and faster capacity growth are now visible after equipment investment. Lower goods cost pressure need not indicate a demand slump."
+      },
+      {
+        "title": "Battery process gains continue at a slower pace",
+        "policy_dilemma": "Smaller cost relief accompanies further capacity growth. Distinguish supply-led activity from excess demand before adding restraint."
+      },
+      {
+        "title": "Battery-related capacity acceleration levels off",
+        "policy_dilemma": "Capacity growth has returned to its usual pace, while earlier gains remain. Do not assume another cost impulse when assessing current policy."
+      }
+    ]
   },
   {
     "id": "early_retirement_buyout",
@@ -1216,7 +1694,25 @@
     "total": 23,
     "selection_reason": "Accepted: A concrete voluntary-exit trigger avoids presenting slow demographic aging as a surprise and highlights missing participation accounting.",
     "rank": 34,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Early-retirement buyouts reduce available skills",
+        "policy_dilemma": "Buyout payouts support spending while departures slow capacity growth and raise costs. Labor-force exit is not the same as unemployment."
+      },
+      {
+        "title": "Retirements continue to constrain productive capacity",
+        "policy_dilemma": "Capacity growth remains slower and new cost pressure persists without another payout impulse. Easier demand conditions cannot replace departed skills."
+      },
+      {
+        "title": "Retirement-related cost pressure slows",
+        "policy_dilemma": "Smaller new cost pressure accompanies a partial recovery in capacity growth. Distinguish that improvement from restored labor-force participation."
+      },
+      {
+        "title": "Capacity growth normalizes after the retirement disruption",
+        "policy_dilemma": "Capacity growth has returned to its usual pace. Earlier lost capacity is not recreated, and normal growth does not mean every skill shortage has ended."
+      }
+    ]
   },
   {
     "id": "earnings_news_wealth_drop",
@@ -1250,7 +1746,21 @@
     "total": 23,
     "selection_reason": "Accepted: Separates a policy-independent valuation and spending shock from the selected banking funding run.",
     "rank": 35,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Earnings disappointments reduce equity wealth and spending",
+        "policy_dilemma": "Weaker household demand accompanies new credit pressure. Monetary policy cannot promise to restore stock prices, and wealth losses are not eligible funding needs."
+      },
+      {
+        "title": "Wealth-related spending weakness continues",
+        "policy_dilemma": "Smaller demand and credit impulses persist after the valuation loss. Distinguish broad demand support from support for asset prices."
+      },
+      {
+        "title": "Fresh wealth-related credit pressure subsides",
+        "policy_dilemma": "No new credit-risk impulse is disclosed after the spending shock. Earlier weakness and policy lags remain; quieter credit news does not establish restored wealth."
+      }
+    ]
   },
   {
     "id": "industrial_flood_shutdown",
@@ -1285,7 +1795,21 @@
     "total": 23,
     "selection_reason": "Accepted: Production interruption and subsequent replacement demand create a concrete timing problem.",
     "rank": 36,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Floodwater shuts industrial plants",
+        "policy_dilemma": "Lost operating time and inventories raise supply pressure while spending weakens. Monetary tools cannot drain factories or restore destroyed inventory."
+      },
+      {
+        "title": "Flood cleanup orders rise while production remains constrained",
+        "policy_dilemma": "Replacement demand is now positive while new cost pressure remains. Separate cleanup orders from the bottlenecks limiting output."
+      },
+      {
+        "title": "Industrial production recovers while replacement orders continue",
+        "policy_dilemma": "Supply relief accompanies stronger replacement demand. Reassess restraint against both current signals; resumed production does not recreate earlier lost work."
+      }
+    ]
   },
   {
     "id": "mortgage_lien_documentation_failure",
@@ -1321,7 +1845,21 @@
     "total": 23,
     "selection_reason": "Accepted: A collateral-recovery loss differs from fabricated corporate income and from unavailable pledge documentation in a funding bridge.",
     "rank": 37,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Mortgage audits reveal defective collateral liens",
+        "policy_dilemma": "Lower expected recoveries damage lenders even where borrowers keep paying. The Chair cannot repair legal liens or create bank equity."
+      },
+      {
+        "title": "Further lien defects add to lender impairment",
+        "policy_dilemma": "Smaller new losses and credit pressure still add to earlier damage. A cash bridge cannot substitute for enforceable collateral or capital."
+      },
+      {
+        "title": "Fresh lien-related credit pressure subsides",
+        "policy_dilemma": "No new credit-risk impulse is disclosed, but existing impairment remains. Quieter lending pressure does not certify repaired liens or restored capital."
+      }
+    ]
   },
   {
     "id": "persistent_post_viral_illness",
@@ -1359,7 +1897,25 @@
     "total": 23,
     "selection_reason": "Accepted: A persistent health/labor channel tests low unemployment alongside constrained supply; longer-run effects remain outside the profile.",
     "rank": 38,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Post-viral illness reduces available work hours",
+        "policy_dilemma": "Illness slows capacity growth and adds cost pressure. Low unemployment does not establish abundant labor. Stimulus cannot cure lost work capacity."
+      },
+      {
+        "title": "Post-viral limits continue to slow productive capacity",
+        "policy_dilemma": "Capacity growth remains below its usual pace with smaller new cost pressure. Distinguish unavailable work hours from deficient demand."
+      },
+      {
+        "title": "Illness-related cost pressure slows as capacity growth improves",
+        "policy_dilemma": "Capacity growth has partly recovered but remains slower than usual. Smaller new pressure does not establish that affected workers have regained their hours."
+      },
+      {
+        "title": "Capacity growth normalizes after the illness-related slowdown",
+        "policy_dilemma": "Normal capacity growth resumes without a new supply impulse. This is not evidence that every patient has recovered or that earlier lost output has been restored."
+      }
+    ]
   },
   {
     "id": "private_bank_recapitalization",
@@ -1394,7 +1950,21 @@
     "total": 23,
     "selection_reason": "Accepted: Conditional favorable private repair tests the policy boundary; its true capital accounting is explicitly outside the existing fields.",
     "rank": 39,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Private investors provide equity after bank losses",
+        "policy_dilemma": "Private capital repair follows earlier impairment, but new credit pressure remains. Fed liquidity is not recapitalization, and the model does not subtract old losses."
+      },
+      {
+        "title": "Private bank repair accompanies lower new credit pressure",
+        "policy_dilemma": "New credit pressure is smaller and spending has strengthened. Recognize relief relative to continuing distress without assuming accumulated impairment has vanished."
+      },
+      {
+        "title": "Fresh credit pressure subsides after private bank repair",
+        "policy_dilemma": "No new credit-risk impulse is disclosed and a smaller positive demand pulse remains. Old modeled impairment still persists; capital repair is not a Fed lending power."
+      }
+    ]
   },
   {
     "id": "stable_private_deposits_return",
@@ -1438,7 +2008,21 @@
     "total": 23,
     "selection_reason": "Accepted: Conditional favorable normalization tests an orderly liquidity unwind without fabricating negative needs or deleting losses.",
     "rank": 40,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Private depositors commit term funding after a scare",
+        "policy_dilemma": "Private funding has returned, but residual eligible cash needs and new credit pressure remain. Any prior advances still require repayment; deposits do not repair capital."
+      },
+      {
+        "title": "Stable deposits accompany smaller residual funding needs",
+        "policy_dilemma": "New cash and credit needs have declined further. Reassess temporary support against eligible needs and outstanding exposure, without deleting earlier obligations."
+      },
+      {
+        "title": "Fresh funding needs subside after stable deposits return",
+        "policy_dilemma": "No new cash need or credit-risk impulse is disclosed. Existing loans and impairment are not canceled by the end of fresh funding pressure."
+      }
+    ]
   },
   {
     "id": "precautionary_saving_scare",
@@ -1470,7 +2054,21 @@
     "total": 23,
     "selection_reason": "Accepted: A reversible preference for cash is different from lost supply or insolvent lenders.",
     "rank": 41,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Security news prompts households to build cash buffers",
+        "policy_dilemma": "Households postpone purchases despite unchanged current wages. Cushion weak demand without diagnosing a supply loss or making an unconditional policy promise."
+      },
+      {
+        "title": "Precautionary saving continues to restrain purchases",
+        "policy_dilemma": "The demand shortfall is smaller but remains visible. Assess current spending and expectations rather than assuming that confidence is already restored."
+      },
+      {
+        "title": "Households resume purchases after precautionary saving",
+        "policy_dilemma": "A positive demand impulse now follows the earlier cash-buffer buildup. Reassess accommodation using the rebound already observed."
+      }
+    ]
   },
   {
     "id": "sea_lane_security_restored",
@@ -1504,7 +2102,21 @@
     "total": 23,
     "selection_reason": "Accepted: Favorable security resolution adds disinflation plus inventory payback rather than another adverse transport crisis.",
     "rank": 42,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "A ceasefire restores direct routes and releases cargo",
+        "policy_dilemma": "Freight cost relief accompanies stronger deliveries and orders. Distinguish supply recovery from excess demand before adding restraint."
+      },
+      {
+        "title": "Freight costs ease while inventory orders slow",
+        "policy_dilemma": "Further cost relief now coexists with weaker orders after cargo arrivals. Inventory payback does not alone establish a lasting demand slump."
+      },
+      {
+        "title": "Inventory ordering continues to normalize after cargo arrivals",
+        "policy_dilemma": "A smaller negative demand impulse remains without a new supply impulse. Read the ordering slowdown alongside the earlier release of delayed cargo."
+      }
+    ]
   },
   {
     "id": "shale_drilling_productivity",
@@ -1538,7 +2150,21 @@
     "total": 23,
     "selection_reason": "Accepted: Favorable production efficiency contrasts with an oil-demand slump and offers a capacity-led expansion.",
     "rank": 43,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "More productive shale drilling lowers supply costs",
+        "policy_dilemma": "Higher output per crew eases costs and expands capacity. Faster supply-led activity need not signal excessive demand."
+      },
+      {
+        "title": "Drilling efficiency continues to ease costs",
+        "policy_dilemma": "Smaller cost relief accompanies further capacity growth. Evaluate inflation and demand separately rather than treating stronger supply as overheating."
+      },
+      {
+        "title": "Drilling-related capacity acceleration levels off",
+        "policy_dilemma": "Capacity growth has normalized after the productivity gain. Earlier gains remain; the absence of a new cost impulse does not imply lost efficiency."
+      }
+    ]
   },
   {
     "id": "childcare_capacity_opens",
@@ -1574,7 +2200,21 @@
     "total": 23,
     "selection_reason": "Accepted: Favorable care capacity improves labor availability without treating participation gains as a mechanical unemployment reduction.",
     "rank": 44,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "New childcare places release parental work hours",
+        "policy_dilemma": "Expanded work availability lowers staffing pressure while spending strengthens. Participation gains are not an automatic unemployment reduction."
+      },
+      {
+        "title": "Childcare expansion continues to ease staffing pressure",
+        "policy_dilemma": "Smaller capacity gains and added demand still coexist. Separate stronger labor supply from the spending that monetary restraint can influence."
+      },
+      {
+        "title": "Childcare-related capacity acceleration levels off",
+        "policy_dilemma": "Capacity growth has returned to its usual pace after the expansion. Earlier gains remain, and current employment data still require a participation-aware interpretation."
+      }
+    ]
   },
   {
     "id": "customs_digitization_release",
@@ -1605,7 +2245,17 @@
     "total": 23,
     "selection_reason": "Accepted: Favorable border efficiency adds a concrete cost-relief/rebound path; the rollout magnitude is not sourced.",
     "rank": 45,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Digital customs processing releases delayed goods",
+        "policy_dilemma": "Faster deliveries lower costs and support orders. Supply recovery can strengthen activity without broad overheating."
+      },
+      {
+        "title": "Faster customs clearance continues to ease costs",
+        "policy_dilemma": "Smaller cost relief and stronger orders persist after the backlog release. Distinguish catch-up fulfillment from a lasting demand acceleration."
+      }
+    ]
   },
   {
     "id": "foreign_tourism_revival",
@@ -1639,7 +2289,21 @@
     "total": 23,
     "selection_reason": "Accepted: Favorable demand comes from external customers. Its net national scale is an author assumption.",
     "rank": 46,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Returning foreign visitors raise service demand",
+        "policy_dilemma": "Stronger bookings strain staffing and add cost pressure. Favorable external demand does not automatically justify monetary easing."
+      },
+      {
+        "title": "Tourism demand remains strong with smaller staffing pressure",
+        "policy_dilemma": "New spending and cost impulses are smaller but still positive. Weigh service capacity against demand rather than treating all favorable news as supply relief."
+      },
+      {
+        "title": "Tourism spending gains slow without fresh cost pressure",
+        "policy_dilemma": "A smaller demand impulse continues after the visitor surge. Earlier staffing pressure and policy lags remain relevant even without a new supply impulse."
+      }
+    ]
   },
   {
     "id": "generic_medicine_supply_restored",
@@ -1673,7 +2337,21 @@
     "total": 23,
     "selection_reason": "Accepted: Favorable restoration gives cost relief and delayed demand while respecting that the Chair cannot manufacture medicines.",
     "rank": 47,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Restored generic medicine production eases shortages",
+        "policy_dilemma": "Better availability reduces medical cost pressure while care spending strengthens slightly. Monetary policy cannot manufacture medicines; diagnose the supply improvement on its own terms."
+      },
+      {
+        "title": "Deferred care spending rises as medicine costs ease",
+        "policy_dilemma": "Further cost relief now accompanies a larger care-spending pulse. Distinguish treatment catch-up from sustained economy-wide demand pressure."
+      },
+      {
+        "title": "A smaller care-spending rebound follows restored medicine supply",
+        "policy_dilemma": "The demand pulse has slowed without another supply innovation. Earlier cost relief and deferred treatment help interpret the remaining spending increase."
+      }
+    ]
   },
   {
     "id": "mild_winter_building",
@@ -1706,7 +2384,17 @@
     "total": 23,
     "selection_reason": "Accepted: Favorable weather adds supply relief alongside construction spending; the sign is an authored inference.",
     "rank": 48,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "A mild winter permits more construction work",
+        "policy_dilemma": "Fewer weather delays ease costs and expand capacity while building spending rises. Faster activity is not a pure demand boom."
+      },
+      {
+        "title": "Winter construction gains continue at lower intensity",
+        "policy_dilemma": "Smaller cost relief and spending gains persist while capacity growth normalizes. Separate workable weather from a lasting acceleration in underlying demand."
+      }
+    ]
   },
   {
     "id": "professional_credentials_recognized",
@@ -1743,7 +2431,21 @@
     "total": 23,
     "selection_reason": "Accepted: Favorable access to existing skills is distinct from migration volume or new training; the structural reference resets explicitly.",
     "rank": 49,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Credential recognition expands access to skilled workers",
+        "policy_dilemma": "Better job matching and lower service costs accompany faster capacity growth. A lower structural labor benchmark is not the same as a monetary demand boost."
+      },
+      {
+        "title": "Credential-related cost relief continues with smaller matching gains",
+        "policy_dilemma": "Costs still ease while the initial structural matching improvement has partly receded. Assess employment against the current benchmark rather than its earlier low point."
+      },
+      {
+        "title": "Credential-related matching and capacity gains normalize",
+        "policy_dilemma": "Capacity growth and the structural labor benchmark have normalized after the initial improvement. Earlier capacity gains remain; the benchmark change is not evidence of a new demand shock."
+      }
+    ]
   },
   {
     "id": "renewable_grid_connection",
@@ -1776,7 +2478,21 @@
     "total": 23,
     "selection_reason": "Accepted: A favorable supply completion uses sunk capacity rather than another commodity-price collapse.",
     "rank": 50,
-    "accepted": true
+    "accepted": true,
+    "phase_briefings": [
+      {
+        "title": "Completed grid connections make renewable power deliverable",
+        "policy_dilemma": "Newly usable generation lowers cost pressure and expands capacity. Stronger supply-led output does not automatically call for tighter policy or a rate cut."
+      },
+      {
+        "title": "Connected generation continues to ease power costs",
+        "policy_dilemma": "Smaller cost relief accompanies further capacity growth. Diagnose broader demand and expectations alongside the supply gain."
+      },
+      {
+        "title": "Grid-related capacity acceleration levels off",
+        "policy_dilemma": "Capacity growth has normalized after the connection backlog cleared. Earlier gains remain; no new supply impulse does not mean the connected plants have stopped producing."
+      }
+    ]
   },
   {
     "id": "collateral_documentation_delay",
