@@ -27,6 +27,17 @@ func key(window: Window, code: Key, command := false, shift := false, character 
 	await process_frame
 	await process_frame
 
+func type_number(window: Window, field: SpinBox, text: String, submit := true) -> void:
+	var codes := {"-": KEY_MINUS, ".": KEY_PERIOD,
+		"0": KEY_0, "1": KEY_1, "2": KEY_2, "3": KEY_3, "4": KEY_4,
+		"5": KEY_5, "6": KEY_6, "7": KEY_7, "8": KEY_8, "9": KEY_9}
+	field.get_line_edit().grab_focus()
+	await key(window, KEY_A, true)
+	for character in text:
+		await key(window, codes[character], false, false, character.unicode_at(0))
+	if submit:
+		await key(window, KEY_ENTER)
+
 func button(game: Node, text: String) -> Button:
 	for candidate in game.find_children("*", "Button", true, false):
 		if candidate.text == text:
@@ -290,6 +301,94 @@ func run() -> void:
 		check_journal(report, game.career.history)
 		await key(report, KEY_ESCAPE)
 	check(game.career.encode() == adopted, "terminal journal and dismissal preserve every completed career byte")
+	# Additive typing boundaries follow the untouched 240-quarter fixture.
+	for quotes in [["-0.50", "-0.75", "-150.00", "0.00"], ["25.01", "30.02", "150.00", "400.00"]]:
+		game._start_career("base", 17)
+		for q in range(4):
+			check(game.career.advance(game.career.model.benchmark_policy(game.career.state, game.career.params, "neutral")).ok, "typed current-GDP fixture advances the actual economy")
+		game._refresh(true)
+		await process_frame
+		await process_frame
+		var n: float = game.career.model.nominal_gdp_ratio(game.career.state)
+		check(abs(n - 1.0) > 0.001, "typed offer fixture distinguishes current GDP from initial GDP")
+		game.career.shocks[4].funding_need_pct_initial_gdp = 8.0 * n
+		game.career.shocks[4].eligible_collateral_pct_initial_gdp = 2.0 * n
+		game.career.shocks[4].liquidity_eligibility_pct = 100.0
+		var typed_start: PackedByteArray = game.career.encode()
+		var fields := [game.rate, game.guidance, game.assets, game.liquidity]
+		for index in range(fields.size()):
+			await type_number(root, fields[index], quotes[index])
+			check(fields[index].get_line_edit().is_editing(), "ordinary Return keeps the numeric field ready for further keyboard edits")
+			check(fields[index].value == quotes[index].to_float() and fields[index].get_line_edit().text.to_float() == quotes[index].to_float(), "key-entered signed and large quotes retain their numeric value and visible precision")
+			check(game.career.encode() == typed_start, "ordinary Return commits each boundary field without adopting")
+		var expected := {"policy_rate_request_pct": quotes[0].to_float(), "guidance_rate_pct": quotes[1].to_float(),
+			"guidance_inflation_sensitivity": game.career.params.policy_inflation_response,
+			"guidance_output_gap_sensitivity": game.career.params.policy_output_gap_response,
+			"asset_flow_request_pct_initial_gdp": quotes[2].to_float() * n,
+			"liquidity_request_pct_initial_gdp": quotes[3].to_float() * n,
+			"reinvest_principal": true, "maintain_ample_reserves": true, "sterilize_purchases": false}
+		check(game._policy() == expected, "typed offers convert from meeting-current GDP exactly once")
+		var staged_preview: Dictionary = game.career.forecast(expected)
+		check(staged_preview.ok and game.career.encode() == typed_start, "committed typed boundaries have a pure actual preview")
+		if not staged_preview.ok:
+			continue
+		var applied: Dictionary = staged_preview.states[0]
+		check(game.forecast_label.text.contains("Rate %.2f%%" % applied.policy_rate_pct) and game.forecast_label.text.contains("assets %+.2f" % (applied.asset_flow_applied_pct_initial_gdp / n)) and game.forecast_label.text.contains("lending %.2f" % (applied.liquidity_applied_pct_initial_gdp / n)), "typed boundary preview visibly reports actual rate, runoff or purchases and collateral-limited lending in meeting units")
+		var committed: Dictionary = expected.duplicate()
+		var negative: bool = quotes[0].begins_with("-")
+		if negative:
+			expected.guidance_rate_pct = -0.76
+			await type_number(root, game.guidance, "-0.76", false)
+		else:
+			expected.liquidity_request_pct_initial_gdp = 400.01 * n
+			await type_number(root, game.liquidity, "400.01", false)
+		check(game._policy() == committed and game.career.encode() == typed_start, "key-entered pending boundary text leaves the committed policy and career unchanged")
+		var boundary_preview: Dictionary = game.career.forecast(expected)
+		check(boundary_preview.ok and game.career.encode() == typed_start, "independently constructed pending boundary policy has a pure actual forecast")
+		if not boundary_preview.ok:
+			continue
+		var first: Dictionary = boundary_preview.states[0]
+		check(first.policy_rate_pct == expected.policy_rate_request_pct and first.guidance_rate_pct == expected.guidance_rate_pct, "accepted nominal quotes apply in full and preserve the announced guidance")
+		check(first.asset_flow_request_pct_initial_gdp == expected.asset_flow_request_pct_initial_gdp and first.liquidity_request_pct_initial_gdp == expected.liquidity_request_pct_initial_gdp and first.decision_nominal_gdp_ratio == n, "forecast retains the accepted offers and meeting denominator without another conversion")
+		if negative:
+			check(is_equal_approx(first.principal_runoff_pct_initial_gdp, minf(-expected.asset_flow_request_pct_initial_gdp, first.principal_due_pct_initial_gdp)) and is_equal_approx(first.asset_flow_applied_pct_initial_gdp, -first.principal_runoff_pct_initial_gdp), "negative typed offer caps actual due principal, independently of reserve-maintenance bills")
+			await key(root, KEY_P, true)
+			report = game.get_child(game.get_child_count() - 1) as AcceptDialog
+			check(report is AcceptDialog and report.title == "Compare policy paths", "keyboard comparison opens the actual pending negative-quote report")
+			if report is AcceptDialog:
+				var body: TextEdit = report.find_children("*", "TextEdit", true, false)[0]
+				check(body.text.contains("New quote -0.76%") and body.text.contains("Requested assets -150.00") and body.text.contains("Applied assets %+.2f" % (first.asset_flow_applied_pct_initial_gdp / n)), "comparison distinguishes typed negative requests from physically applied runoff")
+				check(game._policy() == expected and game.forecast_label.text.contains("Rate -0.50%% (effective %.2f%%)" % first.effective_policy_rate_pct) and game.forecast_label.text.contains("assets %+.2f" % (first.asset_flow_applied_pct_initial_gdp / n)) and game.career.encode() == typed_start, "Compare submits pending negative guidance and refreshes applied feedback without career mutation")
+				await key(report, KEY_ESCAPE)
+				check(not is_instance_valid(report) and game.guidance.get_line_edit().has_focus() and game.career.encode() == typed_start, "negative comparison dismissal restores its invoking field and every career byte")
+		else:
+			check(first.asset_flow_applied_pct_initial_gdp == expected.asset_flow_request_pct_initial_gdp, "large typed purchases apply without an invented offer ceiling")
+			check(first.liquidity_applied_pct_initial_gdp > 0.0 and first.liquidity_applied_pct_initial_gdp < expected.liquidity_request_pct_initial_gdp and first.liquidity_applied_pct_initial_gdp <= first.lending_collateral_capacity_pct_initial_gdp and first.liquidity_applied_pct_initial_gdp <= first.eligible_local_need_pct_initial_gdp and first.liquidity_collateral_binding == 1.0, "large typed lending is accepted but actual advances bind to eligible collateral, not the quote")
+		var pending_lending_input := {"text": game.liquidity.get_line_edit().text, "value": game.liquidity.value, "focused": game.liquidity.get_line_edit().has_focus(), "numeric_text": game.liquidity.get_meta("numeric_text"), "numeric_text_pending": game.liquidity.get_meta("numeric_text_pending")}
+		check(negative or pending_lending_input.text.strip_edges() == "400.01", "operator typing retains the pending large lending quote before adoption: %s" % pending_lending_input)
+		await key(root, KEY_ENTER, true)
+		var policy_differences: PackedStringArray = []
+		for field in expected:
+			if game.career.decisions[-1].get(field) != expected[field]:
+				policy_differences.append("%s: actual %.17f; expected %.17f" % [field, float(game.career.decisions[-1][field]), float(expected[field])])
+		var state_differences: PackedStringArray = []
+		for field in first:
+			if game.career.state.get(field) != first[field]:
+				state_differences.append(field)
+		check(game.career.state.quarter_index == 5 and game.career.decisions.size() == 5 and game.career.history.size() == 6 and game.career.decisions[-1] == expected and game.career.state == first, "modified Return adopts exactly one independently forecast boundary decision, including pending large lending: case %s; input %s; policy differences %s; state differences %s" % [quotes, pending_lending_input, policy_differences, state_differences])
+		check(game.consequence.text.begins_with("Q5 OUTCOME") and game.consequence.text.contains("Applied rate %.2f%%" % first.policy_rate_pct) and game.status_label.text.begins_with("Quarter 5 completed."), "boundary adoption reports its actual completed quarter and applied rate")
+		check(game.assets.value == 0.0 and game.liquidity.value == 0.0 and game.career.state.guidance_rate_pct == expected.guidance_rate_pct, "one-time offers reset while the committed guidance survives in economic state")
+		var boundary_saved: PackedByteArray = game.career.encode()
+		var replay = game.career.get_script().new()
+		var restored: Dictionary = replay.restore(bytes_to_var(boundary_saved))
+		check(restored.ok and replay.state == game.career.state and replay.history == game.career.history and replay.decisions == game.career.decisions and replay.encode() == boundary_saved and game.career.encode() == boundary_saved, "in-memory replay preserves all typed boundary decisions, states, history and career bytes")
+	game._start_career("base", 17)
+	await process_frame
+	await process_frame
+	var floor_start: PackedByteArray = game.career.encode()
+	var floor_policy: Dictionary = game._policy()
+	await type_number(root, game.liquidity, "-1.00")
+	check(game.liquidity.value == 0.0 and game.liquidity.get_line_edit().text.to_float() == 0.0 and game._policy() == floor_policy and game.forecast_label.text.contains("lending 0.00") and game.career.encode() == floor_start, "typed negative lending normalizes to the nonnegative floor without adopting or changing applied feedback")
 	game.free()
 	if failures == 0:
 		print("PASS: complete keyboard career, editing, focus, menus, charts, reports, save/replay and terminal guards")

@@ -372,6 +372,7 @@ func _spin(parent: Node, title: String, low: float, high: float, step_size: floa
 	input.accessibility_name = title
 	input.tooltip_text = tip
 	var edit := input.get_line_edit()
+	edit.keep_editing_on_text_submit = true
 	edit.accessibility_name = title
 	edit.tooltip_text = tip
 	edit.gui_input.connect(func(event: InputEvent):
