@@ -364,7 +364,15 @@ func run() -> void:
 			check(first.asset_flow_applied_pct_initial_gdp == expected.asset_flow_request_pct_initial_gdp, "large typed purchases apply without an invented offer ceiling")
 			check(first.liquidity_applied_pct_initial_gdp > 0.0 and first.liquidity_applied_pct_initial_gdp < expected.liquidity_request_pct_initial_gdp and first.liquidity_applied_pct_initial_gdp <= first.lending_collateral_capacity_pct_initial_gdp and first.liquidity_applied_pct_initial_gdp <= first.eligible_local_need_pct_initial_gdp and first.liquidity_collateral_binding == 1.0, "large typed lending is accepted but actual advances bind to eligible collateral, not the quote")
 		await key(root, KEY_ENTER, true)
-		check(game.career.state.quarter_index == 5 and game.career.decisions.size() == 5 and game.career.history.size() == 6 and game.career.decisions[-1] == expected and game.career.state == first, "modified Return adopts exactly one independently forecast boundary decision, including pending large lending")
+		var policy_differences: PackedStringArray = []
+		for field in expected:
+			if game.career.decisions[-1].get(field) != expected[field]:
+				policy_differences.append("%s: actual %.17f; expected %.17f" % [field, float(game.career.decisions[-1][field]), float(expected[field])])
+		var state_differences: PackedStringArray = []
+		for field in first:
+			if game.career.state.get(field) != first[field]:
+				state_differences.append(field)
+		check(game.career.state.quarter_index == 5 and game.career.decisions.size() == 5 and game.career.history.size() == 6 and game.career.decisions[-1] == expected and game.career.state == first, "modified Return adopts exactly one independently forecast boundary decision, including pending large lending: case %s; policy differences %s; state differences %s" % [quotes, policy_differences, state_differences])
 		check(game.consequence.text.begins_with("Q5 OUTCOME") and game.consequence.text.contains("Applied rate %.2f%%" % first.policy_rate_pct) and game.status_label.text.begins_with("Quarter 5 completed."), "boundary adoption reports its actual completed quarter and applied rate")
 		check(game.assets.value == 0.0 and game.liquidity.value == 0.0 and game.career.state.guidance_rate_pct == expected.guidance_rate_pct, "one-time offers reset while the committed guidance survives in economic state")
 		var boundary_saved: PackedByteArray = game.career.encode()
