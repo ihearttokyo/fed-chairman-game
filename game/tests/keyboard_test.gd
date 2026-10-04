@@ -357,7 +357,7 @@ func run() -> void:
 			if report is AcceptDialog:
 				var body: TextEdit = report.find_children("*", "TextEdit", true, false)[0]
 				check(body.text.contains("New quote -0.76%") and body.text.contains("Requested assets -150.00") and body.text.contains("Applied assets %+.2f" % (first.asset_flow_applied_pct_initial_gdp / n)), "comparison distinguishes typed negative requests from physically applied runoff")
-				check(game._policy() == expected and game.forecast_label.text.contains("Rate -0.50% (effective %.2f%%)" % first.effective_policy_rate_pct) and game.forecast_label.text.contains("assets %+.2f" % (first.asset_flow_applied_pct_initial_gdp / n)) and game.career.encode() == typed_start, "Compare submits pending negative guidance and refreshes applied feedback without career mutation")
+				check(game._policy() == expected and game.forecast_label.text.contains("Rate -0.50%% (effective %.2f%%)" % first.effective_policy_rate_pct) and game.forecast_label.text.contains("assets %+.2f" % (first.asset_flow_applied_pct_initial_gdp / n)) and game.career.encode() == typed_start, "Compare submits pending negative guidance and refreshes applied feedback without career mutation")
 				await key(report, KEY_ESCAPE)
 				check(not is_instance_valid(report) and game.guidance.get_line_edit().has_focus() and game.career.encode() == typed_start, "negative comparison dismissal restores its invoking field and every career byte")
 		else:
