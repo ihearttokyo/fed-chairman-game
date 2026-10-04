@@ -106,6 +106,17 @@ func run() -> void:
 		check(is_equal_approx(field.value, minf(field.max_value, value + field.custom_arrow_step)), "all policy fields use their advertised numeric step")
 		await key(root, KEY_DOWN)
 		check(is_equal_approx(field.value, value), "all policy fields permit reversible keyboard adjustment")
+	for custom_field in [game.inflation_response, game.activity_response]:
+		game.commitment.select(2)
+		game._guidance_controls()
+		custom_field.get_line_edit().grab_focus()
+		await key(root, KEY_R, true)
+		check(game.commitment.selected == 0 and not game.custom_guidance.visible and root.gui_get_focus_owner() == game.commitment, "staff shortcut from each custom field hands focus to visible commitment selector")
+		check(game.career.encode() == start, "custom-to-default staff advice never mutates the career")
+		await key(root, KEY_TAB)
+		check(game.assets.get_line_edit().has_focus(), "Tab continues from commitment into visible asset input after custom fields hide")
+		await key(root, KEY_TAB, false, true)
+		check(root.gui_get_focus_owner() == game.commitment, "Shift-Tab returns to visible commitment after custom fields hide")
 	var chart: Control = game.charts[0]
 	chart.grab_focus()
 	await key(root, KEY_HOME)
@@ -145,6 +156,8 @@ func run() -> void:
 	check(chooser.gui_get_focus_owner() == chooser.get_ok_button(), "Tab reaches explicit replacement confirmation")
 	await key(chooser, KEY_SPACE)
 	check(not is_instance_valid(chooser) and game.career.scenario_id == "supply_shock" and game.career.seed_value == 42, "keyboard-only scenario and seed confirmation starts the exact selected career")
+	# A valid audit input makes historical structural references differ.
+	game.career.shocks[0]["structural_unemployment_change_pct"] = 0.25
 	start = game.career.encode()
 	await key(root, KEY_R, true)
 	check(game.career.encode() == start, "staff accelerator stages advice without adopting")
@@ -191,6 +204,15 @@ func run() -> void:
 			await key(report, KEY_PAGEDOWN)
 			check(report.get_child(0).get_v_scroll_bar().value > 0, "focused report Page Down scrolls actual long content: " + str([report.get_child(0).get_v_scroll_bar().value, report.get_child(0).get_v_scroll_bar().max_value, report.get_child(0).get_v_scroll_bar().page, report.get_child(0).get_caret_line(), report.gui_get_focus_owner()]))
 		else:
+			for observation in game.career.history:
+				var row := "Q%03d |" % observation.quarter_index
+				var report_text: String = report.get_child(0).text
+				var offset := report_text.find(row)
+				var following := report_text.find("\n\n", offset)
+				check(offset >= 0 and following > offset, "journal preserves each completed-quarter row")
+				var observed_row := report_text.substr(offset, following - offset)
+				for detail in ["long expectations %.2f%%" % observation.expected_long_inflation_pct, "structural reference %.2f%%" % observation.structural_unemployment_pct, "hardship memory %.2f" % observation.public_hardship_memory]:
+					check(observed_row.contains(detail), "journal exposes each historical chart/support detail without hover: " + detail)
 			await key(report, KEY_TAB)
 			check(report.gui_get_focus_owner().text == "Review realized policy", "journal keyboard cycle includes its completed-policy review")
 			await key(report, KEY_SPACE)
