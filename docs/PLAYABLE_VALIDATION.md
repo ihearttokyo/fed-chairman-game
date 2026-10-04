@@ -1,5 +1,20 @@
 # Playable Policy Lab validation
 
+## Current source boundary, October 4, 2026 (UTC)
+
+Source through PR40–47 at `ec6b4ce` includes the recovery, signed-rate, balance-sheet,
+shock-integrity and keyboard changes. [Merged-main CI37173475995](https://github.com/ihearttokyo/fed-chairman-game/actions/runs/37173475995)
+passed focused model channels, full model/package/workbook-safety checks, all11
+game suites and164 release-source checks. PR46–47 also passed independent
+correctness and Ponytail reviews and post-review current-head CI.
+
+These are remote Linux/headless checks. The dated native, signing and notarization
+results below bind their earlier pinned artifacts and do not certify the changed
+source. Current-source Mac gameplay/crash, VoiceOver, second-Mac, native workbook
+and representative human validation remain outstanding. No new shipping build
+or installed-app adoption was made; the existing saved and unsaved game remains
+protected. Existing native/GUI, release/security and sync holds remain in force.
+
 ## Native GUI recovery and notarized renderer, October 3, 2026 (UTC)
 
 The previously held change-precision pixels passed a fresh, sole-app background
