@@ -805,6 +805,14 @@ func load_shock_catalogue(path: String = "res://model/exogenous_shocks.json") ->
 	return validate_shock_catalogue(parsed.value) if parsed.ok else parsed
 
 
+const CATALOGUE_SHOCK_LIMITS := {
+	"demand_shock_pct":0.80, "supply_innovation_pct":1.20,
+	"funding_need_pct_initial_gdp":2.40, "solvency_risk_innovation_pct":0.35,
+	"potential_growth_pct":INF, "structural_unemployment_change_pct":INF,
+	"eligible_collateral_pct_initial_gdp":INF, "collateral_haircut_pct":INF,
+	"liquidity_eligibility_pct":INF, "credit_risk_innovation_pct":INF,
+}
+
 func validate_shock_catalogue(records: Variant) -> Dictionary:
 	if typeof(records) != TYPE_ARRAY or records.size() != 150:
 		return {"ok":false,"error":"Shock catalogue requires150 ranked concepts."}
@@ -836,9 +844,23 @@ func validate_shock_catalogue(records: Variant) -> Dictionary:
 		var duration: Variant = row.get("duration_quarters")
 		if typeof(duration) not in [TYPE_INT,TYPE_FLOAT] or not is_finite(float(duration)) or duration < 1 or duration > 4 or duration != int(duration) or typeof(row.get("shock_profile")) != TYPE_ARRAY or row.shock_profile.size() != int(duration):
 			return {"ok":false,"error":"Shock profile requires one to four consecutive quarters."}
+		if row.accepted or row.has("phase_briefings"):
+			var briefings: Variant = row.get("phase_briefings")
+			if typeof(briefings) != TYPE_ARRAY or briefings.size() != int(duration):
+				return {"ok":false,"error":"Accepted shocks require current information for every phase."}
+			for briefing in briefings:
+				if typeof(briefing) != TYPE_DICTIONARY or briefing.size() != 2:
+					return {"ok":false,"error":"Phase briefing must contain only title and policy dilemma."}
+				for field in ["title", "policy_dilemma"]:
+					if typeof(briefing.get(field)) != TYPE_STRING or briefing[field].strip_edges().is_empty():
+						return {"ok":false,"error":"Phase briefing lacks %s." % field}
 		for pulse in row.shock_profile:
 			if typeof(pulse) != TYPE_DICTIONARY or not _validate_shocks(pulse).ok:
 				return {"ok":false,"error":"Shock profile contains invalid economic inputs."}
+			# INF means the existing engine domain applies, not an unbounded input.
+			for field in pulse:
+				if not CATALOGUE_SHOCK_LIMITS.has(field) or abs(pulse[field]) > CATALOGUE_SHOCK_LIMITS[field]:
+					return {"ok":false,"error":"Shock profile exceeds its authored field/domain contract."}
 			if pulse.has("funding_need_pct_initial_gdp"):
 				for key in ["eligible_collateral_pct_initial_gdp","collateral_haircut_pct","liquidity_eligibility_pct"]:
 					if not pulse.has(key):
@@ -924,6 +946,7 @@ func seeded_campaign(seed: int, scenario: Dictionary, quarters: int) -> Dictiona
 static func _append_shock_episode(scenario: Dictionary, context: Array, concept: Dictionary, onset: int, trigger: String = "") -> void:
 	context.append({"id":concept.id,"quarter_index":onset,"trigger_id":trigger,
 		"title":concept.title,"policy_dilemma":concept.policy_dilemma,
+		"phase_briefings":concept.phase_briefings.duplicate(true),
 		"duration_quarters":concept.duration_quarters,"shock_profile":concept.shock_profile.duplicate(true)})
 	for q in range(concept.shock_profile.size()):
 		var event: Dictionary = concept.shock_profile[q].duplicate(true)

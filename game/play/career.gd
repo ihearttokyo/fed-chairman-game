@@ -11,6 +11,7 @@ var state: Dictionary = {}
 var history: Array = []
 var decisions: Array = []
 var shocks: Array = []
+var _seeded_shocks: Array = []
 var episodes: Array = []
 
 func start(case_id: String, seed_number: int) -> Dictionary:
@@ -30,6 +31,10 @@ func start(case_id: String, seed_number: int) -> Dictionary:
 	history = [state.duplicate(true)]
 	decisions = []
 	shocks = generated.shocks
+	_seeded_shocks = generated.shocks.duplicate(true)
+	for pulse in _seeded_shocks:
+		pulse.make_read_only()
+	_seeded_shocks.make_read_only()
 	episodes = generated.episodes
 	return {"ok": true}
 
@@ -49,21 +54,15 @@ func current_briefing() -> Dictionary:
 
 func current_shock_episode() -> Dictionary:
 	var current := current_briefing()
+	# Realized save inputs may be edited, but only the exact seeded pulse supports
+	# its authored event label. This reference is rebuilt at start/restore, not saved.
+	if decisions.size() >= _seeded_shocks.size() or current != _seeded_shocks[decisions.size()]:
+		return {}
 	for episode in episodes:
 		var phase: int = decisions.size() - int(episode.quarter_index)
 		if phase < 0 or phase >= int(episode.duration_quarters) or decisions.size() >= shocks.size():
 			continue
-		# Saved realized inputs remain authoritative after an audit edit. Attribute
-		# only the current pulse, allowing the disclosed background innovations.
-		var keys := current.keys()
-		for key in episode.shock_profile[phase]:
-			if not keys.has(key):
-				keys.append(key)
-		for key in keys:
-			var tolerance := 0.18000000001 if key == "demand_shock_pct" else 0.04000000001 if key == "supply_innovation_pct" else 0.01000000001 if key == "r_star_change_pct" else 0.0
-			if abs(current.get(key, 0.0) - episode.shock_profile[phase].get(key, 0.0)) > tolerance:
-				return {}
-		return {"title":episode.title,"policy_dilemma":episode.policy_dilemma}
+		return episode.phase_briefings[phase].duplicate(true)
 	return {}
 
 func situation_briefing() -> String:
@@ -175,6 +174,7 @@ func restore(data: Variant) -> Dictionary:
 	history = replay.history
 	decisions = replay.decisions
 	shocks = replay.shocks
+	_seeded_shocks = replay._seeded_shocks
 	episodes = replay.episodes
 	return {"ok": true}
 

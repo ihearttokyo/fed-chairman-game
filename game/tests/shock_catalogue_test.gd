@@ -17,11 +17,81 @@ func _initialize() -> void:
 		_test_schedule()
 		_test_conditional_relief()
 		_test_career()
+		_test_authored_domains()
+		_test_seeded_attribution()
+		_test_phase_briefings()
 	for failure in failures:
 		printerr("FAIL: " + failure)
 	if failures.is_empty():
 		print("PASS: 150 concepts, exact top50, seeded profiles, conditional triggers, current-only attribution and replay")
 	quit(0 if failures.is_empty() else 1)
+
+func _test_authored_domains() -> void:
+	var records: Array = model.load_shock_catalogue().records
+	for edit in [{"demand_shock_pct":0.800001}, {"demand_shock_pct":-0.800001},
+		{"supply_innovation_pct":1.200001}, {"supply_innovation_pct":-1.200001},
+		{"funding_need_pct_initial_gdp":2.400001, "eligible_collateral_pct_initial_gdp":4.0,
+			"collateral_haircut_pct":25.0, "liquidity_eligibility_pct":100.0},
+		{"solvency_risk_innovation_pct":0.350001}, {"r_star_change_pct":0.001},
+		{"quarter_index":0}, {"not_an_authored_field":0.0}]:
+		var bad := records.duplicate(true)
+		bad[0].shock_profile[0] = edit
+		check(not model.validate_shock_catalogue(bad).ok, "catalogue rejects an out-of-contract authored pulse: %s" % edit)
+	for field in ["demand_shock_pct", "supply_innovation_pct", "funding_need_pct_initial_gdp", "solvency_risk_innovation_pct"]:
+		var allowed: float = 0.8 if field == "demand_shock_pct" else 1.2 if field == "supply_innovation_pct" else 2.4 if field == "funding_need_pct_initial_gdp" else 0.35
+		var boundary := records.duplicate(true)
+		boundary[0].shock_profile[0] = {field:allowed}
+		if field == "funding_need_pct_initial_gdp":
+			boundary[0].shock_profile[0].merge({"eligible_collateral_pct_initial_gdp":4.0, "collateral_haircut_pct":25.0, "liquidity_eligibility_pct":100.0})
+		check(model.validate_shock_catalogue(boundary).ok, "catalogue accepts the exact authored boundary for %s" % field)
+
+func _test_seeded_attribution() -> void:
+	var career := Career.new()
+	check(career.start("mixed_crises", 417).ok, "seeded attribution fixture starts")
+	check(career._seeded_shocks.is_read_only() and career._seeded_shocks[0].is_read_only(), "seeded attribution reference and its scalar pulse maps are read-only")
+	var onset: int = career.episodes[0].quarter_index
+	for q in range(onset):
+		check(career.advance(career.model.benchmark_policy(career.state, career.params)).ok, "attribution fixture reaches its real first episode")
+	check(not career.current_shock_episode().is_empty(), "unedited seeded pulse retains current attribution")
+	var saved := career.encode()
+	var authored: Dictionary = career.episodes[0].shock_profile[0]
+	for key in ["demand_shock_pct", "supply_innovation_pct", "r_star_change_pct"]:
+		var prior: float = career.shocks[onset].get(key, 0.0)
+		var background: float = prior - authored.get(key, 0.0)
+		career.shocks[onset][key] = prior + (-0.000001 if background > 0.0 else 0.000001)
+		check(career.current_shock_episode().is_empty(), "small audit edit inside background range suppresses %s attribution" % key)
+		var audited := Career.new()
+		var edited_payload := career.payload()
+		check(audited.restore(edited_payload).ok and audited.current_shock_episode().is_empty(), "audit-edited %s remains authoritative after restore without an unsupported label" % key)
+		check(audited.shocks == edited_payload.shocks, "restore preserves every edited numeric shock exactly")
+		var decision: Dictionary = audited.model.benchmark_policy(audited.state, audited.params)
+		var expected := audited.model.step(audited.state, decision, edited_payload.shocks[onset], audited.params)
+		check(expected.ok and audited.advance(decision).state == expected.state, "advancement actually uses the authoritative edited pulse")
+		check(career.restore(bytes_to_var(saved)).ok and not career.current_shock_episode().is_empty(), "exact restored seed reestablishes attribution")
+
+func _test_phase_briefings() -> void:
+	var records: Array = model.load_shock_catalogue().records
+	for row in records.slice(0, 50):
+		if typeof(row.get("phase_briefings")) != TYPE_ARRAY:
+			check(false, "accepted concept requires current-only phase briefings: %s" % row.id)
+			continue
+		check(row.phase_briefings.size() == row.duration_quarters, "phase copy covers exactly its authored duration")
+	var altered := records.duplicate(true)
+	altered[0].phase_briefings = []
+	check(not model.validate_shock_catalogue(altered).ok, "catalogue rejects missing live phase information")
+	for defect in [{"title":"", "policy_dilemma":"Now"}, {"title":"Now", "policy_dilemma":4},
+		{"title":"Now", "policy_dilemma":"Now", "future_pulse":1.0}]:
+		altered = records.duplicate(true)
+		altered[0].phase_briefings[0] = defect
+		check(not model.validate_shock_catalogue(altered).ok, "catalogue rejects malformed or extra live briefing fields")
+	var career := Career.new()
+	check(career.start("mixed_crises", 417).ok, "current-phase dispatch career starts")
+	for q in range(240):
+		for episode in career.episodes:
+			var phase: int = q - episode.quarter_index
+			if phase >= 0 and phase < episode.duration_quarters and episode.has("phase_briefings"):
+				check(career.current_shock_episode() == episode.phase_briefings[phase], "dispatch uses exactly the currently observed phase")
+		check(career.advance(career.model.benchmark_policy(career.state, career.params)).ok, "phase dispatch full career remains playable")
 
 func _test_catalogue() -> void:
 	var loaded: Dictionary = model.call("load_shock_catalogue")

@@ -128,13 +128,21 @@ without changing background randomness or the six earlier scenario paths.
 
 Incidence and magnitude choices are fictional game design, not empirical crisis
 frequencies. The shared seeded generator supplies the game, exports and workbook.
-Current dispatch names an active event and its dilemma, never its future pulses,
-remaining duration or next episode. Previews use only the disclosed current shock.
+Current dispatch uses only the current entry in an accepted concept's
+`phase_briefings`: its phase-local title and policy dilemma. Each authored phase
+describes current or already observed signals, never a future pulse, remaining
+duration or next episode. Research titles, mechanisms and full dilemmas remain
+available for offline education, outside live dispatch. Previews use only the
+disclosed current shock.
 Private bank/deposit normalization is relief relative to continuing stress, not
 an unconditional negative-risk impulse: old impairment and loan repayment remain.
 The catalogue is fingerprinted; incompatible saves and altered context reject
-without overwrite or silent migration. Saved realized inputs remain authoritative;
-an audit-edited current pulse suppresses unsupported event attribution.
+without overwrite or silent migration. Saved realized inputs remain authoritative.
+At start and restore, an independent seeded reconstruction supplies a private
+immutable reference separate from mutable realized inputs. Event attribution
+requires an exact match to that quarter's seeded reference, including its
+background disturbances. Even a small audit edit within the general background
+ranges suppresses the label; restoring the exact pulse restores attribution.
 
 The dispatch also interprets markets, public hardship and funding as an offline
 storyline. It reads only current information and completed history; replay
