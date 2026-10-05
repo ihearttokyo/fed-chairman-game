@@ -27,6 +27,25 @@ func key(window: Window, code: Key, command := false, shift := false, character 
 	await process_frame
 	await process_frame
 
+func check_deferred_close(dialog: AcceptDialog, action: String) -> void:
+	var followup := [false]
+	dialog.window_input.connect(func(event: InputEvent):
+		if event.is_action_pressed(action):
+			(func():
+				followup[0] = true
+				check(is_instance_valid(dialog) and dialog.visible and dialog.is_queued_for_deletion(), "modal stays registered until queued disposal for deferred focus after " + action)
+				if is_instance_valid(dialog) and dialog.visible:
+					dialog.get_ok_button().grab_focus()
+			).call_deferred())
+	var event := InputEventAction.new()
+	event.action = action
+	event.pressed = true
+	var receiver: Window = root if dialog.is_embedded() else dialog
+	receiver.push_input(event)
+	await process_frame
+	await process_frame
+	check(followup[0] and not is_instance_valid(dialog), "close action reaches the actual modal and disposes it: " + action)
+
 func type_number(window: Window, field: SpinBox, text: String, submit := true) -> void:
 	var codes := {"-": KEY_MINUS, ".": KEY_PERIOD,
 		"0": KEY_0, "1": KEY_1, "2": KEY_2, "3": KEY_3, "4": KEY_4,
@@ -91,6 +110,13 @@ func run() -> void:
 		check(not is_instance_valid(report), "Escape closes a report without a pointer")
 		check(game.rate.get_line_edit().has_focus(), "closing a report restores the invoking numeric field")
 	check(game.career.encode() == start, "keyboard comparison and dismissal preserve every career byte")
+	for action in ["ui_cancel", "ui_close_dialog"]:
+		await key(root, KEY_P, true)
+		report = game.get_child(game.get_child_count() - 1) as AcceptDialog
+		check(report is AcceptDialog and report.title == "Compare policy paths", "close fixture opens the actual comparison")
+		if report is AcceptDialog:
+			await check_deferred_close(report, action)
+			check(game.rate.get_line_edit().has_focus() and game.career.encode() == start, "deferred modal close restores its invoking field without economic mutation: " + action)
 	if not game.has_method("_keyboard_focus_order"):
 		check(false, "cockpit has an explicit complete focus order")
 	else:
