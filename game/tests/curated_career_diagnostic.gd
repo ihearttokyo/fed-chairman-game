@@ -142,7 +142,8 @@ func summarize(label: String, records: Array) -> void:
 	for row in records:
 		for index in range(row[2].size()):
 			causes[index] += int(row[2][index])
-	print("GROUP %s n=%d endpoint_outside_bands_pi_gap_u=%s" % [label, records.size(), JSON.stringify(causes)])
+	var bands := " endpoint_outside_bands_pi_gap_u=" + JSON.stringify(causes) if not records[0][2].is_empty() else ""
+	print("GROUP %s n=%d%s" % [label, records.size(), bands])
 	for index in range(COLUMNS.size()):
 		var values: Array = []
 		var worst: Array = records[0]
@@ -169,6 +170,7 @@ func run() -> void:
 	var quarters := 24 if pilot else 240
 	var source := Career.new()
 	print("PROTOCOL current-source-curated-v1 mode=%s model_digest=%s columns=%s" % ["pilot" if pilot else "full", source.model_digest(), JSON.stringify(COLUMNS)])
+	print("REPORT-METADATA records/aggregates displayed6decimals; statistics use unrounded native values; credibility/support are score points0–100; low trust/support versus high misses/gaps/ratios define diagnostic extrema, not welfare or optimal policy")
 	print("LIMITS severity=abs_pi_miss>5|abs_gap>10|u>12|support<20|solvency>5; endpoint=abs_pi_miss>1|abs_gap>1|u>structural+1.5; continuing-crisis endpoint bands are not equilibrium/optimality proof; HOLD uses actual benchmark guidance sensitivities")
 	for seed in range(feedback_n):
 		run_seed(seed, seed < paired_n, quarters)
