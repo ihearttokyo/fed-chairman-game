@@ -730,7 +730,7 @@ func _show_dialog(dialog: Window, desired_size := Vector2i(740, 540), initial: C
 	add_child(dialog)
 	dialog.tree_exited.connect(func(): _restore_keyboard_focus.call_deferred(invoker))
 	dialog.window_input.connect(func(event: InputEvent):
-		if event.is_action_pressed("ui_cancel"):
+		if event.is_action_pressed("ui_cancel") or event.is_action_pressed("ui_close_dialog"):
 			dialog.queue_free()
 			dialog.set_input_as_handled())
 	dialog.close_requested.connect(dialog.queue_free)
@@ -738,6 +738,7 @@ func _show_dialog(dialog: Window, desired_size := Vector2i(740, 540), initial: C
 		# AccessKit finishes the button action with a focus request. Keep its window
 		# registered until queue_free runs at frame end, instead of hiding immediately.
 		dialog.dialog_hide_on_ok = false
+		dialog.dialog_close_on_escape = false
 		dialog.confirmed.connect(dialog.queue_free)
 		dialog.canceled.connect(dialog.queue_free)
 	dialog.popup_centered(desired_size)
