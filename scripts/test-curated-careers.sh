@@ -7,7 +7,11 @@ case "${1:-full}" in
   *) echo 'Expected pilot or full' >&2; exit 2 ;;
 esac
 log="$(mktemp -t fed-curated-diagnostic.XXXXXX)"
-timeout 1200s godot --headless --path game --script res://tests/curated_career_diagnostic.gd -- "$@" 2>&1 | tee "$log"
+python3 -c 'import subprocess, sys
+try:
+    rc = subprocess.call(sys.argv[1:], timeout=1200)
+    sys.exit(rc if rc >= 0 else 128 - rc)
+except subprocess.TimeoutExpired: sys.exit(124)' godot --headless --path game --script res://tests/curated_career_diagnostic.gd -- "$@" 2>&1 | tee "$log"
 if grep -Eq 'SCRIPT ERROR:|ERROR:|FAIL:' "$log"; then exit 1; fi
 grep -Eq "^COUNTS mode=$mode $counts .*failures=0$" "$log"
 grep -qx "PASS: current-source curated career diagnostic $mode" "$log"
