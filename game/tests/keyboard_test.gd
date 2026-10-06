@@ -58,6 +58,7 @@ func check_wm_close(dialog: AcceptDialog) -> void:
 	dialog.close_requested.emit()
 	await process_frame
 	await process_frame
+	check(canceled[0] == 1, "WM cancellation remains exactly once after signal and deferred processing: " + title)
 	check(not is_instance_valid(dialog), "WM cancellation eventually disposes the actual dialog: " + title)
 	print("WM_CLOSE_CASE: " + title)
 
