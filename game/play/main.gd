@@ -612,7 +612,7 @@ func _decision_briefing() -> String:
 	for alternative in [["Selected", policy.policy_rate_request_pct], ["Tighter rate", first.policy_rate_pct + 0.25], ["Gentler rate", first.policy_rate_pct - 0.25], ["Rate continuity", s.policy_rate_pct]]:
 		var other: Dictionary = policy.duplicate()
 		other.policy_rate_request_pct = alternative[1]
-		var path: Dictionary = selected if alternative[0] == "Selected" else career.forecast(other)
+		var path: Dictionary = selected if other == policy else career.forecast(other)
 		if not path.ok:
 			text += "%s / unavailable: %s\n\n" % [alternative[0], path.error]
 			continue
@@ -647,7 +647,7 @@ func _decision_briefing() -> String:
 	for alternative in alternatives:
 		var other: Dictionary = policy.duplicate()
 		other[alternative[1]] = alternative[2]
-		var path: Dictionary = career.forecast(other)
+		var path: Dictionary = selected if other == policy else career.forecast(other)
 		text += "%s: %.2f%s\n" % [alternative[0], alternative[2], alternative[3]]
 		if not path.ok:
 			text += "Contrast unavailable: " + path.error + "\n\n"
