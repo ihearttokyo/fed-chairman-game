@@ -94,6 +94,8 @@ func generated_fixture(spec: Dictionary) -> Dictionary:
 	for quarter in range(spec.quarter):
 		var policy: Dictionary = career.model.benchmark_policy(
 			career.state, career.params, "feedback")
+		if spec.get("signed_zero", false):
+			policy.policy_rate_request_pct = -0.0
 		var advanced: Dictionary = career.advance(policy)
 		if not check(advanced.ok,
 				"feedback setup Q%d succeeds: %s" % [quarter, str(advanced)]):
@@ -380,6 +382,9 @@ func run() -> void:
 					"quarter": quarter, "rich": rich, "invalid": false})
 	cases.append({"scenario": "base", "seed": 41,
 		"quarter": 0, "rich": false, "invalid": true})
+	# A finite on-grid signed-zero quote is legal and must retain exact report parity.
+	cases.append({"scenario": "base", "seed": 41,
+		"quarter": 1, "rich": false, "invalid": false, "signed_zero": true})
 	for spec in cases:
 		var setup_ok: bool = await run_case(games, spec)
 		if not setup_ok:
