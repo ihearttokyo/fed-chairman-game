@@ -46,6 +46,22 @@ func check_deferred_close(dialog: AcceptDialog, action: String) -> void:
 	await process_frame
 	check(followup[0] and not is_instance_valid(dialog), "close action reaches the actual modal and disposes it: " + action)
 
+func check_wm_close(dialog: AcceptDialog) -> void:
+	var title: String = dialog.title
+	var canceled := [0]
+	dialog.canceled.connect(func(): canceled[0] += 1)
+	# Window's native close event sends this notification before close_requested.
+	# AcceptDialog intentionally queues hide; unlike keyboard close, visibility
+	# during cancellation is not an invariant of this notification path.
+	dialog.notification(Window.NOTIFICATION_WM_CLOSE_REQUEST)
+	check(canceled[0] == 1 and dialog.is_queued_for_deletion(), "WM notification cancels once and queues disposal: " + title)
+	dialog.close_requested.emit()
+	await process_frame
+	await process_frame
+	check(canceled[0] == 1, "WM cancellation remains exactly once after signal and deferred processing: " + title)
+	check(not is_instance_valid(dialog), "WM cancellation eventually disposes the actual dialog: " + title)
+	print("WM_CLOSE_CASE: " + title)
+
 func type_number(window: Window, field: SpinBox, text: String, submit := true) -> void:
 	var codes := {"-": KEY_MINUS, ".": KEY_PERIOD,
 		"0": KEY_0, "1": KEY_1, "2": KEY_2, "3": KEY_3, "4": KEY_4,
@@ -117,6 +133,17 @@ func run() -> void:
 		if report is AcceptDialog:
 			await check_deferred_close(report, action)
 			check(game.rate.get_line_edit().has_focus() and game.career.encode() == start, "deferred modal close restores its invoking field without economic mutation: " + action)
+	for shortcut in [KEY_P, KEY_F1, KEY_N, KEY_O]:
+		game.rate.get_line_edit().grab_focus()
+		var staged: Dictionary = game._policy().duplicate(true)
+		await key(root, shortcut, shortcut != KEY_F1)
+		report = game.get_child(game.get_child_count() - 1) as AcceptDialog
+		var titles := {KEY_P: "Compare policy paths", KEY_F1: "How to play", KEY_N: "Start a new career", KEY_O: "Load saved career"}
+		check(report is AcceptDialog and report.title.begins_with(titles[shortcut]), "WM fixture opens each real dialog family")
+		if report is AcceptDialog:
+			await check_wm_close(report)
+			check(game.rate.get_line_edit().has_focus(), "WM cancellation restores the live invoking field")
+			check(game.career.encode() == start and game._policy() == staged, "WM cancellation preserves exact unsaved career and staged policy")
 	if not game.has_method("_keyboard_focus_order"):
 		check(false, "cockpit has an explicit complete focus order")
 	else:
@@ -280,6 +307,14 @@ func run() -> void:
 	check(FileAccess.file_exists(temporary) and game.status_label.text.begins_with("Saved quarter 1."), "save accelerator writes the actual disposable career and reports success")
 	await key(root, KEY_ENTER, true)
 	var unsaved: PackedByteArray = game.career.encode()
+	game.rate.get_line_edit().grab_focus()
+	var unsaved_policy: Dictionary = game._policy().duplicate(true)
+	await key(root, KEY_O, true)
+	var wm_load := game.get_child(game.get_child_count() - 1) as AcceptDialog
+	check(wm_load is AcceptDialog and wm_load.title == "Load saved career", "WM fixture opens Load with actual unsaved completed quarters")
+	if wm_load is AcceptDialog:
+		await check_wm_close(wm_load)
+		check(game.rate.get_line_edit().has_focus() and game.career.encode() == unsaved and game._policy() == unsaved_policy, "WM Load cancellation preserves nonzero-quarter unsaved play and staged policy")
 	await key(root, KEY_O, true)
 	var load_dialog := game.get_child(game.get_child_count() - 1) as AcceptDialog
 	check(load_dialog.gui_get_focus_owner().text == "Cancel", "Load starts on safe cancellation, not destructive confirmation")
