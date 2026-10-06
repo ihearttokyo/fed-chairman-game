@@ -3,7 +3,7 @@ extends SceneTree
 const Career = preload("res://play/career.gd")
 const MainScene = preload("res://main.tscn")
 const MAIN_PATH := "res://play/main.gd"
-const REUSE := "\t\tvar path: Dictionary = selected if other == policy else career.forecast(other)\n"
+const REUSE := "\t\tvar path: Dictionary = selected if var_to_bytes(other) == var_to_bytes(policy) else career.forecast(other)\n"
 const PREFIXES := [
 	"\t\tother.policy_rate_request_pct = alternative[1]\n",
 	"\t\tother[alternative[1]] = alternative[2]\n",
@@ -152,6 +152,12 @@ func install_fixture(game: Control, generated: Dictionary,
 	if not check(distinct if spec.rich else eligible,
 			"staged controls satisfy the intended reuse eligibility"):
 		return false
+	if spec.get("signed_zero", false):
+		var continuity: Dictionary = policy.duplicate()
+		continuity.policy_rate_request_pct = current
+		if not check(continuity == policy and var_to_bytes(continuity) != var_to_bytes(policy),
+				"signed-zero fixture proves numeric equality loses policy representation"):
+			return false
 	if spec.invalid:
 		game.career.shocks[spec.quarter]["comparison_fixture_unknown_input"] = 1.0
 	var forecast: Dictionary = game.career.forecast(policy)
@@ -264,6 +270,10 @@ func run_case(games: Array[Control], spec: Dictionary) -> bool:
 		golden.append(result.output)
 		var forecasts: int = 3 if spec.invalid else (
 			10 if index == 0 or spec.rich else 5)
+		# The boundary forbids two unsafe positive-zero/negative-zero aliases.
+		# All six genuinely identical neutral cases retain the original5/40 assertion.
+		if index == 1 and spec.get("signed_zero", false):
+			forecasts += 2
 		var steps: int = forecasts if spec.invalid else forecasts * 8
 		var wanted := [forecasts, steps]
 		print("COUNTS %s %s observed=%s expected=%s" % [
