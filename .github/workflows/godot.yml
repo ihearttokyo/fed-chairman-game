@@ -9,6 +9,7 @@ jobs:
   model:
     name: Godot economic model
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Install checksum-pinned Godot 4.7.2
@@ -33,3 +34,7 @@ jobs:
           godot --headless --path game --quit-after 600 -- --verify-build 2>&1 | tee "$RUNNER_TEMP/game-check.log"
           if grep -Eq 'SCRIPT ERROR:|ERROR:|FAIL:' "$RUNNER_TEMP/game-check.log"; then exit 1; fi
           grep -q 'PASS: 164 release-safe checks' "$RUNNER_TEMP/game-check.log"
+      - name: Curated career method and pilot qualification
+        run: bash scripts/test-curated-careers.sh pilot
+      - name: Current-source 1100-career diagnostic
+        run: bash scripts/test-curated-careers.sh full
