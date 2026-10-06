@@ -48,7 +48,8 @@ with tempfile.TemporaryDirectory(prefix='fed-runtime-error-guards-') as director
         environment['FED_TEST_EXIT'] = str(exit_code)
         rejected = bool(marker or exit_code)
         log.write_text((marker + ' synthetic runtime failure\n' if marker else '')
-                       + 'PASS: 164 release-safe checks; synthetic output only\n')
+                       + 'PASS: 164 release-safe checks; synthetic output only\n'
+                       + 'PASS: comparison count, exact parity and paired timing fixture; synthetic output only\n')
         for script in ('scripts/test-model.sh', 'scripts/test-game.sh'):
             result = subprocess.run(['bash', str(root / script)], env=environment,
                                     capture_output=True, text=True)
@@ -64,5 +65,11 @@ with tempfile.TemporaryDirectory(prefix='fed-runtime-error-guards-') as director
                                     env=environment, capture_output=True, text=True)
             if result.returncode == 0 or trace.exists():
                 failures.append(f'packager continued past {marker} before thinning/signing')
+    # A generic PASS cannot certify completion of the additional comparison fixture.
+    log.write_text('PASS: 164 release-safe checks; synthetic output only\n')
+    environment['FED_TEST_EXIT'] = '0'
+    incomplete = subprocess.run(['bash', str(root / 'scripts/test-game.sh')],
+                                env=environment, capture_output=True, text=True)
+    assert incomplete.returncode != 0, 'comparison wrapper must require its own completion marker'
 assert not failures, '\n'.join(failures)
 print('PASS: runtime log gates reject errors before continuation (synthetic CLI evidence)')

@@ -7,3 +7,9 @@ for test in balance_sheet_test balance_career_test balance_ui_test recovery_test
   if grep -Eq 'SCRIPT ERROR:|ERROR:|FAIL:' "$log"; then exit 1; fi
   grep -q 'PASS:' "$log"
 done
+
+# Differential comparison metrics need more disposal frames than the small suites.
+log="$(mktemp -t fed-comparison-test.XXXXXX)"
+godot --headless --path game --script res://tests/comparison_performance_test.gd --quit-after 6000 2>&1 | tee "$log"
+if grep -Eq 'SCRIPT ERROR:|ERROR:|FAIL:' "$log"; then exit 1; fi
+grep -q '^PASS: comparison count, exact parity and paired timing fixture' "$log"
