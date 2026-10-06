@@ -35,6 +35,6 @@ jobs:
           if grep -Eq 'SCRIPT ERROR:|ERROR:|FAIL:' "$RUNNER_TEMP/game-check.log"; then exit 1; fi
           grep -q 'PASS: 164 release-safe checks' "$RUNNER_TEMP/game-check.log"
       - name: Curated career method and pilot qualification
-        run: bash scripts/test-curated-careers.sh pilot
+        run: scripts/test-curated-careers.sh pilot
       - name: Current-source 1100-career diagnostic
-        run: bash scripts/test-curated-careers.sh full
+        run: scripts/test-curated-careers.sh full
