@@ -73,3 +73,44 @@ with tempfile.TemporaryDirectory(prefix='fed-runtime-error-guards-') as director
     assert incomplete.returncode != 0, 'comparison wrapper must require its own completion marker'
 assert not failures, '\n'.join(failures)
 print('PASS: runtime log gates reject errors before continuation (synthetic CLI evidence)')
+
+# Simulate engine log writes without launching an engine or accessing real userdata.
+import plistlib
+import runpy
+from unittest.mock import patch
+with tempfile.TemporaryDirectory(prefix='fed-release-userdata-guard-') as directory:
+    temporary = Path(directory)
+    home = temporary / 'player-home'
+    protected = home / 'Library/Application Support/FedChairmanPolicyLab/logs/godot.log'
+    protected.parent.mkdir(parents=True)
+    protected.write_text('player crash evidence')
+    app = temporary / 'Candidate.app'
+    (app / 'Contents/MacOS').mkdir(parents=True)
+    (app / 'Contents/Info.plist').write_bytes(plistlib.dumps({
+        'CFBundleExecutable': 'candidate', 'CFBundleIdentifier': 'local.fed-chairman-game.policy-lab'}))
+    binary = app / 'Contents/MacOS/candidate'
+    binary.write_bytes(b'\xcf\xfa\xed\xfe')
+    engine_homes = []
+    def fake_release_tool(command, **kwargs):
+        if '--headless' not in command:
+            assert Path((kwargs.get('env') or os.environ)['HOME']) == home, 'signing tools retain normal HOME'
+        text = ''
+        if command[0] == 'lipo':
+            text = 'arm64\n'
+        elif command[0] == 'codesign' and '-d' in command:
+            text = 'TeamIdentifier=TESTTEAM\nAuthority=Developer ID Application: Fixture\n(runtime)\nTimestamp=fixture\n'
+        elif '--headless' in command:
+            assert Path(command[0]).resolve() == binary.resolve()
+            engine_home = Path(kwargs.get('env', os.environ)['HOME'])
+            engine_homes.append(engine_home)
+            log = engine_home / 'Library/Application Support/FedChairmanPolicyLab/logs/godot.log'
+            log.parent.mkdir(parents=True, exist_ok=True)
+            log.write_text('new verification log')
+            text = 'PASS: 164 release-safe checks; synthetic engine only\n'
+        return subprocess.CompletedProcess(command, 0, text, '')
+    with patch.dict(os.environ, HOME=str(home)), patch('sys.argv', ['verify-game-release.py', str(app), 'TESTTEAM']), patch('subprocess.run', side_effect=fake_release_tool):
+        runpy.run_path(str(root / 'scripts/tests/verify-game-release.py'), run_name='__main__')
+        assert os.environ['HOME'] == str(home), 'release check must preserve parent HOME'
+    assert engine_homes and all(path != home for path in engine_homes), 'release check must isolate engine HOME'
+    assert protected.read_text() == 'player crash evidence', 'release check must preserve player logs'
+print('PASS: release self-check preserves player userdata (simulated engine writes)')
