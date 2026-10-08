@@ -26,6 +26,7 @@ jobs:
           scripts/test-model.sh
           python3 scripts/tests/test-package-safety.py
           python3 scripts/tests/test-workbook-safety.py
+          node scripts/tests/test-workbook-validation.mjs
       - name: Import and test playable Godot game
         shell: bash
         run: |
