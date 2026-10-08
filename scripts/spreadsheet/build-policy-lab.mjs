@@ -4,6 +4,17 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Workbook, SpreadsheetFile } from '@oai/artifact-tool';
 
+const phaseCheckpoints = { main: [], hold: [0, 1, 2], responsive: [3, 4, 5] };
+const parseBuildPhase = args => {
+  assert.ok(args.length === 2 && args[0] === '--phase' && Object.hasOwn(phaseCheckpoints, args[1]), 'usage: workbook phase --phase main|hold|responsive');
+  return args[1];
+};
+const phaseOutputs = phase => [
+  `evidence/workbook-parity-${phase}.json`,
+  ...(phase === 'main' ? ['Federal Reserve Policy Lab.xlsx', 'evidence/workbook-model-map.json']
+    : [[120, 168], [168, 216], [216, 240]].map(([start, end]) => `late-checkpoints/late_${phase}_${start}_${end}.xlsx`)),
+];
+const buildPhase = parseBuildPhase(process.argv.slice(2));
 const ids = ['base', 'demand_boom', 'supply_shock', 'funding_stress', 'unanchored_inflation', 'lower_bound_slump', 'mixed_crises'];
 const cases = await Promise.all(ids.map(async id => JSON.parse(await fs.readFile(new URL(`./reference-v1/${id}.json`, import.meta.url), 'utf8'))));
 const source = cases[0];
@@ -34,6 +45,7 @@ const shockDefault = key => key === 'potential_growth_pct' ? null : key === 'rrp
 assert.equal(shockDefault('liquidity_eligibility_pct'), 0, 'Omitted liquidity eligibility must match native zero-access default');
 const out = new URL('./', import.meta.url);
 const evidence = new URL('./evidence/', import.meta.url);
+for (const path of phaseOutputs(buildPhase)) await assert.rejects(fs.access(new URL(path, out)), { code: 'ENOENT' }, `Refusing phase output replacement: ${path}`);
 const workbook = Workbook.create();
 const [lab, policy, assumptions, economy, shocks] = ['Policy Lab', 'Policy', 'Assumptions', 'Economy', 'Shocks'].map(name => workbook.worksheets.add(name));
 const C = { ink: '#203048', navy: '#233A56', blue: '#2257A0', amber: '#FFF2CC', pale: '#EAF0F6', muted: '#657286', red: '#AB3D35', copper: '#B07439', green: '#26735D' };
@@ -558,7 +570,8 @@ for (let q = 0; q <= 48; q++) {
   const col = column(q + 4);
   for (const [label, key] of [['securities', 'asset_stock_pct_initial_gdp'], ['reserves', 'reserves_pct_initial_gdp'], ['loans', 'outstanding_liquidity_pct_initial_gdp'], ['rrp', 'reverse_repo_pct_initial_gdp']]) cell(economy, f(col, `ending_${label}_pct_current_gdp`), `=${f(col, key)}/${f(col, 'ending_nominal_gdp_ratio')}`, true);
 }
-await fs.writeFile(new URL('workbook-model-map.json', evidence), JSON.stringify(R, null, 2));
+if (buildPhase === 'main') await fs.writeFile(new URL('workbook-model-map.json', evidence), JSON.stringify(R, null, 2), { flag: 'wx' });
+else assert.deepEqual(JSON.parse(await fs.readFile(new URL('workbook-model-map.json', evidence), 'utf8')), R, 'Every phase must build the same formula-chain row map');
 
 // Player controls remain separate from the one calculation chain.
 for (const sheet of [policy, shocks]) {
@@ -635,6 +648,9 @@ const verifyTrace = (label, states) => {
   }
   return worst;
 };
+const policyRows = { policy_rate_request_pct: 6, guidance_rate_pct: 7, guidance_inflation_sensitivity: 8,
+  guidance_output_gap_sensitivity: 9, asset_flow_request_pct_initial_gdp: 10, liquidity_request_pct_initial_gdp: 11, reinvest_principal: 12, maintain_ample_reserves: 13, sterilize_purchases: 14 };
+if (buildPhase === 'main') {
 for (let caseIndex = 0; caseIndex < cases.length; caseIndex++) {
   cell(lab, 'C4', caseIndex + 1); workbook.recalculate();
   checks.push({ case: ids[caseIndex], quarters: 48, maxAbsoluteError: verifyTrace(ids[caseIndex], [cases[caseIndex].initial_state, ...cases[caseIndex].quarters.map(x => x.state)]) });
@@ -750,8 +766,6 @@ console.log('PASS: recovery domains, permanent structural reference and restored
 
 const rateBoundaries = JSON.parse(await fs.readFile(new URL('./reference-v1/rate-boundaries.json', import.meta.url), 'utf8'));
 cell(lab, 'C4', 1); cell(lab, 'C6', 2);
-const policyRows = { policy_rate_request_pct: 6, guidance_rate_pct: 7, guidance_inflation_sensitivity: 8,
-  guidance_output_gap_sensitivity: 9, asset_flow_request_pct_initial_gdp: 10, liquidity_request_pct_initial_gdp: 11, reinvest_principal: 12, maintain_ample_reserves: 13, sterilize_purchases: 14 };
 const balanceBoundaries = JSON.parse(await fs.readFile(new URL('./reference-v1/balance-boundaries.json', import.meta.url), 'utf8'));
 for (const [kind, fixtures] of [['rateBoundary', rateBoundaries], ['balanceBoundary', balanceBoundaries]]) for (const fixture of fixtures) {
   const edits = [
@@ -795,6 +809,7 @@ for (const [key, value, affected] of [['minimum_rate_increment_pct', 0, 'policy_
 workbook.recalculate();
 assert.ok(verifyTrace('restored signed-rate boundaries', [cases[2].initial_state, ...cases[2].quarters.map(x => x.state)]) < 1e-7);
 console.log('PASS: seven native signed-rate boundaries, quote grid, conditional delivery and restored full parity');
+}
 
 const checkpointFixtureEdits = fixture => {
   const count = fixture.quarters.length, caseIndex = ids.indexOf(fixture.scenario.id);
@@ -824,11 +839,14 @@ const checkpointFixtureEdits = fixture => {
   }
   return edits;
 };
+if (buildPhase !== 'main') {
 const lateCheckpoints = JSON.parse(await fs.readFile(new URL('./reference-v1/late-checkpoints.json', import.meta.url), 'utf8'));
 assert.equal(lateCheckpoints.length, 6, 'Six native checkpoint segments');
 const lateDirectory = new URL('./late-checkpoints/', out);
-await fs.mkdir(lateDirectory);
-for (const [i, fixture] of lateCheckpoints.entries()) {
+if (buildPhase === 'hold') await fs.mkdir(lateDirectory);
+else await fs.access(lateDirectory);
+for (const i of phaseCheckpoints[buildPhase]) {
+  const fixture = lateCheckpoints[i];
   const branch = i < 3 ? 'hold' : 'responsive', startQuarter = [120, 168, 216][i % 3], endQuarter = [168, 216, 240][i % 3];
   assert.equal(fixture.name, `late_${branch}_${startQuarter}_${endQuarter}`, 'Source-bound checkpoint artifact name');
   assert.equal(fixture.portfolio_reference_json, portfolioBytes.toString('utf8'));
@@ -847,9 +865,11 @@ for (const [i, fixture] of lateCheckpoints.entries()) {
   verifyTrace(`restored ${fixture.name}`, [cases[2].initial_state, ...cases[2].quarters.map(row => row.state)]);
   console.log(`PASS: ${fixture.name}, ${states.length} states; saved before exact restoration`);
 }
+}
 
+await fs.writeFile(new URL(`workbook-parity-${buildPhase}.json`, evidence), JSON.stringify(checks, null, 2), { flag: 'wx' });
+if (buildPhase === 'main') {
 console.log('PASS: four policy edits, blank/zero distinction, missing-case isolation, invalid funding and later-period causality');
-await fs.writeFile(new URL('workbook-parity.json', evidence), JSON.stringify(checks, null, 2));
 console.log((await workbook.inspect({ kind: 'table', range: 'Policy Lab!B11:D17', include: 'values,formulas', tableMaxRows: 8, tableMaxCols: 4 })).ndjson);
 console.log((await workbook.inspect({ kind: 'match', searchTerm: '#REF!|#DIV/0!|#VALUE!|#NAME\\?|#N/A|#NUM!|#NULL!|#SPILL!|#CALC!', options: { useRegex: true, maxResults: 20 }, summary: 'Formula error scan' })).ndjson);
 await fs.mkdir(out, { recursive: true });
@@ -866,3 +886,5 @@ for (const [sheetName, range, file] of [['Policy Lab', 'A1:P55', 'curated-lab'],
 }
 cell(lab, 'C4', 3); workbook.recalculate();
 console.log('EXPORTED Federal Reserve Policy Lab.xlsx');
+}
+console.log(`COMPLETED workbook phase ${buildPhase}`);

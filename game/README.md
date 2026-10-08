@@ -81,6 +81,10 @@ checked against its own native reference. This is late-segment parity, not a
 full 240-quarter workbook. Generating files does not prove native spreadsheet
 usability or human playability.
 
+Authoring runs in three mandatory, serial phases: the main workbook, three hold
+segments and three responsive segments. Each recreates the same formula chain;
+completion requires every phase and all saved-file checks.
+
 For a separately recalculated disposable copy, run the same saved-file checker:
 
 ```sh

@@ -12,6 +12,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 CASES = ('base', 'demand_boom', 'supply_shock', 'funding_stress',
          'unanchored_inflation', 'lower_bound_slump', 'mixed_crises')
+BUILD_PHASES = ('main', 'hold', 'responsive')
 
 
 def new_output(value):
@@ -140,8 +141,22 @@ def main():
     run_tool([str(args.node), str(ROOT / 'scripts/tests/test-workbook-validation.mjs'),
               '--checkpoint-reference', str(references / 'late-checkpoints.json')],
              evidence / 'checkpoint-input-contract.log', 'PASS: full-state checkpoint input contract')
-    run_tool([str(args.node), str(execution_copy)], evidence / 'workbook-build.log',
-             'EXPORTED Federal Reserve Policy Lab.xlsx')
+    parity = []
+    for phase in BUILD_PHASES:
+        run_tool([str(args.node), str(execution_copy), '--phase', phase],
+                 evidence / f'workbook-build-{phase}.log', f'COMPLETED workbook phase {phase}')
+        phase_checks = json.loads((evidence / f'workbook-parity-{phase}.json').read_text())
+        if phase == 'main' and (
+                [record['case'] for record in phase_checks if 'case' in record] != list(CASES)
+                or any(sum(key in record for record in phase_checks) != count
+                       for key, count in {'policyEdit': 4, 'priceBoundary': 3,
+                                          'rateBoundary': 7, 'balanceBoundary': 15}.items())
+                or any('checkpoint' in record for record in phase_checks)):
+            raise ValueError('Incomplete main workbook checks')
+        if phase != 'main' and [record.get('checkpoint') for record in phase_checks] != [
+                record['name'] for record in checkpoints if record['policy_kind'] == phase]:
+            raise ValueError(f'Incomplete checkpoint phase: {phase}')
+        parity.extend(phase_checks)
     run_tool([sys.executable, str(ROOT / 'scripts/spreadsheet/check-workbook.py'),
               str(output / 'Federal Reserve Policy Lab.xlsx'), '--reference',
               str(references / 'supply_shock.json'), '--map',
@@ -164,10 +179,13 @@ def main():
                  evidence / f'checkpoint-{name}.log', 'PASS ')
     digest = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
     assert digest(builder) == digest(execution_copy), 'Execution copy differs from source'
+    with (evidence / 'workbook-parity.json').open('x') as destination:
+        json.dump(parity, destination, indent=2)
     provenance = {
         'git_head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
         'portfolio_reference_sha256': portfolio_hash,
         'godot_version': version, 'builder_sha256': digest(builder),
+        'build_phases': list(BUILD_PHASES),
         'node_version': subprocess.check_output([str(args.node), '--version'], text=True).strip(),
         'source_sha256': {name: digest(ROOT / name) for name in (
             'scripts/build-workbook.py', 'scripts/spreadsheet/build-policy-lab.mjs',

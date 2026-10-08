@@ -4,6 +4,58 @@ import vm from 'node:vm';
 import { createHash } from 'node:crypto';
 
 const source = await fs.readFile(new URL('../spreadsheet/build-policy-lab.mjs', import.meta.url), 'utf8');
+const phaseStart = source.indexOf('const phaseCheckpoints = '), phaseEnd = source.indexOf('const buildPhase = ', phaseStart);
+assert.ok(phaseStart >= 0 && phaseEnd > phaseStart, 'Require bounded main/hold/responsive phase admission before authoring');
+const { phaseCheckpoints, parseBuildPhase, phaseOutputs } = vm.runInNewContext(`${source.slice(phaseStart, phaseEnd)}\n({phaseCheckpoints, parseBuildPhase, phaseOutputs})`, { assert });
+assert.deepEqual(Object.fromEntries(Object.entries(phaseCheckpoints).map(([phase, indices]) => [phase, Array.from(indices)])),
+  { main: [], hold: [0, 1, 2], responsive: [3, 4, 5] }, 'Exactly three ordered phases cover all six checkpoints once');
+for (const phase of ['main', 'hold', 'responsive']) assert.equal(parseBuildPhase(['--phase', phase]), phase);
+for (const args of [[], ['--phase'], ['--phase', 'all'], ['--phase', '__proto__'], ['--case', 'hold'], ['--phase', 'hold', '--case', 'base']]) {
+  assert.throws(() => parseBuildPhase(args), /workbook phase/, 'Reject unknown/missing/conflicting modes before any artifact writes');
+}
+assert.ok(source.indexOf('const buildPhase = ') < source.indexOf('Workbook.create()'), 'Phase admission precedes workbook construction');
+const outputs = ['main', 'hold', 'responsive'].flatMap(phase => Array.from(phaseOutputs(phase)));
+assert.equal(new Set(outputs).size, outputs.length, 'Phases never overwrite each other outputs');
+assert.equal(phaseOutputs('main').some(path => path.startsWith('late-checkpoints/')), false, 'Main has no unused late output');
+for (const phase of ['hold', 'responsive']) {
+  assert.deepEqual(Array.from(phaseOutputs(phase).filter(path => path.endsWith('.xlsx'))),
+    [[120, 168], [168, 216], [216, 240]].map(([start, end]) => `late-checkpoints/late_${phase}_${start}_${end}.xlsx`));
+}
+const driver = await fs.readFile(new URL('../build-workbook.py', import.meta.url), 'utf8');
+assert.match(driver, /BUILD_PHASES = \('main', 'hold', 'responsive'\)/, 'Driver has all three fixed ordered phases');
+assert.match(driver, /for phase in BUILD_PHASES:/, 'Driver cannot select or omit a phase');
+assert.match(driver, /str\(execution_copy\), '--phase', phase/, 'All modes execute the same source copy');
+assert.match(driver, /f'workbook-build-\{phase\}\.log'/, 'Separate phase logs');
+assert.match(driver, /f'COMPLETED workbook phase \{phase\}'/, 'Separate phase completion markers');
+assert.match(driver, /timeout=900/, 'Keep the existing per-tool bound');
+const aggregateStart = driver.indexOf("with (evidence / 'workbook-parity.json').open('x')");
+const savedChecksEnd = driver.indexOf('    assert digest(builder) == digest(execution_copy)');
+assert.ok(savedChecksEnd >= 0 && aggregateStart > savedChecksEnd, 'Final aggregate follows every saved-file check and source-copy assertion');
+const preflightStart = source.indexOf('for (const path of phaseOutputs(buildPhase))'), preflightEnd = source.indexOf('const workbook = ', preflightStart);
+assert.ok(preflightStart >= 0 && preflightEnd > preflightStart, 'Replacement preflight precedes authoring');
+for (const buildPhase of ['main', 'hold', 'responsive']) {
+  const paths = [];
+  const runPreflight = exists => vm.runInNewContext(`(async () => { ${source.slice(preflightStart, preflightEnd)} })()`, {
+    assert, phaseOutputs, buildPhase, URL, out: new URL('file:///private/tmp/phase-preflight/'),
+    fs: { async access(path) {
+      paths.push(path.pathname);
+      if (!exists) throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+    } },
+  });
+  await runPreflight(false);
+  assert.equal(paths.length, phaseOutputs(buildPhase).length);
+  await assert.rejects(runPreflight(true), /Refusing phase output replacement/, 'Existing phase output stops before authoring');
+}
+const mainChecksStart = source.indexOf("if (buildPhase === 'main') {\nfor (let caseIndex = "), mainChecksEnd = source.indexOf('const checkpointFixtureEdits = ', mainChecksStart);
+assert.ok(mainChecksStart > source.indexOf('const verifyTrace = ') && mainChecksEnd > mainChecksStart, 'Only main owns the unchanged original checks');
+const mainChecks = source.slice(mainChecksStart, mainChecksEnd);
+for (const family of ['policy-variants.json', 'price-boundaries.json', 'rate-boundaries.json', 'balance-boundaries.json']) assert.ok(mainChecks.includes(family), `Main retains ${family}`);
+assert.ok(source.includes("if (buildPhase === 'hold') await fs.mkdir(lateDirectory);\nelse await fs.access(lateDirectory);"), 'Only hold creates the shared late output directory');
+assert.ok(source.includes("else assert.deepEqual(JSON.parse(await fs.readFile(new URL('workbook-model-map.json', evidence), 'utf8')), R"), 'Late phases must match the same fresh formula row map');
+const mainRenderStart = source.indexOf("if (buildPhase === 'main') {\nconsole.log('PASS: four policy edits");
+assert.ok(mainRenderStart >= 0 && mainRenderStart < source.indexOf('await workbook.render('), 'Only main renders and writes the final cold workbook');
+assert.ok(source.endsWith('console.log(`COMPLETED workbook phase ${buildPhase}`);\n'), 'Completion follows every phase check and export');
+console.log('PASS: strict three-phase admission and complete nonoverlapping checkpoint partition (VM)');
 const start = source.indexOf('const cell = '), end = source.indexOf('const human = ', start);
 assert.ok(start >= 0 && end > start, 'Locate the actual workbook input helpers');
 const { applyFixture, writeInputs } = vm.runInNewContext(`${source.slice(start, end)}\n({applyFixture, writeInputs: typeof writeInputs === 'function' ? writeInputs : null})`, { assert });
@@ -88,6 +140,7 @@ if (process.argv.length > 2) {
   const { arrayShapes, flattenState } = vm.runInNewContext(`${source.slice(flattenStart, flattenEnd)}\n({arrayShapes, flattenState})`, { assert });
   const mapStart = source.indexOf('const R = {'), mapEnd = source.indexOf('const sourceStart = ', mapStart);
   const native = fixtures[0].initial_state;
+  assert.equal(Object.keys(flattenState(native)).length, 373, 'Retain the complete source-state contract');
   const { R: rows } = vm.runInNewContext(`${source.slice(mapStart, mapEnd)}\n({R})`, { flattenState, source: { initial_state: native } });
   const originalBases = ['initial_annual_gdp_index', 'initial_actual_output_index', 'initial_price_index',
     'initial_asset_stock_pct_initial_gdp', 'initial_duration_equivalent_pct_initial_gdp', 'initial_portfolio_premium_pct', 'initial_mbs_financing_rate_pct'];
@@ -165,7 +218,7 @@ if (process.argv.length > 2) {
     cohortSum: () => 'SUM(D100:D219)', writeRateConditions: () => {},
   });
   const { checkpointEdits } = vm.runInNewContext(`${source.slice(start, end)}\n({checkpointEdits: typeof checkpointEdits === 'function' ? checkpointEdits : null})`, { assert, flattenState, source: { initial_state: native } });
-  const verifyStart = source.indexOf('const verifyTrace = '), verifyEnd = source.indexOf('for (let caseIndex = ', verifyStart);
+  const verifyStart = source.indexOf('const verifyTrace = '), verifyEnd = source.indexOf('const policyRows = ', verifyStart);
   const verifyTrace = vm.runInNewContext(`${source.slice(verifyStart, verifyEnd)}\nverifyTrace`, { assert, economy, R: rows, column: columnName, flattenState });
   if (!checkpointEdits) {
     console.log('RED evidence (static emitter/simulated cells; formulas are not calculated):', JSON.stringify({
@@ -242,11 +295,11 @@ if (process.argv.length > 2) {
   const { ids } = vm.runInNewContext(`${source.slice(idsStart, idsEnd)}\n({ids})`);
   const shockStart = source.indexOf('const shockKeys = '), shockEnd = source.indexOf('const shockRows = ', shockStart);
   const { shockKeys } = vm.runInNewContext(`${source.slice(shockStart, shockEnd)}\n({shockKeys})`);
-  const policyStart = source.indexOf('const policyRows = '), policyEnd = source.indexOf('const balanceBoundaries = ', policyStart);
+  const policyStart = source.indexOf('const policyRows = '), policyEnd = source.indexOf(';', policyStart) + 1;
   const { policyRows } = vm.runInNewContext(`${source.slice(policyStart, policyEnd)}\n({policyRows})`);
   const plotStart = source.indexOf('const plotKeys = '), plotEnd = source.indexOf('lab.getRange(', plotStart);
   const { plotKeys } = vm.runInNewContext(`${source.slice(plotStart, plotEnd)}\n({plotKeys})`);
-  const fixtureStart = source.indexOf('const checkpointFixtureEdits = '), fixtureEnd = source.indexOf('const lateCheckpoints = ', fixtureStart);
+  const fixtureStart = source.indexOf('const checkpointFixtureEdits = '), fixtureEnd = source.indexOf("if (buildPhase !== 'main') {", fixtureStart);
   const lab = { name: 'Policy Lab' }, policy = { name: 'Policy' }, shocks = { name: 'Shocks' };
   const shockRows = new Map(shockKeys.map((key, i) => [key, 6 + i * (ids.length + 2)]));
   const { checkpointFixtureEdits } = vm.runInNewContext(`${source.slice(fixtureStart, fixtureEnd)}\n({checkpointFixtureEdits})`, {
@@ -278,7 +331,7 @@ if (process.argv.length > 2) {
   }
   assert.throws(() => checkpointFixtureEdits({ ...fixtures[0], end_quarter: 169 }), /Checkpoint segment horizon/);
   assert.throws(() => checkpointFixtureEdits({ ...fixtures[0], scenario: { id: 'missing' } }), /Checkpoint segment horizon/);
-  const saveLoopStart = source.indexOf('for (const [i, fixture] of lateCheckpoints.entries())'), saveLoopEnd = source.indexOf("console.log('PASS: four policy edits", saveLoopStart);
+  const saveLoopStart = source.indexOf('for (const i of phaseCheckpoints[buildPhase])'), saveLoopEnd = source.indexOf('await fs.writeFile(new URL(`workbook-parity-', saveLoopStart);
   const saveLoop = source.slice(saveLoopStart, saveLoopEnd);
   assert.ok(saveLoop.indexOf('await snapshot.save(') < saveLoop.indexOf('writeInputs(saved.map'), 'Persist each disposable fixture before restoration');
   assert.ok(saveLoop.includes('writeInputs(saved.map(([sheet, ref, value, formula]) => [sheet, ref, formula || value, Boolean(formula)]))'), 'The actual fixture loop restores formulas rather than their stale cached values');
