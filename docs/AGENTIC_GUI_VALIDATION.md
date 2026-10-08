@@ -10,7 +10,9 @@ Use `game/README.md` for the current development and release entry points.
 1. Launch current source through the full official executable path on macOS:
    `/Applications/Godot.app/Contents/MacOS/Godot --path /absolute/repo/game`.
    The short `godot` alias can run the game yet fail Computer Use app binding.
-   Launching a new test instance does not authorize replacing the installed app.
+   Give the test instance a private HOME or a new external `--log-file` so its
+   native logger cannot replace player crash evidence. Launching a new test
+   instance does not authorize replacing the installed app.
 2. Bind the exact test app/window through Computer Use. Keep hidden, minimized
    and background windows in that state; never raise, resize, move or activate
    them without Jared's request. If background interaction is blocked, report
