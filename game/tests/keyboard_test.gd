@@ -217,8 +217,8 @@ func run() -> void:
 	await key(root, KEY_N, true)
 	chooser = game.get_child(game.get_child_count() - 1) as AcceptDialog
 	await key(chooser, KEY_SPACE)
-	await key(game.scenario.get_popup(), KEY_DOWN)
-	await key(game.scenario.get_popup(), KEY_DOWN)
+	await key(game.scenario.get_popup(), KEY_UP)
+	await key(game.scenario.get_popup(), KEY_UP)
 	await key(game.scenario.get_popup(), KEY_ENTER)
 	await key(chooser, KEY_TAB)
 	await key(chooser, KEY_A, true)

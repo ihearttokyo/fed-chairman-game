@@ -915,7 +915,7 @@ func run() -> void:
 	check(game.seed_input.tooltip_text.contains("scenario and seed") and game.seed_input.tooltip_text.contains("same engine and model"), "seed tooltip qualifies every input needed to reproduce the path")
 	check(game.career.encode() == before_new and game._policy() == staged_before_new, "opening seeded disclosure leaves the active career and staged policy unchanged")
 	dialog.get_ok_button().pressed.emit()
-	check(game.career.seed_value == 1 and game.career.scenario_id == "base", "untouched new-career dialog uses its default seed and scenario")
+	check(game.career.seed_value == 1 and game.career.scenario_id == "unanchored_inflation", "untouched new-career dialog uses its default seed and challenge")
 	check(dialog.visible and dialog.is_queued_for_deletion(), "dialog stays valid until the accessibility action finishes")
 	await process_frame
 	game._new_dialog()
