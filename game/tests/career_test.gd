@@ -6,6 +6,12 @@ func check(condition: bool, message: String) -> void:
 		failures += 1
 		printerr("FAIL: " + message)
 func _initialize() -> void:
+	if OS.get_cmdline_user_args().has("--current-signals-only"):
+		check_current_signals()
+		if failures == 0:
+			print("PASS: current refinancing/impairment distinction, settlement constraints and read-only causality")
+		quit(1 if failures else 0)
+		return
 	check_recurring_crises()
 	if OS.get_cmdline_user_args().has("--campaign-only"):
 		if failures == 0:
@@ -13,6 +19,7 @@ func _initialize() -> void:
 		quit(1 if failures else 0)
 		return
 	check_situation_briefing()
+	check_current_signals()
 	if OS.get_cmdline_user_args().has("--situation-only"):
 		if failures == 0:
 			print("PASS: offline situation continuity, replay and no future spoilers")
@@ -110,6 +117,62 @@ func _initialize() -> void:
 	if failures == 0:
 		print("PASS: career progression, forecast isolation, validated lossless saves and 49-quarter continuity")
 	quit(1 if failures else 0)
+
+func check_current_signals() -> void:
+	var career := Career.new()
+	check(career.start("base", 17).ok, "current-signal fixture starts without new scenario IDs")
+	career.shocks[0] = {"funding_need_pct_initial_gdp": 2.0, "eligible_collateral_pct_initial_gdp": 4.0, "liquidity_eligibility_pct": 100.0}
+	var choice: Dictionary = career.model.benchmark_policy(career.state, career.params, "hold")
+	choice.liquidity_request_pct_initial_gdp = 2.0
+	check(career.advance(choice).ok and career.state.outstanding_liquidity_pct_initial_gdp == 2.0, "refinancing fixture creates actual short-loan principal")
+	career.shocks[1] = {"refinancing_need_pct_initial_gdp": 6.0, "eligible_collateral_pct_initial_gdp": 2.0, "collateral_haircut_pct": 50.0, "liquidity_eligibility_pct": 50.0}
+	var preserved := career.encode()
+	var state_bytes := var_to_bytes(career.state)
+	var history_bytes := var_to_bytes(career.history)
+	var dispatch := career.situation_briefing()
+	check(career.encode() == preserved and var_to_bytes(career.state) == state_bytes and var_to_bytes(career.history) == history_bytes, "refinancing dispatch preserves career, state and history bytes")
+	check(dispatch.contains("Refinancing pressure") and not dispatch.contains("New funding pressure") and not dispatch.contains("No major new funding pressure"), "refinancing-only current need is distinct from new funding and quiet conditions")
+	choice = career.model.benchmark_policy(career.state, career.params, "hold")
+	choice.liquidity_request_pct_initial_gdp = 5.0
+	var preview: Dictionary = career.forecast(choice)
+	check(career.encode() == preserved and var_to_bytes(career.state) == state_bytes and var_to_bytes(career.history) == history_bytes, "refinancing preview preserves career, state and history bytes")
+	check(preview.ok, "current refinancing preview is valid")
+	if preview.ok:
+		var first: Dictionary = preview.states[0]
+		check(first.refinancing_request_pct_initial_gdp == 6.0 and first.liquidity_repayment_pct_initial_gdp == 2.0 and first.refinancing_need_pct_initial_gdp == 2.0, "requested refinancing cannot exceed actual maturing principal")
+		check(first.eligible_local_need_pct_initial_gdp == 1.0 and first.lending_collateral_capacity_pct_initial_gdp == 0.5 and first.liquidity_refinancing_applied_pct_initial_gdp == 0.5 and first.liquidity_new_need_applied_pct_initial_gdp == 0.0, "haircut and eligibility constrain refinancing separately from new funding")
+	career.shocks[200] = {"funding_need_pct_initial_gdp": 9.0, "refinancing_need_pct_initial_gdp": 9.0, "solvency_risk_innovation_pct": 5.0, "collateral_haircut_pct": 99.0, "liquidity_eligibility_pct": 0.0}
+	preserved = career.encode()
+	check(career.situation_briefing() == dispatch and career.encode() == preserved and var_to_bytes(career.state) == state_bytes and var_to_bytes(career.history) == history_bytes, "future funding/refinancing/impairment changes cannot affect or be mutated by current dispatch")
+	check(career.forecast(choice) == preview and career.encode() == preserved and var_to_bytes(career.state) == state_bytes and var_to_bytes(career.history) == history_bytes, "future funding/refinancing/impairment changes cannot affect preview or current state")
+	check(career.start("base", 17).ok, "new impairment fixture starts through the unchanged entry point")
+	career.shocks[0] = {"solvency_risk_innovation_pct": 0.7}
+	preserved = career.encode()
+	state_bytes = var_to_bytes(career.state)
+	history_bytes = var_to_bytes(career.history)
+	dispatch = career.situation_briefing()
+	check(career.encode() == preserved and var_to_bytes(career.state) == state_bytes and var_to_bytes(career.history) == history_bytes, "first-quarter impairment dispatch preserves every career/state/history byte")
+	check(dispatch.contains("New credit impairment") and not dispatch.contains("Funding aftermath"), "first-quarter new impairment impulse is distinct from prior settled impairment")
+	choice = career.model.benchmark_policy(career.state, career.params, "hold")
+	preview = career.forecast(choice)
+	check(preview.ok and preview.states[0].solvency_risk_wedge_pct == 0.7 and preview.states[0].capital_other_pct_initial_gdp == career.state.capital_other_pct_initial_gdp, "impairment impulse is a pp spread proxy, not a booked dollar capital loss")
+	check(career.encode() == preserved and var_to_bytes(career.state) == state_bytes and var_to_bytes(career.history) == history_bytes, "first-quarter impairment preview preserves every career/state/history byte")
+	check(career.advance(choice).ok, "new impairment settles only through adoption")
+	career.shocks[1] = {}
+	preserved = career.encode()
+	state_bytes = var_to_bytes(career.state)
+	history_bytes = var_to_bytes(career.history)
+	dispatch = career.situation_briefing()
+	check(dispatch.contains("credit impairment remains") and not dispatch.contains("New credit impairment"), "settled impairment remains distinct after its new impulse ends")
+	check(career.encode() == preserved and var_to_bytes(career.state) == state_bytes and var_to_bytes(career.history) == history_bytes, "settled impairment dispatch preserves every career/state/history byte")
+	check(career.start("base", 17).ok, "zero-maturity boundary uses an ordinary fresh career")
+	career.shocks[0] = {"refinancing_need_pct_initial_gdp": 6.0, "eligible_collateral_pct_initial_gdp": 2.0, "liquidity_eligibility_pct": 100.0}
+	preserved = career.encode()
+	state_bytes = var_to_bytes(career.state)
+	history_bytes = var_to_bytes(career.history)
+	dispatch = career.situation_briefing()
+	check(not dispatch.contains("Refinancing pressure"), "raw refinancing request without maturing principal is not current refinancing pressure")
+	check(career.encode() == preserved and var_to_bytes(career.state) == state_bytes and var_to_bytes(career.history) == history_bytes, "zero-maturity readout preserves every career/state/history byte")
 
 func check_recurring_crises() -> void:
 	var career := Career.new()

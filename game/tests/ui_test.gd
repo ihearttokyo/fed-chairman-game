@@ -241,6 +241,60 @@ func check_situation_ui(game: Control) -> void:
 	check(not episode.is_empty() and game.briefing.text.contains("EXOGENOUS / %s · %s" % [episode.get("title", "missing"), episode.get("policy_dilemma", "missing")]), "actual cockpit refresh names the known event and concise policy dilemma")
 	check(not game.briefing.text.contains("shock_profile") and not game.briefing.text.contains("duration_quarters"), "event readout omits hidden future metadata")
 	game._start_career("supply_shock", 1)
+
+func check_current_signals_ui(game: Control) -> void:
+	check(game.briefing.mouse_filter == Control.MOUSE_FILTER_PASS and not game.briefing.tooltip_text.is_empty(), "current signal explanation accepts immediate tooltip hover")
+	game._start_career("base", 17)
+	game.career.shocks[0] = {}
+	game._refresh()
+	check(not game.briefing.text.contains("Requested refinancing") and not game.briefing.text.contains("Current impairment impulse"), "quiet current dispatch omits zero-only funding and impairment rows")
+	game._start_career("base", 17)
+	game.career.shocks[0] = {"funding_need_pct_initial_gdp": 2.0, "eligible_collateral_pct_initial_gdp": 4.0, "liquidity_eligibility_pct": 100.0}
+	var choice: Dictionary = game.career.model.benchmark_policy(game.career.state, game.career.params, "hold")
+	choice.liquidity_request_pct_initial_gdp = 2.0
+	check(game.career.advance(choice).ok and game.career.state.outstanding_liquidity_pct_initial_gdp == 2.0, "current UI fixture creates actual maturing principal")
+	game.career.shocks[1] = {"refinancing_need_pct_initial_gdp": 6.0, "eligible_collateral_pct_initial_gdp": 2.0, "collateral_haircut_pct": 50.0, "liquidity_eligibility_pct": 50.0, "solvency_risk_innovation_pct": 0.7}
+	var n: float = game.career.model.nominal_gdp_ratio(game.career.state)
+	check(n != 1.0, "current signal fixture distinguishes current GDP from initial GDP")
+	var preserved: PackedByteArray = game.career.encode()
+	var state_bytes := var_to_bytes(game.career.state)
+	var history_bytes := var_to_bytes(game.career.history)
+	game._refresh(true)
+	check(game.career.encode() == preserved and var_to_bytes(game.career.state) == state_bytes and var_to_bytes(game.career.history) == history_bytes, "current dispatch refresh preserves every career/state/history byte")
+	for reading in ["Funding need 0.00", "Requested refinancing %.2f" % (6.0 / n), "Maturing principal %.2f" % (2.0 / n), "Refinancing need %.2f" % (2.0 / n), "Lending value %.2f" % (0.5 / n), "Collateral haircut 50.00%", "Eligibility 50.00%", "Current impairment impulse +0.70 pp", "Prior impairment 0.00 pp"]:
+		check(game.briefing.text.contains(reading), "current dispatch discloses " + reading)
+	check(game.briefing.text.contains("% current GDP") and game.briefing.text.to_lower().contains("spread proxy"), "funding flows use current GDP while impairment is a pp spread proxy")
+	game.liquidity.value = 5.0
+	game._preview()
+	check(game.career.encode() == preserved and var_to_bytes(game.career.state) == state_bytes and var_to_bytes(game.career.history) == history_bytes, "current-signal UI preview preserves every career/state/history byte")
+	var report: String = game._decision_briefing()
+	check(report.contains("Loan principal repaid %.2f; refinancing %.2f; new local lending 0.00" % [2.0 / n, 0.5 / n]), "comparison shows principal repaid and haircut/eligibility-constrained refinancing, not the raw request")
+	check(game.career.encode() == preserved and var_to_bytes(game.career.state) == state_bytes and var_to_bytes(game.career.history) == history_bytes, "current-signal comparison preserves every career/state/history byte")
+	var dispatch: String = game.briefing.text
+	var preview: String = game.forecast_label.text
+	game.career.shocks[200] = {"funding_need_pct_initial_gdp": 9.0, "refinancing_need_pct_initial_gdp": 9.0, "solvency_risk_innovation_pct": 5.0, "collateral_haircut_pct": 99.0, "liquidity_eligibility_pct": 0.0}
+	preserved = game.career.encode()
+	game._refresh()
+	check(game.briefing.text == dispatch and game.forecast_label.text == preview and game.career.encode() == preserved and var_to_bytes(game.career.state) == state_bytes and var_to_bytes(game.career.history) == history_bytes, "future funding/refinancing/impairment edits cannot change or be mutated by dispatch, preview or current state")
+	check(game._decision_briefing() == report and game.career.encode() == preserved and var_to_bytes(game.career.state) == state_bytes and var_to_bytes(game.career.history) == history_bytes, "comparison cannot inspect future current-risk inputs or mutate their bytes")
+	game._start_career("base", 17)
+	game.career.shocks[0] = {"solvency_risk_innovation_pct": 1.25}
+	preserved = game.career.encode()
+	state_bytes = var_to_bytes(game.career.state)
+	history_bytes = var_to_bytes(game.career.history)
+	game._refresh()
+	check(game.briefing.text.contains("Current impairment impulse +1.25 pp") and game.briefing.text.contains("Prior impairment 0.00 pp") and not game.briefing.text.contains("Funding aftermath"), "first-quarter impairment is disclosed before any settled impairment exists")
+	check(game.career.encode() == preserved and var_to_bytes(game.career.state) == state_bytes and var_to_bytes(game.career.history) == history_bytes, "first-quarter impairment readout preserves every career/state/history byte")
+	check(game.career.advance(game.career.model.benchmark_policy(game.career.state, game.career.params, "hold")).ok, "UI impairment fixture settles through real adoption")
+	game.career.shocks[1] = {}
+	preserved = game.career.encode()
+	state_bytes = var_to_bytes(game.career.state)
+	history_bytes = var_to_bytes(game.career.history)
+	game._refresh()
+	check(game.briefing.text.contains("Current impairment impulse +0.00 pp") and game.briefing.text.contains("Prior impairment 1.25 pp") and game.briefing.text.contains("credit impairment remains"), "settled spread proxy is not mislabeled as a new impairment impulse")
+	check(game.career.encode() == preserved and var_to_bytes(game.career.state) == state_bytes and var_to_bytes(game.career.history) == history_bytes, "settled impairment readout preserves every career/state/history byte")
+	game._start_career("supply_shock", 1)
+
 func check_unrestricted_rate_controls(game: Control) -> void:
 	var preserved: PackedByteArray = game.career.encode()
 	var original: Dictionary = game._policy()
@@ -724,6 +778,13 @@ func run() -> void:
 	var game = load("res://main.tscn").instantiate()
 	root.add_child(game)
 	await process_frame
+	if OS.get_cmdline_user_args().has("--current-signals-only"):
+		check_current_signals_ui(game)
+		if failures == 0:
+			print("PASS: current-only refinancing/impairment UI, units, constraints and read-only previews")
+		game.free()
+		quit(1 if failures else 0)
+		return
 	check_initial_window_size(game, window_size_before, window_position_before)
 	if OS.get_cmdline_user_args().has("--window-size-only"):
 		print("STARTUP_WINDOW: " + JSON.stringify({"pid": OS.get_process_id(), "display": DisplayServer.get_name(), "arguments": OS.get_cmdline_args(), "size_before": str(window_size_before), "size_after": str(root.size), "position_before": str(window_position_before), "position_after": str(root.position)}))
@@ -786,6 +847,7 @@ func run() -> void:
 		quit(1 if failures else 0)
 		return
 	check_situation_ui(game)
+	check_current_signals_ui(game)
 	if OS.get_cmdline_user_args().has("--situation-only"):
 		if failures == 0:
 			print("PASS: situation briefing in shared cockpit")

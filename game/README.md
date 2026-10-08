@@ -18,8 +18,10 @@ scripts/test-model.sh
 scripts/test-model.sh --boundaries-only
 scripts/test-model.sh --impulse-only
 scripts/test-model.sh --price-only
-godot --headless --path game --script res://tests/export_reference.gd -- \
-  --output /tmp/policy-reference.json --scenario supply_shock \
+reference=$(mktemp -d /tmp/fed-reference.XXXXXX)
+godot --headless --log-file "$reference/engine.log" --path game \
+  --script res://tests/export_reference.gd -- \
+  --output "$reference/reference.json" --scenario supply_shock \
   --quarters 48 --seed 1 --policy feedback
 ```
 
@@ -71,8 +73,13 @@ current meeting GDP; exogenous nominal shocks retain initial-GDP units so
 policy edits cannot change the shared shock path. Original portfolio JSON bytes
 and their hash bind every native export; the decoded snapshot alone is not an
 exact decimal serialization of that source. These are hypothetical design assumptions,
-not historically calibrated forecasts. Generating a file does not prove native
-spreadsheet usability or human playability.
+not historically calibrated forecasts. Six additional full-state checkpoint fixtures
+resume Q120–Q168, Q168–Q216 and Q216–Q240 for hold and responsive policies.
+They preserve original GDP bases, price history, guidance and portfolio cohorts.
+Each segment is saved before restoring the original calculation chain, then
+checked against its own native reference. This is late-segment parity, not a
+full 240-quarter workbook. Generating files does not prove native spreadsheet
+usability or human playability.
 
 For a separately recalculated disposable copy, run the same saved-file checker:
 
@@ -109,13 +116,29 @@ owns principal, maturity, reserve and sterilization equations.
 
 Startup and New career default to Weakly anchored inflation: 4.5% inflation,
 0.25 credibility and a rate below the expectations-adjusted neutral stance.
+After initial stabilization, the same career adds three extended fictional
+windows: demand with eligible funding, supply pressure with credit impairment,
+and contraction with supply/funding pressure. These authored inputs are not
+unchanged catalogue profiles or historically calibrated crisis incidence.
 The baseline and one-off supply shock remain selectable practice laboratories.
-Advancing without editing holds the prior rate; it does not apply the staff
-rule. The challenge regression compares 32 disclosed seeds through 96 quarters
-using identical shocks, cumulative inflation and employment misses, recovery
-bands and exact replay. This qualifies a policy-sensitive opening, not human
-enjoyment or sustained late-career difficulty. Equations and seeded paths are
-unchanged by this default selection.
+Advancing without editing holds the prior rate; it does not apply the staff rule.
+
+The opening regression retains 32 disclosed seeds through 96 quarters. A separate
+late regression first recovers through Q120, then branches the exact same state
+into passive and responsive policies. It measures inflation and employment costs,
+misses in separate response windows, actual Q240 conditions and exact replay.
+Its 96-quarter empty-shock tail is a model diagnostic beyond playable retirement,
+not extra game turns. In the prospective 96-seed heldout experiment, passive play
+missed the recovery bands at every career endpoint; responsive policy ended inside
+those bands and reduced median combined diagnostic costs by 22.6%. No responsive
+path was inside for all final eight playable quarters. These results establish a
+policy-sensitive challenge, not optimal policy, human enjoyment or an empirical
+welfare estimate. Equations, coefficients and initial conditions are unchanged.
+
+This edition uses `user://career-late-compound-v1.save`. The earlier
+`career-v1.save` slot remains untouched; Save and Load do not copy, migrate or
+fall back to it. Payload version and scenario IDs remain unchanged. Scenario
+inputs are fingerprinted, so earlier files require their matching prior app/model.
 
 The equilibrium baseline starts at equilibrium and has no scheduled scenario
 events. Every seeded career nevertheless receives quarterly background demand,

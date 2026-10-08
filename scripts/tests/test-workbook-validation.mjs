@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
+import { createHash } from 'node:crypto';
 
 const source = await fs.readFile(new URL('../spreadsheet/build-policy-lab.mjs', import.meta.url), 'utf8');
 const start = source.indexOf('const cell = '), end = source.indexOf('const human = ', start);
@@ -77,3 +78,211 @@ vm.runInNewContext(source.slice(formatStart, formatEnd), {
 for (const row of Object.values(R)) assert.equal(formats.get(row), 'General', 'Logical calculation results must not inherit numeric formatting');
 assert.equal(formats.get(123), '0.000', 'Numeric calculation rows retain their precision');
 console.log('PASS: actual final formatting preserves all five logical rows and numeric precision (simulated ranges)');
+
+if (process.argv.length > 2) {
+  assert.equal(process.argv[2], '--checkpoint-reference');
+  assert.equal(process.argv.length, 4, 'Usage: --checkpoint-reference /absolute/late-checkpoints.json');
+  const fixtures = JSON.parse(await fs.readFile(process.argv[3], 'utf8'));
+  assert.equal(fixtures.length, 6, 'Two continuous branches, each with three checkpoint segments');
+  const flattenStart = source.indexOf('const arrayShapes = '), flattenEnd = source.indexOf('const nominalKeys = ', flattenStart);
+  const { arrayShapes, flattenState } = vm.runInNewContext(`${source.slice(flattenStart, flattenEnd)}\n({arrayShapes, flattenState})`, { assert });
+  const mapStart = source.indexOf('const R = {'), mapEnd = source.indexOf('const sourceStart = ', mapStart);
+  const native = fixtures[0].initial_state;
+  const { R: rows } = vm.runInNewContext(`${source.slice(mapStart, mapEnd)}\n({R})`, { flattenState, source: { initial_state: native } });
+  const originalBases = ['initial_annual_gdp_index', 'initial_actual_output_index', 'initial_price_index',
+    'initial_asset_stock_pct_initial_gdp', 'initial_duration_equivalent_pct_initial_gdp', 'initial_portfolio_premium_pct', 'initial_mbs_financing_rate_pct'];
+  for (const [i, fixture] of fixtures.entries()) {
+    assert.equal(fixture.schema, 'fed-economic-reference-v1', 'Use the existing strict saved-file reference contract');
+    assert.equal(fixture.scenario.id, 'unanchored_inflation');
+    assert.equal(fixture.seed, 1);
+    assert.equal(fixture.warmup_policy_kind, 'feedback');
+    assert.equal(fixture.policy_kind, i < 3 ? 'hold' : 'responsive');
+    assert.equal(fixture.start_quarter, [120, 168, 216][i % 3]);
+    assert.equal(fixture.end_quarter, [168, 216, 240][i % 3]);
+    assert.equal(fixture.initial_state.quarter_index, fixture.start_quarter);
+    assert.equal(fixture.quarters.length + 1, [49, 49, 25][i % 3]);
+    assert.equal(fixture.shock_path.length, fixture.quarters.length);
+    if (i % 3) assert.deepEqual(fixture.initial_state, fixtures[i - 1].quarters.at(-1).state, 'Segment boundary is the exact prior state');
+    else assert.deepEqual(fixture.initial_state, native, 'Both branches share the complete Q120 checkpoint');
+    for (const [name, hash] of Object.entries(fixture.source_sha256)) {
+      const bytes = await fs.readFile(new URL(`../../game/${name}`, import.meta.url));
+      assert.equal(createHash('sha256').update(bytes).digest('hex'), hash, `Native source binding: ${name}`);
+    }
+    assert.equal(createHash('sha256').update(fixture.portfolio_reference_json).digest('hex'), fixture.portfolio_reference_sha256);
+    let prior = fixture.initial_state;
+    for (const [q, row] of fixture.quarters.entries()) {
+      assert.equal(row.quarter_index, fixture.start_quarter + q + 1);
+      assert.equal(row.state.quarter_index, row.quarter_index);
+      assert.deepEqual(row.shock, fixture.shock_path[q], 'Record the actual shared realized shock');
+      assert.equal(row.policy.asset_flow_request_pct_initial_gdp, 0);
+      for (const key of ['reinvest_principal', 'maintain_ample_reserves', 'sterilize_purchases']) assert.equal(Object.hasOwn(row.policy, key), false, 'No portfolio switches beyond existing native defaults');
+      const offered = fixture.policy_kind === 'hold' ? 0 : (row.shock.funding_need_pct_initial_gdp ?? 0)
+        + Math.min(row.shock.refinancing_need_pct_initial_gdp ?? 0, prior.outstanding_liquidity_pct_initial_gdp);
+      assert.equal(row.policy.liquidity_request_pct_initial_gdp, offered, 'Lending uses only current shock and prior loan principal');
+      if (fixture.policy_kind === 'hold') assert.equal(row.policy.policy_rate_request_pct, prior.policy_rate_pct, 'Hold retains the prior nominal quote');
+      for (const key of originalBases) assert.equal(row.state[key], native[key], `Never rebase ${key}`);
+      prior = row.state;
+    }
+    for (const state of [fixture.initial_state, ...fixture.quarters.map(row => row.state)]) {
+      for (const [key, size] of Object.entries(arrayShapes)) assert.equal(state[key]?.length, size, `Full-state array required: ${key}`);
+      const fields = flattenState(state);
+      assert.deepEqual(Object.keys(fields).sort(), Object.keys(flattenState(native)).sort(), 'Retain every full-state field and cohort');
+      for (const [key, value] of Object.entries(fields)) {
+        assert.ok(rows[key], `Full-state parity unmapped native field: ${key}`);
+        assert.equal(typeof value, key === 'guidance_active' ? 'boolean' : 'number', `Native finite type: ${key}`);
+        if (typeof value === 'number') assert.ok(Number.isFinite(value), `Native finite value: ${key}`);
+      }
+    }
+  }
+  console.log('PASS: source-bound native segments, complete finite states, exact boundaries and current-input/prior-state lending');
+
+  // Run the actual cold-column emitter, not an invented checkpoint or formula evaluator.
+  const records = new Map();
+  const economy = { name: 'Economy', getRange(ref) {
+    const match = /^(D\d+)(?::\1)?$/.exec(ref);
+    assert.ok(match, `Unexpected checkpoint range ${ref}`);
+    if (!records.has(match[1])) records.set(match[1], { value: null, formula: '' });
+    const record = records.get(match[1]);
+    return {
+      get values() { return [[record.value]]; },
+      get formulas() { return [[record.formula]]; },
+      set values(matrix) { record.value = matrix[0][0]; record.formula = ''; },
+      set formulas(matrix) { record.formula = matrix[0][0]; },
+    };
+  } };
+  const initialStart = source.indexOf('const initialParameter = '), initialEnd = source.indexOf('const initialRows = ', initialStart);
+  const { initialParameter } = vm.runInNewContext(`${source.slice(initialStart, initialEnd)}\n({initialParameter})`);
+  const coldStart = source.indexOf('for (let q = 0; q <= 48;'), coldEnd = source.indexOf('    continue;', coldStart);
+  assert.ok(coldStart >= 0 && coldEnd > coldStart, 'Locate the actual cold first-column initialization');
+  vm.runInNewContext(`${source.slice(coldStart, coldEnd)}\n    break;\n  }\n}`, {
+    column: columnName, f: (col, key) => `${col}${rows[key]}`, cell: (target, ref, value, formula) => {
+      target.getRange(ref)[formula ? 'formulas' : 'values'] = [[value]];
+    }, economy, source: { initial_state: native }, flattenState, initialParameter,
+    initialFields: Object.keys(initialParameter), initial: key => `'Assumptions'!${key}`,
+    p: key => `'Assumptions'!${key}`, sourceStart: 1000,
+    arrayField: (key, i) => key === 'price_history' ? `price_h${i}` : `${key}_${i}`,
+    treasuryKey: 'treasury_cohorts_pct_initial_gdp', tagKey: 'sterilized_treasury_cohorts_pct_initial_gdp', billKey: 'bill_cohorts_pct_initial_gdp',
+    cohortSum: () => 'SUM(D100:D219)', writeRateConditions: () => {},
+  });
+  const { checkpointEdits } = vm.runInNewContext(`${source.slice(start, end)}\n({checkpointEdits: typeof checkpointEdits === 'function' ? checkpointEdits : null})`, { assert, flattenState, source: { initial_state: native } });
+  const verifyStart = source.indexOf('const verifyTrace = '), verifyEnd = source.indexOf('for (let caseIndex = ', verifyStart);
+  const verifyTrace = vm.runInNewContext(`${source.slice(verifyStart, verifyEnd)}\nverifyTrace`, { assert, economy, R: rows, column: columnName, flattenState });
+  if (!checkpointEdits) {
+    console.log('RED evidence (static emitter/simulated cells; formulas are not calculated):', JSON.stringify({
+      quarter: { actual: records.get(`D${rows.quarter_index}`).value, expected: native.quarter_index },
+      history: { actual_formula: records.get(`D${rows.price_h0}`).formula, expected_levels: native.price_history },
+      bases: { actual_output_formula: records.get(`D${rows.initial_actual_output_index}`).formula,
+        actual_price_formula: records.get(`D${rows.initial_price_index}`).formula,
+        original_output: native.initial_actual_output_index, current_output: native.actual_output_index,
+        original_price: native.initial_price_index, current_price: native.price_index },
+      cohort: { actual_formula: records.get(`D${rows.treasury_cohorts_pct_initial_gdp_0}`).formula,
+        expected: native.treasury_cohorts_pct_initial_gdp[0] },
+    }));
+    assert.equal(records.get(`D${rows.quarter_index}`).value, native.quarter_index,
+      'Full-state initialization must preserve the absolute native checkpoint quarter, not cold Q0');
+  }
+  const { applyFixture: applyCheckpoint, writeInputs: restoreCheckpoint } = vm.runInNewContext(`${source.slice(start, end)}\n({applyFixture, writeInputs})`, { assert });
+  const lendingCheckpoint = fixtures.flatMap(fixture => fixture.quarters).find(row => row.state.outstanding_liquidity_pct_initial_gdp > 0)?.state;
+  assert.ok(lendingCheckpoint, 'Current late references must exercise a real positive-loan checkpoint');
+  for (const state of [...fixtures.map(fixture => fixture.initial_state), lendingCheckpoint]) {
+    const edits = checkpointEdits(economy, rows, state);
+    assert.equal(edits.length, Object.keys(flattenState(state)).length, 'Initialize every scalar, all five prices and every principal/tag/bill cohort');
+    const before = new Map([...records].map(([ref, record]) => [ref, { ...record }]));
+    const saved = applyCheckpoint(edits);
+    assert.equal(verifyTrace(`native Q${state.quarter_index} checkpoint`, [state]), 0, 'Full checkpoint equality, including loans, original bases and prior guidance');
+    restoreCheckpoint(saved.map(([target, ref, value, formula]) => [target, ref, formula || value, Boolean(formula)]));
+    for (const [ref, original] of before) {
+      const actual = records.get(ref);
+      assert.equal(actual.formula || actual.value, original.formula || original.value, `Restore every overwritten original formula/value exactly: ${ref}`);
+    }
+  }
+  const beforeInvalid = JSON.stringify([...records]);
+  for (const key of ['quarter_index', 'price_history', 'initial_actual_output_index', 'initial_price_index',
+    'guidance_active', 'guidance_reference_inflation_pct', 'outstanding_liquidity_pct_initial_gdp',
+    'treasury_cohorts_pct_initial_gdp', 'sterilized_treasury_cohorts_pct_initial_gdp', 'bill_cohorts_pct_initial_gdp']) {
+    const incomplete = { ...native }; delete incomplete[key];
+    assert.throws(() => checkpointEdits(economy, rows, incomplete), /Full-state checkpoint fields/, `Reject missing ${key}`);
+  }
+  assert.throws(() => checkpointEdits(economy, rows, { ...native, price_history: native.price_history.slice(1) }), /Native array schema/);
+  assert.throws(() => checkpointEdits(economy, rows, { ...native, price_index: Infinity }), /Invalid checkpoint type/);
+  assert.throws(() => checkpointEdits(economy, rows, { ...native, guidance_active: 1 }), /Invalid checkpoint type/);
+  assert.throws(() => checkpointEdits(economy, { ...rows, initial_price_index: undefined }, native), /Unmapped checkpoint field/);
+  assert.equal(JSON.stringify([...records]), beforeInvalid, 'Malformed checkpoint inputs never mutate cells');
+
+  const quarterEnd = source.indexOf('  if (q === 0) {', coldStart), quarters = [];
+  vm.runInNewContext(`${source.slice(coldStart, quarterEnd)}\n}`, {
+    column: columnName, f: (col, key) => `${col}${rows[key]}`, economy,
+    cell: (_, ref, value, formula) => quarters.push({ ref, value, formula }),
+  });
+  assert.equal(quarters.length, 49);
+  assert.equal(quarters[0].value, 0, 'Cold initialization remains Q0');
+  for (let q = 1; q <= 48; q++) {
+    assert.equal(quarters[q].value, `=${columnName(q + 3)}${rows.quarter_index}+1`, 'Every transition advances its actual prior quarter');
+    assert.equal(quarters[q].formula, true, 'Quarter continuity is calculated, not a relative literal');
+  }
+  const historyStart = source.indexOf('  for (let age = 0; age < 4;', coldEnd), historyEnd = source.indexOf("  put('annualized_quarterly_inflation_pct'", historyStart);
+  for (let q = 1; q <= 4; q++) {
+    const emitted = new Map();
+    vm.runInNewContext(source.slice(historyStart, historyEnd), {
+      prev: key => `${columnName(q + 3)}${rows[key]}`, s: key => `${columnName(q + 4)}${rows[key]}`,
+      put: (key, formula) => emitted.set(key, formula),
+    });
+    for (let age = 0; age < 4; age++) assert.equal(emitted.get(`price_h${age}`), `${columnName(q + 3)}${rows[`price_h${age + 1}`]}`, 'Shift actual retained prices, never synthesize prehistory');
+    assert.equal(emitted.get('four_quarter_inflation_pct'), `100*(${columnName(q + 4)}${rows.price_h4}/${columnName(q + 4)}${rows.price_h0}-1)`);
+    for (const fixture of fixtures) {
+      const state = fixture.quarters[q - 1].state;
+      assert.equal(state.price_history[0], fixture.initial_state.price_history[q], 'The first four denominators come from the checkpoint');
+      assert.ok(Math.abs(100 * (state.price_index / fixture.initial_state.price_history[q] - 1) - state.four_quarter_inflation_pct) < 1e-7);
+    }
+  }
+
+  const nominalStart = source.indexOf('const nominalKeys = '), nominalEnd = source.indexOf('const out = ', nominalStart);
+  const { nominalKeys, nominalRatio, shockDefault } = vm.runInNewContext(`${source.slice(nominalStart, nominalEnd)}\n({nominalKeys, nominalRatio, shockDefault})`, { assert });
+  const idsStart = source.indexOf('const ids = '), idsEnd = source.indexOf('const cases = ', idsStart);
+  const { ids } = vm.runInNewContext(`${source.slice(idsStart, idsEnd)}\n({ids})`);
+  const shockStart = source.indexOf('const shockKeys = '), shockEnd = source.indexOf('const shockRows = ', shockStart);
+  const { shockKeys } = vm.runInNewContext(`${source.slice(shockStart, shockEnd)}\n({shockKeys})`);
+  const policyStart = source.indexOf('const policyRows = '), policyEnd = source.indexOf('const balanceBoundaries = ', policyStart);
+  const { policyRows } = vm.runInNewContext(`${source.slice(policyStart, policyEnd)}\n({policyRows})`);
+  const plotStart = source.indexOf('const plotKeys = '), plotEnd = source.indexOf('lab.getRange(', plotStart);
+  const { plotKeys } = vm.runInNewContext(`${source.slice(plotStart, plotEnd)}\n({plotKeys})`);
+  const fixtureStart = source.indexOf('const checkpointFixtureEdits = '), fixtureEnd = source.indexOf('const lateCheckpoints = ', fixtureStart);
+  const lab = { name: 'Policy Lab' }, policy = { name: 'Policy' }, shocks = { name: 'Shocks' };
+  const shockRows = new Map(shockKeys.map((key, i) => [key, 6 + i * (ids.length + 2)]));
+  const { checkpointFixtureEdits } = vm.runInNewContext(`${source.slice(fixtureStart, fixtureEnd)}\n({checkpointFixtureEdits})`, {
+    assert, ids, checkpointEdits, economy, R: rows, lab, policy, shocks, column: columnName,
+    shockKeys, shockRows, policyRows, nominalKeys, nominalRatio, shockDefault, plotKeys,
+  });
+  for (const fixture of fixtures) {
+    const edits = checkpointFixtureEdits(fixture), inputs = new Map(edits.map(([sheet, ref, value]) => [`${sheet.name}!${ref}`, value]));
+    assert.equal(inputs.size, edits.length, 'Each checkpoint fixture captures/writes every target exactly once');
+    assert.equal(inputs.get('Policy Lab!C5'), fixture.quarters.length, 'Summary stops at the segment horizon');
+    assert.equal(inputs.get('Policy Lab!B5'), 'Quarter offset from checkpoint', 'Selector offset is not mislabeled as an absolute quarter');
+    assert.match(inputs.get('Policy Lab!B8'), /Not full 240-quarter parity/);
+    for (let q = 0; q < 48; q++) {
+      const row = fixture.quarters[q], col = columnName(q + 5), caseIndex = ids.indexOf(fixture.scenario.id);
+      for (const key of shockKeys) assert.equal(inputs.get(`Shocks!${col}${shockRows.get(key) + caseIndex + 1}`), row?.shock[key] ?? shockDefault(key), 'Actual initial-GDP shocks or cleared suffix defaults');
+      for (const [key, policyRow] of Object.entries(policyRows)) {
+        const actual = inputs.get(`Policy!${col}${policyRow}`);
+        if (row && Object.hasOwn(row.policy, key)) {
+          const expected = row.policy[key];
+          assert.ok(Math.abs((nominalKeys.has(key) ? actual * nominalRatio(q ? fixture.quarters[q - 1].state : fixture.initial_state) : actual) - expected) < 1e-7, 'Offers use prior meeting GDP, not rebased or current ending GDP');
+        } else assert.equal(actual, ['reinvest_principal', 'maintain_ample_reserves'].includes(key) ? true : key === 'sterilize_purchases' ? false : ['asset_flow_request_pct_initial_gdp', 'liquidity_request_pct_initial_gdp'].includes(key) ? 0 : null, 'Unused controls are cleared to existing native defaults');
+      }
+      assert.equal(inputs.get(`Policy!${col}4`), row ? `Q${fixture.start_quarter + q + 1}` : null);
+    }
+    for (let q = fixture.quarters.length + 1; q <= 48; q++) {
+      assert.equal(inputs.get(`Policy Lab!B${q + 58}`), null, 'No unvalidated suffix chart labels');
+      for (let i = 0; i < plotKeys.length; i++) assert.equal(inputs.get(`Policy Lab!${columnName(i + 3)}${q + 58}`), null, 'No unvalidated suffix chart results');
+    }
+  }
+  assert.throws(() => checkpointFixtureEdits({ ...fixtures[0], end_quarter: 169 }), /Checkpoint segment horizon/);
+  assert.throws(() => checkpointFixtureEdits({ ...fixtures[0], scenario: { id: 'missing' } }), /Checkpoint segment horizon/);
+  const saveLoopStart = source.indexOf('for (const [i, fixture] of lateCheckpoints.entries())'), saveLoopEnd = source.indexOf("console.log('PASS: four policy edits", saveLoopStart);
+  const saveLoop = source.slice(saveLoopStart, saveLoopEnd);
+  assert.ok(saveLoop.indexOf('await snapshot.save(') < saveLoop.indexOf('writeInputs(saved.map'), 'Persist each disposable fixture before restoration');
+  assert.ok(saveLoop.includes('writeInputs(saved.map(([sheet, ref, value, formula]) => [sheet, ref, formula || value, Boolean(formula)]))'), 'The actual fixture loop restores formulas rather than their stale cached values');
+  assert.ok(saveLoop.indexOf('writeInputs(saved.map') < saveLoop.indexOf('restored ${fixture.name}'), 'Verify cold parity again only after restoration');
+  console.log('PASS: full-state checkpoint input contract and exact first-column restoration (simulated cells; not segment formula parity)');
+  console.log('PASS: rejected missing/type/map mutations, absolute-quarter/retained-price writers, sourced fixture inputs and cleared short suffix (VM/static evidence)');
+}

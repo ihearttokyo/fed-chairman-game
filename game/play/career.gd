@@ -77,10 +77,15 @@ func situation_briefing() -> String:
 	var public := "Hardship memory is building." if state.public_hardship_memory > previous.public_hardship_memory else "Hardship memory is easing." if state.public_hardship_memory < previous.public_hardship_memory else "Hardship memory is steady."
 	public += " Support %.1f/100; remembered burden %.2f points." % [state.public_support, state.public_hardship_memory]
 	var current: Dictionary = current_briefing()
+	var refinancing_need := minf(current.get("refinancing_need_pct_initial_gdp", 0.0), state.outstanding_liquidity_pct_initial_gdp)
 	var funding := "No major new funding pressure."
 	if current.get("funding_need_pct_initial_gdp", 0.0) > 0.1:
 		var recurring: bool = not decisions.is_empty() and shocks[decisions.size() - 1].get("funding_need_pct_initial_gdp", 0.0) > 0.1
 		funding = "Funding pressure continues." if recurring else "New funding pressure."
+	elif refinancing_need > 0.1:
+		funding = "Refinancing pressure: prior short loans mature at this settlement."
+	elif current.get("solvency_risk_innovation_pct", 0.0) > 0.0:
+		funding = "New credit impairment: spread pressure; lending cannot create bank capital."
 	elif state.solvency_risk_wedge_pct > 0.1:
 		funding = "Funding aftermath: credit impairment remains; lending cannot repair capital."
 	elif state.outstanding_liquidity_pct_initial_gdp > 0.1:

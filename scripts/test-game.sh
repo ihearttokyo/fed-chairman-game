@@ -1,15 +1,37 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-for test in challenge_test compound_policy_test sustained_toolkit_test balance_sheet_test balance_career_test balance_ui_test recovery_test rate_transmission_test shock_catalogue_test career_test chart_test keyboard_test compact_ui_test ui_test; do
-  log="$(mktemp -t fed-game-test.XXXXXX)"
-  godot --headless --path game --script "res://tests/$test.gd" --quit-after 600 2>&1 | tee "$log"
+tests=(challenge_test late_challenge_test compound_policy_test sustained_toolkit_test balance_sheet_test balance_career_test balance_ui_test recovery_test rate_transmission_test shock_catalogue_test campaign_save_slot_test career_test chart_test keyboard_test compact_ui_test ui_test comparison_performance_test)
+if (( $# )); then
+  case " ${tests[*]} " in
+    *" $1 "*) tests=("$1"); shift ;;
+    *) echo "Unknown game test: $1" >&2; exit 2 ;;
+  esac
+  if [[ "${1:-}" == -- ]]; then shift; fi
+fi
+home="$(mktemp -d /tmp/fed-game-home.XXXXXX)"
+export HOME="$(cd "$home" && pwd -P)"
+export FED_GAME_TEST_HOME="$HOME"
+export XDG_DATA_HOME="$HOME/.local/share" XDG_CONFIG_HOME="$HOME/.config" XDG_CACHE_HOME="$HOME/.cache"
+export TMPDIR="$HOME/tmp"
+mkdir -p "$TMPDIR" "$XDG_CACHE_HOME"
+echo "TEST_HOME: $HOME (retained with logs for diagnosis)"
+godot=(godot)
+if [[ "$(uname -s)" == Darwin ]]; then
+	mkdir -p "$HOME/Library/Caches"
+  godot=(/usr/bin/arch -arm64 /Applications/Godot.app/Contents/MacOS/Godot)
+fi
+"${godot[@]}" --headless --path game --log-file "$HOME/storage-engine.log" --script res://tests/campaign_save_slot_test.gd -- --storage-only 2>&1 | tee "$HOME/storage.log"
+if grep -Eq 'SCRIPT ERROR:|ERROR:|FAIL:' "$HOME/storage.log"; then exit 1; fi
+grep -q '^PASS: isolated Godot user storage verified before fixture writes' "$HOME/storage.log"
+for test in "${tests[@]}"; do
+  frames=600
+  if [[ "$test" == comparison_performance_test ]]; then frames=6000; fi
+  log="$HOME/$test.log"
+  "${godot[@]}" --headless --path game --log-file "$HOME/$test-engine.log" --script "res://tests/$test.gd" --quit-after "$frames" -- "$@" 2>&1 | tee "$log"
   if grep -Eq 'SCRIPT ERROR:|ERROR:|FAIL:' "$log"; then exit 1; fi
-  grep -q 'PASS:' "$log"
+  grep -q '^PASS:' "$log"
+  if [[ "$test" == comparison_performance_test ]]; then
+    grep -q '^PASS: comparison count, exact parity and paired timing fixture' "$log"
+  fi
 done
-
-# Differential comparison metrics need more disposal frames than the small suites.
-log="$(mktemp -t fed-comparison-test.XXXXXX)"
-godot --headless --path game --script res://tests/comparison_performance_test.gd --quit-after 6000 2>&1 | tee "$log"
-if grep -Eq 'SCRIPT ERROR:|ERROR:|FAIL:' "$log"; then exit 1; fi
-grep -q '^PASS: comparison count, exact parity and paired timing fixture' "$log"

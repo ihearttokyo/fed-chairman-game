@@ -28,6 +28,8 @@ def new_output(value):
 
 
 def run_tool(command, log_path, completion):
+    if '--headless' in command:
+        command = [command[0], '--log-file', str(log_path.with_suffix('.engine.log')), *command[1:]]
     with log_path.open('x') as log:
         result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT,
                                 text=True, timeout=900)
@@ -110,6 +112,24 @@ def main():
               '--script', 'res://tests/export_policy_variants.gd', '--', '--output',
               str(references / 'balance-boundaries.json'), '--balance-boundaries'],
              evidence / 'balance-boundaries.log', 'EXPORTED fifteen balance-sheet boundary traces')
+    run_tool([str(args.godot), '--headless', '--path', str(ROOT / 'game'),
+              '--script', 'res://tests/export_late_checkpoint_reference.gd', '--', '--output',
+              str(references / 'late-checkpoints.json')],
+             evidence / 'late-checkpoints.log', 'EXPORTED six full-state late checkpoint segments')
+    checkpoints = json.loads((references / 'late-checkpoints.json').read_text())
+    if len(checkpoints) != 6:
+        raise ValueError('Expected six late checkpoint segments')
+    for i, record in enumerate(checkpoints):
+        branch = 'hold' if i < 3 else 'responsive'
+        start, end = ((120, 168), (168, 216), (216, 240))[i % 3]
+        name = f'late_{branch}_{start}_{end}'
+        if record['name'] != name or len(record['quarters']) != end - start:
+            raise ValueError('Invalid late checkpoint name/horizon')
+        for source_path, source_hash in record['source_sha256'].items():
+            if hashlib.sha256((ROOT / 'game' / source_path).read_bytes()).hexdigest() != source_hash:
+                raise ValueError(f'Late checkpoint source changed: {source_path}')
+        with (references / f'{name}.json').open('x') as destination:
+            json.dump(record, destination, indent=2)
     for path in references.glob('*.json'):
         if path.name == 'portfolio-reference.json':
             continue
@@ -117,6 +137,9 @@ def main():
         for record in document if isinstance(document, list) else [document]:
             if record.get('portfolio_reference_json') != portfolio_path.read_text() or json.loads(record['portfolio_reference_json']) != portfolio or record.get('portfolio_reference_sha256') != portfolio_hash:
                 raise ValueError(f'Native reference source binding mismatch: {path.name}')
+    run_tool([str(args.node), str(ROOT / 'scripts/tests/test-workbook-validation.mjs'),
+              '--checkpoint-reference', str(references / 'late-checkpoints.json')],
+             evidence / 'checkpoint-input-contract.log', 'PASS: full-state checkpoint input contract')
     run_tool([str(args.node), str(execution_copy)], evidence / 'workbook-build.log',
              'EXPORTED Federal Reserve Policy Lab.xlsx')
     run_tool([sys.executable, str(ROOT / 'scripts/spreadsheet/check-workbook.py'),
@@ -131,6 +154,14 @@ def main():
               str(references / 'supply_shock.json'), str(evidence / 'workbook-model-map.json'),
               str(references / 'mixed_crises.json')],
              evidence / 'workbook-file-regression.log', 'PASS: real workbook accepted')
+    for record in checkpoints:
+        name = record['name']
+        run_tool([sys.executable, str(ROOT / 'scripts/spreadsheet/check-workbook.py'),
+                  str(output / 'late-checkpoints' / f'{name}.xlsx'), '--reference',
+                  str(references / f'{name}.json'), '--map',
+                  str(evidence / 'workbook-model-map.json'), '--portfolio-reference',
+                  str(references / 'portfolio-reference.json')],
+                 evidence / f'checkpoint-{name}.log', 'PASS ')
     digest = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
     assert digest(builder) == digest(execution_copy), 'Execution copy differs from source'
     provenance = {
@@ -140,9 +171,11 @@ def main():
         'node_version': subprocess.check_output([str(args.node), '--version'], text=True).strip(),
         'source_sha256': {name: digest(ROOT / name) for name in (
             'scripts/build-workbook.py', 'scripts/spreadsheet/build-policy-lab.mjs',
-            'scripts/spreadsheet/check-workbook.py', 'game/tests/export_reference.gd',
-            'game/tests/export_policy_variants.gd', 'scripts/tests/test-workbook-file.py')},
+            'scripts/spreadsheet/check-workbook.py', 'scripts/tests/test-workbook-validation.mjs', 'game/tests/export_reference.gd',
+            'game/tests/export_policy_variants.gd', 'game/tests/export_late_checkpoint_reference.gd',
+            'scripts/tests/test-workbook-file.py')},
         'workbook_sha256': digest(output / 'Federal Reserve Policy Lab.xlsx'),
+        'checkpoint_workbooks_sha256': {path.name: digest(path) for path in sorted((output / 'late-checkpoints').glob('*.xlsx'))},
         'model_sha256': {name: digest(ROOT / 'game/model' / name)
                          for name in ('economy.gd', 'parameters.json', 'scenarios.json', 'exogenous_shocks.json', 'portfolio_reference.json')},
         'references_sha256': {path.name: digest(path) for path in sorted(references.glob('*.json'))},

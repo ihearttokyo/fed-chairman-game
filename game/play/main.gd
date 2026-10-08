@@ -2,7 +2,7 @@ extends Control
 
 const Career = preload("res://play/career.gd")
 const Chart = preload("res://play/history_chart.gd")
-const SAVE_PATH := "user://career-v1.save"
+const SAVE_PATH := "user://career-late-compound-v1.save"
 const GOLD := Color("e9b76e")
 const MINT := Color("75d4c0")
 const MUTED := Color("a4babe")
@@ -117,6 +117,7 @@ func _ready() -> void:
 	_label(brief_box, "Meeting dispatch", 12, GOLD)
 	briefing = _label(brief_box, "", 14)
 	briefing.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	briefing.mouse_filter = Control.MOUSE_FILTER_PASS
 	var chart_row := HBoxContainer.new()
 	chart_row.add_theme_constant_override("separation", 20)
 	left.add_child(chart_row)
@@ -268,8 +269,12 @@ func _build_header(parent: Node) -> void:
 	_label(brand, "Federal Reserve Policy Lab", 11, GOLD)
 	quarter_label = _label(row, "", 15, MINT)
 	_button(row, "New career", _new_dialog, KEY_N)
-	_button(row, "Save", _save, KEY_S)
-	_button(row, "Load", _load, KEY_O)
+	var save_button := _button(row, "Save", _save, KEY_S)
+	save_button.tooltip_text = "Save to career-late-compound-v1.save. Only this campaign slot is replaced; career-v1.save is untouched."
+	save_button.accessibility_description = save_button.tooltip_text
+	var load_button := _button(row, "Load", _load, KEY_O)
+	load_button.tooltip_text = "Load career-late-compound-v1.save only. No fallback or migration from career-v1.save."
+	load_button.accessibility_description = load_button.tooltip_text
 	_button(row, "Data & journal", _journal, KEY_J)
 	_button(row, "How to play", _help, KEY_F1, false)
 	_button(row, "Credits", _credits)
@@ -550,7 +555,19 @@ func _refresh(reset_controls := false) -> void:
 		chart.history = career.history
 		chart.queue_redraw()
 	var shock: Dictionary = career.current_briefing()
-	briefing.text = "Demand impulse %+.2f pp · supply innovation %+.2f pp.\nFunding need %.2f; collateral before haircut %.2f (%% current GDP). Current output gap %+.2f%%. %s" % [shock.get("demand_shock_pct", 0), shock.get("supply_innovation_pct", 0), shock.get("funding_need_pct_initial_gdp", 0) / n, shock.get("eligible_collateral_pct_initial_gdp", 0) / n, s.output_gap_pct, "Lending cannot erase solvency risk." if shock.get("funding_need_pct_initial_gdp", 0) > 0.1 else "Policy works through a lagged real-rate channel."]
+	var refinancing_request: float = shock.get("refinancing_need_pct_initial_gdp", 0.0)
+	var refinancing_need := minf(refinancing_request, s.outstanding_liquidity_pct_initial_gdp)
+	var collateral: float = shock.get("eligible_collateral_pct_initial_gdp", 0.0)
+	var haircut: float = shock.get("collateral_haircut_pct", 0.0)
+	var eligibility: float = shock.get("liquidity_eligibility_pct", 0.0)
+	var lending_value := collateral * (1.0 - haircut / 100.0) * (eligibility / 100.0)
+	briefing.text = "Demand impulse %+.2f pp · supply innovation %+.2f pp · output gap %+.2f%%." % [shock.get("demand_shock_pct", 0), shock.get("supply_innovation_pct", 0), s.output_gap_pct]
+	if shock.get("funding_need_pct_initial_gdp", 0.0) > 0.0 or refinancing_request > 0.0 or s.outstanding_liquidity_pct_initial_gdp > 0.0 or collateral > 0.0:
+		briefing.text += "\nFunding need %.2f (new) · Requested refinancing %.2f · Refinancing need %.2f (%% current GDP).\nMaturing principal %.2f (short loans) · Collateral before haircut %.2f · Lending value %.2f (%% current GDP).\nCollateral haircut %.2f%% · Eligibility %.2f%%." % [shock.get("funding_need_pct_initial_gdp", 0) / n, refinancing_request / n, refinancing_need / n, s.outstanding_liquidity_pct_initial_gdp / n, collateral / n, lending_value / n, haircut, eligibility]
+	if shock.get("solvency_risk_innovation_pct", 0.0) != 0.0 or s.solvency_risk_wedge_pct != 0.0:
+		briefing.text += "\nCurrent impairment impulse %+.2f pp · Prior impairment %.2f pp (spread proxy, not booked bank loss)." % [shock.get("solvency_risk_innovation_pct", 0.0), s.solvency_risk_wedge_pct]
+	briefing.tooltip_text = "Refinancing need is capped by maturing short-loan principal. Lending value applies the current collateral haircut and eligibility. Impairment is a credit-spread proxy; liquidity lending cannot create bank capital."
+	briefing.accessibility_description = briefing.tooltip_text
 	briefing.text += "\nDeferred demand %+.2f%% potential · prior release %+.2f pp." % [s.deferred_demand_pct, s.demand_release_pct]
 	briefing.text += "\n\n" + career.situation_briefing()
 	if reset_controls:
@@ -697,14 +714,14 @@ func _advance() -> void:
 
 func _save() -> void:
 	var result: Dictionary = career.save_to(save_path)
-	status_label.text = "Saved quarter %d. The legacy game's saves are untouched." % career.state.quarter_index if result.ok else result.error
+	status_label.text = "Saved quarter %d. Late-compound slot updated; older saves untouched." % career.state.quarter_index if result.ok else result.error
 
 func _load() -> void:
 	var dialog := AcceptDialog.new()
 	dialog.title = "Load saved career"
 	var cancel := dialog.add_button("Cancel", true)
 	cancel.pressed.connect(dialog.queue_free)
-	dialog.dialog_text = "Load the saved career? Unsaved decisions in this session will be replaced."
+	dialog.dialog_text = "Load the late-compound slot? Unsaved decisions will be replaced. career-v1.save is preserved; no fallback or migration."
 	dialog.confirmed.connect(func():
 		var result: Dictionary = career.load_from(save_path)
 		if result.ok:

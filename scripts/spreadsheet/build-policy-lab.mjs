@@ -69,6 +69,15 @@ const applyFixture = edits => {
   writeInputs(edits);
   return saved;
 };
+const checkpointEdits = (sheet, rows, state) => {
+  const fields = flattenState(state);
+  assert.deepEqual(Object.keys(fields).sort(), Object.keys(flattenState(source.initial_state)).sort(), 'Full-state checkpoint fields');
+  return Object.entries(fields).map(([key, value]) => {
+    assert.ok(Number.isInteger(rows[key]) && rows[key] > 0, `Unmapped checkpoint field ${key}`);
+    assert.ok(key === 'guidance_active' ? typeof value === 'boolean' : typeof value === 'number' && Number.isFinite(value), `Invalid checkpoint type: ${key}`);
+    return [sheet, `D${rows[key]}`, value];
+  });
+};
 const human = key => key.replace(/_pct_initial_gdp$/, ' (% initial GDP)').replace(/_pct$/, ' (%)').replaceAll('_', ' ');
 const clamp = (value, low, high) => `MIN(${high},MAX(${low},${value}))`;
 const headers = (sheet, range) => { sheet.getRange(range).format = { fill: C.navy, font: { name: 'Arial', size: 10, bold: true, color: '#FFFFFF' }, rowHeight: 24 }; };
@@ -424,7 +433,7 @@ const writeBalance = (s, prev, shock, put) => {
 for (let q = 0; q <= 48; q++) {
   const col = column(q + 4), previous = column(q + 3), s = key => f(col, key), prev = key => f(previous, key);
   const put = (key, formula) => cell(economy, s(key), `=${formula}`, true);
-  cell(economy, s('quarter_index'), q);
+  cell(economy, s('quarter_index'), q === 0 ? 0 : `=${prev('quarter_index')}+1`, q !== 0);
   if (q === 0) {
     for (const key of Object.keys(flattenState(source.initial_state)).filter(k => k !== 'quarter_index')) put(key, '0');
     for (const key of Object.keys(initialParameter)) put(key, initial(key));
@@ -786,6 +795,58 @@ for (const [key, value, affected] of [['minimum_rate_increment_pct', 0, 'policy_
 workbook.recalculate();
 assert.ok(verifyTrace('restored signed-rate boundaries', [cases[2].initial_state, ...cases[2].quarters.map(x => x.state)]) < 1e-7);
 console.log('PASS: seven native signed-rate boundaries, quote grid, conditional delivery and restored full parity');
+
+const checkpointFixtureEdits = fixture => {
+  const count = fixture.quarters.length, caseIndex = ids.indexOf(fixture.scenario.id);
+  assert.ok(caseIndex >= 0 && count > 0 && count <= 48 && fixture.end_quarter - fixture.start_quarter === count, 'Checkpoint segment horizon/case');
+  const defaults = { asset_flow_request_pct_initial_gdp: 0, liquidity_request_pct_initial_gdp: 0,
+    reinvest_principal: true, maintain_ample_reserves: true, sterilize_purchases: false };
+  const states = [fixture.initial_state, ...fixture.quarters.map(row => row.state)];
+  const edits = [
+    ...checkpointEdits(economy, R, fixture.initial_state),
+    [lab, 'C4', caseIndex + 1], [lab, 'C5', count], [lab, 'C6', fixture.policy_kind === 'hold' ? 2 : 1],
+    [lab, 'B5', 'Quarter offset from checkpoint'],
+    [lab, 'B8', `Checkpoint Q${fixture.start_quarter} to Q${fixture.end_quarter}: ${count} transitions, ${count + 1} states. Not full 240-quarter parity.`],
+    [lab, 'B9', 'Design assumptions, not a forecast. Native starting state/realized inputs; cleared suffix columns are outside this segment.'],
+  ];
+  for (let q = 0; q < 48; q++) {
+    const col = column(q + 5), row = fixture.quarters[q];
+    for (const key of shockKeys) edits.push([shocks, `${col}${shockRows.get(key) + caseIndex + 1}`, row?.shock[key] ?? shockDefault(key)]);
+    for (const [key, policyRow] of Object.entries(policyRows)) {
+      const value = row?.policy[key] ?? defaults[key] ?? null;
+      edits.push([policy, `${col}${policyRow}`, row && nominalKeys.has(key) ? value / nominalRatio(states[q]) : value]);
+    }
+    for (const sheet of [policy, shocks]) edits.push([sheet, `${col}4`, row ? `Q${fixture.start_quarter + q + 1}` : null]);
+  }
+  for (let q = 0; q <= 48; q++) {
+    edits.push([lab, `B${q + 58}`, q <= count ? `Q${fixture.start_quarter + q}` : null]);
+    if (q > count) for (let i = 0; i < plotKeys.length; i++) edits.push([lab, `${column(i + 3)}${q + 58}`, null]);
+  }
+  return edits;
+};
+const lateCheckpoints = JSON.parse(await fs.readFile(new URL('./reference-v1/late-checkpoints.json', import.meta.url), 'utf8'));
+assert.equal(lateCheckpoints.length, 6, 'Six native checkpoint segments');
+const lateDirectory = new URL('./late-checkpoints/', out);
+await fs.mkdir(lateDirectory);
+for (const [i, fixture] of lateCheckpoints.entries()) {
+  const branch = i < 3 ? 'hold' : 'responsive', startQuarter = [120, 168, 216][i % 3], endQuarter = [168, 216, 240][i % 3];
+  assert.equal(fixture.name, `late_${branch}_${startQuarter}_${endQuarter}`, 'Source-bound checkpoint artifact name');
+  assert.equal(fixture.portfolio_reference_json, portfolioBytes.toString('utf8'));
+  assert.equal(fixture.portfolio_reference_sha256, portfolioHash);
+  const saved = applyFixture(checkpointFixtureEdits(fixture));
+  workbook.recalculate();
+  const states = [fixture.initial_state, ...fixture.quarters.map(row => row.state)];
+  assert.equal(states.length, [49, 49, 25][i % 3]);
+  checks.push({ checkpoint: fixture.name, startQuarter, endQuarter, states: states.length,
+    maxAbsoluteError: verifyTrace(fixture.name, states) });
+  const snapshot = await SpreadsheetFile.exportXlsx(workbook);
+  await snapshot.save(fileURLToPath(new URL(`${fixture.name}.xlsx`, lateDirectory)));
+  writeInputs(saved.map(([sheet, ref, value, formula]) => [sheet, ref, formula || value, Boolean(formula)]));
+  for (const [sheet, ref, value, formula] of saved) assert.equal(sheet.getRange(ref)[formula ? 'formulas' : 'values'][0][0], formula || value, 'Checkpoint restores every exact formula/typed value');
+  workbook.recalculate();
+  verifyTrace(`restored ${fixture.name}`, [cases[2].initial_state, ...cases[2].quarters.map(row => row.state)]);
+  console.log(`PASS: ${fixture.name}, ${states.length} states; saved before exact restoration`);
+}
 
 console.log('PASS: four policy edits, blank/zero distinction, missing-case isolation, invalid funding and later-period causality');
 await fs.writeFile(new URL('workbook-parity.json', evidence), JSON.stringify(checks, null, 2));

@@ -52,7 +52,12 @@ with tempfile.TemporaryDirectory(prefix='fed-workbook-safety-') as directory:
     assert result.returncode == 1 and 'Refusing to replace' in result.stderr, result.stderr
     assert sentinel.read_text() == 'existing user output' and list(existing.iterdir()) == [sentinel]
     engine = temporary / 'engine'
-    engine.write_text('#!/usr/bin/env python3\nimport os\nprint(os.environ["FED_TEST_LOG"])\nraise SystemExit(int(os.environ["FED_TEST_EXIT"]))\n')
+    engine.write_text('#!/usr/bin/env python3\nimport os, sys\nfrom pathlib import Path\n'
+                      'assert "--log-file" in sys.argv, "native file logger must be redirected"\n'
+                      'path = Path(sys.argv[sys.argv.index("--log-file") + 1])\n'
+                      'assert path.is_absolute() and path.parent == Path(__file__).parent\n'
+                      'path.write_text("synthetic engine log")\n'
+                      'print(os.environ["FED_TEST_LOG"])\nraise SystemExit(int(os.environ["FED_TEST_EXIT"]))\n')
     engine.chmod(0o755)
     for index, (text, status, rejected) in enumerate((
         ('EXPORTED good', 0, False), ('ERROR: failure\nEXPORTED good', 0, True),
@@ -63,7 +68,7 @@ with tempfile.TemporaryDirectory(prefix='fed-workbook-safety-') as directory:
         os.environ.update(FED_TEST_LOG=text, FED_TEST_EXIT=str(status))
         failed = False
         try:
-            builder.run_tool([str(engine)], temporary / f'tool-{index}.log', 'EXPORTED good')
+            builder.run_tool([str(engine), '--headless'], temporary / f'tool-{index}.log', 'EXPORTED good')
         except ValueError:
             failed = True
         assert failed == rejected, (text, status)
@@ -72,9 +77,11 @@ print('PASS: existing/internal/symlink workbook outputs and runtime-error gates 
 # Real engine path: fixed variants must have complete, finite quarterly states.
 godot = shutil.which('godot')
 assert godot, 'Godot is required for the reference exporter integration check'
+engine_logs = Path(tempfile.mkdtemp(prefix='fed-workbook-engine-logs-'))
+godot = [godot, '--log-file', str(engine_logs / 'godot.log')]
 with tempfile.TemporaryDirectory(prefix='fed-workbook-reference-') as directory:
     output = Path(directory) / 'variants.json'
-    result = subprocess.run([godot, '--headless', '--path', str(ROOT / 'game'),
+    result = subprocess.run([*godot, '--headless', '--path', str(ROOT / 'game'),
                              '--script', 'res://tests/export_policy_variants.gd',
                              '--', '--output', str(output)], capture_output=True, text=True)
     assert result.returncode == 0 and 'EXPORTED four' in result.stdout and not any(
@@ -91,7 +98,7 @@ with tempfile.TemporaryDirectory(prefix='fed-workbook-reference-') as directory:
         assert state[variant['control'] if variant['control'] != 'policy_rate_request_pct'
                      else 'last_policy_rate_request_pct'] == variant['value']
     before = output.read_bytes()
-    result = subprocess.run([godot, '--headless', '--path', str(ROOT / 'game'),
+    result = subprocess.run([*godot, '--headless', '--path', str(ROOT / 'game'),
                              '--script', 'res://tests/export_policy_variants.gd',
                              '--', '--output', str(output)], capture_output=True, text=True)
     assert result.returncode == 1 and output.read_bytes() == before
@@ -100,7 +107,7 @@ print('PASS: real Godot four policy edits, complete traces and replacement refus
 # The physical boundary mode shares the same exporter and replacement guard.
 with tempfile.TemporaryDirectory(prefix='fed-price-boundaries-') as directory:
     output = Path(directory) / 'price-boundaries.json'
-    command = [godot, '--headless', '--path', str(ROOT / 'game'),
+    command = [*godot, '--headless', '--path', str(ROOT / 'game'),
                '--script', 'res://tests/export_policy_variants.gd', '--',
                '--output', str(output), '--price-boundaries']
     result = subprocess.run(command, capture_output=True, text=True)
@@ -123,7 +130,7 @@ print('PASS: real Godot three physical price boundaries and replacement refusal'
 # Signed-rate fixtures expose actual policies and all state fields for the formula chain.
 with tempfile.TemporaryDirectory(prefix='fed-rate-boundaries-') as directory:
     output = Path(directory) / 'rate-boundaries.json'
-    command = [godot, '--headless', '--path', str(ROOT / 'game'),
+    command = [*godot, '--headless', '--path', str(ROOT / 'game'),
                '--script', 'res://tests/export_policy_variants.gd', '--',
                '--output', str(output), '--rate-boundaries']
     result = subprocess.run(command, capture_output=True, text=True)
@@ -156,7 +163,7 @@ with tempfile.TemporaryDirectory(prefix='fed-campaign-reference-') as directory:
     episodes = []
     for quarters in (48, 1000):
         output = Path(directory) / f'campaign-{quarters}.json'
-        command = [godot, '--headless', '--path', str(ROOT / 'game'),
+        command = [*godot, '--headless', '--path', str(ROOT / 'game'),
                    '--script', 'res://tests/export_reference.gd', '--',
                    '--output', str(output), '--scenario', 'mixed_crises',
                    '--quarters', str(quarters), '--seed', '9223372036854775807',
@@ -183,7 +190,7 @@ portfolio_hash = hashlib.sha256(portfolio_bytes).hexdigest()
 portfolio = json.loads(portfolio_bytes)
 with tempfile.TemporaryDirectory(prefix='fed-balance-boundaries-') as directory:
     output = Path(directory) / 'balance-boundaries.json'
-    command = [godot, '--headless', '--path', str(ROOT / 'game'),
+    command = [*godot, '--headless', '--path', str(ROOT / 'game'),
                '--script', 'res://tests/export_policy_variants.gd', '--',
                '--output', str(output), '--balance-boundaries']
     result = subprocess.run(command, capture_output=True, text=True)

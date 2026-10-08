@@ -45,7 +45,8 @@ godot --path game
 scripts/test-game.sh
 scripts/test-model.sh
 python3 scripts/tests/test-package-safety.py
-godot --headless --path game --quit-after 600 -- --verify-build
+validation=$(mktemp -d /tmp/fed-release-check.XXXXXX)
+godot --headless --log-file "$validation/engine.log" --path game --quit-after 600 -- --verify-build
 ```
 
 For macOS Computer Use, launch the full executable path documented in the
