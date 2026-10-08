@@ -543,6 +543,8 @@ for (const [key, row] of Object.entries(R)) cell(economy, `B${row}`, human(key))
 economy.getRange(`B100:AZ${nextModelRow - 1}`).format = { font: { name: 'Arial', size: 10, color: C.ink }, rowHeight: 22, verticalAlignment: 'center' };
 economy.getRange(`B100:B${nextModelRow - 1}`).format.columnWidth = 54;
 economy.getRange(`D100:AZ${nextModelRow - 1}`).setNumberFormat('0.000');
+// Calc preserves referenced logical results only when they are not numeric-formatted.
+for (const key of ['guidance_active', 'policy_valid', 'reinvest_principal', 'maintain_ample_reserves', 'sterilize_purchases']) economy.getRange(`D${R[key]}:AZ${R[key]}`).setNumberFormat('General');
 for (let q = 0; q <= 48; q++) {
   const col = column(q + 4);
   for (const [label, key] of [['securities', 'asset_stock_pct_initial_gdp'], ['reserves', 'reserves_pct_initial_gdp'], ['loans', 'outstanding_liquidity_pct_initial_gdp'], ['rrp', 'reverse_repo_pct_initial_gdp']]) cell(economy, f(col, `ending_${label}_pct_current_gdp`), `=${f(col, key)}/${f(col, 'ending_nominal_gdp_ratio')}`, true);
@@ -792,7 +794,7 @@ console.log((await workbook.inspect({ kind: 'match', searchTerm: '#REF!|#DIV/0!|
 await fs.mkdir(out, { recursive: true });
 const xlsx = await SpreadsheetFile.exportXlsx(workbook);
 await xlsx.save(fileURLToPath(new URL('Federal Reserve Policy Lab.xlsx', out)));
-for (const [sheetName, range, file] of [['Policy Lab', 'A1:P55', 'lab'], ['Policy', 'A1:M40', 'policy'], ['Assumptions', 'A1:J18', 'assumptions'], ['Economy', 'A1:L23', 'economy'], ['Shocks', 'A1:L22', 'shocks'], ['Assumptions', `B${source.parameters.length - 2}:H${weightsRow + 2}`, 'recovery-assumptions'], ['Economy', 'B77:L93', 'recovery-rate-equations'], ['Assumptions', `B${parameterRow.get('minimum_rate_increment_pct')}:H${parameterRow.get('negative_rate_efficacy_scale_pct')}`, 'rate-assumptions'], ['Assumptions', `B${sourceStart - 4}:F${sourceStart + 14}`, 'portfolio-ladder'], ['Assumptions', `B${sourceStart + 105}:F${sourceStart + 119}`, 'portfolio-ladder-tail']]) {
+for (const [sheetName, range, file] of [['Policy Lab', 'A1:P55', 'lab'], ['Policy', 'A1:M40', 'policy'], ['Assumptions', 'A1:J18', 'assumptions'], ['Economy', 'A1:L23', 'economy'], ['Economy', 'B38:M75', 'logical-guidance-validity'], ['Economy', `B${R.reinvest_principal - 1}:M${R.sterilize_purchases + 1}`, 'logical-switches'], ['Shocks', 'A1:L22', 'shocks'], ['Assumptions', `B${source.parameters.length - 2}:H${weightsRow + 2}`, 'recovery-assumptions'], ['Economy', 'B77:L93', 'recovery-rate-equations'], ['Assumptions', `B${parameterRow.get('minimum_rate_increment_pct')}:H${parameterRow.get('negative_rate_efficacy_scale_pct')}`, 'rate-assumptions'], ['Assumptions', `B${sourceStart - 4}:F${sourceStart + 14}`, 'portfolio-ladder'], ['Assumptions', `B${sourceStart + 105}:F${sourceStart + 119}`, 'portfolio-ladder-tail']]) {
   const preview = await workbook.render({ sheetName, range, scale: 1, format: 'png' });
   await fs.writeFile(new URL(`workbook-${file}.png`, evidence), new Uint8Array(await preview.arrayBuffer()));
 }

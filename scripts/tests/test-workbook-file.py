@@ -22,7 +22,8 @@ with tempfile.TemporaryDirectory(prefix='fed-chart-regression-') as directory:
     defects = [('blank-chart', 'missing chart series'),
                ('axis-precision', 'ambiguous value-axis precision'),
                ('linked-axis', 'ambiguous value-axis precision'),
-               ('cohort-cache', 'full-state parity')]
+               ('cohort-cache', 'full-state parity'),
+               ('logical-type', 'Full-state parity boolean type')]
     if campaign:
         defects.append(('campaign-note', 'stale or missing campaign explanation'))
     for defect, error in defects:
@@ -55,7 +56,17 @@ with tempfile.TemporaryDirectory(prefix='fed-chart-regression-') as directory:
                                 break
                     if changed:
                         data = ET.tostring(part, encoding='utf-8', xml_declaration=True)
-                if not changed and defect not in ('campaign-note', 'cohort-cache') and info.filename in charts:
+                if not changed and defect == 'logical-type' and info.filename.startswith('xl/worksheets/'):
+                    part = ET.fromstring(data)
+                    target_row = json.loads(row_map.read_text())['guidance_active']
+                    for cell in part.findall('.//{http://schemas.openxmlformats.org/spreadsheetml/2006/main}c'):
+                        if cell.attrib.get('r') == f'E{target_row}' and cell.attrib.get('t') == 'b' and cell.find('{http://schemas.openxmlformats.org/spreadsheetml/2006/main}f') is not None:
+                            cell.set('t', 'n')
+                            changed = True
+                            break
+                    if changed:
+                        data = ET.tostring(part, encoding='utf-8', xml_declaration=True)
+                if not changed and defect not in ('campaign-note', 'cohort-cache', 'logical-type') and info.filename in charts:
                     chart = ET.fromstring(data)
                     namespace = '{http://schemas.openxmlformats.org/drawingml/2006/chart}'
                     if defect == 'blank-chart':
@@ -76,5 +87,5 @@ with tempfile.TemporaryDirectory(prefix='fed-chart-regression-') as directory:
         checker[2] = str(broken)
         result = subprocess.run(checker, capture_output=True, text=True)
         assert result.returncode != 0 and error in result.stderr, f'{defect} did not fail for its intended chart check'
-print('PASS: real workbook accepted; blank series and ambiguous axis formats rejected'
+print('PASS: real workbook accepted; blank series, ambiguous axis formats and numeric logical caches rejected'
       + ('; stale saved campaign note rejected' if campaign else ''))
