@@ -107,6 +107,16 @@ owns principal, maturity, reserve and sterilization equations.
 
 ## Scenarios and background disturbances
 
+Startup and New career default to Weakly anchored inflation: 4.5% inflation,
+0.25 credibility and a rate below the expectations-adjusted neutral stance.
+The baseline and one-off supply shock remain selectable practice laboratories.
+Advancing without editing holds the prior rate; it does not apply the staff
+rule. The challenge regression compares 32 disclosed seeds through 96 quarters
+using identical shocks, cumulative inflation and employment misses, recovery
+bands and exact replay. This qualifies a policy-sensitive opening, not human
+enjoyment or sustained late-career difficulty. Equations and seeded paths are
+unchanged by this default selection.
+
 The equilibrium baseline starts at equilibrium and has no scheduled scenario
 events. Every seeded career nevertheless receives quarterly background demand,
 supply and neutral-rate disturbances, including the baseline. The generator adds

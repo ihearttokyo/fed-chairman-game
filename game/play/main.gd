@@ -131,7 +131,7 @@ func _ready() -> void:
 		charts.append(chart)
 		keyboard_controls.append(chart)
 	_build_policy(body, actions)
-	_start_career("supply_shock", 1)
+	_start_career("unanchored_inflation", 1)
 	keyboard_controls.append(scroll)
 	_link_focus(_keyboard_focus_order())
 	rate.get_line_edit().grab_focus.call_deferred()
@@ -788,10 +788,12 @@ func _new_dialog() -> void:
 	for case_id in career.cases:
 		scenario.add_item(career.cases[case_id].label)
 		scenario.set_item_metadata(scenario.item_count - 1, case_id)
+		if case_id == "unanchored_inflation":
+			scenario.select(scenario.item_count - 1)
 	box.add_child(scenario)
 	seed_input = _spin(box, "Scenario seed", 1, 2147483647, 1, "Same scenario and seed reproduce the path within the same engine and model.")
 	seed_input.value = 1
-	_label(box, "Start with the baseline or supply shock. Weakly anchored inflation is a long recovery. Recurring crises adds unpredictable later episodes.", 13, MUTED)
+	_label(box, "Default challenge: weakly anchored inflation; holding rates prolongs inflation.\nBaseline and supply shock are practice labs. Recurring crises adds later episodes.", 13, MUTED)
 	dialog.confirmed.connect(func():
 		_apply_input(seed_input)
 		_start_career(scenario.get_item_metadata(scenario.selected), int(seed_input.value))
