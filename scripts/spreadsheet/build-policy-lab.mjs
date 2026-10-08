@@ -39,6 +39,36 @@ const [lab, policy, assumptions, economy, shocks] = ['Policy Lab', 'Policy', 'As
 const C = { ink: '#203048', navy: '#233A56', blue: '#2257A0', amber: '#FFF2CC', pale: '#EAF0F6', muted: '#657286', red: '#AB3D35', copper: '#B07439', green: '#26735D' };
 const column = n => { let s = ''; for (; n; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + (n - 1) % 26) + s; return s; };
 const cell = (sheet, address, value, formula = false) => { sheet.getRange(address)[formula ? 'formulas' : 'values'] = [[value]]; };
+// Each scalar write recalculates the model; batch only contiguous same-row inputs.
+const writeInputs = edits => {
+  const rows = new Map();
+  for (const [sheet, ref, value, formula = false] of edits) {
+    const match = /^([A-Z]+)([1-9]\d*)$/.exec(ref);
+    assert.ok(match, `Unmapped boundary input ${ref}`);
+    const key = `${sheet.name}!${match[2]}:${formula}`;
+    if (!rows.has(key)) rows.set(key, [sheet, formula, []]);
+    const col = [...match[1]].reduce((n, letter) => n * 26 + letter.charCodeAt(0) - 64, 0);
+    rows.get(key)[2].push({ ref, col, value });
+  }
+  for (const [sheet, formula, inputs] of rows.values()) {
+    inputs.sort((a, b) => a.col - b.col);
+    let first = 0;
+    for (let last = 1; last <= inputs.length; last++) {
+      if (last < inputs.length && inputs[last].col === inputs[last - 1].col + 1) continue;
+      sheet.getRange(`${inputs[first].ref}:${inputs[last - 1].ref}`)[formula ? 'formulas' : 'values'] = [inputs.slice(first, last).map(x => x.value)];
+      first = last;
+    }
+  }
+};
+// Capture original inputs before writes can recalculate dependent formulas.
+const applyFixture = edits => {
+  const saved = edits.map(([sheet, ref]) => {
+    assert.ok(!ref.includes('NaN') && !ref.includes('undefined'), `Unmapped boundary input ${ref}`);
+    return [sheet, ref, sheet.getRange(ref).values[0][0], sheet.getRange(ref).formulas[0][0]];
+  });
+  writeInputs(edits);
+  return saved;
+};
 const human = key => key.replace(/_pct_initial_gdp$/, ' (% initial GDP)').replace(/_pct$/, ' (%)').replaceAll('_', ' ');
 const clamp = (value, low, high) => `MIN(${high},MAX(${low},${value}))`;
 const headers = (sheet, range) => { sheet.getRange(range).format = { fill: C.navy, font: { name: 'Arial', size: 10, bold: true, color: '#FFFFFF' }, rowHeight: 24 }; };
@@ -619,17 +649,14 @@ cell(lab, 'C4', 1); cell(lab, 'C6', 2);
 for (const fixture of priceBoundaries) {
   const initialEdits = Object.keys(fixture.initial).map(key => [`D${initialRows.get(key) + 1}`, fixture.initial[key]]);
   const shockEdits = shockKeys.map(key => [`E${shockRows.get(key) + 1}`, fixture.shocks[0][key] ?? shockDefault(key)]);
-  const saved = [...initialEdits, ...shockEdits].map(([ref, value], index) => {
-    const sheet = index < initialEdits.length ? assumptions : shocks;
-    const previous = sheet.getRange(ref).values[0][0];
-    const formula = sheet.getRange(ref).formulas[0][0];
-    cell(sheet, ref, value);
-    return [sheet, ref, previous, formula];
-  });
+  const saved = applyFixture([
+    ...initialEdits.map(([ref, value]) => [assumptions, ref, value]),
+    ...shockEdits.map(([ref, value]) => [shocks, ref, value]),
+  ]);
   workbook.recalculate();
   checks.push({ priceBoundary: fixture.name, maxAbsoluteError: verifyTrace(fixture.name, fixture.states) });
+  writeInputs(saved.map(([sheet, ref, value, formula]) => [sheet, ref, formula || value, Boolean(formula)]));
   for (const [sheet, ref, value, formula] of saved) {
-    cell(sheet, ref, formula || value, Boolean(formula));
     assert.equal(sheet.getRange(ref)[formula ? 'formulas' : 'values'][0][0], formula || value, 'Boundary fixture restores its exact input');
   }
 }
@@ -722,16 +749,11 @@ for (const [kind, fixtures] of [['rateBoundary', rateBoundaries], ['balanceBound
     ...fixture.shocks.flatMap((shock, q) => shockKeys.map(key => [shocks, `${column(q + 5)}${shockRows.get(key) + 1}`, shock[key] ?? shockDefault(key)])),
     ...fixture.policies.flatMap((decision, q) => Object.entries(decision).map(([key, value]) => [policy, `${column(q + 5)}${policyRows[key]}`, nominalKeys.has(key) ? value / nominalRatio(fixture.states[q]) : value])),
   ];
-  const saved = edits.map(([sheet, ref, value]) => {
-    assert.ok(!ref.includes('NaN') && !ref.includes('undefined'), `Unmapped boundary input ${ref}`);
-    const previous = sheet.getRange(ref).values[0][0], formula = sheet.getRange(ref).formulas[0][0];
-    cell(sheet, ref, value);
-    return [sheet, ref, previous, formula];
-  });
+  const saved = applyFixture(edits);
   workbook.recalculate();
   checks.push({ [kind]: fixture.name, maxAbsoluteError: verifyTrace(fixture.name, fixture.states) });
   console.log(`PASS: ${kind} ${fixture.name}`);
-  for (const [sheet, ref, value, formula] of saved) cell(sheet, ref, formula || value, Boolean(formula));
+  writeInputs(saved.map(([sheet, ref, value, formula]) => [sheet, ref, formula || value, Boolean(formula)]));
 }
 for (const raw of [-3.505, 3.505]) {
   cell(policy, 'E6', `=${quote(raw)}`, true); workbook.recalculate();
