@@ -59,3 +59,21 @@ const otherSheet = { name: 'Other', getRange(ref) {
 writeInputs([[sheet, 'A1', 11], [otherSheet, 'A1', 22]]);
 assert.equal(originals.get('A1').value, 11); assert.equal(otherValue, 22, 'Do not merge rows across sheets');
 console.log('PASS: actual workbook helper batches exact typed inputs/restores, preserving gaps and formula boundaries (simulated cells)');
+
+const formatStart = source.indexOf('economy.getRange(`D100:AZ${nextModelRow - 1}`).setNumberFormat'),
+  formatEnd = source.indexOf('for (let q = 0; q <= 48;', formatStart);
+assert.ok(formatStart >= 0 && formatEnd > formatStart, 'Locate final calculation-row formatting');
+const R = { guidance_active: 42, policy_valid: 73, reinvest_principal: 410, maintain_ample_reserves: 411, sterilize_purchases: 412 };
+const formats = new Map([...Object.values(R), 123].map(row => [row, '0.000']));
+vm.runInNewContext(source.slice(formatStart, formatEnd), {
+  R, nextModelRow: 413, economy: { getRange(ref) {
+    const range = /^D(\d+):AZ(\d+)$/.exec(ref);
+    assert.ok(range, `Unexpected calculation formatting range ${ref}`);
+    return { setNumberFormat(format) {
+      for (const row of formats.keys()) if (row >= Number(range[1]) && row <= Number(range[2])) formats.set(row, format);
+    } };
+  } },
+});
+for (const row of Object.values(R)) assert.equal(formats.get(row), 'General', 'Logical calculation results must not inherit numeric formatting');
+assert.equal(formats.get(123), '0.000', 'Numeric calculation rows retain their precision');
+console.log('PASS: actual final formatting preserves all five logical rows and numeric precision (simulated ranges)');
