@@ -14,12 +14,37 @@ class RateHoldOnlyCareer:
 	func forecast(policy: Dictionary, _follow_guidance: bool = false) -> Dictionary:
 		return super.forecast(policy)
 
+class RejectingReviewEconomy:
+	extends "res://model/economy.gd"
+	var rejected_rate := INF
+	var rejected_staff_quarter := -1
+	var staff_quotes := 0
+	func benchmark_policy(state: Dictionary, params: Dictionary, kind: String = "feedback") -> Dictionary:
+		var policy: Dictionary = super.benchmark_policy(state, params, kind)
+		if kind == "feedback":
+			staff_quotes += 1
+			if state.quarter_index == rejected_staff_quarter:
+				policy.guidance_rate_pct = INF
+		return policy
+	func step(state: Dictionary, policy: Dictionary, shocks: Dictionary, params: Dictionary) -> Dictionary:
+		if policy.get("policy_rate_request_pct") == rejected_rate:
+			var invalid: Dictionary = policy.duplicate(true)
+			invalid.guidance_rate_pct = INF
+			return super.step(state, invalid, shocks, params)
+		return super.step(state, policy, shocks, params)
+
 var failures := 0
 func check(condition: bool, message: String) -> void:
 	if not condition:
 		failures += 1
 		printerr("FAIL: " + message)
 func _initialize() -> void:
+	if OS.get_cmdline_user_args().has("--review-staff-only"):
+		check_review_staff()
+		if failures == 0:
+			print("PASS: realized staff/hold replay, meeting-GDP funding and pure explicit reference errors")
+		quit(1 if failures else 0)
+		return
 	if OS.get_cmdline_user_args().has("--release-guidance-only"):
 		check_release_guidance()
 		if failures == 0:
@@ -53,6 +78,7 @@ func _initialize() -> void:
 		return
 	check_forecast_continuation()
 	check_release_guidance()
+	check_review_staff()
 	var career := Career.new()
 	check(career.start("supply_shock", 417).ok, "scenario starts")
 	var initial: Dictionary = career.state.duplicate(true)
@@ -145,6 +171,196 @@ func _initialize() -> void:
 	if failures == 0:
 		print("PASS: career progression, forecast isolation, validated lossless saves and 49-quarter continuity")
 	quit(1 if failures else 0)
+
+func check_review_staff() -> void:
+	var career := Career.new()
+	check(career.start("unanchored_inflation", 417).ok, "realized staff fixture starts")
+	var live: PackedByteArray = forecast_live_bytes(career)
+	check(var_to_bytes(career.review_comparison()) == var_to_bytes({"ok":false, "error":"Complete a decision before reviewing its outcome."}), "empty review retains its exact original rejection")
+	check(forecast_live_bytes(career) == live, "empty review preserves every live and save byte")
+	for q in range(Career.MAX_QUARTERS):
+		var advanced: Dictionary = career.advance(career.model.benchmark_policy(career.state, career.params, "feedback"))
+		check(advanced.ok, "staff-only realized career advances Q%d" % (q + 1))
+		if not advanced.ok:
+			return
+		if q + 1 in [1, 7, 12, 49, 240]:
+			var compared: Dictionary = check_review_pair(career, "Q%d" % (q + 1))
+			if not compared.ok or not compared.has("staff"):
+				return
+			if q + 1 == 12:
+				check(compared.get("actual", {}) == compared.get("staff", {}), "twelve actual staff-only decisions equal the staff reference, not an invented harder benchmark")
+				check(compared.get("staff", {}) != compared.get("held", {}), "feedback reference remains distinct from passive hold on the same completed shocks")
+
+	var funded := Career.new()
+	check(funded.start("base", 17).ok, "funding review uses an existing scenario")
+	for q in range(12):
+		funded.shocks[q] = {"funding_need_pct_initial_gdp":2.0, "eligible_collateral_pct_initial_gdp":4.0,
+			"collateral_haircut_pct":25.0, "liquidity_eligibility_pct":100.0,
+			"refinancing_need_pct_initial_gdp":0.0 if q == 0 else 2.0,
+			"solvency_risk_innovation_pct":0.2 if q == 0 else 0.0}
+		var policy: Dictionary = funded.model.benchmark_policy(funded.state, funded.params, "feedback")
+		policy.liquidity_request_pct_initial_gdp = 5.0
+		policy.merge({"reinvest_principal":false, "maintain_ample_reserves":false, "sterilize_purchases":true})
+		var advanced: Dictionary = funded.advance(policy)
+		check(advanced.ok, "eligible lending review advances Q%d" % (q + 1))
+		if not advanced.ok:
+			return
+	var compared: Dictionary = check_review_pair(funded, "eligible lending")
+	var staff: Dictionary = replay_review(funded, "staff")
+	check(staff.ok, "unassisted funding reference replays independently")
+	if staff.ok:
+		for outcome in staff.states:
+			check(outcome.asset_flow_request_pct_initial_gdp == 0.0 and outcome.liquidity_request_pct_initial_gdp == 0.0 and outcome.liquidity_applied_pct_initial_gdp == 0.0, "staff reference makes no discretionary asset or lending offers")
+		check(funded.state.solvency_risk_wedge_pct == staff.states[-1].solvency_risk_wedge_pct, "eligible lending does not erase the separate credit-impairment wedge")
+	var actual_funding: float = compared.get("actual", {}).get("uncovered_funding", -1.0)
+	var staff_funding: float = compared.get("staff", {}).get("uncovered_funding", -1.0)
+	check(actual_funding >= 0.0 and actual_funding < staff_funding, "responsive lending exposes lower uncovered need than the zero-lending staff reference")
+	var initial_units := 0.0
+	var ending_units := 0.0
+	var requested_units := 0.0
+	var lending_units := 0.0
+	for outcome in funded.history.slice(1):
+		initial_units += outcome.uncovered_funding_pct_initial_gdp / 12.0
+		ending_units += outcome.uncovered_funding_pct_initial_gdp / outcome.ending_nominal_gdp_ratio / 12.0
+		requested_units += outcome.liquidity_request_pct_initial_gdp / outcome.decision_nominal_gdp_ratio / 12.0
+		lending_units += outcome.liquidity_applied_pct_initial_gdp / outcome.decision_nominal_gdp_ratio / 12.0
+	check(abs(actual_funding - initial_units) > 1e-6 and abs(actual_funding - ending_units) > 1e-6, "funding fixture distinguishes each meeting's GDP from initial or ending GDP")
+	check(abs(actual_funding - requested_units) > 1e-6 and abs(actual_funding - lending_units) > 1e-6, "uncovered funding is not the requested or applied lending amount")
+	check_review_rejection()
+
+func review_reference_policy(career, state: Dictionary, kind: String) -> Dictionary:
+	var target: float = state.policy_rate_pct
+	if kind == "staff":
+		target = state.r_star_pct + state.expected_short_inflation_pct \
+			+ career.params.policy_inflation_response * (state.four_quarter_inflation_pct - career.params.inflation_target_pct) \
+			+ career.params.policy_output_gap_response * state.output_gap_pct
+	target = roundf(target / career.params.minimum_rate_increment_pct) * career.params.minimum_rate_increment_pct
+	return {"policy_rate_request_pct":target, "guidance_rate_pct":target,
+		"guidance_inflation_sensitivity":career.params.policy_inflation_response,
+		"guidance_output_gap_sensitivity":career.params.policy_output_gap_response,
+		"asset_flow_request_pct_initial_gdp":0.0, "liquidity_request_pct_initial_gdp":0.0}
+
+func replay_review(career, kind: String) -> Dictionary:
+	var start: int = maxi(0, career.decisions.size() - 12)
+	var projected: Dictionary = career.history[start].duplicate(true)
+	var states: Array = []
+	for q in range(start, career.decisions.size()):
+		var policy: Dictionary = career.decisions[q].duplicate(true) if kind == "actual" else review_reference_policy(career, projected, kind)
+		var result: Dictionary = career.model.step(projected, policy, career.shocks[q], career.params)
+		if not result.ok:
+			return result
+		projected = result.state
+		states.append(projected.duplicate(true))
+	return {"ok":true, "states":states}
+
+func review_summary(states: Array, params: Dictionary) -> Dictionary:
+	var summary := {"inflation_miss":0.0, "employment_shortfall":0.0,
+		"credibility":states[-1].credibility, "public_support":states[-1].public_support}
+	for outcome in states:
+		summary.inflation_miss += abs(outcome.four_quarter_inflation_pct - params.inflation_target_pct) / states.size()
+		summary.employment_shortfall += max(0.0, outcome.unemployment_rate_pct - outcome.structural_unemployment_pct) / states.size()
+	summary.uncovered_funding = 0.0
+	for outcome in states:
+		summary.uncovered_funding += outcome.uncovered_funding_pct_initial_gdp / outcome.decision_nominal_gdp_ratio / states.size()
+	return summary
+
+func check_review_pair(career, label: String) -> Dictionary:
+	var live: PackedByteArray = forecast_live_bytes(career)
+	var compared: Dictionary = career.review_comparison()
+	check(compared.ok, label + " completed-history review is available")
+	check(compared.has("staff"), label + " completed review must expose the realized staff reference")
+	if not compared.ok or not compared.has("staff"):
+		check(forecast_live_bytes(career) == live, label + " unavailable review preserves every live byte")
+		return compared
+	var start: int = maxi(0, career.decisions.size() - 12)
+	check(compared.from_quarter == start and compared.to_quarter == career.decisions.size(), label + " reviews precisely the latest up to twelve completed quarters")
+	check(var_to_bytes(compared.hold_rate) == var_to_bytes(career.history[start].policy_rate_pct), label + " retains the exact original starting hold rate")
+	for pair in [["actual", "actual"], ["held", "hold"], ["staff", "staff"]]:
+		var replay: Dictionary = replay_review(career, pair[1])
+		check(replay.ok, label + " " + pair[0] + " independent completed-shock replay is available")
+		if not replay.ok:
+			continue
+		if pair[0] == "actual":
+			check(var_to_bytes(replay.states) == var_to_bytes(career.history.slice(start + 1)), label + " every independently replayed actual state equals recorded history")
+		var expected: Dictionary = review_summary(replay.states, career.params)
+		var actual: Dictionary = compared.get(pair[0], {})
+		for key in expected:
+			check(var_to_bytes(actual.get(key)) == var_to_bytes(expected[key]), label + " " + pair[0] + " " + key + " equals independent summary bytes")
+	check(var_to_bytes(career.review_comparison()) == var_to_bytes(compared), label + " review repeats byte-identically")
+	check(forecast_live_bytes(career) == live, label + " review and independent replays preserve all live/input/native-save bytes")
+	var shocks: Array = career.shocks.duplicate(true)
+	var episodes: Array = career.episodes.duplicate(true)
+	for q in range(career.decisions.size(), career.shocks.size()):
+		career.shocks[q] = {"supply_innovation_pct":INF}
+	if start > 0:
+		career.shocks[start - 1] = {"supply_innovation_pct":INF}
+	career.episodes = [{"unrealized_review_fixture":true}]
+	var altered: PackedByteArray = forecast_live_bytes(career)
+	check(var_to_bytes(career.review_comparison()) == var_to_bytes(compared), label + " current/future shocks, earlier shocks and episode metadata cannot influence the completed interval")
+	check(forecast_live_bytes(career) == altered, label + " review does not repair or mutate unseen inputs")
+	career.shocks = shocks
+	career.episodes = episodes
+	check(forecast_live_bytes(career) == live, label + " isolation fixture restores every live byte")
+	return compared
+
+func check_review_rejection() -> void:
+	var career := Career.new()
+	check(career.start("unanchored_inflation", 417).ok, "reference rejection fixture starts")
+	check(career.advance(career.model.benchmark_policy(career.state, career.params, "feedback")).ok, "reference rejection preserves a valid committed outcome")
+	var original: Dictionary = career.review_comparison()
+	var native_model = career.model
+	var rejecting := RejectingReviewEconomy.new()
+	career.model = rejecting
+	var live: PackedByteArray = forecast_live_bytes(career)
+	var initial: Dictionary = career.history[0]
+	var staff: Dictionary = review_reference_policy(career, initial, "staff")
+	var hold: Dictionary = review_reference_policy(career, initial, "hold")
+	check(staff.policy_rate_request_pct != hold.policy_rate_request_pct, "rejection fixture isolates staff and hold rather than rejecting both")
+	for kind in ["staff", "hold"]:
+		var policy: Dictionary = staff if kind == "staff" else hold
+		rejecting.rejected_rate = policy.policy_rate_request_pct
+		var invalid: Dictionary = policy.duplicate(true)
+		invalid.guidance_rate_pct = INF
+		var input: PackedByteArray = var_to_bytes([initial, policy, invalid, career.shocks[0], career.params])
+		var native: Dictionary = native_model.step(initial, invalid, career.shocks[0], career.params)
+		check(not native.ok and not native.get("error", "").is_empty(), kind + " rejection comes from the native model validation")
+		var compared: Dictionary = career.review_comparison()
+		if kind == "staff":
+			check(compared.ok and compared.has("staff") and compared.get("staff") == {}, "staff-only failure is explicit without losing the usable original comparison")
+			check(compared.get("staff_error", "") == "Staff reference unavailable: " + native.error, "staff failure retains the exact prefixed native error")
+			for key in ["ok", "from_quarter", "to_quarter", "hold_rate", "actual", "held"]:
+				check(var_to_bytes(compared.get(key)) == var_to_bytes(original.get(key)), "staff failure preserves original " + key + " bytes")
+		else:
+			check(var_to_bytes(compared) == var_to_bytes({"ok":false, "error":"Hold reference unavailable: " + native.error}), "hold-only failure keeps the exact original prefixed native rejection")
+		check(var_to_bytes(career.review_comparison()) == var_to_bytes(compared), kind + " rejection repeats byte-identically")
+		check(forecast_live_bytes(career) == live and var_to_bytes([initial, policy, invalid, career.shocks[0], career.params]) == input, kind + " rejection preserves every live/input/native-save byte")
+	career.model = native_model
+	check(var_to_bytes(career.review_comparison()) == var_to_bytes(original) and forecast_live_bytes(career) == live, "removing the rejecting model recovers the original usable comparison without mutation")
+	for q in range(2):
+		check(career.advance(native_model.benchmark_policy(career.state, career.params, "feedback")).ok, "delayed staff rejection has three completed decisions")
+	original = career.review_comparison()
+	var first_policy: Dictionary = review_reference_policy(career, career.history[0], "staff")
+	var first: Dictionary = native_model.step(career.history[0], first_policy, career.shocks[0], career.params)
+	check(first.ok, "delayed rejection independently proves the first staff step succeeds")
+	if not first.ok:
+		return
+	var second_policy: Dictionary = review_reference_policy(career, first.state, "staff")
+	second_policy.guidance_rate_pct = INF
+	var second: Dictionary = native_model.step(first.state, second_policy, career.shocks[1], career.params)
+	check(not second.ok, "delayed rejection uses the second step's exact native validation error")
+	var delayed := RejectingReviewEconomy.new()
+	delayed.rejected_staff_quarter = first.state.quarter_index
+	career.model = delayed
+	live = forecast_live_bytes(career)
+	var partial: Dictionary = career.review_comparison()
+	check(delayed.staff_quotes == 2, "staff reference attempts exactly one successful step then its rejected second step")
+	check(partial.ok and partial.get("staff") == {}, "delayed staff error discards every accumulated partial outcome")
+	check(partial.get("staff_error", "") == "Staff reference unavailable: " + second.error, "delayed staff error retains the exact native error")
+	for key in ["ok", "from_quarter", "to_quarter", "hold_rate", "actual", "held"]:
+		check(var_to_bytes(partial.get(key)) == var_to_bytes(original.get(key)), "delayed staff failure preserves original " + key + " bytes")
+	check(forecast_live_bytes(career) == live, "delayed staff failure preserves all live/input/native-save bytes")
+	career.model = native_model
+	check(var_to_bytes(career.review_comparison()) == var_to_bytes(original), "delayed rejecting model removal restores the complete staff path")
 
 func check_current_signals() -> void:
 	var career := Career.new()

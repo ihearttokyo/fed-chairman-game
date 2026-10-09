@@ -203,6 +203,22 @@ Forward comparisons use the current observed shock, then no new disturbances.
 The separate formula workbook exposes realized seed-1 paths for audit and labels
 their background shocks; it is not a forecast or the game's concealed future.
 
+## Realized policy review
+
+Every twelve completed meetings, the review compares your decisions with two
+references from the same actual starting state and already realized shocks.
+Hold keeps the starting rate. Staff applies the existing simple feedback rate
+rule with matching data-dependent guidance. Both request no purchases or loans,
+reinvest principal, maintain reserves and leave sterilization off. Neither is
+an optimal-policy recommendation or a forecast.
+
+The report shows separate average inflation distance from 2%, employment
+shortfall and uncovered funding, plus ending credibility and public support.
+Funding gaps use each meeting's nominal GDP; they are unmet need, not booked
+bank losses. A failed staff reference leaves the actual/hold comparison usable
+with its native error. No equations, scores, saved decisions or future inputs
+change, and following staff is not itself a winning criterion.
+
 ## Quarterly order
 
 1. Observe the previous state and choose a rate, conditional guidance, net asset

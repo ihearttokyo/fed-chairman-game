@@ -838,11 +838,28 @@ func _review() -> void:
 	if not compared.ok:
 		_text_dialog("Policy review", compared.error)
 		return
-	var actual: Dictionary = compared.actual
-	var held: Dictionary = compared.held
-	var text := "REALIZED PATHS / Q%d–Q%d\nYOUR POLICY vs HOLD REFERENCE\n\nAverage absolute distance from 2%% inflation: %.3f vs %.3f pp\nAverage unemployment above structural reference: %.3f vs %.3f pp\nEnding credibility: %.1f vs %.1f / 100\nEnding public support: %.1f vs %.1f / 100\n\n" % [compared.from_quarter + 1, compared.to_quarter, actual.inflation_miss, held.inflation_miss, actual.employment_shortfall, held.employment_shortfall, 100 * actual.credibility, 100 * held.credibility, actual.public_support, held.public_support]
-	text += "Both paths start at your actual Q%d state and use only shocks that already occurred. The reference holds %.2f%%, guides to that rate with data dependence, and makes no new asset flows or loans. Default reinvestment and reserve maintenance stay on; sterilization stays off. Principal and short-loan repayments still settle. Existing stocks, expectations and policy lags carry forward. This is a hindsight comparison, not a forecast or proof of optimal policy.\n\n" % [compared.from_quarter, compared.hold_rate]
-	text += "Lower average inflation distance and employment shortfall mean lower costs on those measures. There is no single combined score: reducing one cost can increase the other. Structural unemployment is a model assumption, not a known real-world employment target.\n\nCurrent inflation %.2f%%; unemployment %.2f%%; output gap %+.2f%%.\n\nThere is no dismissal threshold. Credibility and public forgiveness are gradual, and earlier decisions keep working after this review." % [s.four_quarter_inflation_pct, s.unemployment_rate_pct, s.output_gap_pct]
+	var paths: Array = [compared.actual, compared.held]
+	var staff: Dictionary = compared.get("staff", {})
+	var text := "REALIZED PATHS / Q%d–Q%d\nYour policy / Hold" % [compared.from_quarter + 1, compared.to_quarter]
+	if not staff.is_empty():
+		paths.append(staff)
+		text += " / Staff"
+	text += "\n\n"
+	for metric in [["Avg inflation distance", "inflation_miss", "%.3f", "pp", 1.0],
+		["Avg employment shortfall", "employment_shortfall", "%.3f", "pp", 1.0],
+		["Avg uncovered funding", "uncovered_funding", "%.3f", "% meeting GDP", 1.0],
+		["Ending credibility", "credibility", "%.1f", "(each / 100)", 100.0],
+		["Ending public support", "public_support", "%.1f", "(each / 100)", 1.0]]:
+		var values := PackedStringArray()
+		for path in paths:
+			values.append(String(metric[2]) % (metric[4] * path[metric[1]]))
+		text += "%s: %s %s\n" % [metric[0], " / ".join(values), metric[3]]
+	if not staff.is_empty():
+		text += "\n"
+	else:
+		text += "\n%s\n\n" % compared.get("staff_error", "Staff reference unavailable.")
+	text += "References start at your actual Q%d state and use only shocks that already occurred. Hold holds %.2f%% and guides to that rate with data dependence. Staff applies the simple feedback rate rule with matching guidance and data dependence. Both request no new asset flows or loans. Default reinvestment and reserve maintenance stay on; sterilization stays off. Principal and short-loan repayments still settle. Existing stocks, expectations and policy lags carry forward. This is a hindsight comparison, not a forecast or proof of optimal policy.\n\n" % [compared.from_quarter, compared.hold_rate]
+	text += "Lower inflation distance from 2%% and employment shortfall mean lower costs on those separate measures. Only unemployment above structural reference contributes to employment shortfall. There is no dismissal threshold. Uncovered funding is unmet need, averaged using each meeting's nominal GDP, not booked bank losses. Structural unemployment is a model assumption.\n\nCurrent inflation %.2f%%; unemployment %.2f%%; output gap %+.2f%%." % [s.four_quarter_inflation_pct, s.unemployment_rate_pct, s.output_gap_pct]
 	_text_dialog("Your %d-quarter policy review" % (compared.to_quarter - compared.from_quarter), text)
 
 func _journal() -> void:
