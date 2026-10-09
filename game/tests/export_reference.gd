@@ -6,6 +6,10 @@ const Economy = preload("res://model/economy.gd")
 static func output_is_outside_repository(output_path: String, project_root: String) -> bool:
 	var target := output_path.simplify_path()
 	var root := project_root.simplify_path().trim_suffix("/").get_base_dir()
+	# macOS may resolve case-only aliases to the same protected directory.
+	if OS.get_name() == "macOS":
+		target = target.to_lower()
+		root = root.to_lower()
 	return target.is_absolute_path() and target != root and not target.begins_with(root + "/")
 
 
