@@ -35,6 +35,7 @@ jobs:
           godot --headless --log-file "$RUNNER_TEMP/game-check-engine.log" --path game --quit-after 600 -- --verify-build 2>&1 | tee "$RUNNER_TEMP/game-check.log"
           if grep -Eq 'SCRIPT ERROR:|ERROR:|FAIL:' "$RUNNER_TEMP/game-check.log"; then exit 1; fi
           grep -q 'PASS: 164 release-safe checks' "$RUNNER_TEMP/game-check.log"
+          grep -Fxq 'PASS: bundled guidance continuation and comparison' "$RUNNER_TEMP/game-check.log"
       - name: Curated career method and pilot qualification
         run: scripts/test-curated-careers.sh pilot
       - name: Current-source 1100-career diagnostic

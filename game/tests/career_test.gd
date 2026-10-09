@@ -1,12 +1,31 @@
 extends SceneTree
 const Career = preload("res://play/career.gd")
 const Economy = preload("res://model/economy.gd")
+
+class RecordingReleaseCheck:
+	extends "res://play/build_check.gd"
+	func check(condition: bool, _message: String) -> void:
+		checks += 1
+		if not condition:
+			failures += 1
+
+class RateHoldOnlyCareer:
+	extends "res://play/career.gd"
+	func forecast(policy: Dictionary, _follow_guidance: bool = false) -> Dictionary:
+		return super.forecast(policy)
+
 var failures := 0
 func check(condition: bool, message: String) -> void:
 	if not condition:
 		failures += 1
 		printerr("FAIL: " + message)
 func _initialize() -> void:
+	if OS.get_cmdline_user_args().has("--release-guidance-only"):
+		check_release_guidance()
+		if failures == 0:
+			print("PASS: bundled guidance check accepts real forecasts and rejects rate-hold-only continuation")
+		quit(1 if failures else 0)
+		return
 	if OS.get_cmdline_user_args().has("--forecast-continuation-only"):
 		check_forecast_continuation()
 		if failures == 0:
@@ -33,6 +52,7 @@ func _initialize() -> void:
 		quit(1 if failures else 0)
 		return
 	check_forecast_continuation()
+	check_release_guidance()
 	var career := Career.new()
 	check(career.start("supply_shock", 417).ok, "scenario starts")
 	var initial: Dictionary = career.state.duplicate(true)
@@ -306,6 +326,28 @@ func check_situation_briefing() -> void:
 		recovery.shocks[0] = {}
 		recovery.advance(recovery.model.benchmark_policy(recovery.state, recovery.params, "hold"))
 		check(recovery.call("situation_briefing").contains("Hardship memory is easing"), "forgiveness follows actual decaying hardship memory")
+
+func check_release_guidance() -> void:
+	var checker = RecordingReleaseCheck.new()
+	check(checker.has_method("_check_guidance"), "fixed bundled checker must exercise promise-follow behavior")
+	if not checker.has_method("_check_guidance"):
+		return
+	for nominal in [4.5, -0.75]:
+		var career := Career.new()
+		check(career.start("base", 1).ok, "release guidance fixture starts")
+		var policy: Dictionary = career.model.benchmark_policy(career.state, career.params, "hold")
+		policy.policy_rate_request_pct = 3.5 if nominal > 0.0 else -0.5
+		policy.guidance_rate_pct = nominal
+		policy.guidance_inflation_sensitivity = 0.0
+		policy.guidance_output_gap_sensitivity = 0.0
+		checker = RecordingReleaseCheck.new()
+		checker._check_guidance(career, policy)
+		check(checker.checks > 0 and checker.failures == 0, "release check accepts genuine nominal continuation")
+		var mutant := RateHoldOnlyCareer.new()
+		check(mutant.start("base", 1).ok, "rate-hold mutant starts")
+		checker = RecordingReleaseCheck.new()
+		checker._check_guidance(mutant, policy)
+		check(checker.failures > 0, "release check must reject rate-hold substituted for promise-follow")
 
 func check_forecast_continuation() -> void:
 	var career := Career.new()

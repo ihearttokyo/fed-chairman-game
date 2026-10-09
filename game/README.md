@@ -36,6 +36,13 @@ and later user resizes do not trigger an automatic reset. Other platforms retain
 engine startup geometry. No gameplay or font-size constants change.
 
 The test wrapper rejects runtime errors even when Godot exits with status zero.
+The fixed `-- --verify-build` entry point checks the bundled careers, replay,
+scene and city, then firm and signed conditional guidance paths against
+independent eight-quarter replays. It also builds the main comparison without
+changing the career, controls or preview. CI and the macOS release verifier
+require both baseline and guidance completion markers; old baseline-only output
+cannot certify the new feature. Release templates retain their restriction on
+external script/path overrides.
 The exporter requires an absolute destination outside this repository. Its
 lexical path check is a guard against misplaced artifacts, not a sandbox for
 untrusted paths or symlinks. The export contains parameters, starting state,
