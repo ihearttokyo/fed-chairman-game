@@ -1,4 +1,19 @@
 extends SceneTree
+
+class UnavailableContinuationCareer:
+	extends "res://play/career.gd"
+	var continuation_forecasts := 0
+	var reject_reference := false
+
+	func forecast(policy: Dictionary, follow_guidance: bool = false) -> Dictionary:
+		if follow_guidance:
+			continuation_forecasts += 1
+		if follow_guidance or (reject_reference and policy.policy_rate_request_pct == state.policy_rate_pct):
+			var invalid: Dictionary = policy.duplicate()
+			invalid.guidance_rate_pct = NAN
+			return super.forecast(invalid, follow_guidance)
+		return super.forecast(policy)
+
 var failures := 0
 var pending_review: Button
 func _process(_delta: float) -> bool:
@@ -213,7 +228,9 @@ func check_terminal_career(game: Control) -> void:
 	check(game.career.restore(bytes_to_var(preserved)).ok, "completed career restores through real replay")
 	game._refresh(true)
 	check(game.quarter_label.text == "CAREER COMPLETE · 240 MEETINGS" and game.decision_button.disabled, "restored completion uses the same shared refresh")
-	check(game._decision_briefing().contains("CURRENT MEETING / REQUESTED AND APPLIED") and game.career.encode() == preserved, "terminal comparison remains available without changing completed history")
+	var terminal_report: String = game._decision_briefing()
+	check(terminal_report.contains("CURRENT MEETING / REQUESTED AND APPLIED") and game.career.encode() == preserved, "terminal comparison remains available without changing completed history")
+	check(terminal_report.contains("Beyond Q240: diagnostic continuation only, not extra playable turns."), "continuation beyond retirement cannot advertise extra playable meetings")
 	game._start_career("supply_shock", 1)
 	check(game.quarter_label.text == "YEAR 01 / Q1   ·   MEETING 1" and not game.decision_button.disabled and game.decision_button.text == "Adopt decision  →  Next quarter", "new career restores ordinary meeting and action labels")
 func check_situation_ui(game: Control) -> void:
@@ -581,7 +598,7 @@ func check_review_access(game: Control) -> void:
 		check(game.career.encode() == preserved and game._policy() == staged, "opening and closing realized review preserves career and controls")
 	game._start_career("supply_shock", 1)
 func check_comparison_navigation(game: Control) -> void:
-	var destinations := [["Meeting", "CURRENT MEETING /"], ["Deliberation", "COMMITTEE DELIBERATION /"], ["Guidance", "GUIDANCE /"], ["Scores", "Q+1 / WHY"], ["Forecasts", "CURRENT TRANSMISSION /"], ["Tools", "ONE-CONTROL CONTRASTS /"], ["Limits", "REFERENCE AND LIMITS"]]
+	var destinations := [["Meeting", "CURRENT MEETING /"], ["Deliberation", "COMMITTEE DELIBERATION /"], ["Guidance", "GUIDANCE /"], ["Guidance continuation", "GUIDANCE CONTINUATION /"], ["Scores", "Q+1 / WHY"], ["Forecasts", "CURRENT TRANSMISSION /"], ["Tools", "ONE-CONTROL CONTRASTS /"], ["Limits", "REFERENCE AND LIMITS"]]
 	for case_id in ["funding_stress", "base"]:
 		game._start_career(case_id, 11)
 		if case_id == "funding_stress":
@@ -608,7 +625,7 @@ func check_comparison_navigation(game: Control) -> void:
 			var body: TextEdit = bodies[0]
 			check(body.text == expected and body.accessibility_description == expected, "section navigation preserves every report byte and warning")
 			check(body.selecting_enabled and not body.editable and body.focus_mode == Control.FOCUS_ALL, "comparison report supports read-only native text selection and keyboard focus")
-			check(chooser.accessibility_name == "Comparison section" and chooser.item_count == destinations.size(), "section chooser has a distinct accessible name and all seven destinations")
+			check(chooser.accessibility_name == "Comparison section" and chooser.item_count == destinations.size(), "section chooser has a distinct accessible name and all eight destinations")
 			for index in range(mini(chooser.item_count, destinations.size())):
 				check(chooser.get_item_text(index) == destinations[index][0], "comparison sections retain their named order")
 				var paragraph := expected.substr(0, expected.find(destinations[index][1])).count("\n")
@@ -620,6 +637,22 @@ func check_comparison_navigation(game: Control) -> void:
 			check(game.career.encode() == preserved and game._policy() == staged, "section changes cannot mutate the career or staged decision")
 			body.select_all()
 			check(body.get_selected_text() == expected, "the full comparison remains available to native selection")
+			body.deselect()
+			chooser.select(0)
+			chooser.item_selected.emit(0)
+			body.grab_focus()
+			var page_down := InputEventKey.new()
+			page_down.keycode = KEY_PAGEDOWN
+			page_down.pressed = true
+			dialog.push_input(page_down)
+			await process_frame
+			check(body.has_focus() and body.get_v_scroll_bar().value > 0, "comparison retains native keyboard scrolling after a section jump")
+			var tab := InputEventKey.new()
+			tab.keycode = KEY_TAB
+			tab.pressed = true
+			dialog.push_input(tab)
+			await process_frame
+			check(not body.has_focus(), "Tab leaves the complete comparison body")
 		dialog.get_ok_button().pressed.emit()
 		check(dialog.visible and dialog.is_queued_for_deletion(), "comparison navigation preserves deferred accessibility closing")
 		await process_frame
@@ -633,6 +666,88 @@ func check_comparison_navigation(game: Control) -> void:
 		reopened.get_ok_button().pressed.emit()
 		await process_frame
 		check(game.career.encode() == preserved and game._policy() == staged, "closing and reopening comparison preserves the unsaved decision")
+	game._start_career("supply_shock", 1)
+func check_guidance_continuation(game: Control) -> void:
+	var heading := "GUIDANCE CONTINUATION / SELECTED HOLD VS PROMISE-FOLLOW"
+	for sample in [[3.5, 4.5, 0.0, 0.0], [-2.0, -4.0, 0.7, -0.25]]:
+		game._start_career("base", 417)
+		game.career.shocks[0] = {"demand_shock_pct": 1.2}
+		game.rate.value = sample[0]
+		game.guidance.value = sample[1]
+		game.commitment.select(2)
+		game.commitment.item_selected.emit(2)
+		game.inflation_response.value = sample[2]
+		game.activity_response.value = sample[3]
+		game.reinvestment.button_pressed = false
+		game.reserve_maintenance.button_pressed = false
+		game.sterilization.button_pressed = true
+		var staged: Dictionary = game._policy()
+		var selected: Dictionary = game.career.forecast(staged)
+		var held: Dictionary = game.career.forecast(game.career.model.benchmark_policy(game.career.state, game.career.params, "hold"))
+		var following: Dictionary = game.career.forecast(staged, true)
+		check(selected.ok and held.ok and following.ok, "continuation report setup uses valid real forecasts")
+		if not selected.ok or not held.ok or not following.ok:
+			continue
+		check(var_to_bytes(selected.states[0]) == var_to_bytes(following.states[0]), "promise-follow has the identical current decision and no immediate credibility bonus")
+		var preserved: PackedByteArray = var_to_bytes([game.career.encode(), game.career.state, game.career.history, staged, selected, held, following])
+		var report: String = game._decision_briefing()
+		check(report.find(heading) > report.find("GUIDANCE / COMMITMENT") and report.find(heading) < report.find("Q+1 / WHY"), "continuation sits between guidance and existing score diagnostics")
+		var a: Dictionary = selected.states[1]
+		var b: Dictionary = following.states[1]
+		if sample[0] > 0:
+			check(a.policy_rate_pct == 3.5 and b.policy_rate_pct == 4.5 and b.guidance_followthrough_score == 1.0, "firm continuation displays delivery instead of silently holding the selected rate")
+		else:
+			check(b.policy_rate_pct < 0 and b.effective_policy_rate_pct > b.policy_rate_pct, "signed continuation distinguishes the nominal promise from diminishing effective transmission")
+		check(report.contains("Q+2 / A VS B\nNominal rate %.2f%% vs %.2f%%\nEffective borrowing rate %.3f%% vs %.3f%%\nPromise follow-through %.1f vs %.1f / 100\nStance adequacy %.1f vs %.1f / 100" % [a.policy_rate_pct, b.policy_rate_pct, a.effective_policy_rate_pct, b.effective_policy_rate_pct, 100 * a.guidance_followthrough_score, 100 * b.guidance_followthrough_score, 100 * a.stance_adequacy_score, 100 * b.stance_adequacy_score]), "first continuation meeting uses paired nominal, effective, delivery and stance values")
+		a = selected.states[7]
+		b = following.states[7]
+		check(report.contains("Q+8 / A VS B\nNominal rate %.2f%% vs %.2f%%\nEffective borrowing rate %.3f%% vs %.3f%%" % [a.policy_rate_pct, b.policy_rate_pct, a.effective_policy_rate_pct, b.effective_policy_rate_pct]), "eighth-quarter nominal and effective rates remain separately labelled")
+		check(report.contains("B / Q+8 PROMISE-FOLLOW\nInflation %.3f%%; unemployment %.3f%%; output gap %+.3f%%\nCredibility %.1f / 100; public support %.1f / 100" % [b.four_quarter_inflation_pct, b.unemployment_rate_pct, b.output_gap_pct, 100 * b.credibility, b.public_support]), "promise-follow outcomes come from the actual eighth-quarter state")
+		check(report.contains("Q+8 / B MINUS A\nInflation %s; unemployment %s\nOutput gap %s; credibility %s; support %s" % [expected_change(b.four_quarter_inflation_pct - a.four_quarter_inflation_pct, 3, "pp"), expected_change(b.unemployment_rate_pct - a.unemployment_rate_pct, 3, "pp"), expected_change(b.output_gap_pct - a.output_gap_pct, 3, "pp"), expected_change(100 * (b.credibility - a.credibility), 2, "points"), expected_change(b.public_support - a.public_support, 2, "points")]), "continuation differences use B minus selected A with actual direction and units")
+		for assumption in ["A: selected-rate hold", "B: follow the implied nominal promise", "originally chosen conditions", "identical current decision and shock", "no future shocks", "Portfolio switches persist", "future asset/lending offers are zero", "No automatic player decision", "Fulfillment need not improve stance adequacy or credibility"]:
+			check(report.contains(assumption), "continuation discloses " + assumption)
+		game._preview()
+		check(var_to_bytes([game.career.encode(), game.career.state, game.career.history, game._policy(), selected, held, following]) == preserved, "comparison preserves selected/reference forecasts, live career and staged controls")
+		var preview: String = game.forecast_label.text
+		check(game._decision_briefing() == report and game.forecast_label.text == preview, "repeated continuation report leaves the default rate-hold preview unchanged")
+	game._start_career("base", 417)
+	var original = game.career
+	var failing := UnavailableContinuationCareer.new()
+	check(failing.restore(bytes_to_var(original.encode())).ok, "continuation failure fixture restores a real career")
+	game.career = failing
+	game._refresh(true)
+	game.rate.value = game.career.state.policy_rate_pct + 0.5
+	game.guidance.value = game.rate.value + 0.75
+	await process_frame
+	var invalid: Dictionary = game._policy().duplicate()
+	invalid.guidance_rate_pct = NAN
+	var rejected: Dictionary = original.forecast(invalid)
+	check(not rejected.ok, "continuation failure uses the native invalid-policy error")
+	var failure_preserved: PackedByteArray = var_to_bytes([failing.encode(), failing.state, failing.history, game._policy()])
+	var unavailable: String = game._decision_briefing()
+	check(failing.continuation_forecasts == 1 and unavailable.contains(heading + "\n") and unavailable.contains("Promise-follow unavailable: " + rejected.error), "only B fails explicitly after exactly one continuation forecast")
+	for marker in ["CURRENT MEETING /", "GUIDANCE /", "Q+1 / WHY", "CURRENT TRANSMISSION /", "ONE-CONTROL CONTRASTS /", "REFERENCE AND LIMITS"]:
+		check(unavailable.contains(marker), "B failure retains valid existing report section " + marker)
+	check(not unavailable.contains("Q+2 / A VS B") and not unavailable.begins_with("Comparison unavailable:"), "failed B states are not displayed or allowed to obscure valid selected/reference paths")
+	game._compare()
+	await process_frame
+	await process_frame
+	var dialog: AcceptDialog = game.get_child(game.get_child_count() - 1)
+	var bodies := dialog.find_children("*", "TextEdit", true, false)
+	check(bodies.size() == 1, "B failure retains the native complete report body")
+	if bodies.size() == 1:
+		var body: TextEdit = bodies[0]
+		check(body.text == unavailable and body.accessibility_description == unavailable, "B failure keeps the complete native accessible report")
+	dialog.get_ok_button().pressed.emit()
+	await process_frame
+	check(var_to_bytes([failing.encode(), failing.state, failing.history, game._policy()]) == failure_preserved, "opening and closing unavailable B preserves selected policy and live state")
+	failing.continuation_forecasts = 0
+	failing.reject_reference = true
+	check(game._decision_briefing() == "Comparison unavailable: " + rejected.error and failing.continuation_forecasts == 0, "invalid reference retains the original early error without computing B")
+	failing.reject_reference = false
+	failing.shocks[0] = {"continuation_fixture_unknown_input": 1.0}
+	check(game._decision_briefing() == "Comparison unavailable: unknown exogenous input: continuation_fixture_unknown_input" and failing.continuation_forecasts == 0, "invalid selected/current path retains the original early error without computing B")
+	game.career = original
 	game._start_career("supply_shock", 1)
 func check_rate_deliberation(game: Control) -> void:
 	for edge in ["ordinary", "middle", "floor", "ceiling"]:
@@ -778,6 +893,14 @@ func run() -> void:
 	var game = load("res://main.tscn").instantiate()
 	root.add_child(game)
 	await process_frame
+	if OS.get_cmdline_user_args().has("--guidance-continuation-only"):
+		await check_guidance_continuation(game)
+		await check_comparison_navigation(game)
+		if failures == 0:
+			print("PASS: report-only guidance continuation, native navigation and explicit failures")
+		game.free()
+		quit(1 if failures else 0)
+		return
 	if OS.get_cmdline_user_args().has("--current-signals-only"):
 		check_current_signals_ui(game)
 		if failures == 0:
@@ -866,6 +989,7 @@ func run() -> void:
 	check(game.charts[1].heading == "UNEMPLOYMENT & STRUCTURAL REFERENCE" and game.charts[1].accessibility_name == game.charts[1].heading, "chart heading and accessibility name identify unemployment")
 	check(game.stats[1][0].text == "%.2f%%" % game.career.state.unemployment_rate_pct and game.charts[1].keys == ["unemployment_rate_pct", "structural_unemployment_pct"] and game.charts[1].labels == ["Unemployment", "Structural reference"], "unemployment naming retains values, units, series and reference")
 	await check_comparison_navigation(game)
+	await check_guidance_continuation(game)
 	await check_pending_policy(game)
 	await check_unfocused_inputs(game)
 	await check_pending_overwrites(game)

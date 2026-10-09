@@ -496,6 +496,18 @@ prior-promise follow-through, current hardship and remembered hardship
 for both paths. The stance rule and score weights are disclosed game assumptions,
 not an optimal policy or a measured institutional reputation. The briefing does
 not change the career or select a policy for the player.
+
+Its report-only Guidance continuation section compares A, the selected-rate hold,
+with B, following the implied nominal promise at later meetings and renewing the
+originally chosen conditions. Both apply the identical current decision and
+shock, then no future shocks; portfolio switches persist and future asset/lending
+offers are zero. Q+2 pairs nominal/effective rates, follow-through and stance
+adequacy. Q+8 shows B outcomes and B-minus-A changes in inflation, unemployment,
+output gap, credibility and support. Fulfilling a nominal promise need not improve
+effective stance or credibility. Unavailable B paths retain their native error
+without replacing the valid report. Continuation beyond Q240 is diagnostic, not
+extra playable turns. The cockpit preview and player decisions stay unchanged.
+
 Four one-control contrasts also show how the staged rate, guidance quote, asset
 flow and lending differ from changing only that input. The rate alternative
 requests today's rate; the guidance alternative quotes the selected applied rate
@@ -504,9 +516,10 @@ flow or loans. Q+1 yield/spread and Q+8 inflation, employment, credibility and
 support differences come from the same model forecasts. They are conditional,
 nonadditive contrasts, including legitimate zero effects for unused or constrained
 tools, rather than an attribution of measured U.S. policy effects.
-The persistent section chooser jumps directly to Meeting, Guidance, Scores,
-Forecasts, Tools and Limits within the complete report. Native text selection
-and keyboard scrolling keep its calculations, explanations and warnings available.
+The persistent section chooser jumps directly to Meeting, Deliberation, Guidance,
+Guidance continuation, Scores, Forecasts, Tools and Limits within the complete
+report. Native text selection and keyboard scrolling keep its calculations,
+explanations and warnings available.
 
 Careers continue through 12-quarter reviews without resetting policy lags,
 expectations, hardship memory or charts. The local career limit is 240 quarters.

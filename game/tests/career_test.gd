@@ -1,11 +1,18 @@
 extends SceneTree
 const Career = preload("res://play/career.gd")
+const Economy = preload("res://model/economy.gd")
 var failures := 0
 func check(condition: bool, message: String) -> void:
 	if not condition:
 		failures += 1
 		printerr("FAIL: " + message)
 func _initialize() -> void:
+	if OS.get_cmdline_user_args().has("--forecast-continuation-only"):
+		check_forecast_continuation()
+		if failures == 0:
+			print("PASS: observed-only nominal guidance continuation and unchanged rate-hold")
+		quit(1 if failures else 0)
+		return
 	if OS.get_cmdline_user_args().has("--current-signals-only"):
 		check_current_signals()
 		if failures == 0:
@@ -25,6 +32,7 @@ func _initialize() -> void:
 			print("PASS: offline situation continuity, replay and no future spoilers")
 		quit(1 if failures else 0)
 		return
+	check_forecast_continuation()
 	var career := Career.new()
 	check(career.start("supply_shock", 417).ok, "scenario starts")
 	var initial: Dictionary = career.state.duplicate(true)
@@ -298,3 +306,149 @@ func check_situation_briefing() -> void:
 		recovery.shocks[0] = {}
 		recovery.advance(recovery.model.benchmark_policy(recovery.state, recovery.params, "hold"))
 		check(recovery.call("situation_briefing").contains("Hardship memory is easing"), "forgiveness follows actual decaying hardship memory")
+
+func check_forecast_continuation() -> void:
+	var career := Career.new()
+	check(career.start("base", 1).ok, "continuation source starts")
+	career.shocks[0] = {}
+	var policy: Dictionary = career.model.benchmark_policy(career.state, career.params, "hold")
+	policy.guidance_rate_pct = 4.5
+	policy.guidance_inflation_sensitivity = 0.0
+	policy.guidance_output_gap_sensitivity = 0.0
+	var held: Dictionary = career.forecast(policy)
+	var followed: Dictionary = career.forecast(policy, true)
+	check(held.ok and followed.ok, "both conditional paths are available")
+	if followed.ok:
+		check(abs(followed.states[1].policy_rate_pct - 4.5) < 1e-9 and abs(followed.states[1].guidance_followthrough_score - 1.0) < 1e-9, "Q+2 must deliver firm nominal4.50 with full follow-through")
+	if held.ok:
+		check(held.states[1].policy_rate_pct == 3.5 and held.states[1].guidance_followthrough_score < 1.0, "default rate-hold still breaks the differing firm promise")
+	check_forecast_pair(career, policy, "firm")
+	policy = career.model.benchmark_policy(career.state, career.params, "hold")
+	var neutral: Dictionary = check_forecast_pair(career, policy, "neutral")
+	check(var_to_bytes(neutral) == var_to_bytes(career.forecast(policy)), "equilibrium hold and promise-follow are identical")
+	career.shocks[0] = {"demand_shock_pct":1.2, "funding_need_pct_initial_gdp":2.0,
+		"eligible_collateral_pct_initial_gdp":4.0, "liquidity_eligibility_pct":100.0}
+	policy.guidance_rate_pct = 3.65
+	policy.guidance_inflation_sensitivity = 0.7
+	policy.guidance_output_gap_sensitivity = -0.25
+	policy.asset_flow_request_pct_initial_gdp = 1.25
+	policy.liquidity_request_pct_initial_gdp = 4.0
+	policy.merge({"reinvest_principal":false, "maintain_ample_reserves":false, "sterilize_purchases":true})
+	var custom: Dictionary = check_forecast_pair(career, policy, "custom conditions and switches")
+	if custom.ok:
+		check(custom.states[1].policy_rate_pct != policy.guidance_rate_pct, "custom conditions change the delivered nominal quote")
+		check(custom.states[0].asset_flow_request_pct_initial_gdp == 1.25 and custom.states[0].liquidity_applied_pct_initial_gdp > 0.0, "current offers apply before continuation")
+	policy.policy_rate_request_pct = -0.5
+	policy.guidance_rate_pct = -0.75
+	check_forecast_pair(career, policy, "negative custom conditions")
+	policy.guidance_inflation_sensitivity = 0.0
+	policy.guidance_output_gap_sensitivity = 0.0
+	var signed: Dictionary = check_forecast_pair(career, policy, "negative firm")
+	if signed.ok:
+		check(signed.states[1].policy_rate_pct == -0.75 and signed.states[1].effective_policy_rate_pct != -0.75, "negative delivery uses nominal, not effective, rates")
+	var omitted: Dictionary = policy.duplicate(true)
+	for key in Economy.POLICY_SWITCHES:
+		omitted.erase(key)
+	var explicit_defaults: Dictionary = omitted.duplicate(true)
+	explicit_defaults.merge(Economy.POLICY_SWITCHES, true)
+	check_forecast_pair(career, omitted, "omitted switches")
+	for follow in [false, true]:
+		check(var_to_bytes(career.forecast(omitted, follow)) == var_to_bytes(career.forecast(explicit_defaults, follow)), "omitted switches exactly equal explicit defaults in both paths")
+	for boundary in ["missing", "nonfinite", "off-grid rate", "off-grid guidance", "condition", "switch", "outcome"]:
+		var invalid: Dictionary = policy.duplicate(true)
+		match boundary:
+			"missing": invalid.erase("guidance_inflation_sensitivity")
+			"nonfinite": invalid.guidance_rate_pct = INF
+			"off-grid rate": invalid.policy_rate_request_pct = 3.501
+			"off-grid guidance": invalid.guidance_rate_pct = -0.751
+			"condition": invalid.guidance_inflation_sensitivity = 3.0
+			"switch": invalid.reinvest_principal = 1
+			"outcome": invalid.policy_rate_request_pct = 1000000.0
+		check_forecast_rejection(career, invalid, boundary)
+	career.shocks[0] = {"supply_innovation_pct":INF}
+	check_forecast_rejection(career, policy, "nonfinite current shock")
+	career.shocks[0] = {}
+	var initialized: Dictionary = career.model.initial_state(career.params, {"credibility":0.0})
+	check(initialized.ok, "delayed numerical failure fixture initializes")
+	if initialized.ok:
+		career.state = initialized.state
+		career.history = [career.state.duplicate(true)]
+		policy = career.model.benchmark_policy(career.state, career.params, "hold")
+		policy.guidance_rate_pct = 1000000.0
+		policy.guidance_inflation_sensitivity = 0.0
+		policy.guidance_output_gap_sensitivity = 0.0
+		check(career.model.step(career.state, policy, career.current_briefing(), career.params).ok and career.forecast(policy).ok, "unpriced current quote and default hold remain available")
+		check_forecast_rejection(career, policy, "future nominal delivery unavailable", true)
+
+func forecast_live_bytes(career) -> PackedByteArray:
+	return var_to_bytes([career.state, career.history, career.decisions, career.shocks, career._seeded_shocks,
+		career.episodes, career.scenario_id, career.seed_value, career.params, career.cases, career.encode()])
+
+func replay_forecast(career, policy: Dictionary, follow_guidance: bool) -> Dictionary:
+	var projected: Dictionary = career.state.duplicate(true)
+	var current: Dictionary = career.current_briefing()
+	var states: Array = []
+	for q in range(8):
+		var choice: Dictionary = policy.duplicate(true)
+		if q > 0:
+			if follow_guidance:
+				var implied: float = projected.guidance_rate_pct \
+					+ projected.guidance_inflation_sensitivity * (projected.four_quarter_inflation_pct - projected.guidance_reference_inflation_pct) \
+					+ projected.guidance_output_gap_sensitivity * (projected.output_gap_pct - projected.guidance_reference_output_gap_pct)
+				var due: float = roundf(implied / career.params.minimum_rate_increment_pct) * career.params.minimum_rate_increment_pct
+				choice.policy_rate_request_pct = due
+				choice.guidance_rate_pct = due
+				choice.asset_flow_request_pct_initial_gdp = 0.0
+				choice.liquidity_request_pct_initial_gdp = 0.0
+			else:
+				choice = career.model.benchmark_policy(projected, career.params, "hold")
+			for key in Economy.POLICY_SWITCHES:
+				choice[key] = policy.get(key, Economy.POLICY_SWITCHES[key])
+		var result: Dictionary = career.model.step(projected, choice, current if q == 0 else {}, career.params)
+		if not result.ok:
+			return result
+		projected = result.state
+		states.append(projected.duplicate(true))
+	return {"ok":true, "states":states}
+
+func check_forecast_pair(career, policy: Dictionary, label: String) -> Dictionary:
+	var live: PackedByteArray = forecast_live_bytes(career)
+	var input: PackedByteArray = var_to_bytes(policy)
+	var held: Dictionary = career.forecast(policy)
+	var followed: Dictionary = career.forecast(policy, true)
+	check(var_to_bytes(held) == var_to_bytes(career.forecast(policy, false)), label + " implicit and explicit hold are byte-identical")
+	for follow in [false, true]:
+		var actual: Dictionary = followed if follow else held
+		check(actual.ok and actual.get("states", []).size() == 8, label + " has exactly eight states")
+		check(var_to_bytes(actual) == var_to_bytes(replay_forecast(career, policy, follow)), label + " all states equal independent current-shock/empty-future replay")
+		check(var_to_bytes(actual) == var_to_bytes(career.forecast(policy, follow)), label + " repeats byte-identically")
+	if held.ok and followed.ok:
+		check(var_to_bytes(held.states[0]) == var_to_bytes(followed.states[0]), label + " identical current decision and shock")
+		for outcome in followed.states.slice(1):
+			check(outcome.guidance_inflation_sensitivity == policy.guidance_inflation_sensitivity and outcome.guidance_output_gap_sensitivity == policy.guidance_output_gap_sensitivity, label + " original conditions persist")
+			check(outcome.guidance_rate_pct == outcome.policy_rate_pct and outcome.guidance_followthrough_score == 1.0, label + " delivered quote is renewed with full nominal follow-through")
+			check(outcome.asset_flow_request_pct_initial_gdp == 0.0 and outcome.liquidity_request_pct_initial_gdp == 0.0, label + " future discretionary offers are zero")
+	check(forecast_live_bytes(career) == live and var_to_bytes(policy) == input, label + " all live state and input bytes preserved")
+	var future: Array = career.shocks.duplicate(true)
+	var episodes: Array = career.episodes.duplicate(true)
+	for q in range(career.decisions.size() + 1, career.shocks.size()):
+		career.shocks[q] = {"demand_shock_pct":4.0, "supply_innovation_pct":-0.2, "funding_need_pct_initial_gdp":9.0}
+	career.episodes = [{"diagnostic_future_mutation":true}]
+	for follow in [false, true]:
+		check(var_to_bytes(career.forecast(policy, follow)) == var_to_bytes(followed if follow else held), label + " future shocks and episodes cannot influence either path")
+	career.shocks = future
+	career.episodes = episodes
+	check(forecast_live_bytes(career) == live, label + " isolation fixture restores every live byte")
+	return followed
+
+func check_forecast_rejection(career, policy: Dictionary, label: String, follow_only: bool = false) -> void:
+	var live: PackedByteArray = forecast_live_bytes(career)
+	var input: PackedByteArray = var_to_bytes(policy)
+	for follow in ([true] if follow_only else [false, true]):
+		var expected: Dictionary = replay_forecast(career, policy, follow)
+		var actual: Dictionary = career.forecast(policy, follow)
+		check(not actual.ok and not actual.get("error", "").is_empty(), label + " rejects explicitly")
+		check(var_to_bytes(actual) == var_to_bytes(expected), label + " returns the exact native model error")
+		if not follow:
+			check(var_to_bytes(actual) == var_to_bytes(career.forecast(policy)), label + " default error is unchanged")
+	check(forecast_live_bytes(career) == live and var_to_bytes(policy) == input, label + " rejection preserves all live state and input bytes")
