@@ -1,5 +1,20 @@
 extends SceneTree
 
+class RecordingReleaseCheck:
+	extends "res://play/build_check.gd"
+	func check(condition: bool, _message: String) -> void:
+		checks += 1
+		if not condition:
+			failures += 1
+
+class CorruptComparisonMain:
+	extends "res://play/main.gd"
+	var fragment := ""
+	func _decision_briefing() -> String:
+		if fragment == "headings only":
+			return "GUIDANCE CONTINUATION / SELECTED HOLD VS PROMISE-FOLLOW\nQ+2 / A VS B\nB / Q+8 PROMISE-FOLLOW\nQ+8 / B MINUS A\n"
+		return super._decision_briefing().replace(fragment, fragment + "9999 ")
+
 class UnavailableContinuationCareer:
 	extends "res://play/career.gd"
 	var continuation_forecasts := 0
@@ -887,12 +902,35 @@ func check_initial_window_size(game: Control, window_size_before: Vector2i, wind
 		check(root.size == window_size_before, "headless or explicitly configured startup preserves initial size")
 		check(root.position == window_position_before, "headless or explicitly configured startup preserves initial position")
 
+func check_release_comparison(game: Control) -> void:
+	var checker := RecordingReleaseCheck.new()
+	checker._check_report(game)
+	check(checker.checks == 5 and checker.failures == 0, "bundled comparison check accepts genuine report values")
+	for fragment in ["headings only", "Q+2 / A VS B\nNominal rate ",
+		"B / Q+8 PROMISE-FOLLOW\nInflation ", "Q+8 / B MINUS A\nInflation "]:
+		var mutant := CorruptComparisonMain.new()
+		mutant.fragment = fragment
+		root.add_child(mutant)
+		await process_frame
+		checker = RecordingReleaseCheck.new()
+		checker._check_report(mutant)
+		check(checker.failures > 0, "bundled comparison check rejects corrupt " + fragment)
+		mutant.free()
+
 func run() -> void:
 	var window_size_before := root.size
 	var window_position_before := root.position
 	var game = load("res://main.tscn").instantiate()
 	root.add_child(game)
 	await process_frame
+	if OS.get_cmdline_user_args().is_empty() or OS.get_cmdline_user_args().has("--release-check-only"):
+		await check_release_comparison(game)
+	if OS.get_cmdline_user_args().has("--release-check-only"):
+		game.free()
+		if failures == 0:
+			print("PASS: bundled comparison checks reject headings-only and corrupt Q+2/Q+8/delta values")
+		quit(1 if failures else 0)
+		return
 	if OS.get_cmdline_user_args().has("--guidance-continuation-only"):
 		await check_guidance_continuation(game)
 		await check_comparison_navigation(game)
