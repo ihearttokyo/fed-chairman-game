@@ -1,5 +1,11 @@
 extends SceneTree
 
+class RecordingQuitMain:
+	extends "res://play/main.gd"
+	var exit_requests := 0
+	func _quit_app() -> void:
+		exit_requests += 1
+
 class RecordingReleaseCheck:
 	extends "res://play/build_check.gd"
 	func check(condition: bool, _message: String) -> void:
@@ -1084,9 +1090,235 @@ func check_release_comparison(game: Control) -> void:
 		check(checker.failures > 0, "bundled comparison check rejects corrupt " + fragment)
 		mutant.free()
 
+func quit_key(window: Window, code: Key) -> void:
+	var event := InputEventKey.new()
+	event.keycode = code
+	event.pressed = true
+	var receiver: Window = root if window.is_embedded() else window
+	receiver.window_input.emit(event)
+	receiver.push_input(event)
+	event = event.duplicate()
+	event.pressed = false
+	receiver.window_input.emit(event)
+	receiver.push_input(event)
+	await process_frame
+	await process_frame
+
+func request_app_close() -> void:
+	check(not auto_accept_quit, "native app quit disables SceneTree auto_accept_quit before any root close event")
+	if auto_accept_quit:
+		return
+	root.notification(Window.NOTIFICATION_WM_CLOSE_REQUEST)
+	root.close_requested.emit()
+	await process_frame
+	await process_frame
+
+func app_quit_dialog(game: Control) -> AcceptDialog:
+	var dialogs: Array[Window] = []
+	for child in game.get_children():
+		if child is Window and child.visible:
+			dialogs.append(child)
+	check(dialogs.size() == 1 and dialogs[0] is AcceptDialog, "dirty root close opens exactly one native confirmation")
+	if dialogs.size() != 1 or not dialogs[0] is AcceptDialog:
+		return null
+	var dialog: AcceptDialog = dialogs[0]
+	check(dialog.get_ok_button().text.to_lower() == "quit without saving", "quit confirmation names the explicit discard action")
+	var focused := dialog.gui_get_focus_owner() as Button
+	check(focused != null and focused.text == "Cancel", "quit confirmation initially focuses Cancel")
+	return dialog
+
+func app_quit_snapshot(game: Control) -> PackedByteArray:
+	var metadata: Array = []
+	for field in [game.rate, game.guidance, game.assets, game.liquidity, game.inflation_response, game.activity_response]:
+		metadata.append([field.get_meta("numeric_text"), field.get_meta("numeric_text_pending")])
+	return var_to_bytes([review_staff_snapshot(game), metadata, game.status_label.text, game.consequence.text])
+
+func check_dirty_quit_cancel(game: Control, context: String) -> void:
+	game.rate.get_line_edit().grab_focus()
+	# A real adoption redraws SpinBox text before the next user quit request.
+	await process_frame
+	await process_frame
+	var preserved := app_quit_snapshot(game)
+	var exits: int = game.exit_requests
+	await request_app_close()
+	var dialog := app_quit_dialog(game)
+	check(game.exit_requests == exits, context + " retains dirty quit protection")
+	if dialog != null:
+		await quit_key(dialog, KEY_ESCAPE)
+		await process_frame
+		check(not is_instance_valid(dialog) and game.rate.get_line_edit().has_focus(), context + " cancels back to its invoking field")
+	check(app_quit_snapshot(game) == preserved and game.exit_requests == exits, context + " cancellation preserves career, controls, raw text, metadata and preview")
+
+func check_unsaved_app_quit() -> void:
+	var home := OS.get_environment("FED_GAME_TEST_HOME")
+	var temporary_dir := OS.get_environment("TMPDIR").simplify_path()
+	var private_home := home.begins_with("/private/tmp/fed-game-home.") or home.begins_with("/tmp/fed-game-home.")
+	var isolated := private_home and home == OS.get_environment("HOME") and OS.get_user_data_dir().begins_with(home + "/") and temporary_dir == home.path_join("tmp") and DirAccess.dir_exists_absolute(temporary_dir)
+	check(isolated, "quit fixture requires verified private HOME, user storage and TMPDIR before any write")
+	if not isolated:
+		return
+	var temporary := temporary_dir.path_join("fed-unsaved-quit-%d.save" % OS.get_process_id())
+	if FileAccess.file_exists(temporary) or DirAccess.dir_exists_absolute(temporary) or FileAccess.file_exists(temporary + ".pending") or DirAccess.dir_exists_absolute(temporary + ".pending"):
+		check(false, "quit fixture collision; existing final and pending paths preserved")
+		return
+	var game = load("res://main.tscn").instantiate()
+	# Keep scene properties and real startup; intercept only the final process exit.
+	game.set_script(RecordingQuitMain)
+	game.save_path = temporary
+	root.add_child(game)
+	await process_frame
+	await process_frame
+	check(not auto_accept_quit, "native app quit disables SceneTree auto_accept_quit before any root close event")
+	if auto_accept_quit:
+		game.free()
+		return
+	await request_app_close()
+	check(game.exit_requests == 1 and game.find_children("*", "AcceptDialog", true, false).is_empty(), "fresh career root close requests exactly one immediate exit without confirmation")
+	check(not FileAccess.file_exists(temporary) and not FileAccess.file_exists(temporary + ".pending"), "fresh close never creates a save")
+	game._start_career("base", 41)
+	game.rate.value = 4.25
+	game.guidance.value = 4.25
+	for quarter in range(3):
+		game._advance()
+	check(game.career.state.quarter_index == 3 and game.career.decisions.size() == 3, "dirty quit fixture adopts three quarters through real Main and Career")
+	game.rate.value = 5.25
+	game.guidance.value = 6.25
+	game.assets.value = 1.25
+	await process_frame
+	await process_frame
+	for dismissal in ["Cancel", "Escape", "WM close"]:
+		var invoker: LineEdit = game.rate.get_line_edit()
+		invoker.grab_focus()
+		invoker.text = "-0.37"
+		check(game.rate.value == 5.25 and invoker.text != str(game.rate.get_meta("numeric_text")), "quit fixture retains unsubmitted raw numeric text distinct from staged policy and draw metadata")
+		var preserved := app_quit_snapshot(game)
+		var exits: int = game.exit_requests
+		await request_app_close()
+		var dialog := app_quit_dialog(game)
+		check(game.exit_requests == exits and not FileAccess.file_exists(temporary) and not FileAccess.file_exists(temporary + ".pending"), "dirty root close neither exits nor writes any save")
+		if dialog == null:
+			game.free()
+			return
+		await request_app_close()
+		await request_app_close()
+		check(app_quit_dialog(game) == dialog and game.exit_requests == exits, "repeated root close retains the same single Cancel-first confirmation")
+		if dismissal == "WM close":
+			var canceled := [0]
+			dialog.canceled.connect(func(): canceled[0] += 1)
+			dialog.notification(Window.NOTIFICATION_WM_CLOSE_REQUEST)
+			check(canceled[0] == 1 and dialog.is_queued_for_deletion(), "native quit-modal WM notification cancels once and queues accessibility-safe disposal")
+			dialog.close_requested.emit()
+			await process_frame
+			await process_frame
+			check(canceled[0] == 1, "native quit-modal close signal does not repeat WM cancellation")
+		else:
+			await quit_key(dialog, KEY_SPACE if dismissal == "Cancel" else KEY_ESCAPE)
+		await process_frame
+		check(not is_instance_valid(dialog) and invoker.has_focus(), dismissal + " disposes the quit modal and restores invoking focus")
+		check(app_quit_snapshot(game) == preserved and game.exit_requests == exits, dismissal + " preserves complete career, staged policy, pending raw text/metadata and preview without exit")
+		check(not FileAccess.file_exists(temporary) and not FileAccess.file_exists(temporary + ".pending"), dismissal + " never writes a save")
+	var preserved := app_quit_snapshot(game)
+	var exits: int = game.exit_requests
+	await request_app_close()
+	var discard := app_quit_dialog(game)
+	if discard == null:
+		game.free()
+		return
+	await quit_key(discard, KEY_TAB)
+	check(discard.gui_get_focus_owner() == discard.get_ok_button(), "Tab reaches Quit without saving from Cancel")
+	await quit_key(discard, KEY_SPACE)
+	await process_frame
+	check(game.exit_requests == exits + 1 and not is_instance_valid(discard), "explicit keyboard discard requests exactly one exit and disposes its modal")
+	check(app_quit_snapshot(game) == preserved and not FileAccess.file_exists(temporary) and not FileAccess.file_exists(temporary + ".pending"), "discard does not adopt pending text, mutate play or save automatically")
+	if FileAccess.file_exists(temporary) or DirAccess.dir_exists_absolute(temporary) or FileAccess.file_exists(temporary + ".pending") or DirAccess.dir_exists_absolute(temporary + ".pending"):
+		check(false, "quit fixture refuses to overwrite any unexpected final or pending path before explicit Save")
+		game.free()
+		return
+	var saved: PackedByteArray = game.career.encode()
+	game._save()
+	check(FileAccess.file_exists(temporary) and FileAccess.get_file_as_bytes(temporary) == saved and game.status_label.text.begins_with("Saved quarter 3."), "real successful Save writes the private fixture")
+	if not FileAccess.file_exists(temporary):
+		game.free()
+		return
+	exits = game.exit_requests
+	preserved = app_quit_snapshot(game)
+	await request_app_close()
+	check(game.exit_requests == exits + 1 and game.find_children("*", "AcceptDialog", true, false).is_empty() and app_quit_snapshot(game) == preserved, "successful Save establishes a clean baseline despite staged and pending policy edits")
+	game._advance()
+	check(game.career.state.quarter_index == 4 and game.career.encode() != saved, "a later real adoption differs from the saved clean baseline")
+	await check_dirty_quit_cancel(game, "adoption after Save")
+	var dirty: PackedByteArray = game.career.encode()
+	# A regular fixture file cannot be a parent directory: deterministic real I/O failure.
+	game.save_path = temporary.path_join("missing.save")
+	game._save()
+	check(game.status_label.text == "Could not create save. Previous save is unchanged." and game.career.encode() == dirty, "failed real Save preserves adopted unsaved play")
+	game.save_path = temporary
+	await check_dirty_quit_cancel(game, "failed Save")
+	game._load()
+	await process_frame
+	await process_frame
+	var replacement: AcceptDialog = game.get_child(game.get_child_count() - 1)
+	await quit_key(replacement, KEY_SPACE)
+	check(game.career.encode() == dirty, "cancelled real Load retains the dirty career")
+	await check_dirty_quit_cancel(game, "cancelled Load")
+	game.save_path = temporary.path_join("missing.save")
+	game._load()
+	await process_frame
+	await process_frame
+	replacement = game.get_child(game.get_child_count() - 1)
+	await quit_key(replacement, KEY_TAB)
+	await quit_key(replacement, KEY_SPACE)
+	check(game.status_label.text == "No readable saved career found." and game.career.encode() == dirty, "failed real Load retains the dirty career")
+	game.save_path = temporary
+	await check_dirty_quit_cancel(game, "failed Load")
+	check(FileAccess.get_file_as_bytes(temporary) == saved and not FileAccess.file_exists(temporary + ".pending"), "dirty cancellations and failed operations never replace the saved fixture")
+	game._load()
+	await process_frame
+	await process_frame
+	replacement = game.get_child(game.get_child_count() - 1)
+	await quit_key(replacement, KEY_TAB)
+	await quit_key(replacement, KEY_SPACE)
+	check(game.career.encode() == saved and game.status_label.text == "Loaded quarter 3.", "successful real Load restores the exact saved career")
+	exits = game.exit_requests
+	await request_app_close()
+	check(game.exit_requests == exits + 1 and game.find_children("*", "AcceptDialog", true, false).is_empty(), "successful Load resets the clean quit baseline")
+	game._advance()
+	await check_dirty_quit_cancel(game, "adoption after Load")
+	game._new_dialog()
+	await process_frame
+	await process_frame
+	replacement = game.get_child(game.get_child_count() - 1)
+	await quit_key(replacement, KEY_ESCAPE)
+	await check_dirty_quit_cancel(game, "cancelled New")
+	dirty = game.career.encode()
+	game._start_career("unknown-quit-test-case", 41)
+	check(game.career.encode() == dirty, "invalid New retains the prior career")
+	await check_dirty_quit_cancel(game, "invalid New")
+	game._new_dialog()
+	await process_frame
+	await process_frame
+	replacement = game.get_child(game.get_child_count() - 1)
+	replacement.get_ok_button().pressed.emit()
+	await process_frame
+	await process_frame
+	check(game.career.state.quarter_index == 0 and game.career.decisions.is_empty(), "valid New starts a fresh real career")
+	exits = game.exit_requests
+	await request_app_close()
+	check(game.exit_requests == exits + 1 and game.find_children("*", "AcceptDialog", true, false).is_empty(), "valid New resets the clean quit baseline")
+	check(FileAccess.get_file_as_bytes(temporary) == saved and not FileAccess.file_exists(temporary + ".pending"), "Load, New and all quit intentions leave the saved fixture unchanged")
+	game.free()
+	await process_frame
+	await process_frame
+
 func run() -> void:
 	var window_size_before := root.size
 	var window_position_before := root.position
+	if OS.get_cmdline_user_args().has("--unsaved-quit-only"):
+		await check_unsaved_app_quit()
+		if failures == 0:
+			print("PASS: unsaved native root quit, keyboard cancellation/discard and clean Save/Load/New baselines")
+		quit(1 if failures else 0)
+		return
 	var game = load("res://main.tscn").instantiate()
 	root.add_child(game)
 	await process_frame
@@ -1383,6 +1615,9 @@ func run() -> void:
 	credits.get_ok_button().pressed.emit()
 	await process_frame
 	game.free()
+	await process_frame
+	await process_frame
+	await check_unsaved_app_quit()
 	if failures == 0:
 		print("PASS: exact rate display and UI adoption path")
 	quit(1 if failures else 0)
