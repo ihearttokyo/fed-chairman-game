@@ -135,6 +135,38 @@ func check_text_reports(game: Control) -> void:
 	await process_frame
 	check(game.career.encode() == preserved, "reading full completed history is pure")
 	game._start_career("supply_shock", 1)
+func check_funding_outcome(game: Control) -> void:
+	game._start_career("funding_stress", 1)
+	for q in range(4):
+		check(game.career.advance(game.career.model.benchmark_policy(game.career.state, game.career.params, "feedback")).ok, "funding feedback setup reaches the real Q5 shock")
+	game._refresh(true)
+	game.liquidity.value = 10.0
+	var before: Dictionary = game.career.state.duplicate(true)
+	var policy: Dictionary = game._policy()
+	var expected: Dictionary = game.career.model.step(before, policy, game.career.current_briefing(), game.career.params)
+	game._advance()
+	check(expected.ok and game.career.state == expected.state, "funding outcome copy preserves the exact adopted native state")
+	var s: Dictionary = game.career.state
+	var n: float = s.decision_nominal_gdp_ratio
+	check(s.liquidity_applied_pct_initial_gdp > 0.0 and s.liquidity_applied_pct_initial_gdp < policy.liquidity_request_pct_initial_gdp and s.uncovered_funding_pct_initial_gdp == 0.0, "oversized offer fixture distinguishes requested and applied loans with zero uncovered funding")
+	var expected_line := "Funding (%% meeting GDP): lent %.2f · uncovered %.2f · repaid %.2f." % [s.liquidity_applied_pct_initial_gdp / n, s.uncovered_funding_pct_initial_gdp / n, s.liquidity_repayment_pct_initial_gdp / n]
+	check(game.consequence.text.contains(expected_line), "immediate funding outcome uses realized flows and meeting GDP")
+	check("%.2f" % (s.liquidity_applied_pct_initial_gdp / n) != "%.2f" % s.liquidity_applied_pct_initial_gdp and "%.2f" % (s.liquidity_applied_pct_initial_gdp / n) != "%.2f" % (s.liquidity_applied_pct_initial_gdp / s.ending_nominal_gdp_ratio), "loan fixture distinguishes meeting, initial and ending GDP at displayed precision")
+	check(game.liquidity.value == 0.0 and game.consequence.text.contains("Q5 OUTCOME") and game.consequence.text.contains("Previous promise follow-through") and game.consequence.accessibility_live == AccessibilityServer.LIVE_POLITE, "loan outcome retains offer reset, existing feedback and assistive announcements")
+	var prior_loan: float = s.outstanding_liquidity_pct_initial_gdp
+	game._advance()
+	s = game.career.state
+	n = s.decision_nominal_gdp_ratio
+	check(s.liquidity_applied_pct_initial_gdp == 0.0 and s.liquidity_repayment_pct_initial_gdp == prior_loan and s.uncovered_funding_pct_initial_gdp > 0.0, "next real meeting repays prior short loans and retains new unmet need")
+	expected_line = "Funding (%% meeting GDP): lent %.2f · uncovered %.2f · repaid %.2f." % [s.liquidity_applied_pct_initial_gdp / n, s.uncovered_funding_pct_initial_gdp / n, s.liquidity_repayment_pct_initial_gdp / n]
+	check(game.consequence.text.contains(expected_line), "repayment feedback reports completed meeting rather than next preview")
+	game._start_career("base", 1)
+	game.career.shocks[0] = {}
+	game._advance()
+	s = game.career.state
+	check(s.liquidity_applied_pct_initial_gdp == 0.0 and s.uncovered_funding_pct_initial_gdp == 0.0 and s.liquidity_repayment_pct_initial_gdp == 0.0, "explicit quiet fixture has no funding flows")
+	check(not game.consequence.text.contains("Funding (") and game.consequence.text.contains("Q1 OUTCOME"), "zero-flow adoption omits an unnecessary funding line")
+
 func check_score_feedback(game: Control) -> void:
 	game._start_career("funding_stress", 42)
 	var before: Dictionary = game.career.state.duplicate(true)
@@ -1097,6 +1129,7 @@ func run() -> void:
 		game.free()
 		quit(1 if failures else 0)
 		return
+	check_funding_outcome(game)
 	check_score_feedback(game)
 	check_change_precision(game)
 	if OS.get_cmdline_user_args().has("--score-feedback-only"):
