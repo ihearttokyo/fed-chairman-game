@@ -1,6 +1,49 @@
 # Playable Policy Lab validation
 
-## Current source boundary, October 4, 2026 (UTC)
+## Current Mac playtest, October 9, 2026 (UTC)
+
+[PR65](https://github.com/ihearttokyo/fed-chairman-game/pull/65) merged at
+`0bbcf3d`; its complete source tree matches qualified head `1936d56`.
+Independent correctness and Ponytail reviews were clean. The exact-head
+[CI run37957428773](https://github.com/ihearttokyo/fed-chairman-game/actions/runs/37957428773)
+passed model, packaging/workbook safety, all17 game suites and the current-source
+1,100-career diagnostic. Native Mac game suites also passed. Economic equations,
+parameters and scenario inputs are unchanged from the previously qualified
+compound-challenge model; native workbook parity evidence remains applicable
+to those unchanged inputs.
+
+The ARM64-only Developer ID app passed223 actual bundled checks, strict signature,
+hardened-runtime/timestamp checks, Apple notarization, stapling and Gatekeeper.
+Nine key packed economic/game resources match the qualified source byte-for-byte.
+The installed Funding Feedback Playtest app matches every file in the tested
+bundle. Older apps and user saves remain separate; no migration or replacement
+occurred. The fixed self-check comprises164 baseline checks plus59 guidance
+continuation/comparison checks.
+
+Background Computer Use on the normal exported entry point performed15 actual
+keyboard adoptions. Eight passive turns in the default Weakly anchored inflation
+career moved inflation from4.50% to4.86% and support from70 to61.3/100. The funding
+case then distinguished a10%-GDP offer from2.92%-meeting-GDP accepted lending,
+and next-quarter repayment2.88% from uncovered need1.92%. Both current-size
+captures were inspected; realized feedback and controls fit. Cancellation
+preserved the outcome, and the next adoption advanced exactly one quarter.
+These observations establish visible policy feedback, not optimal policy or
+human enjoyment.
+
+A teardown query against the closed test-app descriptor unexpectedly relaunched
+it without private launch arguments and rotated the player's default log. Only
+the newly created task process was terminated; the exact log was restored from
+a hash-verified rotated backup. The running player process and save stayed
+intact. The [GUI runbook](AGENTIC_GUI_VALIDATION.md) now verifies shutdown through
+the owned PID without querying a closed descriptor. No security setting changed.
+
+Human enjoyment, actual VoiceOver speech and another physical Mac remain
+unverified. The installed app is a playtest candidate, not a claim of overall
+market readiness. No store or GitHub Release publication occurred. Historical
+results and holds below retain their dated scope; they do not override this
+current artifact's verified evidence or the user's later authorizations.
+
+## Historical source boundary, October 4, 2026 (UTC)
 
 Source through PR40–47 at `ec6b4ce` includes the recovery, signed-rate, balance-sheet,
 shock-integrity and keyboard changes. [Merged-main CI37173475995](https://github.com/ihearttokyo/fed-chairman-game/actions/runs/37173475995)

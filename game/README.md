@@ -629,7 +629,8 @@ quarantine or weaken Gatekeeper. Plaintext scripts remain included so the model
 is inspectable and save fingerprints survive export.
 
 The actual release executable's `--headless -- --verify-build` entry point runs
-164 resource, career and replay checks without external scripts or path
-overrides. The release verifier also runs that self-check. Linux CI validates
+223 bundled checks:164 resource, career and replay checks plus59 guidance
+continuation/comparison checks, without external scripts or path overrides.
+The release verifier also runs that self-check. Linux CI validates
 source behavior; it does not build or distribute an Intel Mac game. Intel
 hardware testing is not a release gate for this ARM64-only product.
