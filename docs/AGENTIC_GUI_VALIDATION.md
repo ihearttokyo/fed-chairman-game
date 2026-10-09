@@ -24,8 +24,8 @@ Use `game/README.md` for the current development and release entry points.
    inspect successive-quarter outcomes, preview/compare without mutation, and
    exercise a relevant bound, cancellation or restoration case. Protect user
    saves: use unsaved test play and never overwrite a stored career for evidence.
-5. Read fresh accessibility state after each action group before deriving the
-   next element IDs. Selection or layout changes can invalidate earlier IDs.
+5. While the test app is running, read fresh accessibility state after each
+   action group before deriving the next element IDs. Selection or layout changes can invalidate earlier IDs.
    Inspect feedback and screenshots; control existence alone is insufficient.
 6. Fix the observed defect, then rerun the narrow state that proves the fix.
    A repeat requires changed code, a new hypothesis or a meaningfully different
@@ -33,6 +33,10 @@ Use `game/README.md` for the current development and release entry points.
 7. Run the affected deterministic tests, correctness and Ponytail review, broader
    game/model checks and release self-check as supporting evidence. Code review
    and passing headless checks cannot substitute for a live usability pass.
+8. After quitting a task-owned test app, verify its exact PID has exited with
+   `/bin/ps`. End Computer Use on that closed app descriptor: querying it can
+   relaunch the app without its private HOME or log arguments. Keep the player
+   process untouched. A new test starts again with step 1.
 
 Keep source hashes, saved-career hashes, logs, captures and the observed paths in
 one external validation receipt. Black or missing screenshots are failed evidence.
