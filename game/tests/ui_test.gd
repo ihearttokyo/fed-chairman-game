@@ -29,6 +29,15 @@ class UnavailableContinuationCareer:
 			return super.forecast(invalid, follow_guidance)
 		return super.forecast(policy)
 
+class UnavailableReviewReferenceModel:
+	extends "res://model/economy.gd"
+	var rejected_kind := ""
+	func benchmark_policy(state: Dictionary, params: Dictionary, kind: String = "feedback") -> Dictionary:
+		var policy: Dictionary = super.benchmark_policy(state, params, kind)
+		if kind == rejected_kind:
+			policy.guidance_rate_pct = NAN
+		return policy
+
 var failures := 0
 var pending_review: Button
 func _process(_delta: float) -> bool:
@@ -612,6 +621,132 @@ func check_review_access(game: Control) -> void:
 		await process_frame
 		check(game.career.encode() == preserved and game._policy() == staged, "opening and closing realized review preserves career and controls")
 	game._start_career("supply_shock", 1)
+func review_staff_snapshot(game: Control) -> PackedByteArray:
+	var inputs: Array = []
+	for field in [game.rate, game.guidance, game.assets, game.liquidity, game.inflation_response, game.activity_response]:
+		inputs.append([field.value, field.get_line_edit().text])
+	return var_to_bytes([game.career.encode(), game.career.state, game.career.history, game.career.decisions, game.career.shocks, game.career._seeded_shocks, game.career.episodes, game.career.params, game._policy(), game.commitment.selected, inputs, game.forecast_label.text])
+func check_review_staff_metrics(body: TextEdit, compared: Dictionary) -> void:
+	var summaries: Array = [compared.get("actual", {}), compared.get("held", {})]
+	var staff: Dictionary = compared.get("staff", {})
+	if not staff.is_empty():
+		summaries.append(staff)
+	var number := RegEx.new()
+	number.compile("[-+]?[0-9]+\\.[0-9]+")
+	for metric in [["Avg inflation distance", "inflation_miss", "%.3f", "pp", 1.0],
+		["Avg employment shortfall", "employment_shortfall", "%.3f", "pp", 1.0],
+		["Avg uncovered funding", "uncovered_funding", "%.3f", "% meeting GDP", 1.0],
+		["Ending credibility", "credibility", "%.1f", "/ 100", 100.0],
+		["Ending public support", "public_support", "%.1f", "/ 100", 1.0]]:
+		var rows: PackedStringArray = []
+		for line in body.text.split("\n"):
+			if line.begins_with(metric[0] + ":"):
+				rows.append(line)
+		check(rows.size() == 1, "realized review exposes one numeric " + metric[0] + " row")
+		if rows.size() != 1:
+			continue
+		check(rows[0].contains(metric[3]), "realized review labels " + metric[0] + " units")
+		var values := number.search_all(rows[0])
+		check(values.size() == summaries.size(), "realized review has exactly one value per available reference for " + metric[0])
+		for index in range(mini(values.size(), summaries.size())):
+			check(summaries[index].has(metric[1]), "available review summary includes " + metric[1])
+			if summaries[index].has(metric[1]):
+				check(values[index].get_string() == metric[2] % (metric[4] * summaries[index][metric[1]]), "realized review prints actual, hold, then staff values for " + metric[0])
+func check_review_staff_dialog(game: Control) -> void:
+	for funding in [false, true]:
+		game._start_career("base" if funding else "unanchored_inflation", 41)
+		for q in range(4 if funding else 12):
+			var policy: Dictionary = game.career.model.benchmark_policy(game.career.state, game.career.params, "feedback")
+			if funding:
+				game.career.shocks[q] = {"funding_need_pct_initial_gdp": 2.0, "eligible_collateral_pct_initial_gdp": 4.0, "liquidity_eligibility_pct": 100.0, "potential_growth_pct": 20.0}
+				policy.liquidity_request_pct_initial_gdp = 1.0
+			var advanced: Dictionary = game.career.advance(policy)
+			check(advanced.ok, "staff review fixture commits a real completed policy")
+			if not advanced.ok:
+				return
+		game._refresh(true)
+		game.rate.value += 0.25
+		game.assets.value = 0.75
+		game.liquidity.value = 0.5
+		await process_frame
+		await process_frame
+		var preserved := review_staff_snapshot(game)
+		var compared: Dictionary = game.career.review_comparison()
+		check(compared.get("ok", false), "completed policy retains its usable realized comparison")
+		if not compared.get("ok", false):
+			return
+		var staff: Dictionary = compared.get("staff", {})
+		check(not staff.is_empty(), "realized comparison includes the completed-history staff reference")
+		if not funding:
+			check(not staff.is_empty() and compared.get("actual", {}) == staff, "staff-only actual play equals the staff reference without requiring it to beat hold")
+		elif not staff.is_empty() and staff.has("uncovered_funding") and compared.actual.has("uncovered_funding"):
+			var uncovered := 0.0
+			for state in game.career.history.slice(1):
+				uncovered += state.uncovered_funding_pct_initial_gdp / state.decision_nominal_gdp_ratio / game.career.decisions.size()
+			check(compared.actual.uncovered_funding == uncovered and uncovered < staff.uncovered_funding, "eligible actual lending exposes less uncovered funding than the no-loan staff reference in meeting-GDP units")
+			check(not is_equal_approx(uncovered, 1.0), "funding fixture distinguishes meeting GDP from initial GDP")
+		game.rate.get_line_edit().grab_focus()
+		game._review()
+		var dialog: AcceptDialog = game.get_child(game.get_child_count() - 1)
+		await check_report_body(dialog, ["Your policy / Hold / Staff", "Avg inflation distance", "Avg employment shortfall", "Avg uncovered funding", "Ending credibility", "Ending public support"])
+		var bodies := dialog.find_children("*", "TextEdit", true, false)
+		if bodies.size() == 1:
+			var body: TextEdit = bodies[0]
+			check_review_staff_metrics(body, compared)
+			check(dialog.title == "Your %d-quarter policy review" % game.career.decisions.size() and body.text.contains("REALIZED PATHS / Q1–Q%d" % game.career.decisions.size()), "realized staff review labels the completed interval, not a future horizon")
+			check(body.text.contains("your actual Q0 state") and body.text.contains("already occurred"), "all realized references disclose their matched starting state and completed shocks")
+			check(body.text.to_lower().contains("staff") and body.text.to_lower().contains("feedback") and body.text.contains("data dependence"), "staff reference discloses its simple feedback rate and data-dependent guidance")
+			check(body.text.contains("holds %.2f%%" % compared.hold_rate) and body.text.contains("no new asset flows or loans"), "hold and staff references disclose passive discretionary tools")
+			check(body.text.contains("Default reinvestment and reserve maintenance stay on; sterilization stays off") and body.text.contains("Principal and short-loan repayments still settle"), "realized references disclose default switches and settlement timing")
+			check(body.text.contains("not a forecast or proof of optimal policy"), "realized staff comparison makes no forecast or optimality claim")
+		check(review_staff_snapshot(game) == preserved, "calculating and navigating the staff review preserves state, history, shocks, parameters, save bytes and staged inputs")
+		dialog.get_ok_button().pressed.emit()
+		check(dialog.visible and dialog.is_queued_for_deletion(), "staff review OK preserves the deferred native accessibility window lifecycle")
+		await process_frame
+		await process_frame
+		check(not is_instance_valid(dialog) and game.rate.get_line_edit().has_focus(), "closing staff review restores the original cockpit keyboard focus")
+		check(review_staff_snapshot(game) == preserved, "closing staff review cannot adopt or replace the staged policy")
+
+	var available: Dictionary = game.career.review_comparison()
+	var original_model = game.career.model
+	var rejecting := UnavailableReviewReferenceModel.new()
+	game.career.model = rejecting
+	rejecting.rejected_kind = "feedback"
+	var invalid: Dictionary = original_model.benchmark_policy(game.career.history[0], game.career.params, "feedback")
+	invalid.guidance_rate_pct = NAN
+	var rejected: Dictionary = original_model.step(game.career.history[0], invalid, game.career.shocks[0], game.career.params)
+	check(not rejected.ok, "staff-only failure fixture uses the native nonfinite-policy rejection")
+	var failure_preserved := review_staff_snapshot(game)
+	var unavailable: Dictionary = game.career.review_comparison()
+	var expected_error: String = "Staff reference unavailable: " + rejected.get("error", "")
+	check(unavailable.get("ok", false) and unavailable.get("staff", {}) == {} and unavailable.get("staff_error", "") == expected_error, "staff-only rejection retains usable actual/hold summaries and its exact prefixed native error")
+	check(unavailable.get("actual", {}) == available.get("actual", {}) and unavailable.get("held", {}) == available.get("held", {}), "staff-only failure preserves every usable actual/hold summary value")
+	game._review()
+	var failure_dialog: AcceptDialog = game.get_child(game.get_child_count() - 1)
+	await check_report_body(failure_dialog, ["Your policy / Hold", expected_error])
+	var failure_bodies := failure_dialog.find_children("*", "TextEdit", true, false)
+	if failure_bodies.size() == 1:
+		check_review_staff_metrics(failure_bodies[0], unavailable)
+		check(not failure_bodies[0].text.begins_with(expected_error), "unavailable staff does not replace the usable realized metrics with an error-only report")
+	failure_dialog.canceled.emit()
+	check(failure_dialog.visible and failure_dialog.is_queued_for_deletion(), "unavailable staff review cancellation preserves its native window until deferred deletion")
+	call_deferred("check_cancel_window", failure_dialog)
+	await process_frame
+	check(review_staff_snapshot(game) == failure_preserved, "staff reference failure and native cancellation preserve live career and pending controls")
+	rejecting.rejected_kind = "hold"
+	var hold_error: String = "Hold reference unavailable: " + rejected.get("error", "")
+	check(game.career.review_comparison() == {"ok": false, "error": hold_error}, "hold reference failure retains its original early rejection")
+	game._review()
+	failure_dialog = game.get_child(game.get_child_count() - 1)
+	await check_report_body(failure_dialog, [hold_error])
+	failure_bodies = failure_dialog.find_children("*", "TextEdit", true, false)
+	if failure_bodies.size() == 1:
+		check(failure_dialog.title == "Policy review" and failure_bodies[0].text == hold_error, "hold failure preserves the original explicit error dialog")
+	failure_dialog.get_ok_button().pressed.emit()
+	await process_frame
+	check(review_staff_snapshot(game) == failure_preserved, "hold failure cannot mutate the career or staged inputs")
+	game.career.model = original_model
+	game._start_career("supply_shock", 1)
 func check_comparison_navigation(game: Control) -> void:
 	var destinations := [["Meeting", "CURRENT MEETING /"], ["Deliberation", "COMMITTEE DELIBERATION /"], ["Guidance", "GUIDANCE /"], ["Guidance continuation", "GUIDANCE CONTINUATION /"], ["Scores", "Q+1 / WHY"], ["Forecasts", "CURRENT TRANSMISSION /"], ["Tools", "ONE-CONTROL CONTRASTS /"], ["Limits", "REFERENCE AND LIMITS"]]
 	for case_id in ["funding_stress", "base"]:
@@ -931,6 +1066,14 @@ func run() -> void:
 			print("PASS: bundled comparison checks reject headings-only and corrupt Q+2/Q+8/delta values")
 		quit(1 if failures else 0)
 		return
+	if OS.get_cmdline_user_args().has("--review-staff-only"):
+		await check_review_staff_dialog(game)
+		await check_review_access(game)
+		if failures == 0:
+			print("PASS: realized staff/funding review values, native accessibility, purity and modal lifecycle")
+		game.free()
+		quit(1 if failures else 0)
+		return
 	if OS.get_cmdline_user_args().has("--guidance-continuation-only"):
 		await check_guidance_continuation(game)
 		await check_comparison_navigation(game)
@@ -1032,6 +1175,7 @@ func run() -> void:
 	await check_unfocused_inputs(game)
 	await check_pending_overwrites(game)
 	await check_review_access(game)
+	await check_review_staff_dialog(game)
 	await check_text_reports(game)
 	check_custom_guidance(game)
 	await check_persistent_actions(game)

@@ -123,24 +123,39 @@ func review_comparison() -> Dictionary:
 	if decisions.is_empty():
 		return {"ok": false, "error": "Complete a decision before reviewing its outcome."}
 	var start := maxi(0, decisions.size() - 12)
-	var reference: Dictionary = history[start].duplicate(true)
-	var held_states: Array = []
-	for q in range(start, decisions.size()):
-		var result: Dictionary = model.step(reference, model.benchmark_policy(reference, params, "hold"), shocks[q], params)
-		if not result.ok:
-			return {"ok": false, "error": "Hold reference unavailable: " + result.error}
-		reference = result.state
-		held_states.append(reference)
+	var reference_paths: Array = [[], []]
+	var staff_error := ""
+	for index in range(2):
+		var reference: Dictionary = history[start].duplicate(true)
+		for q in range(start, decisions.size()):
+			var result: Dictionary = model.step(reference, model.benchmark_policy(reference, params, "hold" if index == 0 else "feedback"), shocks[q], params)
+			if not result.ok:
+				if index == 0:
+					return {"ok": false, "error": "Hold reference unavailable: " + result.error}
+				staff_error = "Staff reference unavailable: " + result.error
+				reference_paths[index] = []
+				break
+			reference = result.state
+			reference_paths[index].append(reference)
 	var summaries: Array = []
-	for path in [history.slice(start + 1), held_states]:
+	for path in [history.slice(start + 1), reference_paths[0], reference_paths[1]]:
+		if path.is_empty():
+			summaries.append({})
+			continue
 		var summary := {"inflation_miss": 0.0, "employment_shortfall": 0.0,
 			"credibility": path[-1].credibility, "public_support": path[-1].public_support}
 		for outcome in path:
 			summary.inflation_miss += abs(outcome.four_quarter_inflation_pct - params.inflation_target_pct) / path.size()
 			summary.employment_shortfall += max(0.0, outcome.unemployment_rate_pct - outcome.structural_unemployment_pct) / path.size()
+		summary.uncovered_funding = 0.0
+		for outcome in path:
+			summary.uncovered_funding += outcome.uncovered_funding_pct_initial_gdp / outcome.decision_nominal_gdp_ratio / path.size()
 		summaries.append(summary)
-	return {"ok": true, "from_quarter": start, "to_quarter": decisions.size(),
-		"hold_rate": history[start].policy_rate_pct, "actual": summaries[0], "held": summaries[1]}
+	var compared := {"ok": true, "from_quarter": start, "to_quarter": decisions.size(),
+		"hold_rate": history[start].policy_rate_pct, "actual": summaries[0], "held": summaries[1], "staff": summaries[2]}
+	if not staff_error.is_empty():
+		compared.staff_error = staff_error
+	return compared
 
 func model_digest() -> String:
 	return (FileAccess.get_sha256("res://model/economy.gd") + FileAccess.get_sha256("res://model/parameters.json") + FileAccess.get_sha256("res://model/scenarios.json") + FileAccess.get_sha256("res://model/exogenous_shocks.json") + FileAccess.get_sha256("res://model/portfolio_reference.json")).sha256_text()
