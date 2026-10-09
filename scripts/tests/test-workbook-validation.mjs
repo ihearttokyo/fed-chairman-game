@@ -131,6 +131,116 @@ for (const row of Object.values(R)) assert.equal(formats.get(row), 'General', 'L
 assert.equal(formats.get(123), '0.000', 'Numeric calculation rows retain their precision');
 console.log('PASS: actual final formatting preserves all five logical rows and numeric precision (simulated ranges)');
 
+const quoteStart = source.indexOf('const quote = '), quoteEnd = source.indexOf('const effective = ', quoteStart);
+const policyInputStart = source.indexOf("  put('decision_nominal_gdp_ratio', `("),
+  policyInputEnd = source.indexOf("  for (const key of ['initial_annual_gdp_index'", policyInputStart);
+assert.ok(quoteStart >= 0 && quoteEnd > quoteStart && policyInputStart >= 0 && policyInputEnd > policyInputStart,
+  'Locate the actual quote helpers and six-control policy input/qualification emitter');
+const policyExpressions = new Map();
+const policyContext = vm.createContext({
+  col: 'E', s: key => `state.${key}`, prev: key => `previous.${key}`, p: key => `parameters.${key}`,
+  shockRows: new Map(), put: (key, formula) => policyExpressions.set(key, formula),
+});
+vm.runInContext(source.slice(quoteStart, quoteEnd), policyContext);
+const emittedGridExpression = vm.runInContext("onGrid('value')", policyContext);
+const numericControls = Array.from(vm.runInContext(`${source.slice(policyInputStart, policyInputEnd)}\ncontrols`, policyContext));
+assert.deepEqual(numericControls, ['last_policy_rate_request_pct', 'guidance_rate_pct', 'guidance_inflation_sensitivity',
+  'guidance_output_gap_sensitivity', 'asset_flow_request_pct_initial_gdp', 'liquidity_request_pct_initial_gdp']);
+const policyInputFormatStart = source.indexOf("policy.getRange('E6:AZ11').setNumberFormat"),
+  policyInputFormatEnd = source.indexOf("policy.getRange('E20:AZ39')", policyInputFormatStart);
+assert.ok(policyInputFormatStart >= 0 && policyInputFormatEnd > policyInputFormatStart);
+const policyInputFormats = new Map();
+vm.runInNewContext(source.slice(policyInputFormatStart, policyInputFormatEnd), {
+  policy: { getRange(ref) {
+    assert.equal(ref, 'E6:AZ11');
+    return { setNumberFormat(format) { for (let row = 6; row <= 11; row++) policyInputFormats.set(row, format); } };
+  } },
+});
+// Calc can turn a logical result into 0/1 in a numeric-formatted cell before ISLOGICAL reads it.
+const formattedPolicyValue = (value, format, logicalIsNumeric) =>
+  logicalIsNumeric && format !== 'General' && typeof value === 'boolean' ? Number(value) : value;
+// Evaluate only these emitted trust-boundary expressions, not a spreadsheet or the economic model.
+const policyScript = new vm.Script(`const state = {};\n${[...policyExpressions].map(([key, expression]) =>
+  `state.${key} = CACHE(${expression.replaceAll("'Policy Lab'!$C$6", 'benchmarkKind').replace(/'Policy'!E(\d+)/g, 'inputs[$1]')}, '${key}');`).join('\n')}\nstate`);
+const policyParameters = Object.fromEntries(JSON.parse(await fs.readFile(new URL('../../game/model/parameters.json', import.meta.url), 'utf8')).map(({ key, value }) => [key, value]));
+const previousPolicyState = { actual_output_index: 200, initial_actual_output_index: 100, price_index: 100,
+  initial_price_index: 100, r_star_pct: 1.5, expected_short_inflation_pct: 2, four_quarter_inflation_pct: 2,
+  output_gap_pct: 0, policy_rate_pct: -0.25 };
+const policyDefaults = { 6: null, 7: null, 8: null, 9: null, 10: 0, 11: 0, 12: true, 13: true, 14: false };
+const evaluatePolicy = (edits, logicalIsNumeric, parameters = policyParameters, benchmarkKind = 1) => policyScript.runInNewContext({
+  inputs: Object.fromEntries(Object.entries({ ...policyDefaults, ...edits }).map(([row, value]) =>
+    [row, formattedPolicyValue(value, policyInputFormats.get(Number(row)) ?? 'General', logicalIsNumeric)])),
+  CACHE: (value, key) => formattedPolicyValue(value, formats.get(R[key] ?? 123), logicalIsNumeric), previous: previousPolicyState, parameters, benchmarkKind,
+  TRUE: true, FALSE: false, NA: () => '#N/A',
+  IF: (condition, yes, no) => condition === '#N/A' ? condition : condition ? yes : no,
+  AND: (...values) => values.includes('#N/A') ? '#N/A' : values.every(Boolean), NOT: value => !value,
+  ISBLANK: value => value === null || value === undefined, ISLOGICAL: value => typeof value === 'boolean',
+  ISNUMBER: value => typeof value === 'number' && Number.isFinite(value) || logicalIsNumeric && typeof value === 'boolean',
+  ABS: Math.abs, SIGN: Math.sign, ROUND: (value, digits) => Math.sign(value) * Math.round(Math.abs(value) * 10 ** digits) / 10 ** digits,
+  CHOOSE: (index, ...values) => values[index - 1],
+});
+for (const [engine, logicalIsNumeric] of [['Excel', false], ['Calc', true]]) {
+  const defaults = evaluatePolicy({}, logicalIsNumeric);
+  assert.equal(defaults.policy_valid, true, `${engine} preserves valid blank/default policy`);
+  assert.equal(defaults.policy_rate_pct, 3.5);
+  assert.equal(defaults.guidance_rate_pct, 3.5);
+  assert.equal(defaults.guidance_inflation_sensitivity, policyParameters.policy_inflation_response);
+  assert.equal(defaults.guidance_output_gap_sensitivity, policyParameters.policy_output_gap_response);
+  const hold = evaluatePolicy({}, logicalIsNumeric, policyParameters, 2);
+  assert.equal(hold.policy_valid, true); assert.equal(hold.policy_rate_pct, -0.25); assert.equal(hold.guidance_rate_pct, -0.25);
+  for (const [i, key] of numericControls.entries()) {
+    for (const value of [true, false, '1', '', '#VALUE!', NaN, Infinity]) {
+      const result = evaluatePolicy({ [6 + i]: value }, logicalIsNumeric);
+      assert.notEqual(result.policy_valid, true, `${engine} raw E${6 + i}=${String(value)} must reject ${key}`);
+      assert.equal(result.policy_rate_pct, '#N/A', `${engine} invalid numeric control cannot apply policy`);
+      if (i >= 4) assert.equal(result[key], '#N/A', 'Reject raw asset/lending type before GDP multiplication erases it');
+    }
+  }
+  for (const row of [6, 7]) {
+    for (const value of [-100, -3.51, -0.01, 0, 0.01, 3.51, 100]) {
+      const result = evaluatePolicy({ [row]: value }, logicalIsNumeric);
+      assert.equal(result.policy_valid, true, 'Zero and signed grid quotes remain admissible without a rate cap');
+      assert.equal(result[row === 6 ? 'policy_rate_pct' : 'guidance_rate_pct'], value);
+      assert.equal(result[row === 6 ? 'guidance_rate_pct' : 'policy_rate_pct'], 3.5, 'Blank rate/guidance falls back independently');
+    }
+    for (const value of [-3.501, 3.501]) assert.equal(evaluatePolicy({ [row]: value }, logicalIsNumeric).policy_rate_pct, '#N/A', 'Off-grid quotes remain rejected');
+    const widerGrid = { ...policyParameters, minimum_rate_increment_pct: 0.02 };
+    assert.equal(evaluatePolicy({ [row]: 3.52 }, logicalIsNumeric, widerGrid).policy_valid, true);
+    assert.equal(evaluatePolicy({ [row]: 3.51 }, logicalIsNumeric, widerGrid).policy_rate_pct, '#N/A', 'Use the declared minimum increment');
+    for (const increment of [0, '#N/A']) assert.equal(evaluatePolicy({}, logicalIsNumeric,
+      { ...policyParameters, minimum_rate_increment_pct: increment }).policy_rate_pct, '#N/A', 'Unavailable/zero increment cannot produce a valid quote');
+  }
+  for (const row of [8, 9]) {
+    for (const value of [-2, 0, 2]) assert.equal(evaluatePolicy({ [row]: value }, logicalIsNumeric).policy_valid, true, 'Signed sensitivity limit endpoints remain valid');
+    for (const value of [-2.001, 2.001]) assert.equal(evaluatePolicy({ [row]: value }, logicalIsNumeric).policy_rate_pct, '#N/A', 'Sensitivity limits remain enforced');
+  }
+  for (const [row, values] of [[10, [-1000, 0, 1000]], [11, [0, 1000]]]) {
+    for (const value of values) {
+      const result = evaluatePolicy({ [row]: value }, logicalIsNumeric);
+      assert.equal(result.policy_valid, true, 'Valid finite offers retain their existing domain');
+      assert.equal(result[numericControls[row - 6]], value * 2, 'Convert a numeric offer once using prior meeting GDP');
+    }
+    assert.equal(evaluatePolicy({ [row]: null }, logicalIsNumeric).policy_rate_pct, '#N/A', 'Blank offers do not inherit rate/guidance fallback');
+  }
+  assert.equal(evaluatePolicy({ 11: -0.01 }, logicalIsNumeric).policy_rate_pct, '#N/A', 'Negative lending remains invalid');
+  const switches = ['reinvest_principal', 'maintain_ample_reserves', 'sterilize_purchases'];
+  for (let bits = 0; bits < 8; bits++) {
+    const edits = Object.fromEntries(switches.map((_, i) => [12 + i, Boolean(bits & (1 << i))]));
+    const result = evaluatePolicy(edits, logicalIsNumeric);
+    assert.equal(result.policy_valid, true, 'Every legitimate Boolean switch combination remains valid');
+    for (const [i, key] of switches.entries()) assert.equal(result[key], edits[12 + i], 'Preserve switch Boolean type and value');
+  }
+  for (const row of [12, 13, 14]) for (const value of [0, 1, 'TRUE', null]) {
+    assert.equal(evaluatePolicy({ [row]: value }, logicalIsNumeric).policy_rate_pct, '#N/A', 'Numeric/text/blank switches stay invalid');
+  }
+  for (const value of [true, false]) assert.equal(vm.runInNewContext(emittedGridExpression, {
+      value, parameters: policyParameters, IF: (condition, yes, no) => condition ? yes : no,
+      AND: (...values) => values.every(Boolean), NOT: value => !value, ISLOGICAL: value => typeof value === 'boolean',
+      ISNUMBER: value => typeof value === 'number' || logicalIsNumeric && typeof value === 'boolean', ABS: Math.abs, ROUND: Math.round, FALSE: false,
+    }), false, `${engine} actual shared grid helper rejects Boolean quotes`);
+}
+console.log('PASS: actual six-control policy emitters reject Boolean inputs under Excel/Calc classifications; numeric domains, independent blanks and Boolean switches preserved (VM/simulated; not native recalculation)');
+
 const selectorStart = source.indexOf('for (const [address, max] of '), selectorEnd = source.indexOf("cell(lab, 'B8'", selectorStart);
 assert.ok(selectorStart >= 0 && selectorEnd > selectorStart, 'Locate the actual selector validation emitter');
 const selectorRules = new Map();
