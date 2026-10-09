@@ -114,6 +114,9 @@ func check_text_reports(game: Control) -> void:
 		game.call(method)
 		dialog = game.get_child(game.get_child_count() - 1)
 		await check_report_body(dialog, [])
+		if method == "_help":
+			var help_text: TextEdit = dialog.get_child(0)
+			check(help_text.text.contains("2% objective and portfolio reference observations are source-backed") and help_text.text.contains("behavioral coefficients, starting conditions and shock incidence are design assumptions") and not help_text.text.contains("Only the 2% objective"), "help distinguishes source-backed portfolio observations from assumed behavior")
 		dialog.get_ok_button().pressed.emit()
 		check(dialog.visible and dialog.is_queued_for_deletion(), "text reports preserve deferred accessibility closing")
 		await process_frame
