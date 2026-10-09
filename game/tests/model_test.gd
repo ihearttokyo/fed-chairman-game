@@ -121,6 +121,11 @@ func _test_review_regressions() -> void:
 	expect_true(not exporter.output_is_outside_repository("/repo/game/../reference.json", "/repo/game/"), "export normalizes parent traversal")
 	expect_true(not exporter.output_is_outside_repository("relative.json", "/repo/game/"), "export requires an absolute path")
 	expect_true(exporter.output_is_outside_repository("/repo-copy/reference.json", "/repo/game/"), "export does not reject a sibling with a shared prefix")
+	if OS.get_name() == "macOS":
+		expect_true(not exporter.output_is_outside_repository("/REPO/game/new.json", "/repo/game/"), "export refuses case-only repository aliases on macOS")
+		expect_true(exporter.output_is_outside_repository("/REPO-COPY/new.json", "/repo/game/"), "case-folding still permits a distinct sibling")
+	else:
+		expect_true(exporter.output_is_outside_repository("/REPO/new.json", "/repo/game/"), "non-macOS path comparison remains case-sensitive")
 	var params: Dictionary = load_parameters().values
 	var state: Dictionary = initial_state(params).state
 	var premium: Dictionary = initial_state(params, {"term_premium_pct": 1.5}).state
