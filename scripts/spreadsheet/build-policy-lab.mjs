@@ -120,7 +120,7 @@ cell(lab, 'B5', 'Quarter shown'); cell(lab, 'C5', 48);
 cell(lab, 'B6', 'Benchmark policy'); cell(lab, 'C6', 1);
 cell(lab, 'E6', '=CHOOSE(C6,"Feedback rule","Hold previous rate")', true);
 input(lab, 'C4:C6');
-for (const [address, max] of [['C4', cases.length], ['C5', 48], ['C6', 2]]) lab.getRange(address).dataValidation = { rule: { type: 'whole', operator: 'between', formula1: address === 'C5' ? 0 : 1, formula2: max } };
+for (const [address, max] of [['C4', cases.length], ['C5', 'COUNTA($B$58:$B$106)-1'], ['C6', 2]]) lab.getRange(address).dataValidation = { rule: { type: 'whole', operator: 'between', formula1: address === 'C5' ? 0 : 1, formula2: max } };
 cell(lab, 'B8', 'Edit amber cells. Policy blanks use the selected benchmark; zero is an explicit decision.');
 cell(lab, 'B9', 'Design assumptions, not a forecast. All cases include small seed-1 shocks.');
 for (let n = 0; n < cases.length; n++) cell(lab, `J${4 + n}`, `${n + 1}. ${cases[n].scenario.label}`);
@@ -601,9 +601,11 @@ policy.getRange('E20:AZ39').setNumberFormat('0.00');
 lab.getRange('B11:D11').values = [['At selected quarter', 'Value', 'Unit']]; headers(lab, 'B11:D11');
 const metrics = [['four_quarter_inflation_pct', 'Inflation, four quarters', '%'], ['unemployment_rate_pct', 'Unemployment', '%'], ['output_gap_pct', 'Output gap', '% potential'], ['policy_rate_pct', 'Policy rate', '%'], ['credibility', 'Monetary credibility', '0–1 score'], ['public_support', 'Public support', '0–100 score']];
 for (const [i, [key, label, unit]] of metrics.entries()) {
-  cell(lab, `B${12 + i}`, label); cell(lab, `C${12 + i}`, `=INDEX('Economy'!$D$${R[key]}:$AZ$${R[key]},1,$C$5+1)`, true); cell(lab, `D${12 + i}`, unit);
+  cell(lab, `B${12 + i}`, label); cell(lab, `C${12 + i}`, `=IF(IFERROR(AND(ISNUMBER($C$5),NOT(ISLOGICAL($C$5)),$C$5=INT($C$5),$C$5>=0,$C$5<=COUNTA($B$58:$B$106)-1),FALSE),INDEX('Economy'!$D$${R[key]}:$AZ$${R[key]},1,$C$5+1),"n.a.")`, true); cell(lab, `D${12 + i}`, unit);
 }
 lab.getRange('C12:C17').setNumberFormat('0.00');
+lab.getRange('C12:C17').format.horizontalAlignment = 'right';
+lab.getRange('D11:D17').format.horizontalAlignment = 'center';
 cell(lab, 'F12', 'Use Policy to test a different decision at any quarter.');
 cell(lab, 'F14', 'Future shocks are visible here for audit; the game conceals them.');
 cell(lab, 'F16', 'Lower inflation can cost output and jobs. Liquidity does not repair solvency.');

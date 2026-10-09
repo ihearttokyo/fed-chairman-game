@@ -87,6 +87,8 @@ Each segment is saved before restoring the original calculation chain, then
 checked against its own native reference. This is late-segment parity, not a
 full 240-quarter workbook. Generating files does not prove native spreadsheet
 usability or human playability.
+Checkpoint summaries use only whole offsets within the available segment and
+show `n.a.` for invalid selectors, including pasted values.
 
 Authoring runs in three mandatory, serial phases: the main workbook, three hold
 segments and three responsive segments. Each recreates the same formula chain;

@@ -131,6 +131,73 @@ for (const row of Object.values(R)) assert.equal(formats.get(row), 'General', 'L
 assert.equal(formats.get(123), '0.000', 'Numeric calculation rows retain their precision');
 console.log('PASS: actual final formatting preserves all five logical rows and numeric precision (simulated ranges)');
 
+const selectorStart = source.indexOf('for (const [address, max] of '), selectorEnd = source.indexOf("cell(lab, 'B8'", selectorStart);
+assert.ok(selectorStart >= 0 && selectorEnd > selectorStart, 'Locate the actual selector validation emitter');
+const selectorRules = new Map();
+vm.runInNewContext(source.slice(selectorStart, selectorEnd), {
+  cases: Array(7), lab: { getRange(ref) { return { set dataValidation(value) { selectorRules.set(ref, value.rule); } }; } },
+});
+const horizonFormula = 'COUNTA($B$58:$B$106)-1', quarterRule = selectorRules.get('C5');
+assert.equal(quarterRule.type, 'whole'); assert.equal(quarterRule.operator, 'between');
+assert.equal(quarterRule.formula1, 0);
+assert.equal(quarterRule.formula2, horizonFormula, 'Quarter validation must follow the available calendar, not a fixed 48');
+const summaryStart = source.indexOf('const metrics = '), summaryEnd = source.indexOf("lab.getRange('C12:C17')", summaryStart);
+assert.ok(summaryStart >= 0 && summaryEnd > summaryStart, 'Locate the actual six-metric summary emitter');
+const summaryCells = new Map(), metricRows = { four_quarter_inflation_pct: 13, unemployment_rate_pct: 16,
+  output_gap_pct: 9, policy_rate_pct: 20, credibility: 40, public_support: 50 };
+vm.runInNewContext(source.slice(summaryStart, summaryEnd), {
+  R: metricRows, lab: {}, cell: (_, ref, value, formula) => { if (formula) summaryCells.set(ref, value); },
+});
+assert.equal(summaryCells.size, 6, 'Guard every headline metric');
+const summaryFormats = new Map();
+vm.runInNewContext(source.slice(summaryEnd, source.indexOf("cell(lab, 'F12'", summaryEnd)), {
+  lab: { getRange(ref) { if (!summaryFormats.has(ref)) summaryFormats.set(ref, {}); return { format: summaryFormats.get(ref), setNumberFormat() {} }; } },
+});
+assert.equal(summaryFormats.get('C12:C17')?.horizontalAlignment, 'right', 'Unavailable text must align with numeric summaries');
+assert.equal(summaryFormats.get('D11:D17')?.horizontalAlignment, 'center', 'Separate units from right-aligned values');
+const guard = `AND(ISNUMBER($C$5),NOT(ISLOGICAL($C$5)),$C$5=INT($C$5),$C$5>=0,$C$5<=${horizonFormula})`;
+for (const [i, row] of Object.values(metricRows).entries()) assert.equal(summaryCells.get(`C${12 + i}`),
+  `=IF(IFERROR(${guard},FALSE),INDEX('Economy'!$D$${row}:$AZ$${row},1,$C$5+1),"n.a.")`,
+  'Check numeric/integer/calendar bounds before INDEX; bypassed invalid selectors must be unavailable');
+const emittedGuard = summaryCells.get('C12').match(/^=IF\(IFERROR\((AND\(.*\)),FALSE\),INDEX\(/)[1];
+const verifySummaryHorizon = (labels, horizon) => {
+  assert.equal(labels.filter(value => value !== null && value !== undefined && value !== '').length - 1, horizon);
+  const states = Array.from({ length: 49 }, (_, offset) => ({ offset }));
+  const select = (offset, logicalIsNumeric = false) => {
+    let valid = false;
+    // Evaluate only the emitted selector guard, not Excel or any economic formula.
+    try {
+      valid = vm.runInNewContext(emittedGuard.replaceAll('COUNTA($B$58:$B$106)', 'COUNTA(labels)')
+        .replaceAll('$C$5=INT($C$5)', 'EQUAL(offset,INT(offset))').replaceAll('$C$5', 'offset'), {
+        offset, labels, AND: (...values) => values.every(Boolean), NOT: value => !value, ISLOGICAL: value => typeof value === 'boolean',
+        ISNUMBER: value => typeof value === 'number' && Number.isFinite(value) || logicalIsNumeric && typeof value === 'boolean',
+        EQUAL: (a, b) => logicalIsNumeric ? Number(a) === b : a === b,
+        INT: value => { if (typeof value === 'boolean') return Number(value); if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error('Invalid numeric selector'); return Math.floor(value); },
+        COUNTA: values => values.filter(value => value !== null && value !== undefined && value !== '').length,
+      });
+    } catch { /* IFERROR rejects an invalid selector before INDEX. */ }
+    return valid ? states[offset] : 'n.a.';
+  };
+  for (const offset of new Set([0, horizon, 24, 25, 48])) assert.equal(select(offset), offset <= horizon ? states[offset] : 'n.a.', 'Preserve endpoints; never select an unvalidated suffix');
+  for (const offset of [-1, horizon + 1, 0.5, '0', '25', '', null, undefined, true, false, NaN, Infinity, { error: '#VALUE!' }]) {
+    assert.equal(select(offset), 'n.a.', 'Negative/fraction/text/blank/error bypasses must not select a plausible state');
+  }
+  for (const logicalIsNumeric of [false, true]) {
+    for (const offset of [true, false]) assert.equal(select(offset, logicalIsNumeric), 'n.a.', 'Reject logical offsets under both Excel and Calc number classifications (simulated)');
+    for (const offset of [0, horizon]) assert.equal(select(offset, logicalIsNumeric), states[offset], 'Preserve numeric endpoints under both classifications');
+  }
+};
+const calendarStart = source.indexOf('for (let q = 0; q <= 48;', source.indexOf('const plotKeys = ')), calendarEnd = source.indexOf('const chart = ', calendarStart);
+assert.ok(calendarStart >= 0 && calendarEnd > calendarStart, 'Locate the actual main calendar emitter');
+const mainLabels = new Map();
+vm.runInNewContext(source.slice(calendarStart, calendarEnd), {
+  lab: { getRange() { return { set formulas(_) {} }; } }, plotKeys: [], R: {}, column: columnName,
+  cell: (_, ref, value) => mainLabels.set(ref, value),
+});
+verifySummaryHorizon(Array.from({ length: 49 }, (_, q) => mainLabels.get(`B${q + 58}`)), 48);
+for (const [ref, value] of mainLabels) originals.set(ref, { value, formula: '' });
+console.log('PASS: actual selector/summary/calendar emitters reject invalid offsets (VM/simulated guards; not native recalculation)');
+
 if (process.argv.length > 2) {
   assert.equal(process.argv[2], '--checkpoint-reference');
   assert.equal(process.argv.length, 4, 'Usage: --checkpoint-reference /absolute/late-checkpoints.json');
@@ -312,6 +379,14 @@ if (process.argv.length > 2) {
     assert.equal(inputs.get('Policy Lab!C5'), fixture.quarters.length, 'Summary stops at the segment horizon');
     assert.equal(inputs.get('Policy Lab!B5'), 'Quarter offset from checkpoint', 'Selector offset is not mislabeled as an absolute quarter');
     assert.match(inputs.get('Policy Lab!B8'), /Not full 240-quarter parity/);
+    const labels = Array.from({ length: 49 }, (_, q) => inputs.get(`Policy Lab!B${q + 58}`));
+    for (let q = 0; q <= fixture.quarters.length; q++) assert.equal(labels[q], `Q${fixture.start_quarter + q}`, 'Count the actual absolute-quarter calendar');
+    verifySummaryHorizon(labels, fixture.quarters.length);
+    const savedCalendar = applyFixture(Array.from(mainLabels.keys(), ref => [sheet, ref, inputs.get(`Policy Lab!${ref}`)]));
+    verifySummaryHorizon(Array.from(mainLabels.keys(), ref => originals.get(ref).value), fixture.quarters.length);
+    writeInputs(savedCalendar.map(([target, ref, value, formula]) => [target, ref, formula || value, Boolean(formula)]));
+    assert.deepEqual(Array.from(mainLabels.keys(), ref => originals.get(ref).value), Array.from(mainLabels.values()), 'Restore the exact main calendar after every checkpoint');
+    verifySummaryHorizon(Array.from(mainLabels.keys(), ref => originals.get(ref).value), 48);
     for (let q = 0; q < 48; q++) {
       const row = fixture.quarters[q], col = columnName(q + 5), caseIndex = ids.indexOf(fixture.scenario.id);
       for (const key of shockKeys) assert.equal(inputs.get(`Shocks!${col}${shockRows.get(key) + caseIndex + 1}`), row?.shock[key] ?? shockDefault(key), 'Actual initial-GDP shocks or cleared suffix defaults');
