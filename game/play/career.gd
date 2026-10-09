@@ -98,12 +98,18 @@ func situation_briefing() -> String:
 		text += "\nEXOGENOUS / %s · %s" % [episode.title, episode.policy_dilemma]
 	return text
 
-func forecast(policy: Dictionary) -> Dictionary:
+func forecast(policy: Dictionary, follow_guidance: bool = false) -> Dictionary:
 	var projected: Dictionary = state.duplicate(true)
 	var states: Array = []
 	for q in range(8):
 		var choice: Dictionary = policy if q == 0 else model.benchmark_policy(projected, params, "hold")
 		if q > 0:
+			if follow_guidance:
+				var due: float = model.conditional_commitment(projected, params)
+				choice.policy_rate_request_pct = due
+				choice.guidance_rate_pct = due
+				choice.guidance_inflation_sensitivity = policy.guidance_inflation_sensitivity
+				choice.guidance_output_gap_sensitivity = policy.guidance_output_gap_sensitivity
 			for key in Economy.POLICY_SWITCHES:
 				choice[key] = policy.get(key, Economy.POLICY_SWITCHES[key])
 		var result: Dictionary = model.step(projected, choice, current_briefing() if q == 0 else {}, params)

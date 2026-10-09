@@ -29,9 +29,9 @@ class CountCareer:
 	func _init() -> void:
 		model = CountEconomy.new()
 
-	func forecast(policy: Dictionary) -> Dictionary:
+	func forecast(policy: Dictionary, follow_guidance: bool = false) -> Dictionary:
 		forecasts += 1
-		return super.forecast(policy)
+		return super.forecast(policy, follow_guidance)
 
 var failures := 0
 
@@ -269,16 +269,16 @@ func run_case(games: Array[Control], spec: Dictionary) -> bool:
 			return false
 		golden.append(result.output)
 		var forecasts: int = 3 if spec.invalid else (
-			10 if index == 0 or spec.rich else 5)
+			11 if index == 0 or spec.rich else 6)
 		# The boundary forbids two unsafe positive-zero/negative-zero aliases.
-		# All six genuinely identical neutral cases retain the original5/40 assertion.
+		# Neutral cases reuse A and add only the eight-step promise-follow path.
 		if index == 1 and spec.get("signed_zero", false):
 			forecasts += 2
 		var steps: int = forecasts if spec.invalid else forecasts * 8
 		var wanted := [forecasts, steps]
 		print("COUNTS %s %s observed=%s expected=%s" % [
 			label, "C" if index == 0 else "T", str(result.counts), str(wanted)])
-		# Intentional RED on unmodified source: neutral T observes [10, 80].
+		# Each valid Compare includes exactly one additional continuation forecast.
 		check(result.counts == wanted,
 			"%s %s count gate: expected %s, observed %s" % [
 				label, "C" if index == 0 else "T", str(wanted), str(result.counts)])
@@ -289,12 +289,16 @@ func run_case(games: Array[Control], spec: Dictionary) -> bool:
 				label + ": rejected paths retain both visible error messages")
 		else:
 			for marker in ["CURRENT MEETING /", "COMMITTEE DELIBERATION /",
-					"GUIDANCE /", "Q+1 / WHY", "CURRENT TRANSMISSION /",
+					"GUIDANCE /", "GUIDANCE CONTINUATION /", "Q+1 / WHY", "CURRENT TRANSMISSION /",
 					"ONE-CONTROL CONTRASTS /", "REFERENCE AND LIMITS"]:
 				check(report.contains(marker), label + ": complete report retains " + marker)
 			check(not report.contains(" / unavailable:")
-				and not report.contains("Contrast unavailable:"),
+				and not report.contains("Contrast unavailable:")
+				and not report.contains("Promise-follow unavailable:"),
 				label + ": every representative alternative remains available")
+			check(report.contains("Beyond Q240: diagnostic continuation only, not extra playable turns.")
+				== (spec.quarter + 8 > Career.MAX_QUARTERS),
+				label + ": retirement overflow is labelled as diagnostic only")
 		# Direct repeated previews remain fresh, real and outside timing.
 		for _repeat in range(2):
 			reset_counts(games[index])
