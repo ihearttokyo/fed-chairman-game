@@ -720,6 +720,9 @@ func _advance() -> void:
 	_refresh(true)
 	var s: Dictionary = career.state
 	consequence.text = "Q%d OUTCOME  ·  Inflation %s; unemployment %s.\nApplied rate %.2f%%. Public support %s; credibility %s. Your earlier decisions remain in the transmission pipeline." % [s.quarter_index, _change_text(s.four_quarter_inflation_pct - before.four_quarter_inflation_pct, 2, "pp"), _change_text(s.unemployment_rate_pct - before.unemployment_rate_pct, 2, "pp"), s.policy_rate_pct, _change_text(s.public_support - before.public_support), _change_text((s.credibility - before.credibility) * 100)]
+	if s.liquidity_applied_pct_initial_gdp > 0.0 or s.uncovered_funding_pct_initial_gdp > 0.0 or s.liquidity_repayment_pct_initial_gdp > 0.0:
+		var n: float = s.decision_nominal_gdp_ratio
+		consequence.text += "\nFunding (%% meeting GDP): lent %.2f · uncovered %.2f · repaid %.2f." % [s.liquidity_applied_pct_initial_gdp / n, s.uncovered_funding_pct_initial_gdp / n, s.liquidity_repayment_pct_initial_gdp / n]
 	if before.guidance_active:
 		consequence.text += "\nPrevious promise follow-through: %.1f / 100." % (100 * s.guidance_followthrough_score)
 	status_label.text = "Quarter %d completed. Unsaved changes · %s" % [s.quarter_index, career.cases[career.scenario_id].label]

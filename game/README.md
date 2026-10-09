@@ -544,6 +544,10 @@ Guidance continuation, Scores, Forecasts, Tools and Limits within the complete
 report. Native text selection and keyboard scrolling keep its calculations,
 explanations and warnings available.
 
+After adoption, funding feedback reports applied loans, uncovered need and repaid
+principal as percentages of that meeting's GDP. These are realized flows, not the
+next preview or ending loan stock.
+
 Careers continue through 12-quarter reviews without resetting policy lags,
 expectations, hardship memory or charts. The local career limit is 240 quarters.
 Data & journal also opens a realized review on demand after any completed
