@@ -564,6 +564,11 @@ exactly; loading validates every shock and replays decisions in isolation before
 replacing the active state. Model-version mismatches are refused rather than
 silently migrated. Save is a single explicit slot, replaced only when selected.
 
+Native app quit/close compares the adopted career with the last successful New,
+Save or Load. Changed careers open a Cancel-first "Quit without saving"
+confirmation; Cancel, Escape or closing that dialog returns to play with pending
+policy edits intact. Fresh/unchanged careers exit directly. Quitting never saves.
+
 The original city is authored by `art/build_city.py`; its editable `.blend` source
 is retained beside the script. The game loads `assets/policy_city.glb`, so players
 and CI do not need Blender. Art source is excluded from runtime imports. Animation

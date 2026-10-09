@@ -36,10 +36,14 @@ var loading_controls := false
 var keyboard_controls: Array[Control] = []
 var cockpit_scroll: ScrollContainer
 var save_path := SAVE_PATH
+var clean_career: PackedByteArray
+var quit_dialog: AcceptDialog
 
 const KEYBOARD_HELP := "Keyboard controls\nTab / Shift+Tab move forward / back through visible controls. Return or Space activates a focused button. In numeric fields, type a value and press Return to commit only that field; Up / Down use its advertised step. Arrow keys navigate open scenario or guidance menus; Return selects and Escape cancels.\n\nCharts: Left / Right inspect completed quarters; Home / End select the first / latest. Focused cockpit and reports: Page Up / Down scroll, Home / End reach the ends. Escape closes a report or cancels replacement and returns focus.\n\nOptional accelerators use Cmd on macOS or Ctrl elsewhere: N New, S Save, O Load, J journal, P Compare, R staff rule, modified Return adopt one quarter. F1 opens this guide. Every command also has a Tab-accessible control; plain typing never adopts a quarter.\n\n"
 
 func _ready() -> void:
+	get_tree().auto_accept_quit = false
+	get_tree().root.close_requested.connect(_request_quit)
 	_fit_initial_window()
 	_apply_theme()
 	var background := ColorRect.new()
@@ -527,6 +531,7 @@ func _start_career(case_id: String, seed_number: int) -> void:
 	if not result.ok:
 		status_label.text = result.error
 		return
+	clean_career = career.encode()
 	_refresh(true)
 	consequence.text = "Your first meeting: read the dispatch, compare the policy preview, then adopt a decision. There is no arbitrary unemployment or popularity game-over."
 	status_label.text = "New unsaved career · %s · seed %d" % [career.cases[case_id].label, seed_number]
@@ -731,6 +736,8 @@ func _advance() -> void:
 
 func _save() -> void:
 	var result: Dictionary = career.save_to(save_path)
+	if result.ok:
+		clean_career = career.encode()
 	status_label.text = "Saved quarter %d. Late-compound slot updated; older saves untouched." % career.state.quarter_index if result.ok else result.error
 
 func _load() -> void:
@@ -742,12 +749,41 @@ func _load() -> void:
 	dialog.confirmed.connect(func():
 		var result: Dictionary = career.load_from(save_path)
 		if result.ok:
+			clean_career = career.encode()
 			_refresh(true)
 			consequence.text = "Saved career restored with its decisions, economic history and policy lags."
 		status_label.text = "Loaded quarter %d." % career.state.quarter_index if result.ok else result.error
 	)
 	_show_dialog(dialog, Vector2i(740, 180), cancel)
 	_link_focus([cancel, dialog.get_ok_button()])
+
+func _request_quit() -> void:
+	if is_instance_valid(quit_dialog):
+		return
+	if career.encode() == clean_career:
+		_quit_app()
+		return
+	var dialog := AcceptDialog.new()
+	quit_dialog = dialog
+	dialog.title = "Unsaved career"
+	dialog.dialog_text = "Adopted quarters have not been saved. Quit without saving them?\nCancel returns to your career and pending policy edits. No save is written automatically."
+	dialog.get_ok_button().text = "Quit without saving"
+	var cancel := dialog.add_button("Cancel", true)
+	cancel.pressed.connect(dialog.queue_free)
+	dialog.confirmed.connect(_quit_app)
+	var invoker: Control = get_viewport().gui_get_focus_owner()
+	var numeric_edit := invoker is LineEdit and invoker.get_parent() is SpinBox
+	var was_blocking := invoker.is_blocking_signals() if numeric_edit else false
+	# SpinBox's focus-exit signal must not submit a draft when Quit takes focus.
+	if numeric_edit:
+		invoker.set_block_signals(true)
+	_show_dialog(dialog, Vector2i(740, 180), cancel)
+	_link_focus([cancel, dialog.get_ok_button()])
+	if numeric_edit:
+		invoker.set_block_signals.call_deferred(was_blocking)
+
+func _quit_app() -> void:
+	get_tree().quit()
 
 func _restore_keyboard_focus(invoker: WeakRef) -> void:
 	for child in get_children():
