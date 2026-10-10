@@ -39,6 +39,8 @@ var keyboard_controls: Array[Control] = []
 var cockpit_scroll: ScrollContainer
 var body_layout: BoxContainer
 var action_layout: BoxContainer
+var metric_layout: GridContainer
+var policy_panel: PanelContainer
 var save_path := SAVE_PATH
 var clean_career: PackedByteArray
 var quit_dialog: AcceptDialog
@@ -103,7 +105,9 @@ func _ready() -> void:
 	root.add_theme_constant_override("separation", 16)
 	margin.add_child(root)
 	_build_header(root)
-	var cards := HFlowContainer.new()
+	var cards := GridContainer.new()
+	metric_layout = cards
+	cards.columns = 4
 	cards.add_theme_constant_override("h_separation", 12)
 	cards.add_theme_constant_override("v_separation", 12)
 	root.add_child(cards)
@@ -152,6 +156,8 @@ func _ready() -> void:
 	_start_career("unanchored_inflation", 1)
 	get_window().size_changed.connect(_resize_layout)
 	get_window().dpi_changed.connect(_resize_layout)
+	for card in metric_layout.get_children():
+		card.minimum_size_changed.connect(_resize_layout)
 	_resize_layout()
 	keyboard_controls.append(scroll)
 	_link_focus(_keyboard_focus_order())
@@ -176,8 +182,16 @@ func _resize_layout() -> void:
 	# Reserve the scrollbar even before it appears, avoiding breakpoint oscillation.
 	var available := window.get_visible_rect().size.x - 48 - cockpit_scroll.get_v_scroll_bar().get_combined_minimum_size().x
 	var wide_minimum: float = body_layout.get_child(0).get_combined_minimum_size().x + body_layout.get_child(1).get_combined_minimum_size().x + body_layout.get_theme_constant("separation")
+	var metric_width := 3.0 * metric_layout.get_theme_constant("h_separation")
+	for card in metric_layout.get_children():
+		metric_width += card.get_combined_minimum_size().x
+	metric_layout.columns = 4 if available >= metric_width else 2
 	body_layout.vertical = available < wide_minimum
 	action_layout.vertical = body_layout.vertical
+	var policy_index := 0 if body_layout.vertical else 1
+	if policy_panel.get_index() != policy_index:
+		body_layout.move_child(policy_panel, policy_index)
+		_link_focus(_keyboard_focus_order())
 
 static func _initial_window_size(design: Vector2i, display_scale: float, available: Vector2i) -> Vector2i:
 	var desired := Vector2(design) * display_scale
@@ -277,6 +291,10 @@ func _keyboard_focus_order() -> Array[Control]:
 	for control in keyboard_controls:
 		if control.is_visible_in_tree() and not (control is BaseButton and control.disabled):
 			order.append(control)
+	order.sort_custom(func(a: Control, b: Control):
+		if a == cockpit_scroll: return false
+		if b == cockpit_scroll: return true
+		return b.is_greater_than(a))
 	return order
 
 func _link_focus(order: Array[Control]) -> void:
@@ -462,6 +480,7 @@ func _portfolio_switch(parent: Node, title: String, enabled: bool, tip: String) 
 
 func _build_policy(parent: Node, actions: Node) -> void:
 	var panel := _panel(parent)
+	policy_panel = panel
 	panel.custom_minimum_size.x = 380
 	var box := _vbox(panel, 13)
 	_label(box, "FOMC DECISION", 18, GOLD)
@@ -570,7 +589,7 @@ func _start_career(case_id: String, seed_number: int) -> void:
 		return
 	clean_career = career.encode()
 	_refresh(true)
-	consequence.text = "Your first meeting: read the dispatch, compare the policy preview, then adopt a decision. There is no arbitrary unemployment or popularity game-over."
+	consequence.text = "Review current conditions, stage policy, then adopt."
 	status_label.text = "New unsaved career · %s · seed %d" % [career.cases[case_id].label, seed_number]
 
 func _refresh(reset_controls := false) -> void:

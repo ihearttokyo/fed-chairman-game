@@ -38,10 +38,11 @@ engine startup geometry. No gameplay or font-size constants change.
 After startup, resizing changes only the logical canvas and native container
 layout, not window position, mode or requested size. The canvas follows the
 window's aspect ratio at its reported native display density; nominal text
-sizes are not reduced to fit a fixed design. Header commands and metric cards
-wrap. Below the combined measured column minimum, dispatch/charts and policy
-stack, with feedback above the Compare/Adopt row. Wide composition stays
-horizontal, and the existing focus-following vertical cockpit scroll remains.
+sizes are not reduced to fit a fixed design. Header commands wrap; metrics use
+four columns when they fit, otherwise two paired rows. Below the measured column
+minimum, the existing policy panel precedes city/dispatch/charts, with feedback
+above Compare/Adopt. Wide composition stays horizontal. Tab follows the visible
+panel order, with cockpit scrolling last; focus-following vertical scroll remains.
 Controls are neither recreated nor reparented during resize, and the resize path
 does not submit typed drafts, refresh forecasts, advance quarters or write saves.
 

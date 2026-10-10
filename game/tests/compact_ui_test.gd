@@ -15,11 +15,15 @@ func check(condition: bool, message: String) -> void:
 func _initialize() -> void:
 	call_deferred("run")
 func run() -> void:
+	var density := maxf(1.0, DisplayServer.screen_get_scale(root.current_screen))
+	root.size = Vector2i((Vector2(960, 640) * density).round())
 	var game = load("res://main.tscn").instantiate()
 	game.career = ResizeCareer.new()
 	root.add_child(game)
 	await process_frame
 	await process_frame
+	check(game.cockpit_scroll.get_global_rect().encloses(game.rate.get_line_edit().get_global_rect()), "cold narrow cockpit exposes the focused policy rate, not only decoration")
+	check(game._keyboard_focus_order().find(game.rate.get_line_edit()) < game._keyboard_focus_order().find(game.charts[0]), "narrow keyboard order reaches policy before the lower charts")
 	check(float(ProjectSettings.get_setting("gui/timers/tooltip_delay_sec")) == 0.0, "tooltips have no hover delay")
 	for pair in game.stats:
 		check(pair[0].accessibility_name.contains(pair[0].text), "each metric accessible name includes its current numeric value")
@@ -56,8 +60,11 @@ func resize_snapshot(game: Control) -> PackedByteArray:
 		var edit: LineEdit = spin.get_line_edit()
 		inputs.append([spin.value, edit.text, edit.caret_column, edit.get_selection_from_column() if edit.has_selection() else -1, edit.get_selection_to_column() if edit.has_selection() else -1])
 	var semantics: Array = []
-	for control in game.find_children("*", "Control", true, false):
-		semantics.append([control.accessibility_name, control.accessibility_description, control.tooltip_text, control.get_theme_font_size("font_size")])
+	var controls: Array = game.find_children("*", "Control", true, false)
+	# Panel order may change; verify each stable control, not traversal order.
+	controls.sort_custom(func(a: Control, b: Control): return a.get_instance_id() < b.get_instance_id())
+	for control in controls:
+		semantics.append([control.get_instance_id(), control.accessibility_name, control.accessibility_description, control.tooltip_text, control.get_theme_font_size("font_size")])
 	return var_to_bytes([game.career.encode(), game.clean_career, game._policy(), inputs, semantics,
 		game.forecast_label.text, game.quarter_label.text, game.consequence.text, game.mandate_label.text,
 		game.status_label.text, game.custom_guidance.visible, game.reduced_motion, game.city.rotation if game.reduced_motion else null,
@@ -82,6 +89,15 @@ func check_resize_bounds(game: Control, logical: Vector2i, density: float) -> vo
 		if control is Button and control.text == "Compare policy paths":
 			check(visible.grow(0.5).encloses(control.get_global_rect()), "Compare remains within the client at " + str(logical))
 	check(game.cockpit_scroll.size.y >= 200, "expanded guidance retains a usable vertical cockpit at " + str(logical))
+	if logical.x == 960:
+		var first: Rect2 = game.stats[0][0].get_parent().get_parent().get_global_rect()
+		var second: Rect2 = game.stats[1][0].get_parent().get_parent().get_global_rect()
+		var third: Rect2 = game.stats[2][0].get_parent().get_parent().get_global_rect()
+		var fourth: Rect2 = game.stats[3][0].get_parent().get_parent().get_global_rect()
+		check(is_equal_approx(first.position.y, second.position.y) and is_equal_approx(third.position.y, fourth.position.y) and third.position.y > first.position.y, "narrow metrics form two balanced paired rows")
+	var order: Array = game._keyboard_focus_order()
+	var panel: Node = game.rate.get_parent().get_parent().get_parent()
+	check((order.find(game.rate.get_line_edit()) < order.find(game.charts[0])) == (panel.get_index() == 0), "Tab follows the visible policy/chart panel order")
 	var bar: HScrollBar = game.cockpit_scroll.get_h_scroll_bar()
 	check(bar.max_value <= bar.page + 0.5, "cockpit needs no horizontal scrolling at " + str(logical))
 	for viewport in game.find_children("*", "SubViewport", true, false):
@@ -125,6 +141,23 @@ func check_responsive_resize(game: Control) -> void:
 		check(bool(body.get("vertical")) == (logical.x < layout_breakpoint), "body stacks only below its measured combined minimum")
 		var footer: Container = game.consequence.get_parent().get_parent()
 		check(bool(footer.get("vertical")) == bool(body.get("vertical")), "footer and body share the responsive orientation")
+	var metric_grid: GridContainer = game.stats[0][0].get_parent().get_parent().get_parent()
+	var four_columns: float = 3.0 * metric_grid.get_theme_constant("h_separation") + 48 + game.cockpit_scroll.get_v_scroll_bar().get_combined_minimum_size().x
+	for card in metric_grid.get_children():
+		four_columns += card.get_combined_minimum_size().x
+	root.size = Vector2i((Vector2(ceili(four_columns) - 1, 700) * density).round())
+	await settle_layout()
+	check(metric_grid.columns == 2, "dynamic-metric fixture starts just below its four-column threshold")
+	var metric_career: PackedByteArray = game.career.encode()
+	var metric_forecasts: int = game.career.forecast_calls
+	var old_support: String = game.stats[3][0].text
+	game.stats[3][0].text = "9 / 100" # Synthetic display-width fixture, not a policy outcome.
+	await settle_layout()
+	check(metric_grid.columns == 4, "a card-only width change reflows four fitting columns without native resize")
+	game.stats[3][0].text = old_support
+	await settle_layout()
+	check(metric_grid.columns == 2, "restored metric width returns to paired rows at the same window size")
+	check(game.career.encode() == metric_career and game.career.forecast_calls == metric_forecasts, "dynamic metric reflow never mutates the career or computes a forecast")
 	# A focused chart must keep the inspected quarter, not select latest on resize.
 	game.charts[0].grab_focus()
 	game.charts[0]._inspect(0)
