@@ -134,7 +134,7 @@ func _test_schedule() -> void:
 		if id == "unanchored_inflation":
 			practice.events = practice.events.filter(func(event: Dictionary) -> bool: return event.quarter_index < 120)
 		check(var_to_bytes(model.seeded_shock_path(417, practice, 240)).hex_encode().sha256_text() == previous_paths[id], "original six practice paths remain byte-exact before the qualified late inputs")
-	check(var_to_bytes(model.seeded_shock_path(417, cases.unanchored_inflation, 240)).hex_encode().sha256_text() == "31d1f36739db71deece66a2ff775118e2698e8f25bf9404df8c8d4ad4e721d69", "extended default path matches the independently qualified 24-pulse manifest")
+	check(var_to_bytes(model.seeded_shock_path(417, cases.unanchored_inflation, 240)).hex_encode().sha256_text() == "31d1f36739db71deece66a2ff775118e2698e8f25bf9404df8c8d4ad4e721d69", "legacy weak-anchor path matches the independently qualified 24-pulse manifest")
 	var reached := {}
 	for seed in [0, 1, 417, -2147483647, 2147483647, -9223372036854775807, 9223372036854775807]:
 		var full: Dictionary = model.call("seeded_campaign", seed, cases.mixed_crises, 1000)

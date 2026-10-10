@@ -896,7 +896,7 @@ func seeded_shock_path(seed: int, scenario: Dictionary, quarters: int) -> Array:
 
 func seeded_campaign(seed: int, scenario: Dictionary, quarters: int) -> Dictionary:
 	var context: Array = []
-	if scenario.id == "mixed_crises":
+	if scenario.id in ["mixed_crises", "policy_career"]:
 		var catalogue := load_shock_catalogue()
 		if not catalogue.ok:
 			return catalogue
@@ -911,7 +911,7 @@ func seeded_campaign(seed: int, scenario: Dictionary, quarters: int) -> Dictiona
 		episodes.seed = seed ^ 0x43414D50
 		var bag: Array = []
 		var followups: Array = []
-		var onset := episodes.randi_range(12, 20)
+		var onset := episodes.randi_range(4, 8) if scenario.id == "policy_career" else episodes.randi_range(12, 20)
 		while onset < quarters:
 			if bag.is_empty():
 				bag = independent.duplicate()
@@ -924,7 +924,7 @@ func seeded_campaign(seed: int, scenario: Dictionary, quarters: int) -> Dictiona
 				followups.erase(followup)
 				if followup_onset < quarters:
 					_append_shock_episode(scenario, context, concepts[followup], followup_onset, id)
-			onset += episodes.randi_range(12, 20)
+			onset += episodes.randi_range(8, 14) if scenario.id == "policy_career" else episodes.randi_range(12, 20)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
 	var path: Array = []
