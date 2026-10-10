@@ -37,16 +37,21 @@ var decision_button: Button
 var loading_controls := false
 var keyboard_controls: Array[Control] = []
 var cockpit_scroll: ScrollContainer
+var body_layout: BoxContainer
+var action_layout: BoxContainer
+var metric_layout: GridContainer
+var policy_panel: PanelContainer
 var save_path := SAVE_PATH
 var clean_career: PackedByteArray
 var quit_dialog: AcceptDialog
 
-const KEYBOARD_HELP := "Keyboard controls\nTab / Shift+Tab move forward / back through visible controls. Return or Space activates a focused button. In numeric fields, type a value and press Return to commit only that field; Up / Down use its advertised step. Arrow keys navigate open scenario or guidance menus; Return selects and Escape cancels.\n\nCharts: Left / Right inspect completed quarters; Home / End select the first / latest. Focused cockpit and reports: Page Up / Down scroll, Home / End reach the ends. Escape, Return or modified Return closes an informational report and returns focus. Escape cancels replacement; Return still follows the focused confirmation control.\n\nOptional accelerators use Cmd on macOS or Ctrl elsewhere: N New, S Save, O Load, J journal, P Compare, R staff rule, modified Return adopt one quarter. F1 opens this guide. Every command also has a Tab-accessible control; plain typing never adopts a quarter.\n\n"
+const KEYBOARD_HELP := "Keyboard controls\nTab / Shift+Tab move forward / back through visible controls. Return or Space activates a focused button. In numeric fields, type a value and press Return to commit only that field; Up / Down use its advertised step. Arrow keys navigate open scenario or guidance menus; Return selects and Escape cancels.\n\nCharts: Left / Right inspect completed quarters; Home / End select the first / latest. Focused cockpit and reports: Page Up / Down scroll, Home / End reach the ends. Escape or modified Return closes an informational report and returns focus. Plain Return closes its text or OK button, otherwise activates the focused report control. Escape cancels replacement; Return still follows the focused confirmation control.\n\nOptional accelerators use Cmd on macOS or Ctrl elsewhere: N New, S Save, O Load, J journal, P Compare, R staff rule, modified Return adopt one quarter. F1 opens this guide. Every command also has a Tab-accessible control; plain typing never adopts a quarter.\n\n"
 
 func _ready() -> void:
 	get_tree().auto_accept_quit = false
 	get_tree().root.close_requested.connect(_request_quit)
 	_fit_initial_window()
+	_resize_layout()
 	_apply_theme()
 	var background := ColorRect.new()
 	background.color = Color("0c191f")
@@ -72,11 +77,11 @@ func _ready() -> void:
 	action_margin.add_theme_constant_override("margin_top", 8)
 	action_margin.add_theme_constant_override("margin_bottom", 16)
 	layout.add_child(action_margin)
-	var actions := HBoxContainer.new()
-	actions.alignment = BoxContainer.ALIGNMENT_END
-	actions.add_theme_constant_override("separation", 12)
-	action_margin.add_child(actions)
-	var feedback := _vbox(actions, 5)
+	action_layout = BoxContainer.new()
+	action_layout.alignment = BoxContainer.ALIGNMENT_END
+	action_layout.add_theme_constant_override("separation", 12)
+	action_margin.add_child(action_layout)
+	var feedback := _vbox(action_layout, 5)
 	feedback.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	consequence = _label(feedback, "", 14, MINT)
 	consequence.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -87,6 +92,10 @@ func _ready() -> void:
 	status_label = _label(feedback, "", 13, MUTED)
 	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	status_label.accessibility_live = AccessibilityServer.LIVE_POLITE
+	var action_buttons := HBoxContainer.new()
+	action_buttons.alignment = BoxContainer.ALIGNMENT_END
+	action_buttons.add_theme_constant_override("separation", 12)
+	action_layout.add_child(action_buttons)
 	var margin := MarginContainer.new()
 	margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	for side in ["left", "top", "right", "bottom"]:
@@ -96,8 +105,11 @@ func _ready() -> void:
 	root.add_theme_constant_override("separation", 16)
 	margin.add_child(root)
 	_build_header(root)
-	var cards := HBoxContainer.new()
-	cards.add_theme_constant_override("separation", 12)
+	var cards := GridContainer.new()
+	metric_layout = cards
+	cards.columns = 4
+	cards.add_theme_constant_override("h_separation", 12)
+	cards.add_theme_constant_override("v_separation", 12)
 	root.add_child(cards)
 	for heading in ["INFLATION", "UNEMPLOYMENT", "CREDIBILITY", "PUBLIC SUPPORT"]:
 		var panel := _panel(cards)
@@ -113,14 +125,14 @@ func _ready() -> void:
 		var note := _label(box, "", 11, MUTED)
 		note.visible = stats.size() < 2
 		stats.append([value, note])
-	var body := HBoxContainer.new()
-	body.add_theme_constant_override("separation", 18)
-	root.add_child(body)
+	body_layout = BoxContainer.new()
+	body_layout.add_theme_constant_override("separation", 18)
+	root.add_child(body_layout)
 	var left := VBoxContainer.new()
 	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	left.add_theme_constant_override("separation", 12)
 	left.custom_minimum_size.x = 630
-	body.add_child(left)
+	body_layout.add_child(left)
 	_build_city(left)
 	var brief_box := _vbox(_panel(left), 5)
 	_label(brief_box, "Meeting dispatch", 12, GOLD)
@@ -140,14 +152,46 @@ func _ready() -> void:
 		chart_row.add_child(chart)
 		charts.append(chart)
 		keyboard_controls.append(chart)
-	_build_policy(body, actions)
+	_build_policy(body_layout, action_buttons)
 	_start_career("unanchored_inflation", 1)
+	get_window().size_changed.connect(_resize_layout)
+	get_window().dpi_changed.connect(_resize_layout)
+	for card in metric_layout.get_children():
+		card.minimum_size_changed.connect(_resize_layout)
+	_resize_layout()
 	keyboard_controls.append(scroll)
 	_link_focus(_keyboard_focus_order())
 	rate.get_line_edit().grab_focus.call_deferred()
 	cockpit_scroll.set_deferred("scroll_vertical", 0)
 	if "--verify-build" in OS.get_cmdline_user_args():
 		get_tree().quit(load("res://play/build_check.gd").new().run(self))
+
+static func _responsive_canvas_size(physical: Vector2i, display_scale: float) -> Vector2i:
+	var logical := Vector2(physical).max(Vector2.ONE) / maxf(1.0, display_scale)
+	# Below readable support, scale uniformly rather than strand the footer.
+	var fallback := maxf(1.0, maxf(960.0 / logical.x, 640.0 / logical.y))
+	return Vector2i((logical * fallback).round()).max(Vector2i.ONE)
+
+func _resize_layout() -> void:
+	var window := get_window()
+	var logical := _responsive_canvas_size(window.size, DisplayServer.screen_get_scale(window.current_screen))
+	if window.content_scale_size != logical:
+		window.content_scale_size = logical
+	if body_layout == null:
+		return
+	# Reserve the scrollbar even before it appears, avoiding breakpoint oscillation.
+	var available := window.get_visible_rect().size.x - 48 - cockpit_scroll.get_v_scroll_bar().get_combined_minimum_size().x
+	var wide_minimum: float = body_layout.get_child(0).get_combined_minimum_size().x + body_layout.get_child(1).get_combined_minimum_size().x + body_layout.get_theme_constant("separation")
+	var metric_width := 3.0 * metric_layout.get_theme_constant("h_separation")
+	for card in metric_layout.get_children():
+		metric_width += card.get_combined_minimum_size().x
+	metric_layout.columns = 4 if available >= metric_width else 2
+	body_layout.vertical = available < wide_minimum
+	action_layout.vertical = body_layout.vertical
+	var policy_index := 0 if body_layout.vertical else 1
+	if policy_panel.get_index() != policy_index:
+		body_layout.move_child(policy_panel, policy_index)
+		_link_focus(_keyboard_focus_order())
 
 static func _initial_window_size(design: Vector2i, display_scale: float, available: Vector2i) -> Vector2i:
 	var desired := Vector2(design) * display_scale
@@ -247,6 +291,10 @@ func _keyboard_focus_order() -> Array[Control]:
 	for control in keyboard_controls:
 		if control.is_visible_in_tree() and not (control is BaseButton and control.disabled):
 			order.append(control)
+	order.sort_custom(func(a: Control, b: Control):
+		if a == cockpit_scroll: return false
+		if b == cockpit_scroll: return true
+		return b.is_greater_than(a))
 	return order
 
 func _link_focus(order: Array[Control]) -> void:
@@ -265,8 +313,9 @@ func _scroll_key(event: InputEvent) -> void:
 		cockpit_scroll.accept_event()
 
 func _build_header(parent: Node) -> void:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
+	var row := HFlowContainer.new()
+	row.add_theme_constant_override("h_separation", 12)
+	row.add_theme_constant_override("v_separation", 12)
 	parent.add_child(row)
 	var brand := HBoxContainer.new()
 	brand.add_theme_constant_override("separation", 12)
@@ -431,6 +480,7 @@ func _portfolio_switch(parent: Node, title: String, enabled: bool, tip: String) 
 
 func _build_policy(parent: Node, actions: Node) -> void:
 	var panel := _panel(parent)
+	policy_panel = panel
 	panel.custom_minimum_size.x = 380
 	var box := _vbox(panel, 13)
 	_label(box, "FOMC DECISION", 18, GOLD)
@@ -539,7 +589,7 @@ func _start_career(case_id: String, seed_number: int) -> void:
 		return
 	clean_career = career.encode()
 	_refresh(true)
-	consequence.text = "Your first meeting: read the dispatch, compare the policy preview, then adopt a decision. There is no arbitrary unemployment or popularity game-over."
+	consequence.text = "Review current conditions, stage policy, then adopt."
 	status_label.text = "New unsaved career · %s · seed %d" % [career.cases[case_id].label, seed_number]
 
 func _refresh(reset_controls := false) -> void:
