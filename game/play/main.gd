@@ -36,6 +36,8 @@ var decision_button: Button
 var loading_controls := false
 var keyboard_controls: Array[Control] = []
 var cockpit_scroll: ScrollContainer
+var body_layout: BoxContainer
+var action_layout: BoxContainer
 var save_path := SAVE_PATH
 var clean_career: PackedByteArray
 var quit_dialog: AcceptDialog
@@ -46,6 +48,7 @@ func _ready() -> void:
 	get_tree().auto_accept_quit = false
 	get_tree().root.close_requested.connect(_request_quit)
 	_fit_initial_window()
+	_resize_layout()
 	_apply_theme()
 	var background := ColorRect.new()
 	background.color = Color("0c191f")
@@ -71,11 +74,11 @@ func _ready() -> void:
 	action_margin.add_theme_constant_override("margin_top", 8)
 	action_margin.add_theme_constant_override("margin_bottom", 16)
 	layout.add_child(action_margin)
-	var actions := HBoxContainer.new()
-	actions.alignment = BoxContainer.ALIGNMENT_END
-	actions.add_theme_constant_override("separation", 12)
-	action_margin.add_child(actions)
-	var feedback := _vbox(actions, 5)
+	action_layout = BoxContainer.new()
+	action_layout.alignment = BoxContainer.ALIGNMENT_END
+	action_layout.add_theme_constant_override("separation", 12)
+	action_margin.add_child(action_layout)
+	var feedback := _vbox(action_layout, 5)
 	feedback.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	consequence = _label(feedback, "", 14, MINT)
 	consequence.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -86,6 +89,10 @@ func _ready() -> void:
 	status_label = _label(feedback, "", 13, MUTED)
 	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	status_label.accessibility_live = AccessibilityServer.LIVE_POLITE
+	var action_buttons := HBoxContainer.new()
+	action_buttons.alignment = BoxContainer.ALIGNMENT_END
+	action_buttons.add_theme_constant_override("separation", 12)
+	action_layout.add_child(action_buttons)
 	var margin := MarginContainer.new()
 	margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	for side in ["left", "top", "right", "bottom"]:
@@ -95,8 +102,9 @@ func _ready() -> void:
 	root.add_theme_constant_override("separation", 16)
 	margin.add_child(root)
 	_build_header(root)
-	var cards := HBoxContainer.new()
-	cards.add_theme_constant_override("separation", 12)
+	var cards := HFlowContainer.new()
+	cards.add_theme_constant_override("h_separation", 12)
+	cards.add_theme_constant_override("v_separation", 12)
 	root.add_child(cards)
 	for heading in ["INFLATION", "UNEMPLOYMENT", "CREDIBILITY", "PUBLIC SUPPORT"]:
 		var panel := _panel(cards)
@@ -112,14 +120,14 @@ func _ready() -> void:
 		var note := _label(box, "", 11, MUTED)
 		note.visible = stats.size() < 2
 		stats.append([value, note])
-	var body := HBoxContainer.new()
-	body.add_theme_constant_override("separation", 18)
-	root.add_child(body)
+	body_layout = BoxContainer.new()
+	body_layout.add_theme_constant_override("separation", 18)
+	root.add_child(body_layout)
 	var left := VBoxContainer.new()
 	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	left.add_theme_constant_override("separation", 12)
 	left.custom_minimum_size.x = 630
-	body.add_child(left)
+	body_layout.add_child(left)
 	_build_city(left)
 	var brief_box := _vbox(_panel(left), 5)
 	_label(brief_box, "Meeting dispatch", 12, GOLD)
@@ -139,14 +147,33 @@ func _ready() -> void:
 		chart_row.add_child(chart)
 		charts.append(chart)
 		keyboard_controls.append(chart)
-	_build_policy(body, actions)
+	_build_policy(body_layout, action_buttons)
 	_start_career("unanchored_inflation", 1)
+	get_window().size_changed.connect(_resize_layout)
+	get_window().dpi_changed.connect(_resize_layout)
+	_resize_layout()
 	keyboard_controls.append(scroll)
 	_link_focus(_keyboard_focus_order())
 	rate.get_line_edit().grab_focus.call_deferred()
 	cockpit_scroll.set_deferred("scroll_vertical", 0)
 	if "--verify-build" in OS.get_cmdline_user_args():
 		get_tree().quit(load("res://play/build_check.gd").new().run(self))
+
+static func _responsive_canvas_size(physical: Vector2i, display_scale: float) -> Vector2i:
+	return Vector2i((Vector2(physical) / maxf(1.0, display_scale)).round()).max(Vector2i.ONE)
+
+func _resize_layout() -> void:
+	var window := get_window()
+	var logical := _responsive_canvas_size(window.size, DisplayServer.screen_get_scale(window.current_screen))
+	if window.content_scale_size != logical:
+		window.content_scale_size = logical
+	if body_layout == null:
+		return
+	# Reserve the scrollbar even before it appears, avoiding breakpoint oscillation.
+	var available := window.get_visible_rect().size.x - 48 - cockpit_scroll.get_v_scroll_bar().get_combined_minimum_size().x
+	var wide_minimum: float = body_layout.get_child(0).get_combined_minimum_size().x + body_layout.get_child(1).get_combined_minimum_size().x + body_layout.get_theme_constant("separation")
+	body_layout.vertical = available < wide_minimum
+	action_layout.vertical = body_layout.vertical
 
 static func _initial_window_size(design: Vector2i, display_scale: float, available: Vector2i) -> Vector2i:
 	var desired := Vector2(design) * display_scale
@@ -264,8 +291,9 @@ func _scroll_key(event: InputEvent) -> void:
 		cockpit_scroll.accept_event()
 
 func _build_header(parent: Node) -> void:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
+	var row := HFlowContainer.new()
+	row.add_theme_constant_override("h_separation", 12)
+	row.add_theme_constant_override("v_separation", 12)
 	parent.add_child(row)
 	var brand := HBoxContainer.new()
 	brand.add_theme_constant_override("separation", 12)

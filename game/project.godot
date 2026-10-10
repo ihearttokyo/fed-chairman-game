@@ -14,6 +14,7 @@ window/size/viewport_height=960
 window/size/window_width_override=1440
 window/size/window_height_override=960
 window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
 
 [accessibility]
 general/accessibility_support=1

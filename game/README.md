@@ -35,6 +35,24 @@ or blank reads preserve the original window. No lookup runs during gameplay,
 and later user resizes do not trigger an automatic reset. Other platforms retain
 engine startup geometry. No gameplay or font-size constants change.
 
+After startup, resizing changes only the logical canvas and native container
+layout, not window position, mode or requested size. The canvas follows the
+window's aspect ratio at its reported native display density; nominal text
+sizes are not reduced to fit a fixed design. Header commands and metric cards
+wrap. Below the combined measured column minimum, dispatch/charts and policy
+stack, with feedback above the Compare/Adopt row. Wide composition stays
+horizontal, and the existing focus-following vertical cockpit scroll remains.
+Controls are neither recreated nor reparented during resize, and the resize path
+does not submit typed drafts, refresh forecasts, advance quarters or write saves.
+
+The readable support target is a client area of at least 960×640 logical display
+points, including portrait, tall and wide sizes at 1×/2× density. Smaller sizes
+remain resizable but have no readable-overflow guarantee. The compact regression
+resizes the production window without replacing its canvas settings; synthetic
+2× sizing assertions supplement, not replace, native-density GUI checks. Current
+pixels, text rendering, keyboard paths and both densities must pass the
+[GUI validation contract](../docs/AGENTIC_GUI_VALIDATION.md) before acceptance.
+
 The test wrapper rejects runtime errors even when Godot exits with status zero.
 The fixed `-- --verify-build` entry point checks the bundled careers, replay,
 scene and city, then firm and signed conditional guidance paths against
