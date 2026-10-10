@@ -10,6 +10,44 @@ func check(condition: bool, message: String) -> void:
 func _initialize() -> void:
 	call_deferred("run")
 
+func check_reserve_recovery(game: Control) -> void:
+	game._start_career("lower_bound_slump", 1)
+	var failure: Dictionary = {}
+	for q in range(240):
+		var policy: Dictionary = game.career.model.benchmark_policy(game.career.state, game.career.params, "feedback")
+		policy.maintain_ample_reserves = false
+		var prior: PackedByteArray = game.career.encode()
+		var result: Dictionary = game.career.advance(policy)
+		if not result.ok:
+			failure = result
+			check(game.career.encode() == prior, "native reserve exhaustion rejects a quarter atomically")
+			break
+	check(not failure.is_empty() and failure.get("error", "") == "infeasible mandatory settlement after simultaneous principal netting", "real zero-rate slump staff path with reserve maintenance off reproduces settlement rejection")
+	if failure.is_empty():
+		return
+	print("RESERVE_RECOVERY_FIXTURE: Q", game.career.state.quarter_index, " reserves=", game.career.state.reserves_pct_initial_gdp)
+	game._refresh(true)
+	game._staff_rule()
+	check(not game.reserve_maintenance.button_pressed, "staff rate rule does not silently change reserve policy")
+	var preserved: PackedByteArray = game.career.encode()
+	var staged: Dictionary = game._policy().duplicate(true)
+	for message in [game.forecast_label.text, game._decision_briefing()]:
+		check(message.contains("reserves") and message.contains("Maintain ample reserves"), "failed preview and comparison explain the constraint and a concrete corrective control")
+	game._advance()
+	check(game.status_label.text.contains("Maintain ample reserves") and game.status_label.text.contains("Last valid quarter retained"), "adoption rejection explains the recovery without implying a crash")
+	check(game.career.encode() == preserved and game._policy() == staged, "failed UI adoption retains all valid history and staged controls")
+	if game.has_method("_policy_error"):
+		check(game.call("_policy_error", "unrelated diagnostic") == "unrelated diagnostic", "unrecognized errors keep their exact diagnostic")
+	else:
+		check(false, "policy error presentation is shared by its callers")
+	game.reserve_maintenance.button_pressed = true
+	var corrected: Dictionary = game.career.forecast(game._policy())
+	check(corrected.ok and game.career.encode() == preserved, "explicit reserve maintenance restores a feasible read-only preview from the same state")
+	game._advance()
+	check(game.career.state.quarter_index == bytes_to_var(preserved).decisions.size() + 1, "corrected policy advances exactly once instead of resetting or discarding the career")
+	if corrected.ok:
+		check(game.career.state == corrected.states[0], "reserve recovery adopts the exact corrected preview")
+
 func run() -> void:
 	var game: Control = load("res://main.tscn").instantiate()
 	root.add_child(game)
@@ -83,6 +121,7 @@ func run() -> void:
 	check(game.career.encode() == saved, "reading balance-sheet help leaves the unsaved career intact")
 	game._start_career("base", 17)
 	check(game.reinvestment.button_pressed and game.reserve_maintenance.button_pressed and not game.sterilization.button_pressed, "explicit new-career reset restores initial portfolio defaults")
+	await check_reserve_recovery(game)
 	game.free()
 	if failures == 0:
 		print("PASS: unrestricted current-GDP offers, keyboard portfolio modes, exact adoption and concise explanations")
