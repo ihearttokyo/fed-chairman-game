@@ -247,13 +247,13 @@ func check_persistent_actions(game: Control) -> void:
 			actions.append(button)
 			var ancestor: Node = button.get_parent()
 			while ancestor != game:
-				check(not ancestor is ScrollContainer, "policy actions remain outside the scrolling cockpit")
+				check(ancestor != game.cockpit_scroll, "policy actions remain outside the scrolling cockpit")
 				ancestor = ancestor.get_parent()
 	check(actions.size() == 2, "comparison and adoption each have one action")
 	for feedback in [game.status_label, game.consequence]:
 		var feedback_ancestor: Node = feedback.get_parent()
 		while feedback_ancestor != game:
-			check(not feedback_ancestor is ScrollContainer, "career status and economic outcome remain outside the scrolling cockpit")
+			check(feedback_ancestor != game.cockpit_scroll, "career status and economic outcome remain outside the scrolling cockpit")
 			feedback_ancestor = feedback_ancestor.get_parent()
 	game._advance()
 	game._advance()
@@ -271,6 +271,7 @@ func check_persistent_actions(game: Control) -> void:
 			check(button.get_global_rect().position.y >= 0 and button.get_global_rect().end.y <= game.get_viewport_rect().end.y, "expanded guidance keeps actions within the viewport")
 		check(game.status_label.get_global_rect().position.y >= 0 and game.status_label.get_global_rect().end.y <= game.get_viewport_rect().end.y, "long staff feedback remains within the viewport with expanded guidance")
 		check(game.consequence.get_global_rect().position.y >= 0 and game.consequence.get_global_rect().end.y <= game.get_viewport_rect().end.y, "complete adopted outcome stays within the viewport with expanded guidance")
+		check(game.overflow_scroll.get_v_scroll_bar().max_value <= game.overflow_scroll.get_v_scroll_bar().page + 0.5 and game.overflow_scroll.get_h_scroll_bar().max_value <= game.overflow_scroll.get_h_scroll_bar().page + 0.5, "normal and expanded-guidance layouts genuinely pin actions and feedback without any whole-content overflow")
 	root.size = original_size
 	game.status_label.text = original_status
 	game.commitment.select(0)
@@ -1316,6 +1317,9 @@ func check_unsaved_app_quit() -> void:
 	await process_frame
 
 func run() -> void:
+	# Headless script roots default to 64x64; functional fixtures need a real wide canvas.
+	if DisplayServer.get_name() == "headless" and not OS.get_cmdline_user_args().has("--window-size-only"):
+		root.size = Vector2i(1440, 960)
 	var window_size_before := root.size
 	var window_position_before := root.position
 	if OS.get_cmdline_user_args().has("--unsaved-quit-only"):
@@ -1608,6 +1612,7 @@ func run() -> void:
 	check(help_text.text.contains("Varied policy career and Recurring crises draw from 50 curated exogenous events") and not help_text.text.contains("precomputes50"), "help describes the event pool, not fifty events in every career")
 	check(help_text.text.contains("Deferred demand") and help_text.text.contains("not all lost consumption") and help_text.text.contains("no guaranteed return to 2%"), "help distinguishes catch-up spending from forced recovery")
 	check(help_text.text.contains("structural reference") and help_text.text.to_lower().contains("short expectations") and help_text.text.contains("prior long"), "help explains separate structural and expectation restoration channels")
+	check(not help_text.text.contains(Engine.get_license_text()), "help omits only the duplicated engine license, retained in Credits")
 	check(game.briefing.text.contains("Deferred demand") and game.briefing.text.contains("% potential"), "dispatch exposes the known deferred-demand stock with its unit")
 	check(game.career.encode() == before_cancel and game._policy() == staged_before_cancel, "reading seeded help leaves the active career and staged policy unchanged")
 	help.get_ok_button().pressed.emit()
@@ -1616,6 +1621,7 @@ func run() -> void:
 	await process_frame
 	var credits: AcceptDialog = game.get_child(game.get_child_count() - 1)
 	var notices: TextEdit = credits.get_child(0)
+	check(notices.text.contains(Engine.get_license_text()), "canonical Credits retains the complete engine license")
 	check(notices.text.contains(Engine.get_license_info()["FTL"]), "bundled component license is preserved verbatim")
 	credits.get_ok_button().pressed.emit()
 	await process_frame

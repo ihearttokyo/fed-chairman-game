@@ -37,8 +37,12 @@ var decision_button: Button
 var loading_controls := false
 var keyboard_controls: Array[Control] = []
 var cockpit_scroll: ScrollContainer
+var overflow_scroll: ScrollContainer
 var body_layout: BoxContainer
 var action_layout: BoxContainer
+var action_buttons: BoxContainer
+var chart_layout: BoxContainer
+var portfolio_layout: BoxContainer
 var metric_layout: GridContainer
 var policy_panel: PanelContainer
 var save_path := SAVE_PATH
@@ -58,13 +62,21 @@ func _ready() -> void:
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(background)
+	overflow_scroll = ScrollContainer.new()
+	overflow_scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overflow_scroll.follow_focus = true
+	add_child(overflow_scroll)
 	var layout := VBoxContainer.new()
-	layout.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	layout.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	layout.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	layout.add_theme_constant_override("separation", 0)
-	add_child(layout)
+	overflow_scroll.add_child(layout)
 	var scroll := ScrollContainer.new()
 	cockpit_scroll = scroll
 	scroll.follow_focus = true
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	# Keep the existing usable cockpit floor; short windows scroll the whole layout.
+	scroll.custom_minimum_size.y = 200
 	scroll.focus_mode = Control.FOCUS_ALL
 	scroll.accessibility_name = "Meeting cockpit"
 	scroll.accessibility_description = "Page Up and Page Down scroll the cockpit. Home and End jump to its ends. Tab continues to the next control."
@@ -92,7 +104,7 @@ func _ready() -> void:
 	status_label = _label(feedback, "", 13, MUTED)
 	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	status_label.accessibility_live = AccessibilityServer.LIVE_POLITE
-	var action_buttons := HBoxContainer.new()
+	action_buttons = BoxContainer.new()
 	action_buttons.alignment = BoxContainer.ALIGNMENT_END
 	action_buttons.add_theme_constant_override("separation", 12)
 	action_layout.add_child(action_buttons)
@@ -139,7 +151,8 @@ func _ready() -> void:
 	briefing = _label(brief_box, "", 14)
 	briefing.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	briefing.mouse_filter = Control.MOUSE_FILTER_PASS
-	var chart_row := HBoxContainer.new()
+	var chart_row := BoxContainer.new()
+	chart_layout = chart_row
 	chart_row.add_theme_constant_override("separation", 20)
 	left.add_child(chart_row)
 	for n in range(2):
@@ -156,21 +169,40 @@ func _ready() -> void:
 	_start_career(Career.DEFAULT_SCENARIO, 1)
 	get_window().size_changed.connect(_resize_layout)
 	get_window().dpi_changed.connect(_resize_layout)
+	overflow_scroll.resized.connect(_resize_layout)
+	overflow_scroll.get_v_scroll_bar().visibility_changed.connect(_resize_layout)
+	cockpit_scroll.resized.connect(_reveal_focus)
 	for card in metric_layout.get_children():
 		card.minimum_size_changed.connect(_resize_layout)
 	_resize_layout()
 	keyboard_controls.append(scroll)
 	_link_focus(_keyboard_focus_order())
 	rate.get_line_edit().grab_focus.call_deferred()
-	cockpit_scroll.set_deferred("scroll_vertical", 0)
+	if not body_layout.vertical:
+		cockpit_scroll.set_deferred("scroll_vertical", 0)
 	if "--verify-build" in OS.get_cmdline_user_args():
 		get_tree().quit(load("res://play/build_check.gd").new().run(self))
 
 static func _responsive_canvas_size(physical: Vector2i, display_scale: float) -> Vector2i:
 	var logical := Vector2(physical).max(Vector2.ONE) / maxf(1.0, display_scale)
-	# Below readable support, scale uniformly rather than strand the footer.
-	var fallback := maxf(1.0, maxf(960.0 / logical.x, 640.0 / logical.y))
-	return Vector2i((logical * fallback).round()).max(Vector2i.ONE)
+	return Vector2i(logical.round()).max(Vector2i.ONE)
+
+func _row_minimum(row: BoxContainer) -> float:
+	var width := 0.0
+	for child in row.get_children():
+		if child.visible:
+			if width > 0:
+				width += row.get_theme_constant("separation")
+			width += child.get_combined_minimum_size().x
+	return width
+
+func _reveal_focus() -> void:
+	var focused := get_viewport().gui_get_focus_owner()
+	if focused != null:
+		if cockpit_scroll.is_ancestor_of(focused):
+			cockpit_scroll.ensure_control_visible(focused)
+		if overflow_scroll.is_ancestor_of(focused):
+			overflow_scroll.ensure_control_visible(focused)
 
 func _resize_layout() -> void:
 	var window := get_window()
@@ -180,18 +212,31 @@ func _resize_layout() -> void:
 	if body_layout == null:
 		return
 	# Reserve the scrollbar even before it appears, avoiding breakpoint oscillation.
-	var available := window.get_visible_rect().size.x - 48 - cockpit_scroll.get_v_scroll_bar().get_combined_minimum_size().x
-	var wide_minimum: float = body_layout.get_child(0).get_combined_minimum_size().x + body_layout.get_child(1).get_combined_minimum_size().x + body_layout.get_theme_constant("separation")
+	var available := window.get_visible_rect().size.x - 48 - cockpit_scroll.get_v_scroll_bar().get_combined_minimum_size().x - overflow_scroll.get_v_scroll_bar().get_combined_minimum_size().x
+	var left: Control = chart_layout.get_parent()
+	# Project the unstacked chart width so narrower rows cannot move the wide breakpoint.
+	var policy_minimum := maxf(policy_panel.get_combined_minimum_size().x, _row_minimum(portfolio_layout) + policy_panel.get_theme_stylebox("panel").get_minimum_size().x)
+	var wide_minimum: float = maxf(630.0, _row_minimum(chart_layout)) + policy_minimum + body_layout.get_theme_constant("separation")
 	var metric_width := 3.0 * metric_layout.get_theme_constant("h_separation")
-	for card in metric_layout.get_children():
+	var cards := metric_layout.get_children()
+	for card in cards:
 		metric_width += card.get_combined_minimum_size().x
-	metric_layout.columns = 4 if available >= metric_width else 2
+	var paired_width := maxf(cards[0].get_combined_minimum_size().x, cards[2].get_combined_minimum_size().x) + maxf(cards[1].get_combined_minimum_size().x, cards[3].get_combined_minimum_size().x) + metric_layout.get_theme_constant("h_separation")
+	metric_layout.columns = 4 if available >= metric_width else 2 if available >= paired_width else 1
 	body_layout.vertical = available < wide_minimum
 	action_layout.vertical = body_layout.vertical
+	left.custom_minimum_size.x = 0 if body_layout.vertical else 630
+	chart_layout.vertical = available < _row_minimum(chart_layout)
+	action_buttons.vertical = available < _row_minimum(action_buttons)
+	portfolio_layout.vertical = available < _row_minimum(portfolio_layout) + policy_panel.get_theme_stylebox("panel").get_minimum_size().x
 	var policy_index := 0 if body_layout.vertical else 1
 	if policy_panel.get_index() != policy_index:
 		body_layout.move_child(policy_panel, policy_index)
 		_link_focus(_keyboard_focus_order())
+	_reveal_focus.call_deferred()
+	for child in get_children():
+		if child is ReportDialog and child.visible:
+			_fit_report.call_deferred(child)
 
 static func _initial_window_size(design: Vector2i, display_scale: float, available: Vector2i) -> Vector2i:
 	var desired := Vector2(design) * display_scale
@@ -305,10 +350,18 @@ func _link_focus(order: Array[Control]) -> void:
 func _scroll_key(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.alt_pressed and not event.is_command_or_control_pressed():
 		match event.keycode:
-			KEY_PAGEUP: cockpit_scroll.scroll_vertical -= int(cockpit_scroll.size.y * 0.8)
-			KEY_PAGEDOWN: cockpit_scroll.scroll_vertical += int(cockpit_scroll.size.y * 0.8)
-			KEY_HOME: cockpit_scroll.scroll_vertical = 0
-			KEY_END: cockpit_scroll.scroll_vertical = int(cockpit_scroll.get_v_scroll_bar().max_value)
+			KEY_PAGEUP, KEY_PAGEDOWN:
+				var direction := -1 if event.keycode == KEY_PAGEUP else 1
+				var bar := cockpit_scroll.get_v_scroll_bar()
+				var can_move := bar.value > 0 if direction < 0 else bar.value < bar.max_value - bar.page
+				var scroll := cockpit_scroll if can_move else overflow_scroll
+				scroll.scroll_vertical += direction * int(scroll.size.y * 0.8)
+			KEY_HOME:
+				cockpit_scroll.scroll_vertical = 0
+				overflow_scroll.scroll_vertical = 0
+			KEY_END:
+				cockpit_scroll.scroll_vertical = int(cockpit_scroll.get_v_scroll_bar().max_value)
+				overflow_scroll.scroll_vertical = int(overflow_scroll.get_v_scroll_bar().max_value)
 			_: return
 		cockpit_scroll.accept_event()
 
@@ -509,7 +562,8 @@ func _build_policy(parent: Node, actions: Node) -> void:
 	assets.allow_lesser = true
 	assets.allow_greater = true
 	var modes := _vbox(box, 0)
-	var portfolio_row := HBoxContainer.new()
+	var portfolio_row := BoxContainer.new()
+	portfolio_layout = portfolio_row
 	modes.add_child(portfolio_row)
 	reinvestment = _portfolio_switch(portfolio_row, "Reinvest principal", true, "With zero or positive purchases, roll principal on or allow natural runoff off. A negative runoff cap overrides either setting; no unmatured securities are sold.")
 	sterilization = _portfolio_switch(portfolio_row, "Sterilize purchases", false, "Absorb purchase-created reserves through overnight reverse repos. Securities remain assets; duration effects persist. Uptake, collateral and settlement can limit absorption.")
@@ -862,6 +916,20 @@ func _restore_keyboard_focus(invoker: WeakRef) -> void:
 	else:
 		rate.get_line_edit().grab_focus()
 
+func _fit_report(dialog: Window, desired_size := Vector2i(740, 540)) -> Vector2i:
+	var content: Control = dialog.get_child(0)
+	var parent_size := Vector2i(get_window().get_visible_rect().size)
+	var decoration := (dialog.get_size_with_decorations() - dialog.size).max(Vector2i.ZERO)
+	var available := (parent_size - decoration).max(Vector2i.ONE)
+	var chrome := (Vector2(dialog.get_contents_minimum_size()) - content.get_combined_minimum_size()).max(Vector2.ZERO)
+	content.custom_minimum_size = Vector2(690, 450).min((Vector2(available) - chrome).max(Vector2.ONE))
+	var fitted := desired_size.min(available)
+	if dialog.visible:
+		dialog.size = fitted
+		var offset := dialog.position - dialog.get_position_with_decorations()
+		dialog.position = dialog.position.clamp(offset, (parent_size - dialog.get_size_with_decorations() + offset).max(offset))
+	return fitted
+
 func _show_dialog(dialog: Window, desired_size := Vector2i(740, 540), initial: Control = null) -> void:
 	var invoker: WeakRef = weakref(get_viewport().gui_get_focus_owner())
 	add_child(dialog)
@@ -878,7 +946,9 @@ func _show_dialog(dialog: Window, desired_size := Vector2i(740, 540), initial: C
 		dialog.dialog_close_on_escape = false
 		dialog.confirmed.connect(dialog.queue_free)
 		dialog.canceled.connect(dialog.queue_free)
-	dialog.popup_centered(desired_size)
+	dialog.popup_centered(_fit_report(dialog, desired_size) if dialog is ReportDialog else desired_size)
+	if dialog is ReportDialog:
+		_fit_report.call_deferred(dialog, desired_size)
 	if initial != null:
 		initial.grab_focus.call_deferred()
 
@@ -1031,7 +1101,7 @@ func _journal() -> void:
 	)
 
 func _help() -> void:
-	_text_dialog("How to play", KEYBOARD_HELP + _mandate_rules_text() + "\n\nYour role\nGuide a simplified FOMC policy decision. The target-rate midpoint is an abstraction; a real chair does not unilaterally set the market rate.\n\nEvery career includes seeded background disturbances. The default Varied policy career starts with weakly anchored inflation and adds recurring dilemmas after a short opening. The earlier Weakly anchored inflation challenge remains selectable. The baseline starts at equilibrium with no scheduled scenario events, but its playable path is not shock-free. The same scenario and seed reproduce the path within the same engine and model.\n\n1. Read the dispatch. It describes current conditions, not future shocks.\n2. Set the target rate. Higher real rates restrain demand gradually; inflation reacts with a lag. A supply shock can raise prices while weakening activity.\n3. Choose guidance. A firm promise is easier to understand but costly to break. Data dependence adjusts the prior promise when inflation and the output gap change.\n4. Set purchases or a runoff cap; choose reinvestment, reserve maintenance and sterilization. Offer secured liquidity for eligible funding, not insolvency.\n5. Inspect applied amounts and the eight-quarter preview, then adopt. The preview assumes no new future shocks and no later rate changes.\n\nRates and guidance\nNominal rates apply in full; quotes use 1bp increments and arrows move 25bp. Negative rates are a U.S. counterfactual. Their effective financing rate is s*tanh(i/s) below zero, unchanged above zero; the illustrative scale s=1 percentage point is not an estimated lower bound. Credibility prices the nominal guidance quote before this transmission. Deep cuts have diminishing benefits. Stance credibility compares effective restraint with an unsaturated real-gap objective: constrained best effort receives partial credit, not full adequacy. Conditional implied quotes round to the same 1bp grid before nominal promise follow-through.\n\nBalance sheet and funding\nAsset and lending offers are percent of current annual GDP, converted once at the meeting. Purchases have no invented ceiling; their duration-premium effect diminishes with scale. A negative offer caps runoff at actual maturing Treasury, MBS and bill principal; it is not a sale of unmatured holdings. With a zero or positive offer, reinvestment on rolls principal and off allows natural runoff. MBS paydown responds nonlinearly to lagged financing; Treasury timing uses a source-backed maturity ladder.\n\nMaintain ample reserves buys short bills after all other transactions to meet the disclosed reserve buffer. With maintenance off, currency growth, runoff or loan repayment can exhaust reserves. A rejected settlement preserves the last valid quarter; enable maintenance or adjust purchases/runoff. Bills are excluded from the long-duration channel but can ease funding scarcity; long runoff can coexist with unchanged total assets. Sterilized purchases retain securities and duration effects while replacing reserves with overnight reverse repo liabilities. Uptake, Treasury collateral and settlement can leave absorption incomplete. Tagged principal rolls without accumulating a new absorption target.\n\nThe liquidity offer is desired concurrent exposure, not accumulated quarterly turnover. Prior representative overnight/short loans mature next quarter. New needs and requested refinancing are separate; eligible refinancing receives priority. Default zero refinancing assumes private repayment funds. Eligibility and haircut-adjusted collateral limit advances; excess offers do not become loans. Lending can relieve funding scarcity, not erase losses or create capital. Inspect applied amounts, RRP, reserve-maintenance purchases (RMP), and uncovered funding before adopting. Portfolio switches persist through the preview and subsequent meetings; one-time purchase and lending offers reset.\n\nRecovery channels\nDeferred demand tracks postponed durable/replacement purchases, not all lost consumption. Positive stock supports catch-up spending; negative stock means purchases were brought forward. Financing restraint delays release; growth changes the denominator, and obsolete plans decay. The stock uses percent of quarterly potential output. Short expectations gradually mix observed inflation with prior long expectations in proportion to credibility. Transitory neutral-rate deviations revert toward a structural reference; permanent structural shifts change it. These channels provide a recovery impulse, with no guaranteed return to 2% under persistent restraint.\n\nCredibility changes how markets price guidance and long-run inflation expectations. Public support remembers both inflation/deflation hardship and unemployment. It recovers gradually, without term resets or a game-over threshold.\n\nSave and Load use policy-career-v1.save only. Older saves have a different model fingerprint and need their matching prior app/model. Both original slots, career-late-compound-v1.save and career-v1.save, remain untouched; no copying, migration or fallback. New career and Load ask before replacing unsaved play. Tab navigates controls; charts also have exact values in Data & journal. Animation is off by default.\n\nModel limits\nEight hypothetical scenarios. Varied policy career and Recurring crises draw from 50 curated exogenous events: disasters, demand/supply changes, funding and credit losses, and favorable developments. Forty-eight independent profiles use a no-repeat bag; two private-bank normalization events require prior eligible stress. The current dispatch names an active event, never its future pulses. Private normalization cannot erase old losses or loans. The 2% objective and portfolio reference observations are source-backed; behavioral coefficients, starting conditions and shock incidence are design assumptions. This is a hypothetical economy, not an empirical forecast or financial advice. No Federal Reserve affiliation. See the repository's FED_RESEARCH and model README for primary sources and equations.\n\nCredits\nOriginal procedural Blender city by the project. Godot Engine is MIT-licensed.\n\n" + Engine.get_license_text())
+	_text_dialog("How to play", KEYBOARD_HELP + _mandate_rules_text() + "\n\nYour role\nGuide a simplified FOMC policy decision. The target-rate midpoint is an abstraction; a real chair does not unilaterally set the market rate.\n\nEvery career includes seeded background disturbances. The default Varied policy career starts with weakly anchored inflation and adds recurring dilemmas after a short opening. The earlier Weakly anchored inflation challenge remains selectable. The baseline starts at equilibrium with no scheduled scenario events, but its playable path is not shock-free. The same scenario and seed reproduce the path within the same engine and model.\n\n1. Read the dispatch. It describes current conditions, not future shocks.\n2. Set the target rate. Higher real rates restrain demand gradually; inflation reacts with a lag. A supply shock can raise prices while weakening activity.\n3. Choose guidance. A firm promise is easier to understand but costly to break. Data dependence adjusts the prior promise when inflation and the output gap change.\n4. Set purchases or a runoff cap; choose reinvestment, reserve maintenance and sterilization. Offer secured liquidity for eligible funding, not insolvency.\n5. Inspect applied amounts and the eight-quarter preview, then adopt. The preview assumes no new future shocks and no later rate changes.\n\nRates and guidance\nNominal rates apply in full; quotes use 1bp increments and arrows move 25bp. Negative rates are a U.S. counterfactual. Their effective financing rate is s*tanh(i/s) below zero, unchanged above zero; the illustrative scale s=1 percentage point is not an estimated lower bound. Credibility prices the nominal guidance quote before this transmission. Deep cuts have diminishing benefits. Stance credibility compares effective restraint with an unsaturated real-gap objective: constrained best effort receives partial credit, not full adequacy. Conditional implied quotes round to the same 1bp grid before nominal promise follow-through.\n\nBalance sheet and funding\nAsset and lending offers are percent of current annual GDP, converted once at the meeting. Purchases have no invented ceiling; their duration-premium effect diminishes with scale. A negative offer caps runoff at actual maturing Treasury, MBS and bill principal; it is not a sale of unmatured holdings. With a zero or positive offer, reinvestment on rolls principal and off allows natural runoff. MBS paydown responds nonlinearly to lagged financing; Treasury timing uses a source-backed maturity ladder.\n\nMaintain ample reserves buys short bills after all other transactions to meet the disclosed reserve buffer. With maintenance off, currency growth, runoff or loan repayment can exhaust reserves. A rejected settlement preserves the last valid quarter; enable maintenance or adjust purchases/runoff. Bills are excluded from the long-duration channel but can ease funding scarcity; long runoff can coexist with unchanged total assets. Sterilized purchases retain securities and duration effects while replacing reserves with overnight reverse repo liabilities. Uptake, Treasury collateral and settlement can leave absorption incomplete. Tagged principal rolls without accumulating a new absorption target.\n\nThe liquidity offer is desired concurrent exposure, not accumulated quarterly turnover. Prior representative overnight/short loans mature next quarter. New needs and requested refinancing are separate; eligible refinancing receives priority. Default zero refinancing assumes private repayment funds. Eligibility and haircut-adjusted collateral limit advances; excess offers do not become loans. Lending can relieve funding scarcity, not erase losses or create capital. Inspect applied amounts, RRP, reserve-maintenance purchases (RMP), and uncovered funding before adopting. Portfolio switches persist through the preview and subsequent meetings; one-time purchase and lending offers reset.\n\nRecovery channels\nDeferred demand tracks postponed durable/replacement purchases, not all lost consumption. Positive stock supports catch-up spending; negative stock means purchases were brought forward. Financing restraint delays release; growth changes the denominator, and obsolete plans decay. The stock uses percent of quarterly potential output. Short expectations gradually mix observed inflation with prior long expectations in proportion to credibility. Transitory neutral-rate deviations revert toward a structural reference; permanent structural shifts change it. These channels provide a recovery impulse, with no guaranteed return to 2% under persistent restraint.\n\nCredibility changes how markets price guidance and long-run inflation expectations. Public support remembers both inflation/deflation hardship and unemployment. It recovers gradually, without term resets or a game-over threshold.\n\nSave and Load use policy-career-v1.save only. Older saves have a different model fingerprint and need their matching prior app/model. Both original slots, career-late-compound-v1.save and career-v1.save, remain untouched; no copying, migration or fallback. New career and Load ask before replacing unsaved play. Tab navigates controls; charts also have exact values in Data & journal. Animation is off by default.\n\nModel limits\nEight hypothetical scenarios. Varied policy career and Recurring crises draw from 50 curated exogenous events: disasters, demand/supply changes, funding and credit losses, and favorable developments. Forty-eight independent profiles use a no-repeat bag; two private-bank normalization events require prior eligible stress. The current dispatch names an active event, never its future pulses. Private normalization cannot erase old losses or loans. The 2% objective and portfolio reference observations are source-backed; behavioral coefficients, starting conditions and shock incidence are design assumptions. This is a hypothetical economy, not an empirical forecast or financial advice. No Federal Reserve affiliation. See the repository's FED_RESEARCH and model README for primary sources and equations.")
 
 func _process(delta: float) -> void:
 	if city != null and not reduced_motion:
