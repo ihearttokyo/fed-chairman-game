@@ -76,6 +76,41 @@ func check_periodic_review_keys(game: Control) -> void:
 			await viewport_key(root, KEY_ENTER, true)
 			check(game.career.state.quarter_index == 13, "next deliberate command adopts exactly one new quarter")
 
+func check_actionable_report_enter(game: Control) -> void:
+	game._start_career("base", 17)
+	check(game.career.advance(game.career.model.benchmark_policy(game.career.state, game.career.params, "feedback")).ok, "actionable report fixture completes a real quarter")
+	game._refresh(true)
+	var preserved: PackedByteArray = game.career.encode()
+	game._journal()
+	await process_frame
+	await process_frame
+	var journal: AcceptDialog = game.get_child(game.get_child_count() - 1) as AcceptDialog
+	var review: Button = button(game, "Review realized policy")
+	check(review != null and not review.disabled, "completed journal exposes the real review action")
+	if review != null:
+		review.grab_focus()
+		await viewport_key(journal, KEY_ENTER)
+		var report: AcceptDialog = game.get_child(game.get_child_count() - 1) as AcceptDialog
+		check(report != null and report.title.contains("policy review"), "plain Return activates journal review rather than dismissing its action")
+		if report != null:
+			await viewport_key(report, KEY_ESCAPE)
+	check(game.career.encode() == preserved, "journal action via Return preserves the exact career")
+	game._compare()
+	await process_frame
+	await process_frame
+	var comparison: AcceptDialog = game.get_child(game.get_child_count() - 1) as AcceptDialog
+	var chooser: OptionButton = comparison.find_children("*", "OptionButton", true, false)[0]
+	chooser.grab_focus()
+	await viewport_key(comparison, KEY_ENTER)
+	check(is_instance_valid(comparison) and chooser.get_popup().visible, "plain Return opens the comparison chooser without dismissing its report")
+	if is_instance_valid(comparison):
+		if chooser.get_popup().visible:
+			await viewport_key(chooser.get_popup(), KEY_DOWN)
+			await viewport_key(chooser.get_popup(), KEY_ENTER)
+			check(is_instance_valid(comparison) and chooser.selected == 1 and not chooser.get_popup().visible, "popup Return selects a section and preserves the report")
+		await viewport_key(comparison, KEY_ESCAPE)
+	check(game.career.encode() == preserved, "section opening/selection/dismissal never adopts a quarter")
+
 func check_deferred_close(dialog: AcceptDialog, action: String) -> void:
 	var followup := [false]
 	dialog.window_input.connect(func(event: InputEvent):
@@ -521,6 +556,7 @@ func run() -> void:
 	await type_number(root, game.liquidity, "-1.00")
 	check(game.liquidity.value == 0.0 and game.liquidity.get_line_edit().text.to_float() == 0.0 and game._policy() == floor_policy and game.forecast_label.text.contains("lending 0.00") and game.career.encode() == floor_start, "typed negative lending normalizes to the nonnegative floor without adopting or changing applied feedback")
 	await check_periodic_review_keys(game)
+	await check_actionable_report_enter(game)
 	game.free()
 	if failures == 0:
 		print("PASS: complete keyboard career, editing, focus, menus, charts, reports, save/replay and terminal guards")

@@ -96,6 +96,7 @@ func check_responsive_resize(game: Control) -> void:
 	# Pure 2x checks supplement, but do not replace, the actual display-density run.
 	check(game.has_method("_responsive_canvas_size"), "shared native-density sizing exists")
 	if game.has_method("_responsive_canvas_size"):
+		check(game._responsive_canvas_size(Vector2i(64, 64), 1.0) == Vector2i(960, 960), "below readable support the uniform fallback keeps the complete cockpit reachable")
 		for factor in [1.0, 2.0]:
 			check(game._responsive_canvas_size(Vector2i(Vector2(960, 640) * factor), factor) == Vector2i(960, 640), "native-density sizing retains logical 960x640 at " + str(factor) + "x")
 	game._advance()

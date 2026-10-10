@@ -46,8 +46,9 @@ Controls are neither recreated nor reparented during resize, and the resize path
 does not submit typed drafts, refresh forecasts, advance quarters or write saves.
 
 The readable support target is a client area of at least 960×640 logical display
-points, including portrait, tall and wide sizes at 1×/2× density. Smaller sizes
-remain resizable but have no readable-overflow guarantee. The compact regression
+points, including portrait, tall and wide sizes at 1×/2× density. Below that range,
+a uniform minimum-canvas fallback keeps controls reachable without restricting
+native window size. Text necessarily shrinks; readability is not certified. The compact regression
 resizes the production window without replacing its canvas settings; synthetic
 2× sizing assertions supplement, not replace, native-density GUI checks. Current
 pixels, text rendering, keyboard paths and both densities must pass the
@@ -606,9 +607,10 @@ retains the entire last valid career and staged policy; it never changes a switc
 or adopts a quarter automatically.
 
 Careers continue through 12-quarter reviews without resetting policy lags,
-expectations, hardship memory or charts. Informational reports close with Escape,
-Return, keypad Return or platform-command Return from any focused report control.
-Dismissal restores the invoking control without adopting another quarter. New,
+expectations, hardship memory or charts. Escape or platform-command Return closes
+an informational report. Plain Return/keypad Return closes its read-only text or
+OK button, but activates other focused actions and section menus. Dismissal
+restores the invoking control without adopting another quarter. New,
 Load and Quit remain separate Cancel-first confirmations. The local career limit
 is 240 quarters.
 Data & journal also opens a realized review on demand after any completed
