@@ -89,7 +89,7 @@ a link to managed dependencies. References, logs, previews and source hashes
 stay beside the new workbook rather than entering Git. Failed builds are kept
 for diagnosis; rerun with a new destination instead of replacing one.
 
-Seven seed-1, 48-quarter careers, four one-variable policy edits, three price,
+Eight seed-1, 48-quarter careers, four one-variable policy edits, three price,
 seven signed-rate and fifteen balance-sheet boundary traces come from the
 current Godot equations. Balance fixtures cover natural/capped runoff, large
 offers, full/partial sterilization, actual tagged maturity, loan refinancing,
@@ -137,7 +137,7 @@ comparisons use three and two respectively. Higher does not necessarily mean
 better. These are presentation rules, not changes to the simulation.
 
 `model/economy.gd` owns the equations. `parameters.json` records each parameter's
-units and source classification; `scenarios.json` contains seven hypothetical
+units and source classification; `scenarios.json` contains eight hypothetical
 cases. Rates and inflation use percent units: 2 means 2 percent. Internal asset and loan
 amounts use percent of **initial annual GDP**. The cockpit accepts offers in percent
 of observed current annual nominal GDP and converts once before commitment. Flow
@@ -147,16 +147,22 @@ owns principal, maturity, reserve and sterilization equations.
 
 ## Scenarios and background disturbances
 
-Startup and New career default to Weakly anchored inflation: 4.5% inflation,
-0.25 credibility and a rate below the expectations-adjusted neutral stance.
-After initial stabilization, the same career adds three extended fictional
+Startup and New career default to Policy career: 4.5% inflation, 0.25 credibility
+and a rate below the expectations-adjusted neutral stance. Its first curated
+episode begins at meeting 5–9, with independent onsets 8–14 quarters apart.
+It uses the existing top-50 profiles and conditional bank normalization, not
+stronger coefficients. Cadence is fictional, not calibrated crisis incidence.
+Prior model files require their matching prior app. This model saves only to
+`policy-career-v1.save`; neither previous slot is copied, migrated or overwritten.
+
+The separate Weakly anchored inflation case preserves its original three late
 windows: demand with eligible funding, supply pressure with credit impairment,
 and contraction with supply/funding pressure. These authored inputs are not
 unchanged catalogue profiles or historically calibrated crisis incidence.
 The baseline and one-off supply shock remain selectable practice laboratories.
 Advancing without editing holds the prior rate; it does not apply the staff rule.
 
-The opening regression retains 32 disclosed seeds through 96 quarters. A separate
+The legacy weak-anchor opening regression retains 32 disclosed seeds through 96 quarters. A separate
 late regression first recovers through Q120, then branches the exact same state
 into passive and responsive policies. It measures inflation and employment costs,
 misses in separate response windows, actual Q240 conditions and exact replay.
@@ -167,11 +173,6 @@ those bands and reduced median combined diagnostic costs by 22.6%. No responsive
 path was inside for all final eight playable quarters. These results establish a
 policy-sensitive challenge, not optimal policy, human enjoyment or an empirical
 welfare estimate. Equations, coefficients and initial conditions are unchanged.
-
-This edition uses `user://career-late-compound-v1.save`. The earlier
-`career-v1.save` slot remains untouched; Save and Load do not copy, migrate or
-fall back to it. Payload version and scenario IDs remain unchanged. Scenario
-inputs are fingerprinted, so earlier files require their matching prior app/model.
 
 The equilibrium baseline starts at equilibrium and has no scheduled scenario
 events. Every seeded career nevertheless receives quarterly background demand,
@@ -244,8 +245,8 @@ change, and following staff is not itself a winning criterion.
 ## Mandate achievement
 
 Completing 240 meetings is not itself successful policy. Mandate v1 evaluates
-only the default weakly anchored inflation challenge with its canonical realized
-shocks. Other laboratories and valid custom shock paths remain practice.
+the Policy career and legacy weakly anchored inflation cases with canonical
+realized shocks. Other laboratories and valid custom shock paths remain practice.
 
 To achieve the mandate, finish Q240 with whole-career average inflation distance
 from 2% at most 1 pp and average unemployment above its changing structural
@@ -263,13 +264,20 @@ recent bands are missed. Reviews show whole-career and recent costs separately.
 Unrounded values govern; a rounded equality cannot conceal a threshold miss.
 Loaded careers recalculate under Mandate v1 without new save fields or migration.
 
-The frozen prospective experiment retained 96 new default seeds: passive policy
+The frozen prospective experiment retained 96 then-default weak-anchor seeds: passive policy
 met the criteria in 0/96 careers, the staff rate rule without lending in 0/96,
 and that rule with currently disclosed eligible lending in 93/96. Three lending
 paths missed the final inflation band and remain in the results. Six other
 cases across eight seeds each were diagnostic practice paths. All 432 careers
 completed their native 240-quarter paths. This supports reachability and
 policy-sensitive objectives; it does not establish optimal policy or human fun.
+
+The varied career passed an eight-seed pilot and sixteen-seed heldout pacing
+qualification. All 24 seeds had at least two independent episodes and two event
+categories in the first 32 meetings; all 72 paired native careers reached Q240
+and replayed exactly. The rate rule plus explicitly restaged eligible lending
+still achieved the mandate in 24/24 careers. This qualifies event variety, not
+sufficient strategic challenge or human enjoyment.
 
 ## Quarterly order
 
@@ -523,7 +531,7 @@ release gates.
 
 ## Playable career
 
-Choose one of seven scenarios, inspect the current meeting dispatch and stage a
+Choose one of eight scenarios, inspect the current meeting dispatch and stage a
 rate, guidance, asset-flow and lending decision. The preview uses the known
 current shock, then assumes no new shocks and holds the rate and staged portfolio
 switches for eight quarters. One-time offers do not repeat. Principal, loan
@@ -698,7 +706,7 @@ quarantine or weaken Gatekeeper. Plaintext scripts remain included so the model
 is inspectable and save fingerprints survive export.
 
 The actual release executable's `--headless -- --verify-build` entry point runs
-235 bundled checks:164 resource, career and replay checks,59 guidance
+258 bundled checks:187 resource, career and replay checks,59 guidance
 continuation/comparison checks and12 mandate assessment/replay checks, without external scripts or path overrides.
 The release verifier also runs that self-check. Linux CI validates
 source behavior; it does not build or distribute an Intel Mac game. Intel

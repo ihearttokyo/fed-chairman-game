@@ -15,7 +15,7 @@ const phaseOutputs = phase => [
     : [[120, 168], [168, 216], [216, 240]].map(([start, end]) => `late-checkpoints/late_${phase}_${start}_${end}.xlsx`)),
 ];
 const buildPhase = parseBuildPhase(process.argv.slice(2));
-const ids = ['base', 'demand_boom', 'supply_shock', 'funding_stress', 'unanchored_inflation', 'lower_bound_slump', 'mixed_crises'];
+const ids = ['base', 'demand_boom', 'supply_shock', 'funding_stress', 'unanchored_inflation', 'lower_bound_slump', 'mixed_crises', 'policy_career'];
 const cases = await Promise.all(ids.map(async id => JSON.parse(await fs.readFile(new URL(`./reference-v1/${id}.json`, import.meta.url), 'utf8'))));
 const source = cases[0];
 const portfolioBytes = await fs.readFile(new URL('./reference-v1/portfolio-reference.json', import.meta.url));
