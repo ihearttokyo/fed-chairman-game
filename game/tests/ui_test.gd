@@ -116,6 +116,7 @@ func check_text_reports(game: Control) -> void:
 		await check_report_body(dialog, [])
 		if method == "_help":
 			var help_text: TextEdit = dialog.get_child(0)
+			check(help_text.text.contains("inflation reacts with a lag"), "help retains the inflation transmission lag explanation")
 			check(help_text.text.contains("2% objective and portfolio reference observations are source-backed") and help_text.text.contains("behavioral coefficients, starting conditions and shock incidence are design assumptions") and not help_text.text.contains("Only the 2% objective"), "help distinguishes source-backed portfolio observations from assumed behavior")
 		dialog.get_ok_button().pressed.emit()
 		check(dialog.visible and dialog.is_queued_for_deletion(), "text reports preserve deferred accessibility closing")
@@ -155,6 +156,7 @@ func check_funding_outcome(game: Control) -> void:
 	var expected: Dictionary = game.career.model.step(before, policy, game.career.current_briefing(), game.career.params)
 	game._advance()
 	check(expected.ok and game.career.state == expected.state, "funding outcome copy preserves the exact adopted native state")
+	check(not game.consequence.text.contains("Your earlier decisions remain in the transmission pipeline."), "quarterly outcome omits repeated pipeline boilerplate")
 	var s: Dictionary = game.career.state
 	var n: float = s.decision_nominal_gdp_ratio
 	check(s.liquidity_applied_pct_initial_gdp > 0.0 and s.liquidity_applied_pct_initial_gdp < policy.liquidity_request_pct_initial_gdp and s.uncovered_funding_pct_initial_gdp == 0.0, "oversized offer fixture distinguishes requested and applied loans with zero uncovered funding")
