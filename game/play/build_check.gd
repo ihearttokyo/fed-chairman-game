@@ -39,14 +39,41 @@ func run(game: Control) -> int:
 			"reinvest_principal":false, "maintain_ample_reserves":false, "sterilize_purchases":true}, true)
 		_check_guidance(career, policy)
 	_check_report(game)
-	if baseline_ok and failures == 0 and checks == 223:
+	var guidance_ok := failures == 0 and checks == 223
+	_check_mandate(game)
+	if baseline_ok and guidance_ok and failures == 0 and checks == 235:
 		print("PASS: 164 release-safe checks; seven 20-quarter careers, lossless replay, main scene and city")
 		print("PASS: bundled guidance continuation and comparison")
+		print("PASS: bundled mandate assessment and realized feedback")
 		print("RELEASE_CHECKS ", checks)
 		print("MODEL_DIGEST ", Career.new().model_digest())
 		return 0
 	printerr("FAIL: build verification completed ", checks, " checks with ", failures, " failures")
 	return 1
+
+func _check_mandate(game: Control) -> void:
+	var initial: Dictionary = game.career.mandate_assessment()
+	check(initial.eligible and initial.quarters == 0 and not initial.achieved, "bundled default begins unassessed")
+	check(game.mandate_label.text.contains("MANDATE v1") and game.mandate_label.text.contains("In progress"), "bundled objectives remain visible")
+	for kind in ["hold", "feedback"]:
+		var career := Career.new()
+		check(career.start("unanchored_inflation", 1).ok, "bundled mandate career starts")
+		var valid := true
+		for q in range(Career.MAX_QUARTERS):
+			var policy: Dictionary = career.model.benchmark_policy(career.state, career.params, kind)
+			if kind == "feedback":
+				var pulse: Dictionary = career.current_briefing()
+				policy.liquidity_request_pct_initial_gdp = float(pulse.get("funding_need_pct_initial_gdp", 0.0)) + minf(float(pulse.get("refinancing_need_pct_initial_gdp", 0.0)), career.state.outstanding_liquidity_pct_initial_gdp)
+			if not career.advance(policy).ok:
+				valid = false
+				break
+		check(valid and career.decisions.size() == Career.MAX_QUARTERS, "bundled mandate uses a complete native path")
+		var before := _live_bytes(career)
+		var assessment := career.mandate_assessment()
+		check(assessment.eligible and assessment.complete and assessment.achieved == (kind == "feedback"), "bundled completion differs from achievement")
+		check(_live_bytes(career) == before, "bundled assessment preserves all live bytes")
+		var restored := Career.new()
+		check(restored.restore(bytes_to_var(career.encode())).ok and var_to_bytes(restored.mandate_assessment()) == var_to_bytes(assessment), "bundled replay restores the derived assessment")
 
 func _check_report(game: Control) -> void:
 	var before: PackedByteArray = _live_bytes(game.career)

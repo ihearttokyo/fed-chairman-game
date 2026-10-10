@@ -2,6 +2,12 @@ extends RefCounted
 
 const Economy = preload("res://model/economy.gd")
 const MAX_QUARTERS := 240
+# Fictional outcome thresholds, not empirical welfare or dismissal standards.
+const MANDATE_INFLATION_MISS_MAX := 1.0
+const MANDATE_EMPLOYMENT_SHORTFALL_MAX := 0.5
+const MANDATE_RECENT_EMPLOYMENT_SHORTFALL_MAX := 1.0
+const MANDATE_FUNDING_COVERAGE_MIN := 0.95
+const MANDATE_RECENT_QUARTERS := 12
 var model := Economy.new()
 var params: Dictionary = model.load_parameters().values
 var cases: Dictionary = model.load_scenarios().scenarios
@@ -142,11 +148,9 @@ func review_comparison() -> Dictionary:
 		if path.is_empty():
 			summaries.append({})
 			continue
-		var summary := {"inflation_miss": 0.0, "employment_shortfall": 0.0,
-			"credibility": path[-1].credibility, "public_support": path[-1].public_support}
-		for outcome in path:
-			summary.inflation_miss += abs(outcome.four_quarter_inflation_pct - params.inflation_target_pct) / path.size()
-			summary.employment_shortfall += max(0.0, outcome.unemployment_rate_pct - outcome.structural_unemployment_pct) / path.size()
+		var summary := _outcome_averages(path)
+		summary["credibility"] = path[-1].credibility
+		summary["public_support"] = path[-1].public_support
 		summary.uncovered_funding = 0.0
 		for outcome in path:
 			summary.uncovered_funding += outcome.uncovered_funding_pct_initial_gdp / outcome.decision_nominal_gdp_ratio / path.size()
@@ -156,6 +160,38 @@ func review_comparison() -> Dictionary:
 	if not staff_error.is_empty():
 		compared.staff_error = staff_error
 	return compared
+
+func _outcome_averages(path: Array) -> Dictionary:
+	var summary := {"inflation_miss": 0.0, "employment_shortfall": 0.0}
+	for outcome in path:
+		summary.inflation_miss += abs(outcome.four_quarter_inflation_pct - params.inflation_target_pct) / path.size()
+		summary.employment_shortfall += max(0.0, outcome.unemployment_rate_pct - outcome.structural_unemployment_pct) / path.size()
+	return summary
+
+func mandate_assessment() -> Dictionary:
+	var count := decisions.size()
+	var completed := history.slice(1, count + 1)
+	var averages := _outcome_averages(completed)
+	var recent := _outcome_averages(history.slice(maxi(1, count - MANDATE_RECENT_QUARTERS + 1), count + 1))
+	var assessment := {"eligible": scenario_id == "unanchored_inflation", "complete": count == MAX_QUARTERS, "quarters": count,
+		"inflation_miss": averages.inflation_miss, "employment_shortfall": averages.employment_shortfall,
+		"recent_inflation_miss": recent.inflation_miss, "recent_employment_shortfall": recent.employment_shortfall,
+		"funding_coverable": 0.0, "funding_applied": 0.0, "funding_active": false, "funding_coverage": 0.0,
+		"prices_met": false, "employment_met": false, "funding_met": false, "achieved": false}
+	for q in range(count):
+		if shocks[q] != _seeded_shocks[q]:
+			assessment.eligible = false
+		var outcome: Dictionary = completed[q]
+		# Common initial-GDP settlement flows include refinancing, not aggregate loans.
+		assessment.funding_coverable += minf(outcome.eligible_local_need_pct_initial_gdp, outcome.lending_collateral_capacity_pct_initial_gdp)
+		assessment.funding_applied += outcome.liquidity_local_applied_pct_initial_gdp
+	assessment.funding_active = assessment.funding_coverable > 0.0
+	assessment.funding_coverage = assessment.funding_applied / assessment.funding_coverable if assessment.funding_active else 0.0
+	assessment.prices_met = count > 0 and assessment.inflation_miss <= MANDATE_INFLATION_MISS_MAX and recent.inflation_miss <= MANDATE_INFLATION_MISS_MAX
+	assessment.employment_met = count > 0 and assessment.employment_shortfall <= MANDATE_EMPLOYMENT_SHORTFALL_MAX and recent.employment_shortfall <= MANDATE_RECENT_EMPLOYMENT_SHORTFALL_MAX
+	assessment.funding_met = assessment.funding_active and assessment.funding_applied >= MANDATE_FUNDING_COVERAGE_MIN * assessment.funding_coverable
+	assessment.achieved = assessment.eligible and assessment.complete and assessment.prices_met and assessment.employment_met and (not assessment.funding_active or assessment.funding_met)
+	return assessment
 
 func model_digest() -> String:
 	return (FileAccess.get_sha256("res://model/economy.gd") + FileAccess.get_sha256("res://model/parameters.json") + FileAccess.get_sha256("res://model/scenarios.json") + FileAccess.get_sha256("res://model/exogenous_shocks.json") + FileAccess.get_sha256("res://model/portfolio_reference.json")).sha256_text()

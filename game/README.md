@@ -40,8 +40,8 @@ The fixed `-- --verify-build` entry point checks the bundled careers, replay,
 scene and city, then firm and signed conditional guidance paths against
 independent eight-quarter replays. It also builds the main comparison without
 changing the career, controls or preview. CI and the macOS release verifier
-require both baseline and guidance completion markers; old baseline-only output
-cannot certify the new feature. Release templates retain their restriction on
+require baseline, guidance and mandate completion markers; earlier output
+cannot certify the new assessment. Release templates retain their restriction on
 external script/path overrides.
 The exporter requires an absolute destination outside this repository. Its
 lexical path check is a guard against misplaced artifacts, not a sandbox for
@@ -220,6 +220,36 @@ Funding gaps use each meeting's nominal GDP; they are unmet need, not booked
 bank losses. A failed staff reference leaves the actual/hold comparison usable
 with its native error. No equations, scores, saved decisions or future inputs
 change, and following staff is not itself a winning criterion.
+
+## Mandate achievement
+
+Completing 240 meetings is not itself successful policy. Mandate v1 evaluates
+only the default weakly anchored inflation challenge with its canonical realized
+shocks. Other laboratories and valid custom shock paths remain practice.
+
+To achieve the mandate, finish Q240 with whole-career average inflation distance
+from 2% at most 1 pp and average unemployment above its changing structural
+reference at most 0.5 pp. Both latest-twelve-quarter averages must be at most
+1 pp. Cover at least 95% of local funding supported by eligibility and
+haircut-adjusted collateral. Funding coverage divides total recorded local
+settlements by total coverable local flows in common initial-GDP units;
+refinancing counts at each settlement, while aggregate reserve loans do not.
+No eligible funding need is not applicable, not an earned funding award.
+
+These are fictional game objectives, not welfare estimates or legal dismissal
+rules. Early misses never end play. A persistent cockpit assessment reports
+progress, identifies a limiting recent-period measure and warns after Q24 when
+recent bands are missed. Reviews show whole-career and recent costs separately.
+Unrounded values govern; a rounded equality cannot conceal a threshold miss.
+Loaded careers recalculate under Mandate v1 without new save fields or migration.
+
+The frozen prospective experiment retained 96 new default seeds: passive policy
+met the criteria in 0/96 careers, the staff rate rule without lending in 0/96,
+and that rule with currently disclosed eligible lending in 93/96. Three lending
+paths missed the final inflation band and remain in the results. Six other
+cases across eight seeds each were diagnostic practice paths. All 432 careers
+completed their native 240-quarter paths. This supports reachability and
+policy-sensitive objectives; it does not establish optimal policy or human fun.
 
 ## Quarterly order
 
@@ -636,8 +666,8 @@ quarantine or weaken Gatekeeper. Plaintext scripts remain included so the model
 is inspectable and save fingerprints survive export.
 
 The actual release executable's `--headless -- --verify-build` entry point runs
-223 bundled checks:164 resource, career and replay checks plus59 guidance
-continuation/comparison checks, without external scripts or path overrides.
+235 bundled checks:164 resource, career and replay checks,59 guidance
+continuation/comparison checks and12 mandate assessment/replay checks, without external scripts or path overrides.
 The release verifier also runs that self-check. Linux CI validates
 source behavior; it does not build or distribute an Intel Mac game. Intel
 hardware testing is not a release gate for this ARM64-only product.
