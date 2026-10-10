@@ -27,6 +27,90 @@ func key(window: Window, code: Key, command := false, shift := false, character 
 	await process_frame
 	await process_frame
 
+func viewport_key(window: Window, code: Key, command := false, echo := false) -> void:
+	var event := InputEventKey.new()
+	event.keycode = code
+	event.meta_pressed = command and OS.get_name() == "macOS"
+	event.ctrl_pressed = command and OS.get_name() != "macOS"
+	event.pressed = true
+	event.echo = echo
+	var receiver: Window = root if window.is_embedded() else window
+	receiver.push_input(event)
+	event = event.duplicate()
+	event.pressed = false
+	event.echo = false
+	receiver.push_input(event)
+	await process_frame
+	await process_frame
+
+func check_periodic_review_keys(game: Control) -> void:
+	for closing in [[KEY_ESCAPE, false], [KEY_ENTER, false], [KEY_KP_ENTER, false], [KEY_ENTER, true], [KEY_KP_ENTER, true]]:
+		for button_focus in [false, true]:
+			game._start_career("unanchored_inflation", 1)
+			for q in range(11):
+				check(game.career.advance(game.career.model.benchmark_policy(game.career.state, game.career.params, "feedback")).ok, "periodic review fixture advances real prior quarters")
+			game._refresh(true)
+			game._staff_rule()
+			game.rate.get_line_edit().grab_focus()
+			await viewport_key(root, KEY_ENTER, true)
+			var dialog: AcceptDialog = game.get_child(game.get_child_count() - 1) as AcceptDialog
+			check(game.career.state.quarter_index == 12 and dialog != null and dialog.title.contains("policy review"), "actual modified Return opens automatic Q12 review without losing its opening event")
+			if dialog == null:
+				continue
+			if button_focus:
+				dialog.get_ok_button().grab_focus()
+			else:
+				dialog.get_child(0).grab_focus()
+			var career_bytes: PackedByteArray = game.career.encode()
+			var staged: Dictionary = game._policy().duplicate(true)
+			await viewport_key(dialog, closing[0], closing[1])
+			check(not is_instance_valid(dialog), "viewport input dismisses periodic review from body and button: " + str(closing))
+			if is_instance_valid(dialog):
+				dialog.queue_free() # Cleanup is not the dismissal evidence.
+				await process_frame
+				await process_frame
+			check(game.career.encode() == career_bytes and game._policy() == staged, "review dismissal never adopts or changes staged policy")
+			check(game.rate.get_line_edit().has_focus(), "periodic review dismissal restores its actual invoking field")
+			await viewport_key(root, KEY_ENTER, true, true)
+			check(game.career.encode() == career_bytes, "held adoption key echo cannot advance after report dismissal")
+			await viewport_key(root, KEY_ENTER, true)
+			check(game.career.state.quarter_index == 13, "next deliberate command adopts exactly one new quarter")
+
+func check_actionable_report_enter(game: Control) -> void:
+	game._start_career("base", 17)
+	check(game.career.advance(game.career.model.benchmark_policy(game.career.state, game.career.params, "feedback")).ok, "actionable report fixture completes a real quarter")
+	game._refresh(true)
+	var preserved: PackedByteArray = game.career.encode()
+	game._journal()
+	await process_frame
+	await process_frame
+	var journal: AcceptDialog = game.get_child(game.get_child_count() - 1) as AcceptDialog
+	var review: Button = button(game, "Review realized policy")
+	check(review != null and not review.disabled, "completed journal exposes the real review action")
+	if review != null:
+		review.grab_focus()
+		await viewport_key(journal, KEY_ENTER)
+		var report: AcceptDialog = game.get_child(game.get_child_count() - 1) as AcceptDialog
+		check(report != null and report.title.contains("policy review"), "plain Return activates journal review rather than dismissing its action")
+		if report != null:
+			await viewport_key(report, KEY_ESCAPE)
+	check(game.career.encode() == preserved, "journal action via Return preserves the exact career")
+	game._compare()
+	await process_frame
+	await process_frame
+	var comparison: AcceptDialog = game.get_child(game.get_child_count() - 1) as AcceptDialog
+	var chooser: OptionButton = comparison.find_children("*", "OptionButton", true, false)[0]
+	chooser.grab_focus()
+	await viewport_key(comparison, KEY_ENTER)
+	check(is_instance_valid(comparison) and chooser.get_popup().visible, "plain Return opens the comparison chooser without dismissing its report")
+	if is_instance_valid(comparison):
+		if chooser.get_popup().visible:
+			await viewport_key(chooser.get_popup(), KEY_DOWN)
+			await viewport_key(chooser.get_popup(), KEY_ENTER)
+			check(is_instance_valid(comparison) and chooser.selected == 1 and not chooser.get_popup().visible, "popup Return selects a section and preserves the report")
+		await viewport_key(comparison, KEY_ESCAPE)
+	check(game.career.encode() == preserved, "section opening/selection/dismissal never adopts a quarter")
+
 func check_deferred_close(dialog: AcceptDialog, action: String) -> void:
 	var followup := [false]
 	dialog.window_input.connect(func(event: InputEvent):
@@ -136,6 +220,9 @@ func run() -> void:
 		check(report.gui_get_focus_owner() is TextEdit, "opening a report immediately focuses its native readable body")
 		await key(report, KEY_ENTER, true)
 		check(game.career.encode() == start, "adoption accelerator cannot escape a modal report")
+		check(not is_instance_valid(report), "modified Return dismisses the report without adoption")
+		await key(root, KEY_P, true)
+		report = game.get_child(game.get_child_count() - 1) as AcceptDialog
 		await key(report, KEY_ESCAPE)
 		check(not is_instance_valid(report), "Escape closes a report without a pointer")
 		check(game.rate.get_line_edit().has_focus(), "closing a report restores the invoking numeric field")
@@ -468,6 +555,8 @@ func run() -> void:
 	var floor_policy: Dictionary = game._policy()
 	await type_number(root, game.liquidity, "-1.00")
 	check(game.liquidity.value == 0.0 and game.liquidity.get_line_edit().text.to_float() == 0.0 and game._policy() == floor_policy and game.forecast_label.text.contains("lending 0.00") and game.career.encode() == floor_start, "typed negative lending normalizes to the nonnegative floor without adopting or changing applied feedback")
+	await check_periodic_review_keys(game)
+	await check_actionable_report_enter(game)
 	game.free()
 	if failures == 0:
 		print("PASS: complete keyboard career, editing, focus, menus, charts, reports, save/replay and terminal guards")

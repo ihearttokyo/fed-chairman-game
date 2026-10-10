@@ -35,6 +35,26 @@ or blank reads preserve the original window. No lookup runs during gameplay,
 and later user resizes do not trigger an automatic reset. Other platforms retain
 engine startup geometry. No gameplay or font-size constants change.
 
+After startup, resizing changes only the logical canvas and native container
+layout, not window position, mode or requested size. The canvas follows the
+window's aspect ratio at its reported native display density; nominal text
+sizes are not reduced to fit a fixed design. Header commands wrap; metrics use
+four columns when they fit, otherwise two paired rows. Below the measured column
+minimum, the existing policy panel precedes city/dispatch/charts, with feedback
+above Compare/Adopt. Wide composition stays horizontal. Tab follows the visible
+panel order, with cockpit scrolling last; focus-following vertical scroll remains.
+Controls are neither recreated nor reparented during resize, and the resize path
+does not submit typed drafts, refresh forecasts, advance quarters or write saves.
+
+The readable support target is a client area of at least 960×640 logical display
+points, including portrait, tall and wide sizes at 1×/2× density. Below that range,
+a uniform minimum-canvas fallback keeps controls reachable without restricting
+native window size. Text necessarily shrinks; readability is not certified. The compact regression
+resizes the production window without replacing its canvas settings; synthetic
+2× sizing assertions supplement, not replace, native-density GUI checks. Current
+pixels, text rendering, keyboard paths and both densities must pass the
+[GUI validation contract](../docs/AGENTIC_GUI_VALIDATION.md) before acceptance.
+
 The test wrapper rejects runtime errors even when Godot exits with status zero.
 The fixed `-- --verify-build` entry point checks the bundled careers, replay,
 scene and city, then firm and signed conditional guidance paths against
@@ -560,8 +580,9 @@ shock, then no future shocks; portfolio switches persist and future asset/lendin
 offers are zero. Q+2 pairs nominal/effective rates, follow-through and stance
 adequacy. Q+8 shows B outcomes and B-minus-A changes in inflation, unemployment,
 output gap, credibility and support. Fulfilling a nominal promise need not improve
-effective stance or credibility. Unavailable B paths retain their native error
-without replacing the valid report. Continuation beyond Q240 is diagnostic, not
+effective stance or credibility. Unavailable B paths keep the valid report:
+settlement failures show corrective reserve-policy advice; other diagnostics
+remain unchanged. Continuation beyond Q240 is diagnostic, not
 extra playable turns. The cockpit preview and player decisions stay unchanged.
 
 Four one-control contrasts also show how the staged rate, guidance quote, asset
@@ -580,9 +601,19 @@ explanations and warnings available.
 After adoption, funding feedback reports applied loans, uncovered need and repaid
 principal as percentages of that meeting's GDP. These are realized flows, not the
 next preview or ending loan stock.
+With reserve maintenance off, currency growth, principal runoff or loan repayment
+can exhaust settlement reserves. Preview, comparison and adoption explain this
+constraint and point to reserve maintenance or adjusted purchases/runoff. Rejection
+retains the entire last valid career and staged policy; it never changes a switch
+or adopts a quarter automatically.
 
 Careers continue through 12-quarter reviews without resetting policy lags,
-expectations, hardship memory or charts. The local career limit is 240 quarters.
+expectations, hardship memory or charts. Escape or platform-command Return closes
+an informational report. Plain Return/keypad Return closes its read-only text or
+OK button, but activates other focused actions and section menus. Dismissal
+restores the invoking control without adopting another quarter. New,
+Load and Quit remain separate Cancel-first confirmations. The local career limit
+is 240 quarters.
 Data & journal also opens a realized review on demand after any completed
 decision, including after loading a career. It compares the latest up to twelve
 completed quarters and labels the actual interval. Each review compares realized
