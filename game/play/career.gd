@@ -1,6 +1,7 @@
 extends RefCounted
 
 const Economy = preload("res://model/economy.gd")
+const DEFAULT_SCENARIO := "policy_career"
 const MAX_QUARTERS := 240
 # Fictional outcome thresholds, not empirical welfare or dismissal standards.
 const MANDATE_INFLATION_MISS_MAX := 1.0
@@ -173,7 +174,7 @@ func mandate_assessment() -> Dictionary:
 	var completed := history.slice(1, count + 1)
 	var averages := _outcome_averages(completed)
 	var recent := _outcome_averages(history.slice(maxi(1, count - MANDATE_RECENT_QUARTERS + 1), count + 1))
-	var assessment := {"eligible": scenario_id == "unanchored_inflation", "complete": count == MAX_QUARTERS, "quarters": count,
+	var assessment := {"eligible": scenario_id in [DEFAULT_SCENARIO, "unanchored_inflation"], "complete": count == MAX_QUARTERS, "quarters": count,
 		"inflation_miss": averages.inflation_miss, "employment_shortfall": averages.employment_shortfall,
 		"recent_inflation_miss": recent.inflation_miss, "recent_employment_shortfall": recent.employment_shortfall,
 		"funding_coverable": 0.0, "funding_applied": 0.0, "funding_active": false, "funding_coverage": 0.0,

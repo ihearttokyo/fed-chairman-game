@@ -34,7 +34,7 @@ with tempfile.TemporaryDirectory(prefix='fed-release-check-') as home:
     log = run(str(binary), '--headless', '--quit-after', '600', '--', '--verify-build',
               env=dict(os.environ, HOME=home))
 assert not any(marker in log for marker in ('SCRIPT ERROR:', 'ERROR:', 'FAIL:')), log
-assert 'PASS: 164 release-safe checks' in log, log
+assert 'PASS: 187 release-safe checks' in log, log
 assert 'PASS: bundled guidance continuation and comparison' in log.splitlines(), log
 assert 'PASS: bundled mandate assessment and realized feedback' in log.splitlines(), log
 print(log.strip())

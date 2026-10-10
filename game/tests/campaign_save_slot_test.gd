@@ -2,6 +2,7 @@ extends SceneTree
 
 const Career = preload("res://play/career.gd")
 const OLD_SLOT := "user://career-v1.save"
+const PREVIOUS_CAMPAIGN_SLOT := "user://career-late-compound-v1.save"
 var failures := 0
 
 func check(condition: bool, message: String) -> void:
@@ -31,14 +32,14 @@ func run() -> void:
 	var game = load("res://main.tscn").instantiate()
 	root.add_child(game)
 	await process_frame
-	check(game.save_path == game.SAVE_PATH and game.SAVE_PATH.begins_with("user://") and game.SAVE_PATH != OLD_SLOT, "default campaign slot is distinct from career-v1.save")
+	check(game.save_path == game.SAVE_PATH and game.SAVE_PATH.begins_with("user://") and game.SAVE_PATH != OLD_SLOT and game.SAVE_PATH != PREVIOUS_CAMPAIGN_SLOT, "default campaign slot is distinct from career-v1.save")
 	var isolated: bool = ProjectSettings.globalize_path(game.save_path).begins_with(home + "/")
 	check(isolated, "default campaign save target stays inside the private HOME")
 	if not isolated:
 		game.free()
 		quit(1)
 		return
-	if FileAccess.file_exists(OLD_SLOT) or FileAccess.file_exists(OLD_SLOT + ".pending") or FileAccess.file_exists(game.save_path) or FileAccess.file_exists(game.save_path + ".pending"):
+	if FileAccess.file_exists(PREVIOUS_CAMPAIGN_SLOT) or FileAccess.file_exists(PREVIOUS_CAMPAIGN_SLOT + ".pending") or FileAccess.file_exists(OLD_SLOT) or FileAccess.file_exists(OLD_SLOT + ".pending") or FileAccess.file_exists(game.save_path) or FileAccess.file_exists(game.save_path + ".pending"):
 		check(false, "fresh save fixture refuses to overwrite existing final or pending files")
 		game.free()
 		quit(1)
@@ -47,6 +48,7 @@ func run() -> void:
 	check(sentinel.start("base", 19).ok and sentinel.advance(sentinel.model.benchmark_policy(sentinel.state, sentinel.params, "hold")).ok, "old-slot sentinel uses a compatible current Career payload")
 	var old_bytes := sentinel.encode()
 	check(sentinel.save_to(OLD_SLOT).ok, "isolated old-slot sentinel is written only after the storage guard")
+	check(sentinel.save_to(PREVIOUS_CAMPAIGN_SLOT).ok, "previous campaign sentinel is written only inside private storage")
 	game._start_career("base", 41)
 	var before: PackedByteArray = game.career.encode()
 	game._load()
@@ -74,6 +76,7 @@ func run() -> void:
 	check(game.career.encode() == before and game.career.state == saved_state and game.career.history == saved_history and game.status_label.text == "Loaded quarter 1.", "Load restores the new-slot payload, complete state and history exactly")
 	check(FileAccess.get_file_as_bytes(OLD_SLOT) == old_bytes, "mutate-and-Load roundtrip preserves every old-slot sentinel byte")
 	check(game.career.payload().version == 1 and game.career.scenario_id == "base" and ProjectSettings.get_setting("application/config/custom_user_dir_name") == "FedChairmanPolicyLab", "slot isolation keeps payload version, scenario and user-directory IDs stable")
+	check(FileAccess.get_file_as_bytes(PREVIOUS_CAMPAIGN_SLOT) == old_bytes, "all Save/Load actions preserve previous campaign sentinel bytes")
 	game.free()
 	if failures == 0:
 		print("PASS: distinct campaign slot, no legacy fallback/migration and protected old-slot Save/Load roundtrip")

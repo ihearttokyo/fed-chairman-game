@@ -26,15 +26,15 @@ func run() -> void:
 	var game = load("res://main.tscn").instantiate()
 	root.add_child(game)
 	await process_frame
-	check(game.career.scenario_id == "unanchored_inflation", "startup uses the inflation-credibility challenge, not a quiet lab")
+	check(game.career.scenario_id == "policy_career", "startup uses the varied inflation-credibility career, not a quiet lab")
 	var preserved: PackedByteArray = game.career.encode()
 	game._new_dialog()
-	check(game.scenario.get_item_metadata(game.scenario.selected) == "unanchored_inflation", "New defaults to the challenge without replacing active play")
+	check(game.scenario.get_item_metadata(game.scenario.selected) == "policy_career", "New defaults to the challenge without replacing active play")
 	check(game.scenario.item_count == game.career.cases.size() and game.career.cases.has("base"), "all laboratory scenarios remain available")
 	check(game.career.encode() == preserved, "opening the chooser preserves unsaved play")
 	var dialog: AcceptDialog = game.get_child(game.get_child_count() - 1)
 	dialog.get_ok_button().pressed.emit()
-	check(game.career.scenario_id == "unanchored_inflation" and game.career.seed_value == 1, "untouched New commits the actual seed1 challenge")
+	check(game.career.scenario_id == "policy_career" and game.career.seed_value == 1, "untouched New commits the actual seed1 challenge")
 	await process_frame
 	game.free()
 
@@ -43,7 +43,7 @@ func run() -> void:
 	for seed_number in SEEDS:
 		var paths := [Career.new(), Career.new()]
 		for career in paths:
-			check(career.start("unanchored_inflation", seed_number).ok, "challenge starts seed%d" % seed_number)
+			check(career.start("unanchored_inflation", seed_number).ok, "legacy weak-anchor case starts seed%d" % seed_number)
 		check(paths[0].shocks == paths[1].shocks, "paired policies face identical seeded shocks")
 		for index in range(paths.size()):
 			var career = paths[index]
@@ -79,5 +79,5 @@ func run() -> void:
 	check(recovered.feedback >= 16 and recovered.hold <= 8, "challenge is recoverable without rewarding passive advance")
 	print("CHALLENGE SUMMARY seeds=32 quarters=96 hold_median=%.6f feedback_median=%.6f recovered=%s" % [held_median, active_median, recovered])
 	if failures == 0:
-		print("PASS: default challenge,32 paired careers, policy-sensitive recovery and exact replay")
+		print("PASS: varied-default startup and32 legacy weak-anchor paired careers, policy-sensitive recovery and exact replay")
 	quit(1 if failures else 0)

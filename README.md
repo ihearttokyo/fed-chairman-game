@@ -12,7 +12,7 @@ affiliation, sponsorship or endorsement.
 
 ## Play
 
-Choose one of seven hypothetical economies. At each quarterly meeting, inspect
+Choose one of eight hypothetical economies. At each quarterly meeting, inspect
 inflation, employment, expectations and financial conditions; stage a target-rate
 midpoint, conditional guidance, asset flow and liquidity request; compare the
 applied decision with holding policy; then adopt and inspect the outcome.

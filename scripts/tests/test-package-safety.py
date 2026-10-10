@@ -24,11 +24,11 @@ failures = []
 guidance_marker = 'PASS: bundled guidance continuation and comparison'
 mandate_marker = 'PASS: bundled mandate assessment and realized feedback'
 incomplete_completions = (
-    ('missing mandate', 'PASS: 164 release-safe checks\n' + guidance_marker + '\n'),
-    ('suffixed mandate', 'PASS: 164 release-safe checks\n' + guidance_marker + '\n' + mandate_marker + '; incomplete\n'),
-    ('baseline only', 'PASS: 164 release-safe checks\n'),
+    ('missing mandate', 'PASS: 187 release-safe checks\n' + guidance_marker + '\n'),
+    ('suffixed mandate', 'PASS: 187 release-safe checks\n' + guidance_marker + '\n' + mandate_marker + '; incomplete\n'),
+    ('baseline only', 'PASS: 187 release-safe checks\n'),
     ('guidance only', guidance_marker + '\n'),
-    ('suffixed guidance', 'PASS: 164 release-safe checks\n' + guidance_marker + '; incomplete\n'),
+    ('suffixed guidance', 'PASS: 187 release-safe checks\n' + guidance_marker + '; incomplete\n'),
 )
 workflow = (root / '.github/workflows/godot.yml').read_text()
 ci_step = workflow.split('      - name: Import and test playable Godot game\n', 1)[1].split('\n      - ', 1)[0]
@@ -73,7 +73,7 @@ with tempfile.TemporaryDirectory(prefix='fed-runtime-error-guards-') as director
         rejected = bool(marker or exit_code)
         log.write_text((marker + ' synthetic runtime failure\n' if marker else '')
                        + 'PASS: isolated Godot user storage verified before fixture writes; synthetic output only\n'
-                       + 'PASS: 164 release-safe checks; synthetic output only\n'
+                       + 'PASS: 187 release-safe checks; synthetic output only\n'
                        + guidance_marker + '\n'
                        + mandate_marker + '\n'
                        + 'PASS: comparison count, exact parity and paired timing fixture; synthetic output only\n')
@@ -114,7 +114,7 @@ with tempfile.TemporaryDirectory(prefix='fed-runtime-error-guards-') as director
             failures.append(f'CI verification accepts incomplete completion: {label}')
     # A generic PASS cannot certify completion of the additional comparison fixture.
     log.write_text('PASS: isolated Godot user storage verified before fixture writes; synthetic output only\n'
-                   + 'PASS: 164 release-safe checks; synthetic output only\n')
+                   + 'PASS: 187 release-safe checks; synthetic output only\n')
     environment['FED_TEST_EXIT'] = '0'
     incomplete = subprocess.run(['bash', str(root / 'scripts/test-game.sh')],
                                 env=environment, capture_output=True, text=True)
@@ -139,7 +139,7 @@ with tempfile.TemporaryDirectory(prefix='fed-release-userdata-guard-') as direct
     binary = app / 'Contents/MacOS/candidate'
     binary.write_bytes(b'\xcf\xfa\xed\xfe')
     engine_homes = []
-    release_output = 'PASS: 164 release-safe checks; synthetic engine only\n' + guidance_marker + '\n' + mandate_marker + '\n'
+    release_output = 'PASS: 187 release-safe checks; synthetic engine only\n' + guidance_marker + '\n' + mandate_marker + '\n'
     def fake_release_tool(command, **kwargs):
         if '--headless' not in command:
             assert Path((kwargs.get('env') or os.environ)['HOME']) == home, 'signing tools retain normal HOME'
