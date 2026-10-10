@@ -39,19 +39,29 @@ After startup, resizing changes only the logical canvas and native container
 layout, not window position, mode or requested size. The canvas follows the
 window's aspect ratio at its reported native display density; nominal text
 sizes are not reduced to fit a fixed design. Header commands wrap; metrics use
-four columns when they fit, otherwise two paired rows. Below the measured column
-minimum, the existing policy panel precedes city/dispatch/charts, with feedback
-above Compare/Adopt. Wide composition stays horizontal. Tab follows the visible
-panel order, with cockpit scrolling last; focus-following vertical scroll remains.
+four columns when they fit, otherwise two paired rows or one column. Below the
+measured column minimum, the existing policy panel precedes city/dispatch/charts,
+with feedback above Compare/Adopt. Wide composition stays horizontal. Tab follows
+the visible panel order, with cockpit scrolling last; focus-following scroll
+reveals the focused control without taking focus again. Charts, portfolio
+switches and action buttons stack below their measured row minima. A persistent outer
+scroller contains the same cockpit and footer from construction: the footer
+stays pinned when its measured height plus the existing 200-point cockpit floor
+fit, otherwise the whole layout scrolls. Below irreducible native widget widths,
+horizontal overflow remains scrollable rather than shrinking fonts or targets.
 Controls are neither recreated nor reparented during resize, and the resize path
 does not submit typed drafts, refresh forecasts, advance quarters or write saves.
 
-The readable support target is a client area of at least 960×640 logical display
-points, including portrait, tall and wide sizes at 1×/2× density. Below that range,
-a uniform minimum-canvas fallback keeps controls reachable without restricting
-native window size. Text necessarily shrinks; readability is not certified. The compact regression
-resizes the production window without replacing its canvas settings; synthetic
-2× sizing assertions supplement, not replace, native-density GUI checks. Current
+Native sizing includes 800×480 logical display points at 1×/2× density; there is
+no minimum-canvas fallback. The compact regression retains every 960×640-and-up
+geometry/state case and adds small-window focus, footer overflow and measured
+row crossings. Reports and Help retain their selectable, wrapped native text,
+but their content minima and decorated windows are bounded by the logical
+parent, including when an open report's parent shrinks. Reading or dismissing a
+report does not grow the parent or adopt a quarter. Arbitrarily tiny windows are
+not a complete-layout or readability guarantee. The regression resizes the
+production window without replacing its canvas settings; synthetic 2× sizing
+assertions supplement, not replace, native-density GUI checks. Current
 pixels, text rendering, keyboard paths and both densities must pass the
 [GUI validation contract](../docs/AGENTIC_GUI_VALIDATION.md) before acceptance.
 
@@ -545,8 +555,9 @@ the conditional implied promise, rounded to the same grid before delivery is
 evaluated. Nominal promises are not forgiven because financing transmission is
 weak; effective stance adequacy is a separate score.
 
-Comparison and adoption stay in the bottom action bar while the cockpit scrolls.
-Career status and the complete quarterly outcome also stay visible in that bar,
+Comparison and adoption stay in the bottom action bar while the cockpit scrolls;
+short windows expose the same bar through whole-content scrolling.
+Career status and the complete quarterly outcome remain in that bar,
 including credibility, public support and prior follow-through. Transmission lags
 are explained in How to play and policy comparison, not repeated in each outcome.
 Outcome score changes use points on the displayed 0–100 scales. Changes smaller
