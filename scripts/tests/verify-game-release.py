@@ -36,5 +36,6 @@ with tempfile.TemporaryDirectory(prefix='fed-release-check-') as home:
 assert not any(marker in log for marker in ('SCRIPT ERROR:', 'ERROR:', 'FAIL:')), log
 assert 'PASS: 164 release-safe checks' in log, log
 assert 'PASS: bundled guidance continuation and comparison' in log.splitlines(), log
+assert 'PASS: bundled mandate assessment and realized feedback' in log.splitlines(), log
 print(log.strip())
 print('PASS: ARM64-only, Developer ID, hardened runtime, timestamp and strict signature')

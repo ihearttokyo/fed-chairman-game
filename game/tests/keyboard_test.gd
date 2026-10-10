@@ -94,11 +94,25 @@ func _initialize() -> void:
 	call_deferred("run")
 
 func run() -> void:
+	var startup_size := root.size
+	var startup_scale := root.content_scale_size
+	root.size = Vector2i(1440, 600)
+	root.content_scale_size = Vector2i(1440, 600)
 	var game: Control = load("res://main.tscn").instantiate()
 	root.add_child(game)
 	await process_frame
 	await process_frame
 	check(game.rate.get_line_edit().has_focus(), "startup places keyboard focus in the target-rate field")
+	check(game.cockpit_scroll.get_v_scroll_bar().max_value > game.cockpit_scroll.get_v_scroll_bar().page, "startup fixture genuinely overflows before initial focus")
+	check(game.cockpit_scroll.scroll_vertical == 0, "startup retains the whole header instead of pre-scrolling to the rate field")
+	var title: Label
+	for label in game.find_children("*", "Label", true, false):
+		if label.text == "THE CHAIR": title = label
+	check(title != null and game.cockpit_scroll.get_global_rect().encloses(title.get_global_rect()), "cold overflowing startup contains the whole title")
+	root.size = startup_size
+	root.content_scale_size = startup_scale
+	await process_frame
+	await process_frame
 	var start: PackedByteArray = game.career.encode()
 	game.rate.get_line_edit().grab_focus()
 	var previous: float = game.rate.value
@@ -265,6 +279,10 @@ func run() -> void:
 	game.cockpit_scroll.grab_focus()
 	await key(root, KEY_END)
 	check(game.cockpit_scroll.scroll_vertical > 0, "keyboard End reaches off-screen cockpit content")
+	var manual_scroll: int = game.cockpit_scroll.scroll_vertical
+	await process_frame
+	await process_frame
+	check(game.cockpit_scroll.scroll_vertical == manual_scroll, "startup reset never cancels later manual scroll")
 	await key(root, KEY_HOME)
 	check(game.cockpit_scroll.scroll_vertical == 0, "keyboard Home returns the cockpit to its beginning")
 	game.size = original_size

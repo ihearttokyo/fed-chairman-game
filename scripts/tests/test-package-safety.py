@@ -22,7 +22,10 @@ print('PASS: Godot packager refuses existing output before export or signing')
 # export or signing operation. Downstream tripwires stop accidental continuation.
 failures = []
 guidance_marker = 'PASS: bundled guidance continuation and comparison'
+mandate_marker = 'PASS: bundled mandate assessment and realized feedback'
 incomplete_completions = (
+    ('missing mandate', 'PASS: 164 release-safe checks\n' + guidance_marker + '\n'),
+    ('suffixed mandate', 'PASS: 164 release-safe checks\n' + guidance_marker + '\n' + mandate_marker + '; incomplete\n'),
     ('baseline only', 'PASS: 164 release-safe checks\n'),
     ('guidance only', guidance_marker + '\n'),
     ('suffixed guidance', 'PASS: 164 release-safe checks\n' + guidance_marker + '; incomplete\n'),
@@ -30,7 +33,7 @@ incomplete_completions = (
 workflow = (root / '.github/workflows/godot.yml').read_text()
 ci_step = workflow.split('      - name: Import and test playable Godot game\n', 1)[1].split('\n      - ', 1)[0]
 ci_commands = [line.strip() for line in ci_step.splitlines() if 'game-check.log' in line]
-assert len(ci_commands) == 4, 'CI verification must include engine, error scan and both completion scans'
+assert len(ci_commands) == 5, 'CI verification must include engine, error scan and all three completion scans'
 ci_import = [line.strip() for line in ci_step.splitlines() if '--import' in line]
 assert len(ci_import) == 1, 'CI import must have its native logging boundary covered'
 ci_shell = ['bash', '-e']
@@ -72,6 +75,7 @@ with tempfile.TemporaryDirectory(prefix='fed-runtime-error-guards-') as director
                        + 'PASS: isolated Godot user storage verified before fixture writes; synthetic output only\n'
                        + 'PASS: 164 release-safe checks; synthetic output only\n'
                        + guidance_marker + '\n'
+                       + mandate_marker + '\n'
                        + 'PASS: comparison count, exact parity and paired timing fixture; synthetic output only\n')
         log.write_text(log.read_text()
                        + 'COUNTS mode=pilot attempted=7 completed=7 transitions=168 paired=3 failures=0\n'
@@ -100,7 +104,7 @@ with tempfile.TemporaryDirectory(prefix='fed-runtime-error-guards-') as director
             assert player_log.read_text() == 'preserved player crash evidence', 'packager engine file logger touched player evidence'
             if result.returncode == 0 or trace.exists():
                 failures.append(f'packager continued past {marker} before thinning/signing')
-    # A baseline-only completion cannot certify the new bundled guidance path.
+    # Earlier completion markers cannot certify the bundled mandate path.
     environment['FED_TEST_EXIT'] = '0'
     for label, completion in incomplete_completions:
         log.write_text(completion)
@@ -135,7 +139,7 @@ with tempfile.TemporaryDirectory(prefix='fed-release-userdata-guard-') as direct
     binary = app / 'Contents/MacOS/candidate'
     binary.write_bytes(b'\xcf\xfa\xed\xfe')
     engine_homes = []
-    release_output = 'PASS: 164 release-safe checks; synthetic engine only\n' + guidance_marker + '\n'
+    release_output = 'PASS: 164 release-safe checks; synthetic engine only\n' + guidance_marker + '\n' + mandate_marker + '\n'
     def fake_release_tool(command, **kwargs):
         if '--headless' not in command:
             assert Path((kwargs.get('env') or os.environ)['HOME']) == home, 'signing tools retain normal HOME'
