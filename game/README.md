@@ -519,7 +519,8 @@ weak; effective stance adequacy is a separate score.
 
 Comparison and adoption stay in the bottom action bar while the cockpit scrolls.
 Career status and the complete quarterly outcome also stay visible in that bar,
-including credibility, public support, transmission lags and prior follow-through.
+including credibility, public support and prior follow-through. Transmission lags
+are explained in How to play and policy comparison, not repeated in each outcome.
 Outcome score changes use points on the displayed 0–100 scales. Changes smaller
 than 0.05 points show their direction and magnitude bound; exact zero says unchanged.
 Expanding custom guidance keeps both actions available without hiding any policy
