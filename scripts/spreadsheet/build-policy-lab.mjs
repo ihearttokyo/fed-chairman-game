@@ -583,9 +583,16 @@ for (const [row, label] of [[6, 'Rate request (%)'], [7, 'Next-quarter guidance 
   cell(policy, `B${row}`, label); input(policy, `E${row}:AZ${row}`);
   if (row >= 10) policy.getRange(`E${row}:AZ${row}`).values = [[row < 12 ? 0 : row !== 14]];
 }
+for (const [range, formula] of [['E6:AZ9', `OR(ISBLANK(E6),${strictNumeric('E6')})`], ['E10:AZ11', strictNumeric('E10')]]) {
+  policy.getRange(range).dataValidation = {
+    rule: { type: 'custom', formula1: formula }, ignoreBlanks: false,
+    errorAlert: { show: true, style: 'stop', title: 'Number required', message: 'Enter a number, not TRUE/FALSE. Blanks are allowed only in rows 6–9.' },
+  };
+}
 cell(policy, 'B16', 'Blanks in6–9 use the benchmark; zero is explicit. Rate/guidance grid:1bp.');
 cell(policy, 'B17', 'Modes require TRUE/FALSE. Negative purchases cap actual principal runoff.');
 cell(policy, 'B18', 'Offers and flows: current meeting GDP; ending stocks: ending GDP.');
+cell(policy, 'B19', "After invalid paste: set the input's number format to General, then re-enter.");
 const endingStocks = new Set(['outstanding_liquidity_pct_initial_gdp', 'asset_stock_pct_initial_gdp', 'reserves_pct_initial_gdp', 'reverse_repo_pct_initial_gdp', 'total_assets_pct_initial_gdp']);
 const policyOutputs = ['policy_rate_pct', 'prior_commitment', 'guidance_followthrough_score', 'asset_flow_applied_pct_initial_gdp', 'liquidity_applied_pct_initial_gdp', 'outstanding_liquidity_pct_initial_gdp', 'credit_spread_pct', 'four_quarter_inflation_pct', 'unemployment_rate_pct', 'public_support', 'principal_due_pct_initial_gdp', 'principal_runoff_pct_initial_gdp', 'principal_reinvestment_pct_initial_gdp', 'long_securities_runoff_pct_initial_gdp', 'reserve_maintenance_purchase_pct_initial_gdp', 'sterilization_applied_pct_initial_gdp', 'sterilization_unfulfilled_pct_initial_gdp', 'reserves_pct_initial_gdp', 'reverse_repo_pct_initial_gdp', 'total_assets_pct_initial_gdp'];
 for (const [i, key] of policyOutputs.entries()) {

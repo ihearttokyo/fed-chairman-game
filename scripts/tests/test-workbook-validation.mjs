@@ -146,6 +146,35 @@ const emittedGridExpression = vm.runInContext("onGrid('value')", policyContext);
 const numericControls = Array.from(vm.runInContext(`${source.slice(policyInputStart, policyInputEnd)}\ncontrols`, policyContext));
 assert.deepEqual(numericControls, ['last_policy_rate_request_pct', 'guidance_rate_pct', 'guidance_inflation_sensitivity',
   'guidance_output_gap_sensitivity', 'asset_flow_request_pct_initial_gdp', 'liquidity_request_pct_initial_gdp']);
+const policyValidationStart = source.indexOf('for (const [range, formula] of ['),
+  policyValidationEnd = source.indexOf("cell(policy, 'B16'", policyValidationStart);
+assert.ok(policyValidationStart >= 0 && policyValidationEnd > policyValidationStart, 'Locate the actual numeric-input Stop validation emitter');
+const policyValidations = new Map();
+policyContext.policy = { getRange(ref) { return { set dataValidation(value) { policyValidations.set(ref, value); } }; } };
+vm.runInContext(source.slice(policyValidationStart, policyValidationEnd), policyContext);
+assert.deepEqual([...policyValidations.keys()], ['E6:AZ9', 'E10:AZ11'], 'Only six numeric controls receive validation; Boolean switches stay untouched');
+for (const [range, formula] of [['E6:AZ9', 'OR(ISBLANK(E6),AND(ISNUMBER(E6),NOT(ISLOGICAL(E6))))'],
+  ['E10:AZ11', 'AND(ISNUMBER(E10),NOT(ISLOGICAL(E10)))']]) {
+  const validation = policyValidations.get(range);
+  assert.equal(validation.rule.type, 'custom');
+  assert.equal(validation.rule.formula1, formula, 'Keep the type predicate relative to the range top-left; add no economic thresholds');
+  assert.equal(validation.ignoreBlanks, false, 'Explicit ISBLANK alone allows the four optional overrides');
+  assert.equal(validation.errorAlert.show, true);
+  assert.equal(validation.errorAlert.style, 'stop');
+  assert.equal(validation.errorAlert.title, 'Number required');
+  assert.equal(validation.errorAlert.message, 'Enter a number, not TRUE/FALSE. Blanks are allowed only in rows 6–9.');
+}
+const policyNotes = new Map();
+vm.runInNewContext(source.slice(policyValidationEnd, source.indexOf('const endingStocks = ', policyValidationEnd)), {
+  policy: {}, cell: (_, ref, value) => policyNotes.set(ref, value),
+});
+assert.equal(policyNotes.get('B19'), "After invalid paste: set the input's number format to General, then re-enter.", 'Recovery changes only the affected number format before re-entry');
+const evaluateInputValidation = (row, value, logicalIsNumeric) => vm.runInNewContext(
+  policyValidations.get(row < 10 ? 'E6:AZ9' : 'E10:AZ11').rule.formula1.replace(/E\d+/g, 'value'), {
+    value, OR: (...values) => values.some(Boolean), AND: (...values) => values.every(Boolean), NOT: value => !value,
+    ISBLANK: value => value === null || value === undefined, ISLOGICAL: value => typeof value === 'boolean',
+    ISNUMBER: value => typeof value === 'number' && Number.isFinite(value) || logicalIsNumeric && typeof value === 'boolean',
+  });
 const policyInputFormatStart = source.indexOf("policy.getRange('E6:AZ11').setNumberFormat"),
   policyInputFormatEnd = source.indexOf("policy.getRange('E20:AZ39')", policyInputFormatStart);
 assert.ok(policyInputFormatStart >= 0 && policyInputFormatEnd > policyInputFormatStart);
@@ -180,6 +209,15 @@ const evaluatePolicy = (edits, logicalIsNumeric, parameters = policyParameters, 
   CHOOSE: (index, ...values) => values[index - 1],
 });
 for (const [engine, logicalIsNumeric] of [['Excel', false], ['Calc', true]]) {
+  for (let row = 6; row <= 11; row++) {
+    for (const value of [true, false, '1', '', '#VALUE!', NaN, Infinity]) {
+      assert.equal(evaluateInputValidation(row, value, logicalIsNumeric), false, `${engine} Stop predicate rejects E${row}=${String(value)}`);
+    }
+    for (const value of [-1000, -3.501, -0.25, 0, 0.25, 3.501, 1000]) {
+      assert.equal(evaluateInputValidation(row, value, logicalIsNumeric), true, 'Type-only validation adds no rate/grid/sensitivity/offer restrictions');
+    }
+    for (const value of [null, undefined]) assert.equal(evaluateInputValidation(row, value, logicalIsNumeric), row < 10, 'Only four optional controls allow actual blanks');
+  }
   const defaults = evaluatePolicy({}, logicalIsNumeric);
   assert.equal(defaults.policy_valid, true, `${engine} preserves valid blank/default policy`);
   assert.equal(defaults.policy_rate_pct, 3.5);
@@ -240,6 +278,7 @@ for (const [engine, logicalIsNumeric] of [['Excel', false], ['Calc', true]]) {
     }), false, `${engine} actual shared grid helper rejects Boolean quotes`);
 }
 console.log('PASS: actual six-control policy emitters reject Boolean inputs under Excel/Calc classifications; numeric domains, independent blanks and Boolean switches preserved (VM/simulated; not native recalculation)');
+console.log('PASS: actual numeric-input Stop rules preserve relative ranges, strict types, four optional blanks and format-only recovery guidance (VM/simulated; native prevention unqualified)');
 
 const selectorStart = source.indexOf('for (const [address, max] of '), selectorEnd = source.indexOf("cell(lab, 'B8'", selectorStart);
 assert.ok(selectorStart >= 0 && selectorEnd > selectorStart, 'Locate the actual selector validation emitter');
