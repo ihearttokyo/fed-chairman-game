@@ -171,7 +171,8 @@ assumptions.getRange(`B6:J${source.parameters.length + 5}`).format.rowHeight = 4
 const p = key => { assert.ok(parameterRow.has(key), `Unknown parameter ${key}`); return `'Assumptions'!$D$${parameterRow.get(key)}`; };
 // Artifact Tool ROUND uses a different negative-tie rule; the positive magnitude is portable.
 const quote = value => `SIGN(${value})*ROUND(ABS(${value})/${p('minimum_rate_increment_pct')},0)*${p('minimum_rate_increment_pct')}`;
-const onGrid = value => `IF(ISNUMBER(${value}),ABS(${value}/${p('minimum_rate_increment_pct')}-ROUND(${value}/${p('minimum_rate_increment_pct')},0))<0.000001,FALSE)`;
+const strictNumeric = value => `AND(ISNUMBER(${value}),NOT(ISLOGICAL(${value})))`;
+const onGrid = value => `IF(${strictNumeric(value)},ABS(${value}/${p('minimum_rate_increment_pct')}-ROUND(${value}/${p('minimum_rate_increment_pct')},0))<0.000001,FALSE)`;
 const effective = value => `IF(ISNUMBER(${p('negative_rate_efficacy_scale_pct')}),IF(${value}>=0,${value},${p('negative_rate_efficacy_scale_pct')}*TANH(${value}/${p('negative_rate_efficacy_scale_pct')})),NA())`;
 const weightsRow = source.parameters.length + 9;
 cell(assumptions, `B${weightsRow - 1}`, 'Credibility weights (fixed in core)');
@@ -493,18 +494,18 @@ for (let q = 0; q <= 48; q++) {
   }
   put('decision_nominal_gdp_ratio', `(${prev('actual_output_index')}/${prev('initial_actual_output_index')})*(${prev('price_index')}/${prev('initial_price_index')})`);
   const shock = key => `'Shocks'!${col}${shockRows.get(key)}`;
-  const override = (row, fallback) => `IF(ISBLANK('Policy'!${col}${row}),${fallback},'Policy'!${col}${row})`;
+  const override = (row, fallback) => `IF(ISBLANK('Policy'!${col}${row}),${fallback},IF(${strictNumeric(`'Policy'!${col}${row}`)},'Policy'!${col}${row},NA()))`;
   const requested = `CHOOSE('Policy Lab'!$C$6,${prev('r_star_pct')}+${prev('expected_short_inflation_pct')}+${p('policy_inflation_response')}*(${prev('four_quarter_inflation_pct')}-${p('inflation_target_pct')})+${p('policy_output_gap_response')}*${prev('output_gap_pct')},${prev('policy_rate_pct')})`;
   put('benchmark_rate', quote(requested));
   put('last_policy_rate_request_pct', override(6, s('benchmark_rate')));
   put('guidance_rate_pct', override(7, s('benchmark_rate')));
   put('guidance_inflation_sensitivity', override(8, p('policy_inflation_response')));
   put('guidance_output_gap_sensitivity', override(9, p('policy_output_gap_response')));
-  put('asset_flow_request_pct_initial_gdp', `IF(ISNUMBER('Policy'!${col}10),'Policy'!${col}10*${s('decision_nominal_gdp_ratio')},NA())`);
-  put('liquidity_request_pct_initial_gdp', `IF(ISNUMBER('Policy'!${col}11),'Policy'!${col}11*${s('decision_nominal_gdp_ratio')},NA())`);
+  put('asset_flow_request_pct_initial_gdp', `IF(${strictNumeric(`'Policy'!${col}10`)},'Policy'!${col}10*${s('decision_nominal_gdp_ratio')},NA())`);
+  put('liquidity_request_pct_initial_gdp', `IF(${strictNumeric(`'Policy'!${col}11`)},'Policy'!${col}11*${s('decision_nominal_gdp_ratio')},NA())`);
   for (const [i, key] of ['reinvest_principal', 'maintain_ample_reserves', 'sterilize_purchases'].entries()) put(key, `IF(ISLOGICAL('Policy'!${col}${12 + i}),'Policy'!${col}${12 + i},NA())`);
   const controls = ['last_policy_rate_request_pct', 'guidance_rate_pct', 'guidance_inflation_sensitivity', 'guidance_output_gap_sensitivity', 'asset_flow_request_pct_initial_gdp', 'liquidity_request_pct_initial_gdp'];
-  put('policy_valid', `AND(${controls.map(k => `ISNUMBER(${s(k)})`).join(',')},${onGrid(s('last_policy_rate_request_pct'))},${onGrid(s('guidance_rate_pct'))},ABS(${s('guidance_inflation_sensitivity')})<=${p('guidance_sensitivity_limit')},ABS(${s('guidance_output_gap_sensitivity')})<=${p('guidance_sensitivity_limit')},${s('liquidity_request_pct_initial_gdp')}>=0,${['reinvest_principal', 'maintain_ample_reserves', 'sterilize_purchases'].map(k => `ISLOGICAL(${s(k)})`).join(',')})`);
+  put('policy_valid', `AND(${controls.map(k => strictNumeric(s(k))).join(',')},${onGrid(s('last_policy_rate_request_pct'))},${onGrid(s('guidance_rate_pct'))},ABS(${s('guidance_inflation_sensitivity')})<=${p('guidance_sensitivity_limit')},ABS(${s('guidance_output_gap_sensitivity')})<=${p('guidance_sensitivity_limit')},${s('liquidity_request_pct_initial_gdp')}>=0,${['reinvest_principal', 'maintain_ample_reserves', 'sterilize_purchases'].map(k => `ISLOGICAL(${s(k)})`).join(',')})`);
   put('policy_rate_pct', `IF(${s('policy_valid')},${s('last_policy_rate_request_pct')},NA())`);
   for (const key of ['initial_annual_gdp_index', 'initial_asset_stock_pct_initial_gdp', 'initial_actual_output_index', 'initial_price_index', 'initial_duration_equivalent_pct_initial_gdp', 'initial_portfolio_premium_pct', 'initial_mbs_financing_rate_pct', 'treasury_account_pct_initial_gdp', 'capital_other_pct_initial_gdp']) put(key, prev(key));
   writeBalance(s, prev, shock, put);
@@ -582,9 +583,16 @@ for (const [row, label] of [[6, 'Rate request (%)'], [7, 'Next-quarter guidance 
   cell(policy, `B${row}`, label); input(policy, `E${row}:AZ${row}`);
   if (row >= 10) policy.getRange(`E${row}:AZ${row}`).values = [[row < 12 ? 0 : row !== 14]];
 }
+for (const [range, formula] of [['E6:AZ9', `OR(ISBLANK(E6),${strictNumeric('E6')})`], ['E10:AZ11', strictNumeric('E10')]]) {
+  policy.getRange(range).dataValidation = {
+    rule: { type: 'custom', formula1: formula }, ignoreBlanks: false,
+    errorAlert: { show: true, style: 'stop', title: 'Number required', message: 'Enter a number, not TRUE/FALSE. Blanks are allowed only in rows 6–9.' },
+  };
+}
 cell(policy, 'B16', 'Blanks in6–9 use the benchmark; zero is explicit. Rate/guidance grid:1bp.');
 cell(policy, 'B17', 'Modes require TRUE/FALSE. Negative purchases cap actual principal runoff.');
 cell(policy, 'B18', 'Offers and flows: current meeting GDP; ending stocks: ending GDP.');
+cell(policy, 'B19', "After invalid paste: set the input's number format to General, then re-enter.");
 const endingStocks = new Set(['outstanding_liquidity_pct_initial_gdp', 'asset_stock_pct_initial_gdp', 'reserves_pct_initial_gdp', 'reverse_repo_pct_initial_gdp', 'total_assets_pct_initial_gdp']);
 const policyOutputs = ['policy_rate_pct', 'prior_commitment', 'guidance_followthrough_score', 'asset_flow_applied_pct_initial_gdp', 'liquidity_applied_pct_initial_gdp', 'outstanding_liquidity_pct_initial_gdp', 'credit_spread_pct', 'four_quarter_inflation_pct', 'unemployment_rate_pct', 'public_support', 'principal_due_pct_initial_gdp', 'principal_runoff_pct_initial_gdp', 'principal_reinvestment_pct_initial_gdp', 'long_securities_runoff_pct_initial_gdp', 'reserve_maintenance_purchase_pct_initial_gdp', 'sterilization_applied_pct_initial_gdp', 'sterilization_unfulfilled_pct_initial_gdp', 'reserves_pct_initial_gdp', 'reverse_repo_pct_initial_gdp', 'total_assets_pct_initial_gdp'];
 for (const [i, key] of policyOutputs.entries()) {
@@ -594,7 +602,8 @@ for (const [i, key] of policyOutputs.entries()) {
     return `='Economy'!${col}${R[key]}${key.endsWith('_pct_initial_gdp') ? `/'Economy'!${col}${R[denominator]}` : ''}`;
   })];
 }
-policy.getRange('E6:AZ11').setNumberFormat('0.00');
+// Calc numeric formatting can erase logical input type before validation.
+policy.getRange('E6:AZ11').setNumberFormat('General');
 policy.getRange('E20:AZ39').setNumberFormat('0.00');
 
 // Compact output table and editable native charts, with a single linked plot table.

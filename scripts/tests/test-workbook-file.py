@@ -1,15 +1,42 @@
-"""Reject blank series or ambiguous axis formats in real workbook copies."""
+"""Reject malformed policy validation, charts or caches in real workbook copies."""
 from pathlib import Path
 import json
+import posixpath
 import subprocess
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
 
+NS = {'s': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main',
+      'r': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'}
+
+
+def validate_policy_inputs(archive):
+    sheets = ET.fromstring(archive.read('xl/workbook.xml')).find('s:sheets', NS)
+    policy = next(sheet for sheet in sheets if sheet.attrib['name'] == 'Policy')
+    targets = {item.attrib['Id']: item.attrib['Target']
+               for item in ET.fromstring(archive.read('xl/_rels/workbook.xml.rels'))}
+    target = targets[policy.attrib['{' + NS['r'] + '}id']]
+    path = target.lstrip('/') if target.startswith('/') else posixpath.normpath('xl/' + target)
+    rules = ET.fromstring(archive.read(path)).findall('s:dataValidations/s:dataValidation', NS)
+    expected = {'E6:AZ9': 'OR(ISBLANK(E6),AND(ISNUMBER(E6),NOT(ISLOGICAL(E6))))',
+                'E10:AZ11': 'AND(ISNUMBER(E10),NOT(ISLOGICAL(E10)))'}
+    assert len(rules) == 2 and {rule.get('sqref') for rule in rules} == set(expected), 'Policy input validation ranges'
+    for rule in rules:
+        assert rule.get('type') == 'custom', 'Policy input validation type'
+        assert rule.findtext('s:formula1', namespaces=NS) == expected[rule.get('sqref')], 'Policy input validation relative formula'
+        assert rule.get('allowBlank', 'false') in ('0', 'false'), 'Policy input validation must not ignore blanks'
+        assert rule.get('showErrorMessage') in ('1', 'true'), 'Policy input validation alert disabled'
+        assert rule.get('errorStyle', 'stop') == 'stop', 'Policy input validation must Stop'
+    return path
+
+
 root = Path(__file__).resolve().parents[2]
 assert len(sys.argv) in (4, 5), 'Supply workbook, reference, map and optional campaign reference'
 workbook, reference, row_map = map(Path, sys.argv[1:4])
+with zipfile.ZipFile(workbook) as archive:
+    policy_part = validate_policy_inputs(archive)
 campaign = Path(sys.argv[4]) if len(sys.argv) == 5 else None
 checker = [sys.executable, str(root / 'scripts/spreadsheet/check-workbook.py'),
            str(workbook), '--reference', str(reference), '--map', str(row_map)]
@@ -24,6 +51,14 @@ with tempfile.TemporaryDirectory(prefix='fed-chart-regression-') as directory:
                ('linked-axis', 'ambiguous value-axis precision'),
                ('cohort-cache', 'full-state parity'),
                ('logical-type', 'Full-state parity boolean type')]
+    validation_defects = [('validation-count', 'Policy input validation ranges'),
+                          ('validation-range', 'Policy input validation ranges'),
+                          ('validation-type', 'Policy input validation type'),
+                          ('validation-formula', 'Policy input validation relative formula'),
+                          ('validation-blank', 'Policy input validation must not ignore blanks'),
+                          ('validation-alert', 'Policy input validation alert disabled'),
+                          ('validation-stop', 'Policy input validation must Stop')]
+    defects += validation_defects
     if campaign:
         defects.append(('campaign-note', 'stale or missing campaign explanation'))
     for defect, error in defects:
@@ -35,6 +70,23 @@ with tempfile.TemporaryDirectory(prefix='fed-chart-regression-') as directory:
                       if part.attrib.get('ContentType') == 'application/vnd.openxmlformats-officedocument.drawingml.chart+xml'}
             for info in source.infolist():
                 data = source.read(info.filename)
+                if defect.startswith('validation-') and info.filename == policy_part:
+                    part = ET.fromstring(data)
+                    validations = part.find('s:dataValidations', NS)
+                    rule = next(item for item in validations if item.get('sqref') == 'E6:AZ9')
+                    if defect == 'validation-count':
+                        validations.remove(rule)
+                    elif defect == 'validation-formula':
+                        rule.find('s:formula1', NS).text = rule.find('s:formula1', NS).text.replace('E6', '$E$6')
+                    else:
+                        attribute, value = {'validation-range': ('sqref', 'E6:AZ14'),
+                                            'validation-type': ('type', 'decimal'),
+                                            'validation-blank': ('allowBlank', '1'),
+                                            'validation-alert': ('showErrorMessage', '0'),
+                                            'validation-stop': ('errorStyle', 'warning')}[defect]
+                        rule.set(attribute, value)
+                    data = ET.tostring(part, encoding='utf-8', xml_declaration=True)
+                    changed = True
                 if not changed and defect == 'campaign-note' and (info.filename == 'xl/sharedStrings.xml' or info.filename.startswith('xl/worksheets/')):
                     part = ET.fromstring(data)
                     for text in part.iter():
@@ -66,7 +118,7 @@ with tempfile.TemporaryDirectory(prefix='fed-chart-regression-') as directory:
                             break
                     if changed:
                         data = ET.tostring(part, encoding='utf-8', xml_declaration=True)
-                if not changed and defect not in ('campaign-note', 'cohort-cache', 'logical-type') and info.filename in charts:
+                if not changed and not defect.startswith('validation-') and defect not in ('campaign-note', 'cohort-cache', 'logical-type') and info.filename in charts:
                     chart = ET.fromstring(data)
                     namespace = '{http://schemas.openxmlformats.org/drawingml/2006/chart}'
                     if defect == 'blank-chart':
@@ -84,8 +136,17 @@ with tempfile.TemporaryDirectory(prefix='fed-chart-regression-') as directory:
                     data = ET.tostring(chart, encoding='utf-8', xml_declaration=True)
                 target.writestr(info, data)
         assert changed, 'Fault injection must corrupt actual saved workbook content'
+        if defect.startswith('validation-'):
+            try:
+                with zipfile.ZipFile(broken) as archive:
+                    validate_policy_inputs(archive)
+            except AssertionError as failure:
+                assert error in str(failure), f'{defect} did not fail for its intended policy validation check'
+            else:
+                raise AssertionError(f'{defect} accepted malformed policy validation')
+            continue
         checker[2] = str(broken)
         result = subprocess.run(checker, capture_output=True, text=True)
         assert result.returncode != 0 and error in result.stderr, f'{defect} did not fail for its intended chart check'
-print('PASS: real workbook accepted; blank series, ambiguous axis formats and numeric logical caches rejected'
+print('PASS: real workbook accepted; malformed policy validation, blank series, ambiguous axis formats and numeric logical caches rejected'
       + ('; stale saved campaign note rejected' if campaign else ''))
