@@ -578,8 +578,9 @@ shock, then no future shocks; portfolio switches persist and future asset/lendin
 offers are zero. Q+2 pairs nominal/effective rates, follow-through and stance
 adequacy. Q+8 shows B outcomes and B-minus-A changes in inflation, unemployment,
 output gap, credibility and support. Fulfilling a nominal promise need not improve
-effective stance or credibility. Unavailable B paths retain their native error
-without replacing the valid report. Continuation beyond Q240 is diagnostic, not
+effective stance or credibility. Unavailable B paths keep the valid report:
+settlement failures show corrective reserve-policy advice; other diagnostics
+remain unchanged. Continuation beyond Q240 is diagnostic, not
 extra playable turns. The cockpit preview and player decisions stay unchanged.
 
 Four one-control contrasts also show how the staged rate, guidance quote, asset
@@ -598,9 +599,18 @@ explanations and warnings available.
 After adoption, funding feedback reports applied loans, uncovered need and repaid
 principal as percentages of that meeting's GDP. These are realized flows, not the
 next preview or ending loan stock.
+With reserve maintenance off, currency growth, principal runoff or loan repayment
+can exhaust settlement reserves. Preview, comparison and adoption explain this
+constraint and point to reserve maintenance or adjusted purchases/runoff. Rejection
+retains the entire last valid career and staged policy; it never changes a switch
+or adopts a quarter automatically.
 
 Careers continue through 12-quarter reviews without resetting policy lags,
-expectations, hardship memory or charts. The local career limit is 240 quarters.
+expectations, hardship memory or charts. Informational reports close with Escape,
+Return, keypad Return or platform-command Return from any focused report control.
+Dismissal restores the invoking control without adopting another quarter. New,
+Load and Quit remain separate Cancel-first confirmations. The local career limit
+is 240 quarters.
 Data & journal also opens a realized review on demand after any completed
 decision, including after loading a career. It compares the latest up to twelve
 completed quarters and labels the actual interval. Each review compares realized
