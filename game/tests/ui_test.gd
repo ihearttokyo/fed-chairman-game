@@ -943,6 +943,78 @@ func check_guidance_continuation(game: Control) -> void:
 	check(game._decision_briefing() == "Comparison unavailable: unknown exogenous input: continuation_fixture_unknown_input" and failing.continuation_forecasts == 0, "invalid selected/current path retains the original early error without computing B")
 	game.career = original
 	game._start_career("supply_shock", 1)
+func check_financing_readout(game: Control) -> void:
+	var readout_matches := true
+	for sample in [[3.5, 3.5, 4.0, {}], [3.5, 3.5, 0.0, {"credit_risk_innovation_pct": 0.03}], [-0.5, -0.75, 0.0, {}], [3.5, 3.5, 0.01, {}]]:
+		game._start_career("base", 417)
+		game.career.shocks[0] = sample[3].duplicate(true)
+		game.rate.value = sample[0]
+		game.guidance.value = sample[1]
+		game.assets.value = sample[2]
+		await process_frame
+		var params: Dictionary = game.career.params
+		var staged: Dictionary = game._policy()
+		check(game.career.state.quarter_index == 0 and game.career.model._validate_state(game.career.state, params).ok and game.career.model._validate_policy(staged, params).ok and game.career.model._validate_shocks(game.career.current_briefing()).ok, "financing readout fixtures use valid native initial state, policy and current shock")
+		check(staged.policy_rate_request_pct == sample[0] and staged.guidance_rate_pct == sample[1] and abs(staged.asset_flow_request_pct_initial_gdp - float(sample[2])) < 1e-12, "financing readout preserves signed quotes and current-GDP asset offers within native decimal representation")
+		var preserved: PackedByteArray = review_staff_snapshot(game)
+		var selected: Dictionary = game.career.forecast(staged)
+		var held: Dictionary = game.career.forecast(game.career.model.benchmark_policy(game.career.state, params, "hold"))
+		check(selected.ok and held.ok, "financing readout setup has valid real selected and same-current-shock HOLD forecasts")
+		if not selected.ok or not held.ok:
+			continue
+		var first: Dictionary = selected.states[0]
+		var reference: Dictionary = held.states[0]
+		check(game.career.model._validate_state(first, params).ok and game.career.model._validate_state(reference, params).ok and first.quarter_index == 1 and reference.quarter_index == 1, "financing readout uses validated Q+1 native states")
+		var spot_delta: float = first.spot_financial_gap_pct - reference.spot_financial_gap_pct
+		var retained_delta: float = first.financial_restraint_gap_pct - reference.financial_restraint_gap_pct
+		check(abs(first.financial_restraint_gap_pct - (0.85 * game.career.state.financial_restraint_gap_pct + 0.15 * first.spot_financial_gap_pct)) < 1e-10, "retained financing follows the independent original quarterly recurrence")
+		if sample[2] == 4.0:
+			var premium_delta: float = -1.5 * tanh(4.0 / 60.0)
+			check(params.portfolio_premium_max_shift_pct == 1.5 and params.portfolio_premium_scale_pct_gdp == 60.0 and params.real_rate_short_weight == 0.5 and params.real_rate_gap_persistence == 0.85 and params.real_rate_output_sensitivity == 0.12, "neutral purchase arithmetic binds the frozen original coefficients")
+			check(first.asset_flow_applied_pct_initial_gdp == 4.0 and first.decision_nominal_gdp_ratio == 1.0, "neutral purchase applies four percent of current and initial annual GDP once")
+			check(abs(first.term_premium_pct - reference.term_premium_pct - premium_delta) < 1e-10 and abs(spot_delta - 0.5 * premium_delta) < 1e-10 and abs(retained_delta - 0.15 * spot_delta) < 1e-10, "neutral purchase premium, immediate gap and retained gap match independent arithmetic")
+			check(abs(first.output_gap_pct - reference.output_gap_pct + 0.12 * retained_delta) < 1e-10 and first.four_quarter_inflation_pct == reference.four_quarter_inflation_pct, "neutral purchase moves next output through retained restraint without immediate inflation repair")
+		elif sample[0] < 0.0:
+			check(abs(first.effective_policy_rate_pct - tanh(float(sample[0]))) < 1e-10 and first.spot_financial_gap_pct < 0.0 and first.financial_restraint_gap_pct < 0.0, "valid signed financing preserves effective-rate and gap signs")
+		elif sample[2] == 0.0:
+			check(spot_delta == 0.0 and retained_delta == 0.0 and abs(first.spot_financial_gap_pct - 0.03) < 1e-10, "HOLD has no policy effect while both paths price the same authored current credit innovation")
+		else:
+			check(spot_delta < 0.0 and abs(spot_delta) < 0.0005 and retained_delta < 0.0 and abs(retained_delta) < 0.0005, "tiny valid asset offer produces real sub-rounding financing effects")
+		var immediate_change: String = expected_change(spot_delta, 3, "pp")
+		var retained_change: String = expected_change(retained_delta, 3, "pp")
+		check(game._change_text(spot_delta, 3, "pp") == immediate_change and game._change_text(retained_delta, 3, "pp") == retained_change, "existing formatter preserves financing zero, sign and sub-rounding pp direction")
+		var report: String = game._decision_briefing()
+		readout_matches = readout_matches and report.contains("Q+1 immediate financing gap %+.3f pp; retained %+.3f pp" % [first.spot_financial_gap_pct, first.financial_restraint_gap_pct]) and report.contains("Vs HOLD immediate %s; retained %s" % [immediate_change, retained_change])
+		readout_matches = readout_matches and report.contains("tighter than neutral") and report.contains("not a policy ranking") and report.contains("current pricing") and report.contains("past restraint")
+		check(review_staff_snapshot(game) == preserved, "financing comparison preserves career, history, raw and seeded shocks, parameters, staged controls and preview")
+		if sample[2] == 4.0:
+			var future: Dictionary = game.career.shocks[1].duplicate(true)
+			game.career.shocks[1].demand_shock_pct = 10.0
+			check(game._decision_briefing() == report, "financing readout cannot inspect an undisclosed future shock")
+			game.career.shocks[1] = future
+			check(review_staff_snapshot(game) == preserved, "future-information fixture restores the complete original comparison inputs")
+			game._compare()
+			var dialog: AcceptDialog = game.get_child(game.get_child_count() - 1)
+			await process_frame
+			await process_frame
+			var bodies: Array = dialog.find_children("*", "TextEdit", true, false)
+			check(bodies.size() == 1, "financing comparison has one native accessible text body")
+			if bodies.size() == 1:
+				var body: TextEdit = bodies[0]
+				check(body.accessibility_name == "Policy comparison report" and body.accessibility_description == report and body.focus_mode == Control.FOCUS_ALL and body.selecting_enabled and not body.editable and body.wrap_mode == TextEdit.LINE_WRAPPING_BOUNDARY, "financing comparison preserves its selectable, wrapped, read-only accessible report")
+				check(body.text == report, "native selectable accessible comparison retains the complete financing report")
+			dialog.get_ok_button().pressed.emit()
+			await process_frame
+			check(review_staff_snapshot(game) == preserved, "reading and closing financing comparison never adopts or changes inputs")
+	game.career.shocks[0] = {"financing_readout_unknown_input": 1.0}
+	var rejected: Dictionary = game.career.forecast(game._policy())
+	check(not rejected.ok, "unavailable financing fixture uses the original native unknown-shock rejection")
+	if not rejected.ok:
+		var preserved: PackedByteArray = review_staff_snapshot(game)
+		check(game._decision_briefing() == "Comparison unavailable: " + rejected.error, "financing readout retains the original early comparison error instead of fabricated values")
+		check(review_staff_snapshot(game) == preserved, "unavailable comparison preserves invalid inputs and staged controls")
+	check(readout_matches, "FINANCING_READOUT: actual Q+1 immediate/retained pp values, paired HOLD differences and interpretation must be exposed")
+	game._start_career("supply_shock", 1)
 func check_rate_deliberation(game: Control) -> void:
 	for edge in ["ordinary", "middle", "floor", "ceiling"]:
 		game._start_career("funding_stress", 41)
@@ -1347,6 +1419,13 @@ func run() -> void:
 		game.free()
 		quit(1 if failures else 0)
 		return
+	if OS.get_cmdline_user_args().has("--financing-readout-only"):
+		await check_financing_readout(game)
+		if failures == 0:
+			print("PASS: Q+1 immediate/retained financing readout, independent native arithmetic, boundaries and purity")
+		game.free()
+		quit(1 if failures else 0)
+		return
 	if OS.get_cmdline_user_args().has("--guidance-continuation-only"):
 		await check_guidance_continuation(game)
 		await check_comparison_navigation(game)
@@ -1444,6 +1523,7 @@ func run() -> void:
 	check(game.charts[1].heading == "UNEMPLOYMENT & STRUCTURAL REFERENCE" and game.charts[1].accessibility_name == game.charts[1].heading, "chart heading and accessibility name identify unemployment")
 	check(game.stats[1][0].text == "%.2f%%" % game.career.state.unemployment_rate_pct and game.charts[1].keys == ["unemployment_rate_pct", "structural_unemployment_pct"] and game.charts[1].labels == ["Unemployment", "Structural reference"], "unemployment naming retains values, units, series and reference")
 	await check_comparison_navigation(game)
+	await check_financing_readout(game)
 	await check_guidance_continuation(game)
 	await check_pending_policy(game)
 	await check_unfocused_inputs(game)

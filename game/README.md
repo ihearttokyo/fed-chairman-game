@@ -584,7 +584,10 @@ tools, current financial conditions and quarter-1, quarter-4 and quarter-8
 differences from holding policy. The reference holds today's rate, uses
 data-dependent guidance and requests no new asset flows or lending. Both paths
 use the same current shock and no future innovations. The briefing also compares
-credibility and public support and explains binding tool limits. Its Q+1
+credibility and public support and explains binding tool limits. It also shows
+current-pricing and retained financing gaps in pp, plus their HOLD differences.
+Retained restraint carries past conditions into demand; tighter than neutral
+is not a policy ranking. Its Q+1
 diagnostics expose inflation-miss memory, effective borrowing rates, desired real
 restraint, actual stance distance and transmission-frontier shortfall,
 prior-promise follow-through, current hardship and remembered hardship
