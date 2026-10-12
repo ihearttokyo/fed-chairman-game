@@ -845,6 +845,7 @@ func _advance() -> void:
 	var result: Dictionary = career.advance(_policy())
 	if not result.ok:
 		status_label.text = _policy_error(result.error) + " Last valid quarter retained."
+		_preview()
 		return
 	_refresh(true)
 	var s: Dictionary = career.state
