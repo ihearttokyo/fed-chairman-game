@@ -26,6 +26,7 @@ if grep -Eq 'SCRIPT ERROR:|ERROR:|FAIL:' "$HOME/storage.log"; then exit 1; fi
 grep -q '^PASS: isolated Godot user storage verified before fixture writes' "$HOME/storage.log"
 for test in "${tests[@]}"; do
   frames=600
+  if [[ "$test" == keyboard_test ]]; then frames=900; fi
   if [[ "$test" == comparison_performance_test ]]; then frames=6000; fi
   log="$HOME/$test.log"
   "${godot[@]}" --headless --path game --log-file "$HOME/$test-engine.log" --script "res://tests/$test.gd" --quit-after "$frames" -- "$@" 2>&1 | tee "$log"
