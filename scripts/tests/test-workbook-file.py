@@ -363,7 +363,137 @@ def chart45_mutations(source, defect, row_map):
     return {path: ET.tostring(drawing, encoding='utf-8', xml_declaration=True)}
 
 
+INTERACTION54_CASES = {
+    **{f'interaction54-hidden-{name}': 'interactive worksheet visibility' for name in ('assumptions', 'shocks')},
+    **{f'interaction54-objects-{name}': 'workbook object visibility' for name in ('none', 'placeholders', 'invalid', 'duplicate', 'wrapped', 'shadow')},
+    **{f'interaction54-calc-{name}': 'workbook automatic calculation' for name in ('manual', 'invalid', 'duplicate', 'wrapped', 'shadow', 'precision-false', 'iterate-true')},
+    **{f'interaction54-protect-{name}': 'interactive sheet protection' for name in ('policy', 'lab', 'assumptions', 'shocks', 'true', 'invalid', 'uppercase', 'duplicate', 'wrapped', 'shadow')},
+    **{f'interaction54-{name}': None for name in ('objects-default', 'objects-all', 'calc-default', 'calc-auto-no-table', 'calc-auto-flags-digits', 'calc-auto-flags-words', 'protection-default', 'economy-protected')},
+    **{f'interaction54-unprotected-{name}-{flag}': None for name in ('policy', 'lab', 'assumptions', 'shocks') for flag in ('zero', 'false')},
+}
+NEW_CASES.update(INTERACTION54_CASES)
+
+
+def interaction54_mutations(source, defect, row_map):
+    kind = defect.removeprefix('interaction54-')
+    namespace = '{' + NS['s'] + '}'
+    workbook = ET.fromstring(source.read('xl/workbook.xml'))
+    if kind.startswith('hidden-'):
+        next(sheet for sheet in workbook.find('s:sheets', NS) if sheet.get('name') == kind.removeprefix('hidden-').title()).set('state', 'hidden')
+        return {'xl/workbook.xml': ET.tostring(workbook, encoding='utf-8', xml_declaration=True)}
+    if kind.startswith(('objects-', 'calc-')):
+        objects = kind.startswith('objects-')
+        tag = 'workbookPr' if objects else 'calcPr'
+        action = kind.split('-', 1)[1]
+        for old in workbook.findall('s:' + tag, NS): workbook.remove(old)
+        attrs = {}
+        if objects and action != 'default': attrs['showObjects'] = {'none': 'none', 'placeholders': 'placeholders', 'invalid': 'unexpected'}.get(action, 'all')
+        if not objects and action != 'default': attrs['calcMode'] = {'manual': 'manual', 'invalid': 'unexpected', 'auto-no-table': 'autoNoTable'}.get(action, 'auto')
+        if action == 'precision-false': attrs['fullPrecision'] = '0'
+        elif action == 'iterate-true': attrs['iterate'] = 'true'
+        elif action == 'auto-flags-digits': attrs.update(fullPrecision='1', iterate='0', fullCalcOnLoad='1', calcOnSave='0')
+        elif action == 'auto-flags-words': attrs.update(fullPrecision='true', iterate='false', fullCalcOnLoad='false', calcOnSave='true')
+        node = ET.Element(namespace + tag, attrs)
+        # Preserve workbook sequence around sheets rather than relying on consumer repair.
+        position = next(i for i, child in enumerate(workbook) if child.tag == namespace + 'sheets') if objects else len(workbook)
+        if action == 'wrapped': ET.SubElement(workbook, namespace + 'wrapper').append(node)
+        else:
+            workbook.insert(position, node)
+            if action in ('duplicate', 'shadow'):
+                bad = ET.Element(namespace + tag, {'showObjects': 'none'} if objects else {'calcMode': 'manual'})
+                if action == 'duplicate': workbook.insert(position + 1, bad)
+                else: ET.SubElement(workbook, namespace + 'wrapper').append(bad)
+        return {'xl/workbook.xml': ET.tostring(workbook, encoding='utf-8', xml_declaration=True)}
+    rels = {x.get('Id'): x.get('Target') for x in ET.fromstring(source.read('xl/_rels/workbook.xml.rels'))}
+    names = {'policy': 'Policy', 'lab': 'Policy Lab', 'assumptions': 'Assumptions', 'shocks': 'Shocks'}
+    suffix = kind.split('-')[1] if kind.startswith(('protect-', 'unprotected-')) else ''
+    name = 'Economy' if kind == 'economy-protected' else names.get(suffix, 'Policy')
+    sheet = next(x for x in workbook.find('s:sheets', NS) if x.get('name') == name)
+    target = rels[sheet.get('{' + NS['r'] + '}id')]
+    path = target.lstrip('/') if target.startswith('/') else posixpath.normpath('xl/' + target)
+    root = ET.fromstring(source.read(path))
+    for old in root.findall('s:sheetProtection', NS): root.remove(old)
+    attrs = {'sheet': '1'}
+    if kind.startswith('unprotected-'): attrs = {'sheet': '0' if kind.endswith('-zero') else 'false', 'objects': 'true', 'scenarios': '1', 'formatCells': 'false', 'selectLockedCells': '0'}
+    elif kind == 'protection-default': attrs = {'objects': '1', 'scenarios': 'true'}
+    elif suffix in ('true', 'invalid', 'uppercase'): attrs['sheet'] = {'true': 'true', 'invalid': '2', 'uppercase': 'False'}[suffix]
+    node = ET.Element(namespace + 'sheetProtection', attrs)
+    position = next(i for i, child in enumerate(root) if child.tag == namespace + 'sheetData') + 1
+    if suffix == 'wrapped': ET.SubElement(root, namespace + 'wrapper').append(node)
+    else:
+        if suffix in ('duplicate', 'shadow'): node.set('sheet', 'false')
+        root.insert(position, node)
+        if suffix in ('duplicate', 'shadow'):
+            bad = ET.Element(namespace + 'sheetProtection', sheet='true')
+            if suffix == 'duplicate': root.insert(position + 1, bad)
+            else: ET.SubElement(root, namespace + 'wrapper').append(bad)
+    return {path: ET.tostring(root, encoding='utf-8', xml_declaration=True)}
+
+
+DISPLAY58_CASES = {
+    **{f'display58-{name}': 'authored formula mismatch' for name in ('summary-first-formula', 'summary-last-formula', 'case-header-policy', 'case-header-assumptions', 'case-header-economy', 'case-header-shocks')},
+    **{f'display58-{name}': 'dashboard summary cache' for name in ('summary-first-cache', 'summary-last-cache', 'summary-logical-cache', 'summary-string-cache')},
+}
+NEW_CASES.update(DISPLAY58_CASES)
+
+
+def display58_mutations(source, defect, row_map):
+    kind = defect.removeprefix('display58-')
+    targets = {'summary-first-formula': (1, 'C12', 'formula'), 'summary-last-formula': (1, 'C17', 'formula'),
+               'summary-first-cache': (1, 'C12', 'cache'), 'summary-last-cache': (1, 'C17', 'cache'),
+               'summary-logical-cache': (1, 'C14', 'logical'), 'summary-string-cache': (1, 'C16', 'string'),
+               'case-header-policy': (2, 'D3', 'formula'), 'case-header-assumptions': (3, 'D3', 'formula'),
+               'case-header-economy': (4, 'D3', 'formula'), 'case-header-shocks': (5, 'D3', 'formula')}
+    index, address, action = targets[kind]
+    path = f'xl/worksheets/sheet{index}.xml'; part = ET.fromstring(source.read(path))
+    cell = part.find(f'.//s:c[@r="{address}"]', NS)
+    require(cell is not None and cell.find('s:f', NS) is not None and cell.find('s:v', NS) is not None,
+            'display58 requires an actual calculated display cell')
+    if action == 'formula': cell.find('s:f', NS).text = '0'
+    elif action == 'cache': cell.find('s:v', NS).text = str(float(cell.find('s:v', NS).text) + 0.5)
+    else:
+        cell.set('t', 'b' if action == 'logical' else 'str')
+        if action == 'logical': cell.find('s:v', NS).text = '1'
+    return {path: ET.tostring(part, encoding='utf-8', xml_declaration=True)}
+
+
+LABEL60_CASES = {
+    **{f'label60-selector-{name}': 'authored literal mismatch' for name in ('case', 'horizon', 'benchmark')},
+    **{f'label60-{name}': 'dashboard cached label' for name in ('case-source-cache', 'benchmark-cache', 'case-source-type', 'benchmark-type', 'header-policy-type', 'header-policy', 'header-assumptions', 'header-economy', 'header-shocks')},
+}
+NEW_CASES.update(LABEL60_CASES)
+
+
+def label60_mutations(source, defect, row_map):
+    kind = defect.removeprefix('label60-')
+    targets = {'selector-case': (1, 'C4', 'fraction'), 'selector-horizon': (1, 'C5', 'fraction'),
+               'selector-benchmark': (1, 'C6', 'fraction'), 'case-source-cache': (1, 'E4', 'wrong'),
+               'benchmark-cache': (1, 'E6', 'wrong'), 'case-source-type': (1, 'E4', 'bool'),
+               'benchmark-type': (1, 'E6', 'number'), 'header-policy-type': (2, 'D3', 'number'),
+               'header-policy': (2, 'D3', 'wrong'), 'header-assumptions': (3, 'D3', 'wrong'),
+               'header-economy': (4, 'D3', 'wrong'), 'header-shocks': (5, 'D3', 'wrong')}
+    index, address, action = targets[kind]
+    path = f'xl/worksheets/sheet{index}.xml'; part = ET.fromstring(source.read(path))
+    cell = part.find(f'.//s:c[@r="{address}"]', NS)
+    require(cell is not None and cell.find('s:v', NS) is not None, 'label60 requires an actual saved selector/label')
+    value = cell.find('s:v', NS)
+    if action == 'fraction': value.text = repr(float(value.text) + (5e-13 if address == 'C6' else 1e-12))
+    elif action == 'wrong':
+        cell.set('t', 'str'); value.text = 'Funding stress' if address != 'E6' else 'Hold previous rate'
+    else:
+        cell.set('t', 'b' if action == 'bool' else 'n'); value.text = '1' if action == 'bool' else '0'
+    return {path: ET.tostring(part, encoding='utf-8', xml_declaration=True)}
+
+
 def review_mutations(source, defect, row_map):
+    if defect in LABEL60_CASES:
+        return label60_mutations(source, defect, row_map)
+    if defect in DISPLAY58_CASES:
+        return display58_mutations(source, defect, row_map)
+    if defect in INTERACTION54_CASES:
+        return interaction54_mutations(source, defect, row_map)
+    if defect.startswith('input54-'):
+        return input54_mutations(source, defect, row_map)
     if defect in CHART45_CASES:
         return chart45_mutations(source, defect, row_map)
     if defect in CHART19_CASES:
@@ -852,6 +982,69 @@ def review_mutations(source, defect, row_map):
                 formula.text = None
         data[match.start():match.end()] = ET.tostring(cell, encoding='utf-8')
     return {path: data}
+
+
+INPUT54_CASES = {
+    **{f'input54-{kind}': 'authored formula mismatch' for kind in ('policy-first', 'policy-last', 'policy-middle')},
+    **{f'input54-{kind}': 'authored literal mismatch' for kind in (
+        'parameter-first', 'parameter-last', 'parameter-formula', 'parameter-string',
+        'initial-first', 'initial-last', 'source-first', 'source-last', 'source-constant', 'fixed-weight',
+        'shock-active', 'shock-nonactive', 'shock-last', 'shock-blank-zero',
+        'selector-case', 'selector-quarter', 'selector-policy', 'policy-blank-zero', 'policy-zero-blank',
+        'policy-bool-number', 'policy-bool-flip', 'policy-last-bool', 'policy-rate', 'policy-guidance', 'policy-guidance-rate', 'policy-guidance-inflation', 'policy-flow')},
+    'input54-policy-shared': None,
+    'input54-policy-scalar': None,
+    'input54-numeric-explicit': None,
+}
+NEW_CASES.update(INPUT54_CASES)
+
+
+def input54_mutations(source, defect, row_map):
+    kind = defect.removeprefix('input54-')
+    targets = {
+        'policy-first': (2, 'E20', 'formula'), 'policy-last': (2, 'AZ39', 'formula'), 'policy-middle': (2, 'AA30', 'formula'),
+        'parameter-first': (3, 'C6', 'number'), 'parameter-last': (3, 'C79', 'number'),
+        'parameter-formula': (3, 'C6', 'add-formula'), 'parameter-string': (3, 'C6', 'string'),
+        'initial-first': (3, 'D97', 'number'), 'initial-last': (3, 'D159', 'number'),
+        'source-first': (3, 'C266', 'number'), 'source-last': (3, 'C385', 'number'),
+        'source-constant': (3, 'C262', 'number'), 'fixed-weight': (3, 'D83', 'number'),
+        'shock-active': (5, 'E9', 'number'), 'shock-nonactive': (5, 'E7', 'number'), 'shock-last': (5, 'AZ154', 'number'),
+        'shock-blank-zero': (5, 'E29', 'zero'),
+        'selector-case': (1, 'C4', 'number'), 'selector-quarter': (1, 'C5', 'number'), 'selector-policy': (1, 'C6', 'number'),
+        'policy-blank-zero': (2, 'E6', 'zero'), 'policy-zero-blank': (2, 'E10', 'blank'),
+        'policy-bool-number': (2, 'E12', 'numeric-type'), 'policy-bool-flip': (2, 'E13', 'flip'),
+        'policy-last-bool': (2, 'AZ14', 'flip'), 'policy-rate': (2, 'F6', 'zero'),
+        'policy-guidance': (2, 'E9', 'zero'), 'policy-guidance-rate': (2, 'E7', 'zero'), 'policy-guidance-inflation': (2, 'E8', 'zero'), 'policy-flow': (2, 'AZ11', 'number'),
+        'policy-shared': (2, 'E20', 'shared'), 'policy-scalar': (2, 'AZ39', 'scalar'),
+        'numeric-explicit': (3, 'C6', 'numeric-type'),
+    }
+    sheet, address, action = targets[kind]
+    path = f'xl/worksheets/sheet{sheet}.xml'; part = ET.fromstring(source.read(path))
+    cell = part.find(f'.//s:c[@r="{address}"]', NS)
+    require(cell is not None, 'input54 requires an actual saved input/output cell')
+    formula = cell.find('s:f', NS); value = cell.find('s:v', NS)
+    if action in ('formula', 'shared', 'scalar'):
+        require(formula is not None, 'input54 requires an actual calculated output')
+        if action == 'formula': formula.text = '0'
+        elif action == 'scalar': formula.text = ' = ' + formula.text + ' '
+        else:
+            formula.set('t', 'shared'); formula.set('si', '54001'); formula.set('ref', 'E20:F20')
+            follower = part.find('.//s:c[@r="F20"]/s:f', NS)
+            require(follower is not None, 'input54 shared output follower')
+            follower.attrib.clear(); follower.set('t', 'shared'); follower.set('si', '54001'); follower.text = None
+    else:
+        require(formula is None, 'input54 must change a saved literal, not a calculated cache')
+        if action == 'add-formula': ET.SubElement(cell, '{' + NS['s'] + '}f').text = '0'
+        elif action == 'blank':
+            if value is not None: cell.remove(value)
+            cell.attrib.pop('t', None)
+        elif action == 'numeric-type': cell.set('t', 'n')
+        elif action == 'string': cell.set('t', 'str')
+        else:
+            if value is None: value = ET.SubElement(cell, '{' + NS['s'] + '}v')
+            value.text = '0' if action == 'zero' else ('0' if value.text == '1' else '1') if action == 'flip' else str(float(value.text) + 0.25)
+            cell.set('t', 'b' if action == 'flip' else 'n')
+    return {path: ET.tostring(part, encoding='utf-8', xml_declaration=True)}
 
 
 source_parser = argparse.ArgumentParser(description=__doc__)

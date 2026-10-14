@@ -64,6 +64,11 @@ assert.ok(inventorySource.includes("{ flag: 'wx' }"), 'Never replace an existing
 assert.ok(!inventorySource.includes('SpreadsheetFile') && !inventorySource.includes('readFile(workbook'), 'Authored inventory cannot derive expectations from candidate XLSX');
 assert.ok(inventorySource.includes('set formulas(matrix)') && inventorySource.includes('upstream_formulas: upstream'), 'Record upstream range emissions, not noStyle discards');
 assert.ok(inventorySource.includes("slice('const parameterRow = ', 'const p = ')") && inventorySource.includes("slice('const sourceStart = ', 'const f = ')"), 'Include parameter guards and source-ladder checks');
+assert.ok(inventorySource.includes('set values(matrix)') && inventorySource.includes('const broadcast = !formula'), 'input54 records actual values matrix/broadcast semantics');
+assert.ok(inventorySource.includes("slice('const checkpointFixtureEdits = '") && inventorySource.includes('checkpoint_inputs: checkpointInputs'), 'input54 checkpoint inputs use the actual authored writer');
+assert.ok(!inventorySource.includes('filter(([address]) => policyReferences.has(address))'), 'input54 retains every calculated Policy output');
+assert.ok(inventorySource.includes('literal_inputs: literalInputs') && inventorySource.includes('schema_version: 3'), 'input54 typed literals require schema 3');
+assert.ok(driver.includes("with (references / f'{name}.json').open('x')") && driver.indexOf("with (references / f'{name}.json').open('x')") < driver.indexOf('generate-formula-inventory.mjs'), 'input54 caller emits individual checkpoint exports before inventory');
 assert.equal((driver.match(/'--reference-set'/g) ?? []).length, 3, 'Every checker/file-regression driver caller binds the full reference set');
 const inventoryEntryStart = inventorySource.indexOf('  const [references, map, output] = ');
 const inventoryEntryEnd = inventorySource.indexOf('  await fs.writeFile(output,', inventoryEntryStart);

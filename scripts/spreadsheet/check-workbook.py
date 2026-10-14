@@ -13,7 +13,7 @@ import zipfile
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('workbooks', nargs='+', type=Path)
 parser.add_argument('--reference', required=True, type=Path)
-parser.add_argument('--reference-set', required=True, type=Path, help='Trusted eight-case native reference directory used by the authored inventory')
+parser.add_argument('--reference-set', required=True, type=Path, help='Trusted native cold and six checkpoint reference directory used by the authored inventory')
 parser.add_argument('--map', required=True, type=Path)
 parser.add_argument('--campaign-reference', type=Path, help='Validate saved campaign explanation against its native export')
 parser.add_argument('--portfolio-reference', type=Path, help='Resident source copy bound by the native export hash')
@@ -162,7 +162,7 @@ def shared_formulas(cells):
 formula_inventory_path = args.map.with_suffix('.formulas.json')
 require(formula_inventory_path.is_file(), 'missing authored formula inventory; run generate-formula-inventory.mjs')
 formula_inventory = json.loads(formula_inventory_path.read_text())
-require(formula_inventory.get('schema_version') == 2, 'unsupported authored formula inventory schema')
+require(formula_inventory.get('schema_version') == 3, 'unsupported authored formula inventory schema')
 for name, key in [('build-policy-lab.mjs', 'builder_sha256'), ('generate-formula-inventory.mjs', 'generator_sha256')]:
     require(hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest() == formula_inventory.get(key),
             ('authored formula inventory source mismatch', name))
@@ -210,6 +210,50 @@ require(isinstance(formula_inventory.get('upstream_formulas'), dict)
         and all(isinstance(formula_inventory['upstream_formulas'].get(name), dict)
                 and formula_inventory['upstream_formulas'][name] for name in ('Assumptions', 'Shocks')),
         'incomplete authored upstream formula inventory')
+
+literal_inputs = formula_inventory.get('literal_inputs')
+require(isinstance(literal_inputs, dict) and set(literal_inputs) == {'Assumptions', 'Shocks', 'Policy', 'Policy Lab'}
+        and all(isinstance(values, dict) and values for values in literal_inputs.values()), 'incomplete authored literal inventory')
+# Expectation overlays execute the builder's checkpoint writer, not a second economic model.
+if reference['initial_state']['quarter_index'] > 0:
+    checkpoint_digest = hashlib.sha256(args.reference.read_bytes()).hexdigest()
+    overlays = [item for item in formula_inventory.get('checkpoint_inputs', []) if item.get('reference_sha256') == checkpoint_digest]
+    require(len(overlays) == 1, 'reference input binding: checkpoint fixture digest')
+    literal_inputs = {name: dict(values, **overlays[0]['literals'][name]) for name, values in literal_inputs.items()}
+else:
+    case_order = formula_inventory.get('case_order', [])
+    require(set(case_order) == set(reference_cases) and len(case_order) == len(reference_cases), 'reference input binding: authored case order')
+    literal_inputs['Policy Lab']['C4'] = case_order.index(case) + 1
+
+
+def validate_authored_literals(cells, expected, sheet):
+    for address, value in expected.items():
+        cell = cells.get(address)
+        failure = ('authored literal mismatch', sheet, address, value)
+        if cell is None:
+            require(value is None, failure)
+            continue
+        require(cell.find('s:f', NS) is None and cell.find('s:is', NS) is None, failure)
+        saved = cell.find('s:v', NS)
+        kind = cell.get('t', 'n')
+        if value is None:
+            require(kind == 'n' and (saved is None or saved.text in (None, '')), failure)
+        elif isinstance(value, bool):
+            require(kind == 'b' and saved is not None and saved.text in ('0', '1')
+                    and (saved.text == '1') == value, failure)
+        else:
+            require(type(value) in (int, float) and math.isfinite(value)
+                    and kind == 'n' and saved is not None, failure)
+            try:
+                actual = float(saved.text)
+            except (ValueError, TypeError):
+                raise AssertionError(failure)
+            if sheet == 'Policy Lab' and address in ('C4', 'C5', 'C6'):
+                require(actual == value, failure)
+                continue
+            # Relative rounding allowance is capped by the existing 1e-7 parity contract; zero stays exact.
+            require(math.isfinite(actual) and abs(actual - value) <= min(1e-7, abs(value) * 1e-12), failure)
+
 
 FORMULA_QUOTED = re.compile(r'("(?:[^"]|"")*"|\'(?:[^\']|\'\')*\'!)')
 FORMULA_REFERENCE = re.compile(r'(?<![A-Z0-9_])(\$?)([A-Z]{1,3})(\$?)([1-9][0-9]*)(?![A-Z0-9_])', re.IGNORECASE | re.ASCII)
@@ -445,8 +489,8 @@ CHART_ANCHORS = {'Inflation and expectations (%)': (1, 19, 8, 35), 'Unemployment
                  'Policy and long yield (%)': (1, 36, 8, 52), 'Model confidence scores (0–100)': (8, 36, 16, 52)}
 
 
-def saved_string(cell, strings, message):
-    require(cell is not None and cell.find('s:f', NS) is None, message)
+def cached_string(cell, strings, message):
+    require(cell is not None, message)
     kind = cell.get('t')
     if kind == 'inlineStr':
         return string_text(cell.find('s:is', NS), message)
@@ -457,6 +501,11 @@ def saved_string(cell, strings, message):
         require(index < len(strings), message)
         return strings[index]
     return value.text or ''
+
+
+def saved_string(cell, strings, message):
+    require(cell is not None and cell.find('s:f', NS) is None, message)
+    return cached_string(cell, strings, message)
 
 
 def saved_number(cell, message):
@@ -582,6 +631,16 @@ def dashboard_values(lab, economy, strings):
             expected = saved_number(economy.get(source), ('dashboard Economy source', source)) * scale
             require(abs(value - expected) < 1e-7, ('dashboard source cache parity', address))
             data[col].append(value)
+    summary_fields = formula_inventory.get('summary_fields')
+    require(isinstance(summary_fields, dict) and len(summary_fields) == 6, 'dashboard summary inventory')
+    shown = literal_inputs['Policy Lab']['C5']
+    require(type(shown) in (int, float) and math.isfinite(shown) and shown == int(shown)
+            and 0 <= shown < len(states), 'dashboard summary horizon')
+    for address, field in summary_fields.items():
+        require(field in states[int(shown)], ('dashboard summary inventory', field))
+        actual = saved_number(lab.get(address), ('dashboard summary cache', address))
+        expected = float(states[int(shown)][field])
+        require(math.isfinite(expected) and abs(actual - expected) < 1e-7, ('dashboard summary cache parity', address))
     return data
 
 
@@ -630,10 +689,22 @@ for filename in args.workbooks:
         require(len(identities) == len(set(identities)), ('worksheet inventory', 'sheetId'))
         sheets = {}
         for sheet in records:
-            if sheet.get('name') in ('Policy Lab', 'Policy'):
+            if sheet.get('name') in ('Policy Lab', 'Policy', 'Assumptions', 'Shocks'):
                 require(sheet.get('state', 'visible') == 'visible', ('interactive worksheet visibility', sheet.get('name')))
             sheets[sheet.attrib['name']] = relationship_target(archive, parts, part_types, 'xl/workbook.xml', sheet.attrib['{' + NS['r'] + '}id'], 'worksheet')
         require({'Policy Lab', 'Policy', 'Assumptions', 'Economy', 'Shocks'} <= set(sheets), 'worksheet inventory: missing required sheet')
+        object_settings = workbook.findall('s:workbookPr', NS)
+        require(len(object_settings) == len(workbook.findall('.//s:workbookPr', NS)) <= 1,
+                'workbook object visibility: ambiguous properties')
+        require(not object_settings or (len(object_settings[0]) == 0
+                and object_settings[0].get('showObjects', 'all') == 'all'), 'workbook object visibility')
+        calculation = workbook.findall('s:calcPr', NS)
+        require(len(calculation) == len(workbook.findall('.//s:calcPr', NS)) <= 1,
+                'workbook automatic calculation: ambiguous properties')
+        require(not calculation or (len(calculation[0]) == 0
+                and calculation[0].get('calcMode', 'auto') in ('auto', 'autoNoTable')
+                and calculation[0].get('fullPrecision', 'true') in ('1', 'true')
+                and calculation[0].get('iterate', 'false') in ('0', 'false')), 'workbook automatic calculation')
         if args.campaign_reference:
             campaign = json.loads(args.campaign_reference.read_text())
             require(campaign['scenario']['id'] == 'mixed_crises', 'Campaign reference must be Recurring crises')
@@ -691,15 +762,33 @@ for filename in args.workbooks:
             errors.extend((name, c.attrib['r'], c.find('s:v', NS).text)
                           for c in sheet_cells.values()
                           if c.attrib.get('t') == 'e')
+            if name in ('Policy', 'Policy Lab', 'Assumptions', 'Shocks'):
+                protection = part.findall('s:sheetProtection', NS)
+                require(len(protection) == len(part.findall('.//s:sheetProtection', NS)) <= 1,
+                        ('interactive sheet protection: ambiguous declaration', name))
+                require(not protection or (len(protection[0]) == 0
+                        and protection[0].get('sheet', 'false') in ('0', 'false')), ('interactive sheet protection', name))
         require(not errors, errors[:10])
         validate_authored_formulas(cells, shared)
+        for name, expected in literal_inputs.items():
+            validate_authored_literals(sheet_data[name], expected, name)
         charts = [item.attrib['PartName'].lstrip('/') for item in content_types
                   if item.attrib.get('ContentType', '').lower() == 'application/vnd.openxmlformats-officedocument.drawingml.chart+xml']
         require(len(charts) == 4, 'validation failed')
         anchors = validate_chart_reachability(archive, parts, part_types, drawing_refs, content_types, charts)
         lab = sheet_data['Policy Lab']
-        strings = shared_strings(archive, parts, part_types) if any(cell.get('t') == 's' for cell in lab.values()) else []
+        strings = shared_strings(archive, parts, part_types) if any(cell.get('t') == 's' for table in sheet_data.values() for cell in table.values()) else []
         plot_values = dashboard_values(lab, cells, strings)
+        for name in ('Policy Lab', 'Policy', 'Assumptions', 'Economy', 'Shocks'):
+            address = 'E4' if name == 'Policy Lab' else 'D3'
+            message = ('dashboard cached label', name, address)
+            require(cached_string(sheet_data[name].get(address), strings, message) == reference['scenario']['label'], message)
+        labels = formula_inventory.get('benchmark_labels')
+        selector = literal_inputs['Policy Lab']['C6']
+        require(isinstance(labels, list) and len(labels) == 2 and all(isinstance(label, str) for label in labels)
+                and selector in (1, 2), 'dashboard cached label benchmark inventory')
+        require(cached_string(lab.get('E6'), strings, 'dashboard cached label benchmark') == labels[int(selector) - 1],
+                'dashboard cached label benchmark')
         expected_series = {'Inflation and expectations (%)': ['C', 'D', 'E'], 'Unemployment (%)': ['F', 'G'],
                            'Policy and long yield (%)': ['H', 'I'], 'Model confidence scores (0–100)': ['J', 'K']}
         palettes = []

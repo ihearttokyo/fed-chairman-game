@@ -319,6 +319,36 @@ with tempfile.TemporaryDirectory(prefix='fed-source-copy-identity-') as director
         raise AssertionError('\n'.join(failures))
 print('PASS: actual source-copy guard accepts matches and rejects drift in normal/-O/inherited modes')
 
+# input54: the actual typed-literal guard keeps blank, numeric and boolean inputs distinct.
+input54_tree = ast.parse((ROOT / 'scripts/spreadsheet/check-workbook.py').read_text())
+input54_nodes = [node for node in input54_tree.body if isinstance(node, ast.FunctionDef)
+                 and node.name in ('require', 'validate_authored_literals')]
+assert len(input54_nodes) == 2, 'Locate actual input54 guard'
+input54_scope = {'NS': {'s': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}, 'math': math}
+exec(compile(ast.Module(body=input54_nodes, type_ignores=[]), '<actual typed-input guard>', 'exec'), input54_scope)
+for expected, kind, raw in [(None, 'n', None), (0, 'n', '0'), (1e-15, 'n', '1e-15'), (True, 'b', '1'), (False, 'b', '0')]:
+    xml = '<c xmlns="' + input54_scope['NS']['s'] + '" r="A1" t="' + kind + '">' + ('' if raw is None else '<v>' + raw + '</v>') + '</c>'
+    input54_scope['validate_authored_literals']({'A1': ET.fromstring(xml)}, {'A1': expected}, 'Assumptions')
+for expected, children, kind in [(None, '<v>0</v>', 'n'), (0, '', 'n'), (True, '<v>1</v>', 'n'),
+                                  (1, '<v>1</v>', 'b'), (1, '<v>1</v>', 'str'), (1e-15, '<v>0</v>', 'n'),
+                                  (1, '<v>NaN</v>', 'n'), (1, '<f>0</f><v>1</v>', 'n')]:
+    cell = ET.fromstring('<c xmlns="' + input54_scope['NS']['s'] + '" r="A1" t="' + kind + '">' + children + '</c>')
+    try:
+        input54_scope['validate_authored_literals']({'A1': cell}, {'A1': expected}, 'Assumptions')
+    except AssertionError as error:
+        assert 'authored literal mismatch' in str(error)
+    else:
+        raise AssertionError('input54 accepted a wrong literal type/value/formula')
+for address, value in [('C4', 3), ('C5', 48), ('C6', 1)]:
+    cell = ET.fromstring('<c xmlns="' + input54_scope['NS']['s'] + '" r="' + address + '"><v>' + repr(value + 5e-13) + '</v></c>')
+    try:
+        input54_scope['validate_authored_literals']({address: cell}, {address: value}, 'Policy Lab')
+    except AssertionError as error:
+        assert 'authored literal mismatch' in str(error)
+    else:
+        raise AssertionError('label60 accepted a fractional discrete selector')
+print('PASS: input54 actual typed source input guard (simulated XML)')
+
 # Exact authored expressions need no token normalization; differing expressions still do.
 checker_tree = ast.parse((ROOT / 'scripts/spreadsheet/check-workbook.py').read_text())
 authored_nodes = [node for node in checker_tree.body if isinstance(node, ast.FunctionDef)
