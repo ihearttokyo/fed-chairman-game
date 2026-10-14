@@ -87,6 +87,26 @@ def has_formula(cell, shared):
     return all(low <= value <= high for low, value, high in zip(first, point, last))
 
 
+# Fixed builder dialect: literals, arithmetic, local A1 references and these pure functions.
+SAFE_FORMULA_TOKENS = re.compile(
+    r'"(?:[^"]|"")*"'
+    r"|(?:'(?:Policy Lab|Policy|Assumptions|Economy|Shocks)'|Policy|Assumptions|Economy|Shocks)!"
+    r'|(?:ABS|AND|CHOOSE|COUNT|COUNTA|EXP|IF|IFERROR|INDEX|INT|ISBLANK|ISLOGICAL|ISNUMBER|LARGE|LN|MAX|MIN|NA|NOT|OR|POWER|ROUND|SIGN|SUM|TANH)\s*(?=\()'
+    r'|(?:TRUE|FALSE)(?![A-Z0-9_])|\$?[A-Z]{1,3}\$?[1-9][0-9]*'
+    r'|(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:E[+-]?[0-9]+)?|[\s+*/^&=<>():,-]',
+    re.IGNORECASE | re.ASCII,
+)
+
+
+def validate_formulas(part, path):
+    tags = {'{' + NS['s'] + '}' + name for name in ('f', 'formula', 'formula1', 'formula2', 'definedName')}
+    tags.add('{' + NS['c'] + '}f')
+    for node in part.iter():
+        if node.tag in tags:
+            require(not SAFE_FORMULA_TOKENS.sub('', node.text or ''),
+                    ('unsupported workbook formula', path, node.text))
+
+
 for filename in args.workbooks:
     with zipfile.ZipFile(filename) as archive:
         names = archive.namelist()
@@ -107,6 +127,7 @@ for filename in args.workbooks:
                         and not any(token in relationship.get('Type', '').lower() for token in forbidden),
                         ('active content relationship', path, relationship.attrib))
         workbook = ET.fromstring(archive.read('xl/workbook.xml'))
+        validate_formulas(workbook, 'xl/workbook.xml')
         relationships = ET.fromstring(archive.read('xl/_rels/workbook.xml.rels'))
         targets = {r.attrib['Id']: r.attrib['Target'] for r in relationships}
         sheets = {}
@@ -149,8 +170,10 @@ for filename in args.workbooks:
                 require(math.isfinite(actual) and math.isfinite(float(value)) and error < 1e-7, ('full-state parity', filename, quarter, field, actual, value))
         errors = []
         for name, path in sheets.items():
+            part = ET.fromstring(archive.read(path))
+            validate_formulas(part, path)
             errors.extend((name, c.attrib['r'], c.find('s:v', NS).text)
-                          for c in ET.fromstring(archive.read(path)).findall('.//s:c', NS)
+                          for c in part.findall('.//s:c', NS)
                           if c.attrib.get('t') == 'e')
         require(not errors, errors[:10])
         charts = [item.attrib['PartName'].lstrip('/') for item in content_types
@@ -162,6 +185,7 @@ for filename in args.workbooks:
         titles = []
         for path in charts:
             chart = ET.fromstring(archive.read(path))
+            validate_formulas(chart, path)
             title = ''.join(node.text or '' for node in chart.findall('c:chart/c:title//a:t', NS))
             titles.append(title)
             formats = chart.findall('.//c:valAx/c:numFmt', NS)

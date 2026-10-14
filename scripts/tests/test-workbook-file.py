@@ -87,6 +87,22 @@ with tempfile.TemporaryDirectory(prefix='fed-chart-regression-') as directory:
                           ('validation-blank', 'Policy input validation must not ignore blanks'),
                           ('validation-alert', 'Policy input validation alert disabled'),
                           ('validation-stop', 'Policy input validation must Stop')]
+    formula_cases = {
+        'external-webservice': ('WEBSERVICE("https://example.invalid/data")', 'economy'),
+        'external-dde': ("'server'|'topic'!A1", 'economy'),
+        'external-workbook': ("'[remote.xlsx]Economy'!A1", 'economy'),
+        'external-hyperlink': ('HYPERLINK("https://example.invalid","open")', 'policy'),
+        'external-prefixed': ('_xlfn.WEBSERVICE("https://example.invalid")', 'economy'),
+        'external-rtd': ('RTD("server",,"topic")', 'economy'),
+        'external-note': ('WEBSERVICE("https://example.invalid/note")', 'shocks'),
+        'external-defined-name': ('WEBSERVICE("https://example.invalid/name")', 'name'),
+        'external-validation': ('WEBSERVICE("https://example.invalid/validation")', 'validation'),
+        'external-conditional': ('HYPERLINK("https://example.invalid/conditional")', 'conditional'),
+        'safe-formula-literals': ('IF("DDE | [book] ! WEBSERVICE(""https://example.invalid"")"="unchanged",0,1)', 'shocks'),
+        'safe-formula-reference': ("if(1e-3>0,'Economy'!$D$4+1,0)", 'shocks'),
+        'safe-defined-name': ("'Policy Lab'!$B$58:$B$106", 'name'),
+    }
+    defects += [(name, None if name.startswith('safe-') else 'unsupported workbook formula') for name in formula_cases]
     defects += validation_defects
     if campaign:
         defects.append(('campaign-note', 'stale or missing campaign explanation'))
@@ -98,6 +114,15 @@ with tempfile.TemporaryDirectory(prefix='fed-chart-regression-') as directory:
             charts = {part.attrib['PartName'].lstrip('/')
                       for part in ET.fromstring(source.read('[Content_Types].xml'))
                       if part.attrib.get('ContentType') == 'application/vnd.openxmlformats-officedocument.drawingml.chart+xml'}
+            if defect in formula_cases:
+                workbook_xml = ET.fromstring(source.read('xl/workbook.xml'))
+                relationships = {item.get('Id'): item.get('Target') for item in ET.fromstring(source.read('xl/_rels/workbook.xml.rels'))}
+                sheet_paths = {}
+                for sheet in workbook_xml.find('s:sheets', NS):
+                    path = relationships[sheet.get('{' + NS['r'] + '}id')]
+                    sheet_paths[sheet.get('name')] = path.lstrip('/') if path.startswith('/') else posixpath.normpath('xl/' + path)
+                injected_formula, location = formula_cases[defect]
+                formula_path = 'xl/workbook.xml' if location == 'name' else sheet_paths[{'economy': 'Economy', 'policy': 'Policy', 'shocks': 'Shocks', 'validation': 'Policy', 'conditional': 'Policy'}[location]]
             if defect.startswith('duplicate-'):
                 path = 'xl/_rels/workbook.xml.rels' if defect == 'duplicate-relationship' else '[Content_Types].xml'
                 part = ET.fromstring(source.read(path))
@@ -117,6 +142,28 @@ with tempfile.TemporaryDirectory(prefix='fed-chart-regression-') as directory:
                 economy_path = target_path.lstrip('/') if target_path.startswith('/') else posixpath.normpath('xl/' + target_path)
             for info in source.infolist():
                 data = source.read(info.filename)
+                if defect in formula_cases and info.filename == formula_path:
+                    part = ET.fromstring(data)
+                    if location == 'name':
+                        names = part.find('s:definedNames', NS)
+                        if names is None:
+                            names = ET.SubElement(part, '{' + NS['s'] + '}definedNames')
+                        formula = ET.SubElement(names, '{' + NS['s'] + '}definedName', name='FormulaGuardFixture')
+                    elif location == 'validation':
+                        formula = ET.SubElement(part.find('s:dataValidations/s:dataValidation', NS), '{' + NS['s'] + '}formula2')
+                    elif location == 'conditional':
+                        formatting = ET.SubElement(part, '{' + NS['s'] + '}conditionalFormatting', sqref='E4')
+                        rule = ET.SubElement(formatting, '{' + NS['s'] + '}cfRule', type='expression', priority='1')
+                        formula = ET.SubElement(rule, '{' + NS['s'] + '}formula')
+                    else:
+                        address = f'E{json.loads(row_map.read_text())["actual_output_index"]}' if location == 'economy' else 'E20' if location == 'policy' else 'E4'
+                        cell = next(cell for cell in part.findall('.//s:c', NS) if cell.get('r') == address)
+                        formula = cell.find('s:f', NS)
+                        if formula is None:
+                            formula = ET.SubElement(cell, '{' + NS['s'] + '}f')
+                    formula.text = injected_formula
+                    data = ET.tostring(part, encoding='utf-8', xml_declaration=True)
+                    changed = True
                 if defect == 'cold-start-formula' and info.filename == economy_path:
                     part = ET.fromstring(data)
                     address = f'D{json.loads(row_map.read_text())["actual_output_index"]}'

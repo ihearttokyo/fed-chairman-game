@@ -1,5 +1,6 @@
 """Exercise workbook output and process boundaries without authoring a workbook."""
 import importlib.util
+import ast
 import hashlib
 import json
 import math
@@ -140,6 +141,99 @@ with tempfile.TemporaryDirectory(prefix='fed-workbook-dependencies-') as directo
 print(f'PASS: managed dependency provenance: 4 manifests, {changes} identity changes, {rejected} metadata refusals (Python fixtures)')
 
 
+# pnpm resolves hidden transitive packages through sibling links in its virtual store.
+with tempfile.TemporaryDirectory(prefix='fed-workbook-pnpm-') as directory:
+    modules = Path(directory) / 'node_modules'
+    store = modules / '.pnpm'
+    artifact = store / '@oai+artifact-tool@2.8.91/node_modules/@oai/artifact-tool'
+    hidden = store / '@scope+hidden@1.0.0/node_modules/@scope/hidden'
+    leaf = hidden / 'node_modules/@nested/leaf'
+    for package, name, version in ((artifact, '@oai/artifact-tool', '2.8.91'),
+                                   (hidden, '@scope/hidden', '1.0.0'),
+                                   (leaf, '@nested/leaf', '1.0.0')):
+        package.mkdir(parents=True)
+        (package / 'package.json').write_text(json.dumps({'name': name, 'version': version}))
+    (modules / '@oai').mkdir()
+    (modules / '@oai/artifact-tool').symlink_to(artifact, target_is_directory=True)
+    sibling = artifact.parent.parent / '@scope/hidden'
+    sibling.parent.mkdir()
+    sibling.symlink_to(hidden, target_is_directory=True)
+    hoisted = store / 'node_modules/@scope/hidden'
+    hoisted.parent.mkdir(parents=True)
+    hoisted.symlink_to(hidden, target_is_directory=True)
+    cycle = hidden / 'node_modules/@scope/hidden'
+    cycle.parent.mkdir()
+    cycle.symlink_to(hidden, target_is_directory=True)
+    lock = store / 'lock.yaml'
+    lock.write_text("lockfileVersion: '9.0'\n")
+    original = builder.dependency_provenance(modules)
+    manifest = hidden / 'package.json'
+    raw = manifest.read_bytes()
+    for replacement in (b'{"name":"@scope/hidden","version":"1.0.1"}', raw + b'\n'):
+        manifest.write_bytes(replacement)
+        changed = builder.dependency_provenance(modules)
+        assert changed['dependency_set_sha256'] != original['dependency_set_sha256'], 'pnpm transitive manifest change must alter identity even with unchanged lock'
+        assert changed['lockfiles_sha256'] == original['lockfiles_sha256']
+        assert changed['artifact_tool'] == original['artifact_tool']
+        manifest.write_bytes(raw)
+    paths = original['package_manifests']
+    assert str(manifest.relative_to(modules)) in paths, 'Include unexposed virtual-store package'
+    assert {'name': '@nested/leaf', 'version': '1.0.0', 'sha256': hashlib.sha256((leaf / 'package.json').read_bytes()).hexdigest()} in paths.values(), 'Retain exact nested scoped manifest even when cycle deduplication visits an alias first'
+    before = (leaf / 'package.json').read_bytes()
+    (leaf / 'package.json').write_bytes(before + b'\n')
+    nested_change = builder.dependency_provenance(modules)
+    assert nested_change['dependency_set_sha256'] != original['dependency_set_sha256'] and nested_change['lockfiles_sha256'] == original['lockfiles_sha256']
+    (leaf / 'package.json').write_bytes(before)
+    assert str((hoisted / 'package.json').relative_to(modules)) in paths, 'Include pnpm hoisted dependencies'
+    assert list(paths) == sorted(paths) and builder.dependency_provenance(modules) == original, 'Cycles terminate with deterministic metadata'
+    main = next(node for node in ast.parse((ROOT / 'scripts/build-workbook.py').read_text()).body
+                if isinstance(node, ast.FunctionDef) and node.name == 'main')
+    guard = next(node for node in main.body if isinstance(node, ast.If)
+                 and 'Managed dependency metadata changed during the build' in ast.unparse(node))
+    guard_code = compile(ast.fix_missing_locations(ast.Module(body=[guard], type_ignores=[])), '<actual dependency drift guard>', 'exec')
+    guard_values = {'dependency_provenance': builder.dependency_provenance,
+                    'args': builder.argparse.Namespace(modules=modules), 'dependencies': original}
+    exec(guard_code, guard_values)
+    manifest.write_bytes(raw + b'\n')
+    try:
+        exec(guard_code, guard_values)
+    except ValueError as error:
+        assert 'metadata changed' in str(error), error
+    else:
+        raise AssertionError('Production drift guard accepted changed pnpm transitive metadata')
+    manifest.write_bytes(raw)
+    rejected = 0
+    for path, replacement in ((manifest, None), (manifest, b'{'),
+                              (leaf / 'package.json', b'{"name":"@nested/leaf"}')):
+        before = path.read_bytes()
+        if replacement is None:
+            path.rename(path.with_suffix('.absent'))
+        else:
+            path.write_bytes(replacement)
+        try:
+            builder.dependency_provenance(modules)
+        except ValueError as error:
+            assert 'manifest' in str(error), error
+            rejected += 1
+        else:
+            raise AssertionError('Accepted missing/malformed virtual-store metadata')
+        if replacement is None:
+            path.with_suffix('.absent').rename(path)
+        else:
+            path.write_bytes(before)
+    broken = artifact.parent.parent / 'broken'
+    broken.symlink_to(store / 'missing-package', target_is_directory=True)
+    try:
+        builder.dependency_provenance(modules)
+    except ValueError as error:
+        assert 'Missing managed package manifest' in str(error), error
+        rejected += 1
+    else:
+        raise AssertionError('Accepted dangling pnpm sibling link')
+    assert rejected == 4
+print('PASS: pnpm virtual-store metadata: 3 unchanged-lock identity changes, nested/scoped/cyclic links, actual drift guard and 4 refusals (Python fixtures)')
+
+
 with tempfile.TemporaryDirectory(prefix='fed-workbook-safety-') as directory:
     temporary = Path(directory)
     existing = temporary / 'existing'
@@ -187,6 +281,42 @@ with tempfile.TemporaryDirectory(prefix='fed-workbook-safety-') as directory:
             failed = True
         assert failed == rejected, (text, status)
 print('PASS: existing/internal/symlink workbook outputs and runtime-error gates (synthetic CLI evidence)')
+
+# Execute the actual identity guard and digest on real matching/mismatching files.
+identity_code = r"""
+import ast, hashlib, sys
+from pathlib import Path
+source = ast.parse(Path(sys.argv[1]).read_text())
+main = next(node for node in source.body if isinstance(node, ast.FunctionDef) and node.name == 'main')
+selected = [node for node in main.body if ast.unparse(node).startswith('digest = lambda') or 'Execution copy differs from source' in ast.unparse(node)]
+if len(selected) != 2:
+    raise RuntimeError('Production source-copy identity guard missing')
+module = ast.fix_missing_locations(ast.Module(body=selected, type_ignores=[]))
+exec(compile(module, '<actual workbook identity guard>', 'exec', optimize=sys.flags.optimize),
+     {'hashlib': hashlib, 'builder': Path(sys.argv[2]), 'execution_copy': Path(sys.argv[3])})
+"""
+with tempfile.TemporaryDirectory(prefix='fed-source-copy-identity-') as directory:
+    original = Path(directory) / 'source.mjs'
+    copy = Path(directory) / 'execution.mjs'
+    original.write_text('same source')
+    modes = [([], dict(os.environ, PYTHONOPTIMIZE='')),
+             (['-O'], dict(os.environ, PYTHONOPTIMIZE='')),
+             ([], dict(os.environ, PYTHONOPTIMIZE='1'))]
+    failures = []
+    for flags, environment in modes:
+        for changed in (False, True):
+            copy.write_text('different source' if changed else 'same source')
+            result = subprocess.run([sys.executable, *flags, '-c', identity_code,
+                                     str(ROOT / 'scripts/build-workbook.py'), str(original), str(copy)],
+                                    capture_output=True, text=True, env=environment)
+            if changed:
+                if result.returncode == 0 or 'Execution copy differs from source' not in result.stderr:
+                    failures.append('Optimized source-copy mismatch accepted')
+            elif result.returncode != 0:
+                failures.append('Matching source copy rejected: ' + result.stderr)
+    if failures:
+        raise AssertionError('\n'.join(failures))
+print('PASS: actual source-copy guard accepts matches and rejects drift in normal/-O/inherited modes')
 
 if sys.argv[1:] == ['--python-only']:
     print('NOT RUN: real engine integration (--python-only)')
@@ -348,41 +478,3 @@ print('PASS: real Godot15 source-bound balance traces, zero-access default, matu
 # Exact raw JSON avoids formatting loss in an otherwise valid native numeric snapshot.
 assert all(f['portfolio_reference_json'].encode() == portfolio_bytes for f in fixtures)
 print('PASS: exact source JSON bytes and hashes retained in every native balance trace')
-
-
-
-# Execute the actual identity guard and digest on real matching/mismatching files.
-identity_code = r"""
-import ast, hashlib, sys
-from pathlib import Path
-source = ast.parse(Path(sys.argv[1]).read_text())
-main = next(node for node in source.body if isinstance(node, ast.FunctionDef) and node.name == 'main')
-selected = [node for node in main.body if ast.unparse(node).startswith('digest = lambda') or 'Execution copy differs from source' in ast.unparse(node)]
-if len(selected) != 2:
-    raise RuntimeError('Production source-copy identity guard missing')
-module = ast.fix_missing_locations(ast.Module(body=selected, type_ignores=[]))
-exec(compile(module, '<actual workbook identity guard>', 'exec', optimize=sys.flags.optimize),
-     {'hashlib': hashlib, 'builder': Path(sys.argv[2]), 'execution_copy': Path(sys.argv[3])})
-"""
-with tempfile.TemporaryDirectory(prefix='fed-source-copy-identity-') as directory:
-    original = Path(directory) / 'source.mjs'
-    copy = Path(directory) / 'execution.mjs'
-    original.write_text('same source')
-    modes = [([], dict(os.environ, PYTHONOPTIMIZE='')),
-             (['-O'], dict(os.environ, PYTHONOPTIMIZE='')),
-             ([], dict(os.environ, PYTHONOPTIMIZE='1'))]
-    failures = []
-    for flags, environment in modes:
-        for changed in (False, True):
-            copy.write_text('different source' if changed else 'same source')
-            result = subprocess.run([sys.executable, *flags, '-c', identity_code,
-                                     str(ROOT / 'scripts/build-workbook.py'), str(original), str(copy)],
-                                    capture_output=True, text=True, env=environment)
-            if changed:
-                if result.returncode == 0 or 'Execution copy differs from source' not in result.stderr:
-                    failures.append('Optimized source-copy mismatch accepted')
-            elif result.returncode != 0:
-                failures.append('Matching source copy rejected: ' + result.stderr)
-    if failures:
-        raise AssertionError('\n'.join(failures))
-print('PASS: actual source-copy guard accepts matches and rejects drift in normal/-O/inherited modes')

@@ -70,6 +70,11 @@ def dependency_provenance(modules):
         seen.add(directory.resolve())
         packages = []
         for entry in sorted(directory.iterdir()):
+            if entry.name == '.pnpm' and entry.is_dir():
+                pending.extend(sorted(path for path in entry.glob('*/node_modules') if path.is_dir()))
+                if (entry / 'node_modules').is_dir():
+                    pending.append(entry / 'node_modules')
+                continue
             if entry.name.startswith('.'):
                 continue
             if entry.name.startswith('@') and entry.is_dir():
