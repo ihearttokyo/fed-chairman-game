@@ -13,6 +13,7 @@ import zipfile
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('workbooks', nargs='+', type=Path)
 parser.add_argument('--reference', required=True, type=Path)
+parser.add_argument('--reference-set', required=True, type=Path, help='Trusted eight-case native reference directory used by the authored inventory')
 parser.add_argument('--map', required=True, type=Path)
 parser.add_argument('--campaign-reference', type=Path, help='Validate saved campaign explanation against its native export')
 parser.add_argument('--portfolio-reference', type=Path, help='Resident source copy bound by the native export hash')
@@ -161,7 +162,7 @@ def shared_formulas(cells):
 formula_inventory_path = args.map.with_suffix('.formulas.json')
 require(formula_inventory_path.is_file(), 'missing authored formula inventory; run generate-formula-inventory.mjs')
 formula_inventory = json.loads(formula_inventory_path.read_text())
-require(formula_inventory.get('schema_version') == 1, 'unsupported authored formula inventory schema')
+require(formula_inventory.get('schema_version') == 2, 'unsupported authored formula inventory schema')
 for name, key in [('build-policy-lab.mjs', 'builder_sha256'), ('generate-formula-inventory.mjs', 'generator_sha256')]:
     require(hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest() == formula_inventory.get(key),
             ('authored formula inventory source mismatch', name))
@@ -173,6 +174,42 @@ require(isinstance(formula_inventory.get('formulas'), dict), 'missing authored f
 for field in formula_inventory['state_fields']:
     require(all(f'{column(q + 4)}{rows[field]}' in formula_inventory['formulas'] for q in range(49)),
             ('incomplete authored formula inventory', field))
+
+# Exact full-set binding catches layout changes in nonactive cases as well.
+reference_hashes = formula_inventory.get('reference_sha256', {})
+require(isinstance(reference_hashes, dict) and len(reference_hashes) == 8, 'reference input binding: expected eight cases')
+reference_cases = {}
+for case, digest in reference_hashes.items():
+    require(isinstance(case, str) and re.fullmatch(r'[a-z_]+', case) is not None, 'reference input binding: invalid case')
+    path = args.reference_set / (case + '.json')
+    require(path.is_file(), ('reference input binding: missing case', case))
+    raw = path.read_bytes()
+    require(hashlib.sha256(raw).hexdigest() == digest, ('reference input binding: source set digest', case))
+    document = json.loads(raw)
+    require(document['scenario']['id'] == case and document['initial_state']['quarter_index'] == 0,
+            ('reference input binding: cold source case', case))
+    reference_cases[case] = document
+case = reference['scenario']['id']
+require(case in reference_cases, 'reference input binding: unknown active case')
+if reference['initial_state']['quarter_index'] == 0:
+    require(hashlib.sha256(args.reference.read_bytes()).hexdigest() == reference_hashes[case],
+            'reference input binding: cold active digest')
+else:
+    def authored_inputs(document):
+        return json.dumps({'parameters': document['parameters'], 'scenario': document['scenario'],
+                           'initial_keys': list(document['scenario']['initial']),
+                           'portfolio_reference_json': document['portfolio_reference_json'],
+                           'portfolio_reference_sha256': document['portfolio_reference_sha256'],
+                           'state_fields': list(flatten_state(document['initial_state']))}, sort_keys=True, separators=(',', ':'))
+    require(authored_inputs(reference) == authored_inputs(reference_cases[case]),
+            'reference input binding: checkpoint authored inputs/layout')
+if args.campaign_reference:
+    require(hashlib.sha256(args.campaign_reference.read_bytes()).hexdigest() == reference_hashes.get('mixed_crises'),
+            'reference input binding: campaign source digest')
+require(isinstance(formula_inventory.get('upstream_formulas'), dict)
+        and all(isinstance(formula_inventory['upstream_formulas'].get(name), dict)
+                and formula_inventory['upstream_formulas'][name] for name in ('Assumptions', 'Shocks')),
+        'incomplete authored upstream formula inventory')
 
 FORMULA_QUOTED = re.compile(r'("(?:[^"]|"")*"|\'(?:[^\']|\'\')*\'!)')
 FORMULA_REFERENCE = re.compile(r'(?<![A-Z0-9_])(\$?)([A-Z]{1,3})(\$?)([1-9][0-9]*)(?![A-Z0-9_])', re.IGNORECASE | re.ASCII)
@@ -208,12 +245,14 @@ def translate_formula(text, origin, address):
     return ''.join(pieces)
 
 
-def validate_authored_formulas(cells, shared):
+def validate_authored_formulas(cells, shared, expected_formulas=None):
+    economy_contract = expected_formulas is None
+    expected_formulas = formula_inventory['formulas'] if economy_contract else expected_formulas
     origins = {unsigned_integer(cell.find('s:f', NS).get('si'), 'shared formula group index'): address
                for address, cell in cells.items() if cell.find('s:f', NS) is not None
                and cell.find('s:f', NS).get('t') == 'shared' and cell.find('s:f', NS).get('ref') is not None}
-    checkpoint_literals = {f'D{rows[field]}' for field in formula_inventory['state_fields']} if reference['initial_state']['quarter_index'] > 0 else set()
-    for address, expected in formula_inventory['formulas'].items():
+    checkpoint_literals = {f'D{rows[field]}' for field in formula_inventory['state_fields']} if economy_contract and reference['initial_state']['quarter_index'] > 0 else set()
+    for address, expected in expected_formulas.items():
         require(address in cells, ('authored formula mismatch', address, 'missing cell'))
         formula = cells[address].find('s:f', NS)
         if address in checkpoint_literals or expected is None:
@@ -355,6 +394,14 @@ def validate_chart_reachability(archive, parts, part_types, drawing_refs, conten
                 anchored_frames = anchor.findall('xdr:graphicFrame', NS)
                 require(len(anchored_frames) == 1, ('chart reachability: invalid anchor frame count', target))
                 frame = anchored_frames[0]
+                nonvisual = frame.findall('xdr:nvGraphicFramePr', NS)
+                require(len(nonvisual) == 1 and len(frame.findall('.//xdr:nvGraphicFramePr', NS)) == 1,
+                        ('chart frame visibility: nonvisual properties', target))
+                properties = nonvisual[0].findall('xdr:cNvPr', NS)
+                require(len(properties) == 1 and len(frame.findall('.//xdr:cNvPr', NS)) == 1,
+                        ('chart frame visibility: drawing properties', target))
+                require(properties[0].get('hidden', '0') in ('0', 'false'),
+                        ('chart frame visibility: hidden or unsupported boolean', target))
                 graphics = frame.findall('a:graphic', NS)
                 require(len(graphics) == 1, ('chart reachability: invalid graphic count', target))
                 payloads = graphics[0].findall('a:graphicData', NS)
@@ -638,7 +685,9 @@ for filename in args.workbooks:
             sheet_data[name] = sheet_cells
             drawing_refs.extend((path, node.get('{' + NS['r'] + '}id')) for node in part.findall('s:drawing', NS))
             if name != 'Economy':
-                shared_formulas(sheet_cells)
+                sheet_shared = shared_formulas(sheet_cells)
+                if name in formula_inventory['upstream_formulas']:
+                    validate_authored_formulas(sheet_cells, sheet_shared, formula_inventory['upstream_formulas'][name])
             errors.extend((name, c.attrib['r'], c.find('s:v', NS).text)
                           for c in sheet_cells.values()
                           if c.attrib.get('t') == 'e')
@@ -680,14 +729,14 @@ for filename in args.workbooks:
             palettes.append([s.find('c:spPr/a:ln/a:solidFill/a:srgbClr', NS).attrib['val'] for s in series])
             for item, col in zip(series, expected_series[title]):
                 chart_title(item, col, PLOT_LABELS[ord(col) - ord('C')], path)
-                category = chart_formula(item, 'cat', ('strRef', 'numRef'), path)
+                category = chart_formula(item, 'cat', ('strRef',), path)
                 require(category == "'Policy Lab'!$B$58:$B$106",
                         (path, title, 'chart category binding'))
                 value = chart_formula(item, 'val', ('numRef',), path)
                 require(value == f"'Policy Lab'!${col}$58:${col}$106",
                         (path, title, 'chart value binding'))
                 cat_ref = item.find('c:cat', NS)[0]
-                chart_cache(cat_ref, 'strCache' if cat_ref.tag.endswith('strRef') else 'numCache', plot_values['B'], (path, 'chart cache category'))
+                chart_cache(cat_ref, 'strCache', plot_values['B'], (path, 'chart cache category'))
                 chart_cache(item.find('c:val/c:numRef', NS), 'numCache', plot_values[col], (path, 'chart cache value', col))
         require(set(titles) == set(expected_series), 'Missing or duplicated chart')
         require(not any('vbaproject' in p.lower() or 'externallinks' in p.lower() for p in archive.namelist()), 'active content filename')

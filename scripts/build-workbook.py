@@ -227,7 +227,7 @@ def main():
              evidence / 'authored-formula-inventory.log', 'PASS: authored formula inventory')
     run_tool([sys.executable, str(ROOT / 'scripts/spreadsheet/check-workbook.py'),
               str(output / 'Federal Reserve Policy Lab.xlsx'), '--reference',
-              str(references / 'supply_shock.json'), '--map',
+              str(references / 'supply_shock.json'), '--reference-set', str(references), '--map',
               str(evidence / 'workbook-model-map.json'), '--campaign-reference',
               str(references / 'mixed_crises.json'), '--portfolio-reference',
               str(references / 'portfolio-reference.json')],
@@ -235,13 +235,13 @@ def main():
     run_tool([sys.executable, str(ROOT / 'scripts/tests/test-workbook-file.py'),
               str(output / 'Federal Reserve Policy Lab.xlsx'),
               str(references / 'supply_shock.json'), str(evidence / 'workbook-model-map.json'),
-              str(references / 'mixed_crises.json')],
+              str(references / 'mixed_crises.json'), '--reference-set', str(references)],
              evidence / 'workbook-file-regression.log', 'PASS: real workbook accepted')
     for record in checkpoints:
         name = record['name']
         run_tool([sys.executable, str(ROOT / 'scripts/spreadsheet/check-workbook.py'),
                   str(output / 'late-checkpoints' / f'{name}.xlsx'), '--reference',
-                  str(references / f'{name}.json'), '--map',
+                  str(references / f'{name}.json'), '--reference-set', str(references), '--map',
                   str(evidence / 'workbook-model-map.json'), '--portfolio-reference',
                   str(references / 'portfolio-reference.json')],
                  evidence / f'checkpoint-{name}.log', 'PASS ')

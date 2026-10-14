@@ -62,6 +62,9 @@ assert.ok(driver.indexOf("'authored-formula-inventory.log'") < driver.indexOf("'
 assert.ok(inventorySource.includes('Authored inventory row map differs from builder output'), 'Fail closed on author/layout drift');
 assert.ok(inventorySource.includes("{ flag: 'wx' }"), 'Never replace an existing expected inventory');
 assert.ok(!inventorySource.includes('SpreadsheetFile') && !inventorySource.includes('readFile(workbook'), 'Authored inventory cannot derive expectations from candidate XLSX');
+assert.ok(inventorySource.includes('set formulas(matrix)') && inventorySource.includes('upstream_formulas: upstream'), 'Record upstream range emissions, not noStyle discards');
+assert.ok(inventorySource.includes("slice('const parameterRow = ', 'const p = ')") && inventorySource.includes("slice('const sourceStart = ', 'const f = ')"), 'Include parameter guards and source-ladder checks');
+assert.equal((driver.match(/'--reference-set'/g) ?? []).length, 3, 'Every checker/file-regression driver caller binds the full reference set');
 const inventoryEntryStart = inventorySource.indexOf('  const [references, map, output] = ');
 const inventoryEntryEnd = inventorySource.indexOf('  await fs.writeFile(output,', inventoryEntryStart);
 assert.ok(inventoryEntryStart >= 0 && inventoryEntryEnd > inventoryEntryStart, 'Locate the actual inventory CLI path');

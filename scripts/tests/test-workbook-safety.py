@@ -343,6 +343,26 @@ for actual, expected_calls in [('D6+1', 0), ('0', 2)]:
     assert len(normalizations) == expected_calls, 'Only differing expressions need normalization'
 print('PASS: actual authored-expression equality fast path and mismatch refusal (simulated XML cell)')
 
+# Checkpoint identity includes the raw portfolio inputs consumed by authoring.
+input_nodes = [node for node in ast.walk(checker_tree) if isinstance(node, ast.FunctionDef)
+               and node.name in ('require', 'flatten_state', 'authored_inputs')]
+assert len(input_nodes) == 3, 'Locate actual checkpoint-input signature'
+input_scope = {'json': json}
+exec(compile(ast.Module(body=input_nodes, type_ignores=[]), '<actual checkpoint-input signature>', 'exec'), input_scope)
+portfolio_fixture = '{"example":1}'
+input_fixture = {'parameters': [], 'scenario': {'initial': {}},
+                 'initial_state': {'quarter_index': 120, 'price_history': [1] * 5,
+                                   'treasury_cohorts_pct_initial_gdp': [0] * 120,
+                                   'sterilized_treasury_cohorts_pct_initial_gdp': [0] * 120,
+                                   'bill_cohorts_pct_initial_gdp': [0] * 4},
+                 'portfolio_reference_json': portfolio_fixture,
+                 'portfolio_reference_sha256': hashlib.sha256(portfolio_fixture.encode()).hexdigest()}
+original_signature = input_scope['authored_inputs'](input_fixture)
+for changed_key in ('portfolio_reference_json', 'portfolio_reference_sha256'):
+    changed_fixture = {**input_fixture, changed_key: 'changed portfolio input'}
+    assert input_scope['authored_inputs'](changed_fixture) != original_signature, 'Checkpoint signature must bind ' + changed_key
+print('PASS: actual checkpoint-input signature binds portfolio JSON/hash (simulated typed reference)')
+
 if sys.argv[1:] == ['--python-only']:
     print('NOT RUN: real engine integration (--python-only)')
     raise SystemExit(0)

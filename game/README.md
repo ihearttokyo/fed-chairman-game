@@ -129,13 +129,15 @@ For a separately recalculated disposable copy, run the same saved-file checker:
 ```sh
 python3 scripts/spreadsheet/check-workbook.py /absolute/recalculated.xlsx \
   --reference /absolute/new/workbook-directory/reference-v1/supply_shock.json \
+  --reference-set /absolute/new/workbook-directory/reference-v1 \
   --map /absolute/new/workbook-directory/evidence/workbook-model-map.json
 ```
 
 The checker requires `workbook-model-map.formulas.json` beside the row map.
 The build generates this trusted inventory from the authored equations and native
 references, not from the candidate workbook or its caches. For older outputs,
-generate it from the matching source and eight references first:
+generate the current schema in a new directory with a copied row map and the
+matching source/eight references first. Existing sidecars are never overwritten:
 
 ```sh
 /absolute/managed/node scripts/spreadsheet/generate-formula-inventory.mjs \
@@ -143,6 +145,14 @@ generate it from the matching source and eight references first:
   /absolute/new/workbook-directory/evidence/workbook-model-map.json \
   /absolute/new/workbook-directory/evidence/workbook-model-map.formulas.json
 ```
+
+Both the checker and file regression require `--reference-set`: the explicit
+trusted eight-case directory used for generation. Every source-file digest must
+match the sidecar, including nonactive scenarios; positive-clock references use
+the matching cold case's ordered parameters, scenario inputs and state-key layout.
+Formula contracts cover calculated Assumptions and Shocks upstream cells as well
+as Economy. Reference/map/sidecar remain trusted expected inputs, not a producer
+authentication scheme.
 
 The checker reads the supplied workbook without editing it. It verifies all
 quarterly state values for the default supply case, authored formula bindings,

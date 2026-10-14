@@ -1,6 +1,7 @@
 """Reject malformed policy validation, charts or caches in real workbook copies."""
 from pathlib import Path
 import json
+import argparse
 import os
 import posixpath
 import re
@@ -41,6 +42,17 @@ def validate_policy_inputs(archive):
 
 
 NEW_CASES = {
+    'upstream45-parameter': 'authored formula mismatch',
+    'upstream45-initial': 'authored formula mismatch',
+    'upstream45-source-check': 'authored formula mismatch',
+    'upstream45-source-weight': 'authored formula mismatch',
+    'upstream45-shock-first': 'authored formula mismatch',
+    'upstream45-shock-last': 'authored formula mismatch',
+    'upstream45-shock-shared-wrong': 'authored formula mismatch',
+    'upstream45-shock-shared': None,
+    'upstream45-shock-shared-backward': None,
+    'upstream45-shock-scalar': None,
+
     'formula19-split-number': 'authored formula mismatch',
     'formula19-split-comparison': 'authored formula mismatch',
     'formula19-zero-state': 'authored formula mismatch',
@@ -103,7 +115,8 @@ NEW_CASES = {
     'chart-duplicate-category': 'chart binding structure',
     'chart-duplicate-reference': 'chart binding structure',
     'chart-duplicate-formula': 'chart binding structure',
-    'chart-numeric-category': None,
+    # Q-string categories are strRef in the builder and all resident exports; numRef requires numeric data.
+    'chart-numeric-category': 'chart binding structure',
     'metadata-default-type': 'graph content type',
     'metadata-sheet-type': 'graph content type',
     'metadata-relationship-type': 'graph content type',
@@ -290,7 +303,69 @@ def chart19_mutations(source, defect, row_map):
     return {p: ET.tostring(x, encoding='utf-8', xml_declaration=True) for p, x in changes.items()}
 
 
+
+CHART45_CASES = {
+    **{f'chart45-{name}': 'chart frame visibility' for name in (
+        'hidden-one', 'hidden-true', 'hidden-empty', 'hidden-invalid', 'hidden-uppercase',
+        'missing-nonvisual', 'wrapped-nonvisual', 'duplicate-nonvisual', 'shadow-nonvisual',
+        'missing-properties', 'wrapped-properties', 'duplicate-properties', 'shadow-properties',
+        'wrong-properties-namespace')},
+    'chart45-numeric-category-no-cache': 'chart binding structure',
+    **{f'chart45-{name}': None for name in ('visible-absent', 'visible-zero', 'visible-false', 'string-category-no-cache')},
+}
+NEW_CASES.update(CHART45_CASES)
+
+
+def chart45_mutations(source, defect, row_map):
+    ns = dict(NS, c='http://schemas.openxmlformats.org/drawingml/2006/chart',
+              xdr='http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing')
+    kind = defect.removeprefix('chart45-')
+    types = ET.fromstring(source.read('[Content_Types].xml'))
+    if kind in ('numeric-category-no-cache', 'string-category-no-cache'):
+        path = next(p.get('PartName').lstrip('/') for p in types if p.get('ContentType', '').endswith('drawingml.chart+xml'))
+        chart = ET.fromstring(source.read(path))
+        ref = chart.find('.//c:ser/c:cat/c:strRef', ns)
+        require(ref is not None, 'chart45 category mutation requires authored string reference')
+        if kind == 'numeric-category-no-cache': ref.tag = '{' + ns['c'] + '}numRef'
+        for child in list(ref):
+            if child.tag != '{' + ns['c'] + '}f': ref.remove(child)
+        return {path: ET.tostring(chart, encoding='utf-8', xml_declaration=True)}
+    path = next(p.get('PartName').lstrip('/') for p in types if p.get('ContentType', '').endswith('drawing+xml'))
+    drawing = ET.fromstring(source.read(path))
+    frame = drawing.find('xdr:twoCellAnchor/xdr:graphicFrame', ns)
+    require(frame is not None, 'chart45 visibility mutation requires actual chart frame')
+    nonvisual = frame.find('xdr:nvGraphicFramePr', ns)
+    require(nonvisual is not None, 'chart45 visibility mutation requires actual nonvisual properties')
+    props = nonvisual.find('xdr:cNvPr', ns)
+    require(props is not None, 'chart45 visibility mutation requires actual drawing properties')
+    hidden = {'hidden-one': '1', 'hidden-true': 'true', 'hidden-empty': '', 'hidden-invalid': '2',
+              'hidden-uppercase': 'False', 'visible-zero': '0', 'visible-false': 'false'}
+    if kind in hidden: props.set('hidden', hidden[kind])
+    elif kind == 'visible-absent': props.attrib.pop('hidden', None)
+    elif kind == 'missing-nonvisual': frame.remove(nonvisual)
+    elif kind == 'wrapped-nonvisual':
+        frame.remove(nonvisual)
+        ET.SubElement(frame, '{' + ns['xdr'] + '}wrapper').append(nonvisual)
+    elif kind in ('duplicate-nonvisual', 'shadow-nonvisual'):
+        copy = ET.fromstring(ET.tostring(nonvisual)); copy.find('xdr:cNvPr', ns).set('hidden', '1')
+        parent = frame if kind == 'duplicate-nonvisual' else ET.SubElement(frame, '{' + ns['xdr'] + '}wrapper')
+        parent.append(copy)
+    elif kind == 'missing-properties': nonvisual.remove(props)
+    elif kind == 'wrapped-properties':
+        nonvisual.remove(props)
+        ET.SubElement(nonvisual, '{' + ns['xdr'] + '}wrapper').append(props)
+    elif kind in ('duplicate-properties', 'shadow-properties'):
+        copy = ET.fromstring(ET.tostring(props)); copy.set('hidden', '1')
+        parent = nonvisual if kind == 'duplicate-properties' else ET.SubElement(frame, '{' + ns['xdr'] + '}wrapper')
+        parent.append(copy)
+    elif kind == 'wrong-properties-namespace': props.tag = '{urn:unsupported}cNvPr'
+    else: raise AssertionError('Unknown chart45 mutation: ' + defect)
+    return {path: ET.tostring(drawing, encoding='utf-8', xml_declaration=True)}
+
+
 def review_mutations(source, defect, row_map):
+    if defect in CHART45_CASES:
+        return chart45_mutations(source, defect, row_map)
     if defect in CHART19_CASES:
         return chart19_mutations(source, defect, row_map)
     if defect not in NEW_CASES and defect not in CAMPAIGN_CASES:
@@ -427,6 +502,32 @@ def review_mutations(source, defect, row_map):
                 formula.text = ' = ' + formula.text.lower().replace(',', ', ')
             else:
                 formula.text = '1' if defect == 'formula19-cold-wrong-zero' else 'D4+1' if defect == 'formula19-safe-wrong-state' else '0'
+        return {path: ET.tostring(part, encoding='utf-8')}
+    if defect.startswith('upstream45-'):
+        path = 'xl/worksheets/sheet5.xml' if '-shock-' in defect else 'xl/worksheets/sheet3.xml'
+        part = ET.fromstring(source.read(path)); cells = {cell.get('r'): cell for cell in part.findall('s:sheetData/s:row/s:c', NS)}
+        if defect == 'upstream45-parameter':
+            address = 'D6'
+        elif defect == 'upstream45-initial':
+            address = next(cell.get('r') for cell in cells.values() if "CHOOSE('Policy Lab'!$C$4" in cell.findtext('s:f', '', NS))
+        elif defect in ('upstream45-source-check', 'upstream45-source-weight'):
+            check = next(cell for cell in cells.values() if 'COUNT(' in (cell.findtext('s:f', '', NS)))
+            address = check.get('r') if defect.endswith('check') else 'D' + str(int(check.get('r')[1:]) + 1)
+        else:
+            address = 'AZ146' if defect == 'upstream45-shock-last' else 'F6' if defect == 'upstream45-shock-shared-backward' else 'E6'
+        cell = cells[address]; formula = cell.find('s:f', NS)
+        require(formula is not None, 'upstream45 must mutate the actual upstream authored formula')
+        if '-shared' in defect:
+            formula.set('t', 'shared'); formula.set('si', '999945'); formula.set('ref', 'E6:F6')
+            follower = cells['E6' if address == 'F6' else 'F6'].find('s:f', NS)
+            require(follower is not None, 'upstream45 shared form requires an actual follower')
+            follower.text = None; follower.set('t', 'shared'); follower.set('si', '999945')
+            if defect.endswith('wrong'):
+                formula.text = '0'
+        elif defect == 'upstream45-shock-scalar':
+            formula.text = ' = ' + formula.text.replace(',', ', ')
+        else:
+            formula.text = '0'
         return {path: ET.tostring(part, encoding='utf-8')}
     if defect.startswith('types-'):
         field = 'PartName' if defect == 'types-double-slash-override' else 'Extension'
@@ -753,6 +854,29 @@ def review_mutations(source, defect, row_map):
     return {path: data}
 
 
+source_parser = argparse.ArgumentParser(description=__doc__)
+source_parser.add_argument('--reference-set', required=True, type=Path)
+source_options, source_positionals = source_parser.parse_known_args()
+sys.argv = [sys.argv[0], *source_positionals]
+reference_set = source_options.reference_set
+
+def upstream45_reference_cases(document):
+    import copy
+    for kind in ('parameter-order', 'parameter-value', 'scenario-layout', 'state-order'):
+        changed = copy.deepcopy(document)
+        if kind == 'parameter-order':
+            changed['parameters'][0], changed['parameters'][1] = changed['parameters'][1], changed['parameters'][0]
+        elif kind == 'parameter-value':
+            changed['parameters'][0]['value'] += 0.25
+        elif kind == 'scenario-layout':
+            changed['scenario']['initial']['price_index'] = 123
+        else:
+            changed['initial_state'] = dict(reversed(list(changed['initial_state'].items())))
+        yield 'upstream45-reference-' + kind, changed, None
+    for kind, case in [('nonactive-layout', 'policy_career'), ('nonactive-parameter', 'base'), ('missing-case', 'policy_career')]:
+        yield 'upstream45-reference-' + kind, document, (kind, case)
+
+
 root = Path(__file__).resolve().parents[2]
 require(len(sys.argv) in (4, 5), 'Supply workbook, reference, map and optional campaign reference')
 workbook, reference, row_map = map(Path, sys.argv[1:4])
@@ -760,7 +884,7 @@ with zipfile.ZipFile(workbook) as archive:
     policy_part = validate_policy_inputs(archive)
 campaign = Path(sys.argv[4]) if len(sys.argv) == 5 else None
 checker = [sys.executable, str(root / 'scripts/spreadsheet/check-workbook.py'),
-           str(workbook), '--reference', str(reference), '--map', str(row_map)]
+           str(workbook), '--reference', str(reference), '--map', str(row_map), '--reference-set', str(reference_set)]
 if campaign:
     checker += ['--campaign-reference', str(campaign)]
     expected_note = 'Recurring crises: ' + json.loads(campaign.read_text())['scenario']['description']
@@ -824,6 +948,38 @@ with tempfile.TemporaryDirectory(prefix='fed-chart-regression-') as directory:
         defects += list(CAMPAIGN_CASES.items())
         defects.append(('campaign-note', 'stale or missing campaign explanation'))
     failures = []
+    reference_ids = json.loads(row_map.with_suffix('.formulas.json').read_text())['reference_sha256']
+    for name, altered, source_change in upstream45_reference_cases(json.loads(reference.read_text())):
+        bad_reference = Path(directory) / (name + '.json')
+        if source_change:
+            bad_reference.write_bytes(reference.read_bytes())
+        else:
+            bad_reference.write_text(json.dumps(altered, indent=2) + '\n')
+        source_directory = reference_set
+        if source_change:
+            import shutil
+            kind, case = source_change
+            source_directory = Path(directory) / name; source_directory.mkdir()
+            for identity in reference_ids:
+                if not (kind == 'missing-case' and identity == case):
+                    shutil.copyfile(reference_set / (identity + '.json'), source_directory / (identity + '.json'))
+            if kind != 'missing-case':
+                path = source_directory / (case + '.json'); changed_source = json.loads(path.read_text())
+                if kind == 'nonactive-layout':
+                    changed_source['scenario']['initial']['price_index'] = 123
+                else:
+                    changed_source['parameters'][0], changed_source['parameters'][1] = changed_source['parameters'][1], changed_source['parameters'][0]
+                path.write_text(json.dumps(changed_source, indent=2) + '\n')
+        command = checker.copy()
+        command[command.index('--reference') + 1] = str(bad_reference)
+        command[command.index('--reference-set') + 1] = str(source_directory)
+        for mode, flags, environment in modes:
+            result = subprocess.run(command[:1] + flags + command[1:], capture_output=True, text=True, env=environment)
+            diagnostic = ('reference input binding: missing case' if source_change[0] == 'missing-case'
+                          else 'reference input binding: source set digest') if source_change else 'reference input binding'
+            require(result.returncode != 0 and diagnostic in result.stderr,
+                    f'{name} ({mode}) accepted wrong authored source inputs')
+        print(f'PASS: rejected {name} in all checker modes')
     for defect, error in defects:
         broken = Path(directory) / f'{defect}.xlsx'
         changed = False
@@ -1027,7 +1183,7 @@ with tempfile.TemporaryDirectory(prefix='fed-chart-regression-') as directory:
             else:
                 raise AssertionError(f'{defect} accepted malformed policy validation')
             for mode, flags, environment in modes:
-                result = subprocess.run([sys.executable] + flags + [__file__, str(broken), str(reference), str(row_map)], capture_output=True, text=True, env=environment)
+                result = subprocess.run([sys.executable] + flags + [__file__, str(broken), str(reference), str(row_map), '--reference-set', str(reference_set)], capture_output=True, text=True, env=environment)
                 require(result.returncode != 0 and error in result.stderr, f'{defect} ({mode}) disabled file-test acceptance guard')
             print(f'PASS: rejected {defect} in all file-test modes')
             continue
