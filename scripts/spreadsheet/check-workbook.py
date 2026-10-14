@@ -157,6 +157,77 @@ def shared_formulas(cells):
     return shared
 
 
+# Trusted sidecar comes from the authored builder, never the candidate workbook/cache.
+formula_inventory_path = args.map.with_suffix('.formulas.json')
+require(formula_inventory_path.is_file(), 'missing authored formula inventory; run generate-formula-inventory.mjs')
+formula_inventory = json.loads(formula_inventory_path.read_text())
+require(formula_inventory.get('schema_version') == 1, 'unsupported authored formula inventory schema')
+for name, key in [('build-policy-lab.mjs', 'builder_sha256'), ('generate-formula-inventory.mjs', 'generator_sha256')]:
+    require(hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest() == formula_inventory.get(key),
+            ('authored formula inventory source mismatch', name))
+require(hashlib.sha256(json.dumps(rows, separators=(',', ':')).encode()).hexdigest() == formula_inventory.get('row_map_sha256'),
+        'authored formula inventory row map mismatch')
+require(set(formula_inventory.get('state_fields', [])) == set(flatten_state(reference['initial_state'])),
+        'authored formula inventory state schema mismatch')
+require(isinstance(formula_inventory.get('formulas'), dict), 'missing authored formula inventory formulas')
+for field in formula_inventory['state_fields']:
+    require(all(f'{column(q + 4)}{rows[field]}' in formula_inventory['formulas'] for q in range(49)),
+            ('incomplete authored formula inventory', field))
+
+FORMULA_QUOTED = re.compile(r'("(?:[^"]|"")*"|\'(?:[^\']|\'\')*\'!)')
+FORMULA_REFERENCE = re.compile(r'(?<![A-Z0-9_])(\$?)([A-Z]{1,3})(\$?)([1-9][0-9]*)(?![A-Z0-9_])', re.IGNORECASE | re.ASCII)
+
+
+def canonical_formula(text):
+    tokens = []
+    for token in SAFE_FORMULA_TOKENS.findall(text.strip().removeprefix('=')):
+        if token.isspace():
+            continue
+        if token.startswith('"'):
+            tokens.append(token)
+        elif token.startswith("'"):
+            tokens.append(token[1:-2].replace("''", "'").upper() + '!')
+        else:
+            tokens.append(re.sub(r'\s+', '', token).replace('$', '').upper())
+    return tokens
+
+
+def translate_formula(text, origin, address):
+    before, after = coordinates(origin), coordinates(address)
+    def shift(match):
+        col, row = coordinates(match[2].upper() + match[4])
+        if not match[1]:
+            col += after[0] - before[0]
+        if not match[3]:
+            row += after[1] - before[1]
+        require(1 <= col <= 16384 and 1 <= row <= 1048576, 'authored formula mismatch: translated reference outside worksheet')
+        return match[1] + column(col) + match[3] + str(row)
+    pieces = FORMULA_QUOTED.split(text)
+    for i in range(0, len(pieces), 2):
+        pieces[i] = FORMULA_REFERENCE.sub(shift, pieces[i])
+    return ''.join(pieces)
+
+
+def validate_authored_formulas(cells, shared):
+    origins = {unsigned_integer(cell.find('s:f', NS).get('si'), 'shared formula group index'): address
+               for address, cell in cells.items() if cell.find('s:f', NS) is not None
+               and cell.find('s:f', NS).get('t') == 'shared' and cell.find('s:f', NS).get('ref') is not None}
+    checkpoint_literals = {f'D{rows[field]}' for field in formula_inventory['state_fields']} if reference['initial_state']['quarter_index'] > 0 else set()
+    for address, expected in formula_inventory['formulas'].items():
+        require(address in cells, ('authored formula mismatch', address, 'missing cell'))
+        formula = cells[address].find('s:f', NS)
+        if address in checkpoint_literals or expected is None:
+            require(formula is None, ('authored formula mismatch', address, 'expected authored literal'))
+            continue
+        require(formula is not None, ('authored formula mismatch', address, 'missing formula'))
+        actual = formula.text or ''
+        if formula.get('t') == 'shared':
+            index = unsigned_integer(formula.get('si'), 'shared formula group index')
+            actual = translate_formula(shared[index].text, origins[index], address)
+        require(actual.strip().removeprefix('=') == expected.strip().removeprefix('=')
+                or canonical_formula(actual) == canonical_formula(expected), ('authored formula mismatch', address))
+
+
 def series_numbers(series, tag, path):
     values = []
     for item in series:
@@ -172,7 +243,7 @@ SAFE_FORMULA_TOKENS = re.compile(
     r"|(?:'(?:Policy Lab|Policy|Assumptions|Economy|Shocks)'|Policy|Assumptions|Economy|Shocks)!"
     r'|(?:ABS|AND|CHOOSE|COUNT|COUNTA|EXP|IF|IFERROR|INDEX|INT|ISBLANK|ISLOGICAL|ISNUMBER|LARGE|LN|MAX|MIN|NA|NOT|OR|POWER|ROUND|SIGN|SUM|TANH)\s*(?=\()'
     r'|(?:TRUE|FALSE)(?![A-Z0-9_])|\$?[A-Z]{1,3}\$?[1-9][0-9]*'
-    r'|(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:E[+-]?[0-9]+)?|[\s+*/^&=<>():,-]',
+    r'|(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:E[+-]?[0-9]+)?|<=|>=|<>|[\s+*/^&=<>():,-]',
     re.IGNORECASE | re.ASCII,
 )
 
@@ -180,10 +251,12 @@ SAFE_FORMULA_TOKENS = re.compile(
 def validate_formulas(part, path):
     tags = {'{' + NS['s'] + '}' + name for name in ('f', 'formula', 'formula1', 'formula2', 'definedName')}
     tags.add('{' + NS['c'] + '}f')
+    tags.add('{http://schemas.microsoft.com/office/excel/2006/main}f')
     for node in part.iter():
         if node.tag == '{' + NS['s'] + '}f':
             require(node.get('t', 'normal') in ('normal', 'shared'), ('unsupported cell formula type', path, node.attrib))
         if node.tag in tags:
+            require(len(node) == 0, ('unsupported workbook formula structure', path))
             require(not SAFE_FORMULA_TOKENS.sub('', node.text or ''),
                     ('unsupported workbook formula', path, node.text))
 
@@ -270,6 +343,7 @@ def shared_strings(archive, parts, part_types):
 def validate_chart_reachability(archive, parts, part_types, drawing_refs, content_types, charts):
     drawings = []
     displayed = []
+    anchors = {}
     for source, identifier in drawing_refs:
         target = relationship_target(archive, parts, part_types, source, identifier, 'drawing')
         drawings.append(target)
@@ -288,16 +362,19 @@ def validate_chart_reachability(archive, parts, part_types, drawing_refs, conten
                 payload = payloads[0]
                 require(payload.get('uri') == NS['c'] and len(payload) == 1 and payload[0].tag == '{' + NS['c'] + '}chart',
                         ('chart reachability: invalid chart data', target))
-                frames.append(payload[0])
+                frames.append((payload[0], anchor))
         require(len(frames) == len(drawing.findall('.//c:chart', NS)), ('chart reachability: non-frame chart', target))
-        for frame in frames:
-            displayed.append(relationship_target(archive, parts, part_types, target, frame.get('{' + NS['r'] + '}id'), 'chart'))
+        for frame, anchor in frames:
+            chart_path = relationship_target(archive, parts, part_types, target, frame.get('{' + NS['r'] + '}id'), 'chart')
+            displayed.append(chart_path)
+            anchors[chart_path] = (source, anchor)
     declared_drawings = [parts[item.get('PartName', '').lstrip('/').translate(ASCII_LOWER)] for item in content_types
                          if item.get('ContentType', '').lower() == 'application/vnd.openxmlformats-officedocument.drawing+xml']
     require(len(drawings) == len(set(drawings)) == len(declared_drawings)
             and set(drawings) == set(declared_drawings), 'chart reachability: orphan or duplicated drawing')
     require(len(displayed) == len(set(displayed)) == len(charts) and set(displayed) == set(charts),
             'chart reachability: displayed charts differ from validated charts')
+    return anchors
 
 
 def chart_formula(series, name, types, path):
@@ -308,6 +385,157 @@ def chart_formula(series, name, types, path):
     formulas = reference.findall('c:f', NS)
     require(len(formulas) == 1, (path, 'chart binding structure', name))
     return formulas[0].text
+
+
+
+# These bindings and zero-based anchors mirror build-policy-lab.mjs, including cleared checkpoint suffixes.
+PLOT_FIELDS = ['four_quarter_inflation_pct', 'expected_short_inflation_pct', 'expected_long_inflation_pct',
+               'unemployment_rate_pct', 'structural_unemployment_pct', 'policy_rate_pct', 'long_yield_pct',
+               'public_support', 'credibility']
+PLOT_LABELS = ['Inflation', 'Short expectations', 'Long expectations', 'Unemployment', 'Structural reference',
+               'Policy rate', 'Long yield', 'Public support', 'Credibility × 100']
+CHART_ANCHORS = {'Inflation and expectations (%)': (1, 19, 8, 35), 'Unemployment (%)': (8, 19, 16, 35),
+                 'Policy and long yield (%)': (1, 36, 8, 52), 'Model confidence scores (0–100)': (8, 36, 16, 52)}
+
+
+def saved_string(cell, strings, message):
+    require(cell is not None and cell.find('s:f', NS) is None, message)
+    kind = cell.get('t')
+    if kind == 'inlineStr':
+        return string_text(cell.find('s:is', NS), message)
+    value = cell.find('s:v', NS)
+    require(value is not None and kind in ('str', 's'), message)
+    if kind == 's':
+        index = unsigned_integer(value.text, message)
+        require(index < len(strings), message)
+        return strings[index]
+    return value.text or ''
+
+
+def saved_number(cell, message):
+    require(cell is not None and cell.get('t', 'n') == 'n', message)
+    value = cell.find('s:v', NS)
+    require(value is not None, message)
+    try:
+        number = float(value.text)
+    except (ValueError, TypeError):
+        raise AssertionError(message)
+    require(math.isfinite(number), message)
+    return number
+
+
+def chart_cache(ref, kind, values, message):
+    cache_tag = '{' + NS['c'] + '}' + kind
+    require(all(child.tag in {'{' + NS['c'] + '}f', cache_tag} for child in ref), message)
+    caches = ref.findall('c:' + kind, NS)
+    require(len(caches) <= 1, message)
+    if not caches:
+        return
+    cache = caches[0]
+    counts = cache.findall('c:ptCount', NS)
+    require(len(counts) == 1 and len(cache.findall('c:formatCode', NS)) <= 1
+            and all(child.tag in {'{' + NS['c'] + '}' + name for name in ('ptCount', 'pt', 'formatCode')} for child in cache), message)
+    count = unsigned_integer(counts[0].get('val'), message)
+    points = cache.findall('c:pt', NS)
+    # The authored exporter defers caches with ptCount=0; populated caches may omit blank points.
+    require(count == len(values) or (count == 0 and not points), message)
+    seen = set()
+    for point in points:
+        index = unsigned_integer(point.get('idx'), message)
+        require(index < len(values) and index not in seen and len(point) == 1
+                and point[0].tag == '{' + NS['c'] + '}v' and len(point[0]) == 0, message)
+        seen.add(index)
+        expected = values[index]
+        require(expected is not None, message)
+        if kind == 'numCache':
+            try:
+                number = float(point[0].text)
+            except (TypeError, ValueError):
+                raise AssertionError(message)
+            require(isinstance(expected, (float, int)) and math.isfinite(number) and abs(number - expected) < 1e-7, message)
+        else:
+            require((point[0].text or '') == expected, message)
+    require(count == 0 or seen == {i for i, value in enumerate(values) if value is not None}, message)
+
+
+def chart_title(series, col, label, path):
+    message = (path, 'chart series title', col)
+    titles = series.findall('c:tx', NS)
+    require(len(titles) == 1 and len(titles[0]) == 1, message)
+    title = titles[0][0]
+    if title.tag == '{' + NS['c'] + '}v':
+        require(len(title) == 0 and title.text == label, message)
+    else:
+        require(title.tag == '{' + NS['c'] + '}strRef'
+                and chart_formula(series, 'tx', ('strRef',), path).replace('$', '') == f"'Policy Lab'!{col}57", message)
+        chart_cache(title, 'strCache', [label], message)
+
+
+def chart_axes(plot, line, path):
+    message = (path, 'chart axis graph')
+    cats, vals = plot.findall('c:catAx', NS), plot.findall('c:valAx', NS)
+    require(len(cats) == len(vals) == 1
+            and len([child for child in plot if child.tag.endswith('Ax')]) == 2, message)
+    identities, crosses = [], []
+    for axis in (cats[0], vals[0]):
+        for name, result in (('axId', identities), ('crossAx', crosses)):
+            nodes = axis.findall('c:' + name, NS)
+            require(len(nodes) == 1 and len(nodes[0]) == 0, message)
+            result.append(unsigned_integer(nodes[0].get('val'), message))
+    line_ids = [
+        unsigned_integer(node.get('val'), message) for node in line.findall('c:axId', NS)]
+    require(len(set(identities)) == 2 and crosses == identities[::-1]
+            and len(line_ids) == 2 and set(line_ids) == set(identities), message)
+
+
+def chart_anchor(binding, sheet, title, path):
+    source, anchor = binding
+    message = (path, 'chart anchor geometry')
+    require(source == sheet and anchor.tag == '{' + NS['xdr'] + '}twoCellAnchor', message)
+    actual = []
+    for end in ('from', 'to'):
+        markers = anchor.findall('xdr:' + end, NS)
+        require(len(markers) == 1 and len(markers[0]) == 4, message)
+        marker = markers[0]
+        for axis in ('col', 'row'):
+            nodes = marker.findall('xdr:' + axis, NS)
+            offsets = marker.findall('xdr:' + axis + 'Off', NS)
+            require(len(nodes) == len(offsets) == 1 and len(nodes[0]) == len(offsets[0]) == 0, message)
+            actual.append(unsigned_integer(nodes[0].text, message))
+            require(unsigned_integer(offsets[0].text, message) == 0, message)
+    require(tuple(actual) == CHART_ANCHORS[title], message)
+
+
+def dashboard_values(lab, economy, strings):
+    states = [reference['initial_state']] + [quarter['state'] for quarter in reference['quarters']]
+    require(1 <= len(states) <= 49, 'dashboard horizon')
+    data = {col: [] for col in 'BCDEFGHIJK'}
+    for i, label in enumerate(PLOT_LABELS, 3):
+        require(saved_string(lab.get(f'{column(i)}57'), strings, 'chart series title header') == label,
+                'chart series title header')
+    for q in range(49):
+        row = q + 58
+        if q >= len(states):
+            for col in data:
+                cell = lab.get(f'{col}{row}')
+                require(cell is None or len(cell) == 0, ('dashboard cleared checkpoint suffix', col, row))
+                data[col].append(None)
+            continue
+        label = saved_string(lab.get(f'B{row}'), strings, 'dashboard quarter label')
+        require(label == f"Q{states[q]['quarter_index']}", ('dashboard quarter label', row))
+        data['B'].append(label)
+        for i, field in enumerate(PLOT_FIELDS, 3):
+            col = column(i); address = f'{col}{row}'; cell = lab.get(address)
+            source = f'{column(q + 4)}{rows[field]}'
+            scale = 100 if field == 'credibility' else 1
+            formula = f"'Economy'!{source}" + ('*100' if scale == 100 else '')
+            require(cell is not None and cell.findtext('s:f', namespaces=NS) == formula,
+                    ('dashboard source binding', address))
+            value = saved_number(cell, ('dashboard numeric cache', address))
+            expected = saved_number(economy.get(source), ('dashboard Economy source', source)) * scale
+            require(abs(value - expected) < 1e-7, ('dashboard source cache parity', address))
+            data[col].append(value)
+    return data
 
 
 for filename in args.workbooks:
@@ -355,6 +583,8 @@ for filename in args.workbooks:
         require(len(identities) == len(set(identities)), ('worksheet inventory', 'sheetId'))
         sheets = {}
         for sheet in records:
+            if sheet.get('name') in ('Policy Lab', 'Policy'):
+                require(sheet.get('state', 'visible') == 'visible', ('interactive worksheet visibility', sheet.get('name')))
             sheets[sheet.attrib['name']] = relationship_target(archive, parts, part_types, 'xl/workbook.xml', sheet.attrib['{' + NS['r'] + '}id'], 'worksheet')
         require({'Policy Lab', 'Policy', 'Assumptions', 'Economy', 'Shocks'} <= set(sheets), 'worksheet inventory: missing required sheet')
         if args.campaign_reference:
@@ -399,11 +629,13 @@ for filename in args.workbooks:
                 require(math.isfinite(actual) and math.isfinite(float(value)) and error < 1e-7, ('full-state parity', filename, quarter, field, actual, value))
         errors = []
         drawing_refs = []
+        sheet_data = {}
         for name, path in sheets.items():
             part = ET.fromstring(archive.read(path))
             require(part.tag == '{' + NS['s'] + '}worksheet', ('chart reachability: invalid worksheet root', path))
-            validate_formulas(part, path)
             sheet_cells = worksheet_cells(part, path)
+            validate_formulas(part, path)
+            sheet_data[name] = sheet_cells
             drawing_refs.extend((path, node.get('{' + NS['r'] + '}id')) for node in part.findall('s:drawing', NS))
             if name != 'Economy':
                 shared_formulas(sheet_cells)
@@ -411,10 +643,14 @@ for filename in args.workbooks:
                           for c in sheet_cells.values()
                           if c.attrib.get('t') == 'e')
         require(not errors, errors[:10])
+        validate_authored_formulas(cells, shared)
         charts = [item.attrib['PartName'].lstrip('/') for item in content_types
                   if item.attrib.get('ContentType', '').lower() == 'application/vnd.openxmlformats-officedocument.drawingml.chart+xml']
         require(len(charts) == 4, 'validation failed')
-        validate_chart_reachability(archive, parts, part_types, drawing_refs, content_types, charts)
+        anchors = validate_chart_reachability(archive, parts, part_types, drawing_refs, content_types, charts)
+        lab = sheet_data['Policy Lab']
+        strings = shared_strings(archive, parts, part_types) if any(cell.get('t') == 's' for cell in lab.values()) else []
+        plot_values = dashboard_values(lab, cells, strings)
         expected_series = {'Inflation and expectations (%)': ['C', 'D', 'E'], 'Unemployment (%)': ['F', 'G'],
                            'Policy and long yield (%)': ['H', 'I'], 'Model confidence scores (0–100)': ['J', 'K']}
         palettes = []
@@ -436,17 +672,23 @@ for filename in args.workbooks:
             series = lines[0].findall('c:ser', NS)
             require(len(series) == len(chart.findall('.//c:ser', NS)), (path, 'chart structure'))
             require(title in expected_series and len(series) == len(expected_series[title]), (path, title, 'missing chart series'))
+            chart_axes(plots[0], lines[0], path)
+            chart_anchor(anchors[path], sheets['Policy Lab'], title, path)
             require(series_numbers(series, 'order', path) == list(range(len(series))), (path, 'chart series order'))
             identities = series_numbers(series, 'idx', path)
             require(len(identities) == len(set(identities)), (path, 'chart series idx'))
             palettes.append([s.find('c:spPr/a:ln/a:solidFill/a:srgbClr', NS).attrib['val'] for s in series])
             for item, col in zip(series, expected_series[title]):
+                chart_title(item, col, PLOT_LABELS[ord(col) - ord('C')], path)
                 category = chart_formula(item, 'cat', ('strRef', 'numRef'), path)
                 require(category == "'Policy Lab'!$B$58:$B$106",
                         (path, title, 'chart category binding'))
                 value = chart_formula(item, 'val', ('numRef',), path)
                 require(value == f"'Policy Lab'!${col}$58:${col}$106",
                         (path, title, 'chart value binding'))
+                cat_ref = item.find('c:cat', NS)[0]
+                chart_cache(cat_ref, 'strCache' if cat_ref.tag.endswith('strRef') else 'numCache', plot_values['B'], (path, 'chart cache category'))
+                chart_cache(item.find('c:val/c:numRef', NS), 'numCache', plot_values[col], (path, 'chart cache value', col))
         require(set(titles) == set(expected_series), 'Missing or duplicated chart')
         require(not any('vbaproject' in p.lower() or 'externallinks' in p.lower() for p in archive.namelist()), 'active content filename')
         receipt = dict(file=str(filename), max_absolute_error=worst, formula_errors=len(errors), charts=len(charts), colors=palettes)

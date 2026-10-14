@@ -132,9 +132,22 @@ python3 scripts/spreadsheet/check-workbook.py /absolute/recalculated.xlsx \
   --map /absolute/new/workbook-directory/evidence/workbook-model-map.json
 ```
 
+The checker requires `workbook-model-map.formulas.json` beside the row map.
+The build generates this trusted inventory from the authored equations and native
+references, not from the candidate workbook or its caches. For older outputs,
+generate it from the matching source and eight references first:
+
+```sh
+/absolute/managed/node scripts/spreadsheet/generate-formula-inventory.mjs \
+  /absolute/new/workbook-directory/reference-v1 \
+  /absolute/new/workbook-directory/evidence/workbook-model-map.json \
+  /absolute/new/workbook-directory/evidence/workbook-model-map.formulas.json
+```
+
 The checker reads the supplied workbook without editing it. It verifies all
-quarterly state values for the default supply case, formula errors, chart
-bindings and the absence of macros or external links. Native recalculation and
+quarterly state values for the default supply case, authored formula bindings,
+chart labels, caches, axes and placement, visible policy sheets, and the absence
+of macros or external links. Native recalculation and
 interactive GUI validation remain separate checks; the build does not launch
 or change a spreadsheet application's windows.
 

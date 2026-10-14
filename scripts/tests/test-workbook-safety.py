@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import xml.etree.ElementTree as ET
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -317,6 +318,30 @@ with tempfile.TemporaryDirectory(prefix='fed-source-copy-identity-') as director
     if failures:
         raise AssertionError('\n'.join(failures))
 print('PASS: actual source-copy guard accepts matches and rejects drift in normal/-O/inherited modes')
+
+# Exact authored expressions need no token normalization; differing expressions still do.
+checker_tree = ast.parse((ROOT / 'scripts/spreadsheet/check-workbook.py').read_text())
+authored_nodes = [node for node in checker_tree.body if isinstance(node, ast.FunctionDef)
+                  and node.name in ('require', 'validate_authored_formulas')]
+assert len(authored_nodes) == 2, 'Locate actual authored-expression validator'
+normalizations = []
+authored_scope = {'NS': {'s': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'},
+                  'formula_inventory': {'state_fields': [], 'formulas': {'E6': '=D6+1'}},
+                  'reference': {'initial_state': {'quarter_index': 0}}, 'rows': {},
+                  'canonical_formula': lambda text: normalizations.append(text) or text.strip().removeprefix('=')}
+exec(compile(ast.Module(body=authored_nodes, type_ignores=[]), '<actual authored-expression guard>', 'exec'), authored_scope)
+for actual, expected_calls in [('D6+1', 0), ('0', 2)]:
+    cell = ET.fromstring('<c xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><f/></c>')
+    cell[0].text = actual
+    normalizations.clear()
+    rejected = False
+    try:
+        authored_scope['validate_authored_formulas']({'E6': cell}, {})
+    except AssertionError:
+        rejected = True
+    assert rejected == (actual == '0'), 'Exact matches pass; wrong expressions refuse'
+    assert len(normalizations) == expected_calls, 'Only differing expressions need normalization'
+print('PASS: actual authored-expression equality fast path and mismatch refusal (simulated XML cell)')
 
 if sys.argv[1:] == ['--python-only']:
     print('NOT RUN: real engine integration (--python-only)')

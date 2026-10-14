@@ -221,6 +221,10 @@ def main():
                 record['name'] for record in checkpoints if record['policy_kind'] == phase]:
             raise ValueError(f'Incomplete checkpoint phase: {phase}')
         parity.extend(phase_checks)
+    run_tool([str(args.node), str(ROOT / 'scripts/spreadsheet/generate-formula-inventory.mjs'),
+              str(references), str(evidence / 'workbook-model-map.json'),
+              str(evidence / 'workbook-model-map.formulas.json')],
+             evidence / 'authored-formula-inventory.log', 'PASS: authored formula inventory')
     run_tool([sys.executable, str(ROOT / 'scripts/spreadsheet/check-workbook.py'),
               str(output / 'Federal Reserve Policy Lab.xlsx'), '--reference',
               str(references / 'supply_shock.json'), '--map',
@@ -257,9 +261,10 @@ def main():
         'node_version': subprocess.check_output([str(args.node), '--version'], text=True).strip(),
         'source_sha256': {name: digest(ROOT / name) for name in (
             'scripts/build-workbook.py', 'scripts/spreadsheet/build-policy-lab.mjs',
-            'scripts/spreadsheet/check-workbook.py', 'scripts/tests/test-workbook-validation.mjs', 'game/tests/export_reference.gd',
+            'scripts/spreadsheet/check-workbook.py', 'scripts/spreadsheet/generate-formula-inventory.mjs', 'scripts/tests/test-workbook-validation.mjs', 'game/tests/export_reference.gd',
             'game/tests/export_policy_variants.gd', 'game/tests/export_late_checkpoint_reference.gd',
             'scripts/tests/test-workbook-file.py')},
+        'authored_formula_inventory_sha256': digest(evidence / 'workbook-model-map.formulas.json'),
         'workbook_sha256': digest(output / 'Federal Reserve Policy Lab.xlsx'),
         'checkpoint_workbooks_sha256': {path.name: digest(path) for path in sorted((output / 'late-checkpoints').glob('*.xlsx'))},
         'model_sha256': {name: digest(ROOT / 'game/model' / name)

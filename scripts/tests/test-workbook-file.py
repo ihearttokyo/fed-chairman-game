@@ -41,6 +41,23 @@ def validate_policy_inputs(archive):
 
 
 NEW_CASES = {
+    'formula19-split-number': 'authored formula mismatch',
+    'formula19-split-comparison': 'authored formula mismatch',
+    'formula19-zero-state': 'authored formula mismatch',
+    'formula19-safe-wrong-state': 'authored formula mismatch',
+    'formula19-zero-helper': 'authored formula mismatch',
+    'formula19-cold-wrong-zero': 'authored formula mismatch',
+    'formula19-shared-wrong-master': 'authored formula mismatch',
+    'formula19-short-suffix': 'authored formula mismatch',
+    'formula19-xm-webservice': 'unsupported workbook formula',
+    'formula19-xm-dde': 'unsupported workbook formula',
+    'formula19-xm-benign': None,
+    'formula19-xm-string': None,
+    'formula19-scalar-format': None,
+    'formula19-shared-relative': None,
+    'formula19-shared-backward': None,
+    'formula19-shared-quoted-string': None,
+
     'cells-policy-wrong-cell': 'worksheet cell structure',
     'cells-policy-wrong-formula': 'worksheet cell structure',
     'cells-policy-wrong-cache': 'worksheet cell structure',
@@ -167,7 +184,115 @@ CAMPAIGN_CASES = {
 }
 
 
+
+CHART19_CASES = {
+    **{f'chart19-{name}': 'chart series title' for name in ('title-literal', 'title-reference', 'title-cache', 'title-cache-duplicate', 'header', 'header-formula')},
+    **{f'chart19-{name}': 'chart cache' for name in ('num-stale', 'num-duplicate', 'num-count', 'num-index', 'num-nan', 'category-stale', 'missing-nonblank', 'empty-populated-cache')},
+    **{f'chart19-{name}': 'dashboard' for name in ('joint-cache', 'source-formula', 'source-type', 'source-cache', 'credibility-scale', 'quarter-label', 'quarter-label-formula')},
+    **{f'chart19-{name}': 'chart axis graph' for name in ('axis-missing', 'axis-duplicate', 'axis-same-id', 'axis-line', 'axis-cross')},
+    **{f'chart19-{name}': 'interactive worksheet visibility' for name in ('lab-hidden', 'policy-very-hidden')},
+    **{f'chart19-{name}': 'chart anchor geometry' for name in ('anchor-zero', 'anchor-reversed', 'anchor-far', 'anchor-offset', 'anchor-missing')},
+    **{f'chart19-{name}': None for name in ('valid-ids', 'valid-caches', 'missing-caches', 'valid-title-reference', 'visible')},
+}
+NEW_CASES.update(CHART19_CASES)
+
+
+def chart19_mutations(source, defect, row_map):
+    ns = dict(NS, c='http://schemas.openxmlformats.org/drawingml/2006/chart',
+              xdr='http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing')
+    def tag(name):
+        prefix, local = name.split(':')
+        return '{' + ns[prefix] + '}' + local
+    types = ET.fromstring(source.read('[Content_Types].xml'))
+    path = next(p.get('PartName').lstrip('/') for p in types if p.get('ContentType', '').endswith('drawingml.chart+xml'))
+    chart = ET.fromstring(source.read(path))
+    wb = ET.fromstring(source.read('xl/workbook.xml'))
+    rels = {r.get('Id'): r.get('Target') for r in ET.fromstring(source.read('xl/_rels/workbook.xml.rels'))}
+    sheet = next(x for x in wb.find('s:sheets', ns) if x.get('name') == 'Policy Lab')
+    target = rels[sheet.get('{' + ns['r'] + '}id')]
+    lab_path = target.lstrip('/') if target.startswith('/') else posixpath.normpath('xl/' + target)
+    lab = ET.fromstring(source.read(lab_path))
+    cells = {c.get('r'): c for c in lab.findall('.//s:c', ns)}
+    ser = chart.find('.//c:ser', ns)
+    name = defect.removeprefix('chart19-')
+    changes = {path: chart}
+    def populate(ref, cache_name, values):
+        for old in ref.findall('c:' + cache_name, ns): ref.remove(old)
+        cache = ET.SubElement(ref, tag('c:' + cache_name))
+        ET.SubElement(cache, tag('c:ptCount'), val='49')
+        for i, value in enumerate(values):
+            if value is not None:
+                point = ET.SubElement(cache, tag('c:pt'), idx=str(i))
+                ET.SubElement(point, tag('c:v')).text = value
+        return cache
+    numeric = [cells[f'C{i}'].findtext('s:v', namespaces=ns) for i in range(58, 107)]
+    labels = [cells[f'B{i}'].findtext('s:v', namespaces=ns) for i in range(58, 107)]
+    if name in ('valid-caches', 'num-stale', 'num-duplicate', 'num-count', 'num-index', 'num-nan', 'joint-cache', 'missing-nonblank', 'empty-populated-cache'):
+        cache = populate(ser.find('c:val/c:numRef', ns), 'numCache', numeric)
+        if name == 'missing-nonblank': cache.remove(cache.findall('c:pt', ns)[-1])
+        if name == 'empty-populated-cache':
+            for point in cache.findall('c:pt', ns): cache.remove(point)
+        point = cache.find('c:pt', ns)
+        if name in ('num-stale', 'joint-cache'): point.find('c:v', ns).text = '777'
+        elif name == 'num-duplicate': cache.append(ET.fromstring(ET.tostring(point)))
+        elif name == 'num-count': cache.find('c:ptCount', ns).set('val', '50')
+        elif name == 'num-index': point.set('idx', '49')
+        elif name == 'num-nan': point.find('c:v', ns).text = 'NaN'
+        if name == 'joint-cache':
+            cells['C58'].find('s:v', ns).text = '777'; changes[lab_path] = lab
+    if name in ('valid-caches', 'category-stale'):
+        cache = populate(ser.find('c:cat/c:strRef', ns), 'strCache', labels)
+        if name == 'category-stale': cache.find('c:pt/c:v', ns).text = 'Q999'
+    if name == 'missing-caches':
+        for ref in chart.findall('.//c:numRef', ns) + chart.findall('.//c:strRef', ns):
+            for child in list(ref):
+                if child.tag in (tag('c:numCache'), tag('c:strCache')): ref.remove(child)
+    if name in ('title-reference', 'title-cache', 'title-cache-duplicate', 'valid-title-reference'):
+        tx = ser.find('c:tx', ns); tx.clear()
+        ref = ET.SubElement(tx, tag('c:strRef'))
+        ET.SubElement(ref, tag('c:f')).text = "'Policy Lab'!$D$57" if name == 'title-reference' else "'Policy Lab'!$C$57"
+        cache = ET.SubElement(ref, tag('c:strCache')); ET.SubElement(cache, tag('c:ptCount'), val='1')
+        point = ET.SubElement(cache, tag('c:pt'), idx='0'); ET.SubElement(point, tag('c:v')).text = 'Wrong' if name == 'title-cache' else 'Inflation'
+        if name == 'title-cache-duplicate': cache.append(ET.fromstring(ET.tostring(point)))
+    elif name == 'title-literal': ser.find('c:tx/c:v', ns).text = 'Wrong'
+    if name in ('source-formula', 'source-type', 'source-cache', 'credibility-scale', 'quarter-label', 'quarter-label-formula', 'header', 'header-formula'):
+        cell = cells['K58' if name == 'credibility-scale' else 'B58' if name.startswith('quarter-label') else 'C57' if name.startswith('header') else 'C58']
+        if name in ('header-formula', 'quarter-label-formula'): ET.SubElement(cell, tag('s:f')).text = '"Wrong"'
+        elif name == 'source-formula': cell.find('s:f', ns).text = '777'
+        elif name == 'credibility-scale': cell.find('s:f', ns).text = cell.find('s:f', ns).text.replace('*100', '')
+        elif name == 'source-type': cell.set('t', 'str')
+        else: cell.find('s:v', ns).text = 'Wrong' if name in ('quarter-label', 'header') else '777'
+        changes[lab_path] = lab
+    plot = chart.find('c:chart/c:plotArea', ns); line = plot.find('c:lineChart', ns)
+    cat, val = plot.find('c:catAx', ns), plot.find('c:valAx', ns)
+    if name == 'axis-missing': plot.remove(cat)
+    elif name == 'axis-duplicate': plot.append(ET.fromstring(ET.tostring(cat)))
+    elif name == 'axis-same-id': val.find('c:axId', ns).set('val', cat.find('c:axId', ns).get('val'))
+    elif name == 'axis-line': line.find('c:axId', ns).set('val', '7654321')
+    elif name == 'axis-cross': cat.find('c:crossAx', ns).set('val', '7654321')
+    elif name == 'valid-ids':
+        old = [cat.find('c:axId', ns).get('val'), val.find('c:axId', ns).get('val')]
+        for node in chart.findall('.//c:axId', ns) + chart.findall('.//c:crossAx', ns): node.set('val', str(123 + old.index(node.get('val'))))
+    if name in ('lab-hidden', 'policy-very-hidden', 'visible'):
+        for x in wb.find('s:sheets', ns):
+            if x.get('name') == ('Policy' if name == 'policy-very-hidden' else 'Policy Lab'): x.set('state', 'visible' if name == 'visible' else 'veryHidden' if name == 'policy-very-hidden' else 'hidden')
+        changes['xl/workbook.xml'] = wb
+    if name.startswith('anchor-'):
+        drawing_path = next(p.get('PartName').lstrip('/') for p in types if p.get('ContentType', '').endswith('drawing+xml'))
+        drawing = ET.fromstring(source.read(drawing_path)); anchor = drawing[0]
+        if name == 'anchor-missing': anchor.remove(anchor.find('xdr:to', ns))
+        elif name == 'anchor-zero':
+            for axis in ('col', 'row'): anchor.find('xdr:to/xdr:' + axis, ns).text = anchor.find('xdr:from/xdr:' + axis, ns).text
+        elif name == 'anchor-reversed': anchor.find('xdr:to/xdr:row', ns).text = '0'
+        elif name == 'anchor-far': anchor.find('xdr:to/xdr:col', ns).text = '16383'
+        elif name == 'anchor-offset': anchor.find('xdr:from/xdr:colOff', ns).text = '999999999'
+        changes[drawing_path] = drawing
+    return {p: ET.tostring(x, encoding='utf-8', xml_declaration=True) for p, x in changes.items()}
+
+
 def review_mutations(source, defect, row_map):
+    if defect in CHART19_CASES:
+        return chart19_mutations(source, defect, row_map)
     if defect not in NEW_CASES and defect not in CAMPAIGN_CASES:
         return {}
     content_types = ET.fromstring(source.read('[Content_Types].xml'))
@@ -250,6 +375,58 @@ def review_mutations(source, defect, row_map):
             inline.tag = '{urn:unsupported}is'
         elif defect == 'campaign-inline-wrapped-text':
             text = inline[0]; inline.remove(text); ET.SubElement(inline, '{urn:unsupported}wrapper').append(text)
+        return {path: ET.tostring(part, encoding='utf-8')}
+    if defect.startswith('formula19-'):
+        path = 'xl/worksheets/sheet4.xml'; part = ET.fromstring(source.read(path))
+        namespace = '{' + NS['s'] + '}'
+        cells = {cell.get('r'): cell for cell in part.findall('s:sheetData/s:row/s:c', NS)}
+        rows = json.loads(row_map.read_text())
+        if defect.startswith('formula19-xm-'):
+            extensions = part.find('s:extLst', NS)
+            if extensions is None:
+                extensions = ET.SubElement(part, namespace + 'extLst')
+            extension = ET.SubElement(extensions, namespace + 'ext', uri='{78C0D931-6437-407D-A8EE-F0AAD7539E65}')
+            x14 = '{http://schemas.microsoft.com/office/spreadsheetml/2009/9/main}'
+            formatting = ET.SubElement(extension, x14 + 'conditionalFormattings')
+            conditional = ET.SubElement(formatting, x14 + 'conditionalFormatting')
+            rule = ET.SubElement(conditional, x14 + 'cfRule', type='expression', priority='1', id='{00000000-0000-0000-0000-000000000019}')
+            formula = ET.SubElement(rule, '{http://schemas.microsoft.com/office/excel/2006/main}f')
+            formula.text = {'formula19-xm-webservice': 'WEBSERVICE("https://example.invalid/")',
+                            'formula19-xm-dde': "'server'|'topic'!A1",
+                            'formula19-xm-benign': 'AND(E6>0,ISNUMBER(E6))',
+                            'formula19-xm-string': 'IF("WEBSERVICE(""https://example.invalid/"")"="text",1,0)'}[defect]
+        else:
+            address = 'E' + str(rows['actual_output_index'])
+            if defect == 'formula19-split-number':
+                address = 'D' + str(rows['actual_output_index'])
+            elif defect == 'formula19-split-comparison':
+                address = 'E' + str(rows['policy_valid'])
+            elif defect == 'formula19-zero-helper':
+                address = 'E' + str(rows['net_bank_credit_0']) if 'net_bank_credit_0' in rows else 'E' + str(next(v for k,v in rows.items() if k.startswith('net_') and k.endswith('credit_0')))
+            elif defect == 'formula19-cold-wrong-zero':
+                address = 'D' + str(rows['sterilized_treasury_cohorts_pct_initial_gdp_0'])
+            elif defect == 'formula19-short-suffix':
+                address = 'AZ' + str(rows['price_h4'])
+            elif defect.startswith('formula19-shared-'):
+                address = ('F' if defect == 'formula19-shared-backward' else 'E') + str(rows['potential_growth_pct'] if defect == 'formula19-shared-quoted-string' else rows['treasury_cohorts_pct_initial_gdp_0'])
+            cell = cells[address]; formula = cell.find('s:f', NS)
+            require(formula is not None, 'formula19 requires an actual authored formula')
+            if defect.startswith('formula19-shared-'):
+                row = re.sub('[A-Z]', '', address)
+                formula.set('t', 'shared'); formula.set('si', '999991'); formula.set('ref', 'E' + row + ':F' + row)
+                follower = cells[('E' if address.startswith('F') else 'F') + row].find('s:f', NS)
+                require(follower is not None, 'formula19 requires the actual shared-equivalent follower')
+                follower.set('t', 'shared'); follower.set('si', '999991'); follower.text = None
+                if defect == 'formula19-shared-wrong-master':
+                    formula.text = '0'
+            elif defect in ('formula19-split-number', 'formula19-split-comparison'):
+                before, after = ('-100', '-1 00') if defect == 'formula19-split-number' else ('>=', '> =')
+                require(before in formula.text, 'Split-token fixture must change an authored token')
+                formula.text = formula.text.replace(before, after, 1)
+            elif defect == 'formula19-scalar-format':
+                formula.text = ' = ' + formula.text.lower().replace(',', ', ')
+            else:
+                formula.text = '1' if defect == 'formula19-cold-wrong-zero' else 'D4+1' if defect == 'formula19-safe-wrong-state' else '0'
         return {path: ET.tostring(part, encoding='utf-8')}
     if defect.startswith('types-'):
         field = 'PartName' if defect == 'types-double-slash-override' else 'Extension'
