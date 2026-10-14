@@ -60,6 +60,63 @@ def validated_portfolio(path):
     return reference, hashlib.sha256(raw).hexdigest()
 
 
+def dependency_provenance(modules):
+    modules = modules.resolve()
+    pending, seen, manifests = [modules], set(), {}
+    while pending:
+        directory = pending.pop()
+        if directory.resolve() in seen:
+            continue
+        seen.add(directory.resolve())
+        packages = []
+        for entry in sorted(directory.iterdir()):
+            if entry.name.startswith('.'):
+                continue
+            if entry.name.startswith('@') and entry.is_dir():
+                packages.extend(sorted(entry.iterdir()))
+            else:
+                packages.append(entry)
+        for package in packages:
+            if not package.is_dir():
+                if package.is_symlink():
+                    raise ValueError(f'Missing managed package manifest: {package}')
+                continue
+            path = package / 'package.json'
+            relative = path.relative_to(modules).as_posix()
+            try:
+                raw = path.read_bytes()
+                document = json.loads(raw)
+                if not isinstance(document, dict) or any(
+                        not isinstance(document.get(key), str) or not document[key].strip()
+                        for key in ('name', 'version')):
+                    raise ValueError('name and version are required')
+            except (OSError, ValueError) as error:
+                raise ValueError(f'Invalid managed package manifest: {relative}') from error
+            manifests[relative] = {
+                'name': document['name'], 'version': document['version'],
+                'sha256': hashlib.sha256(raw).hexdigest(),
+            }
+            nested = package / 'node_modules'
+            if nested.is_dir():
+                pending.append(nested)
+    artifact = manifests.get('@oai/artifact-tool/package.json')
+    if not artifact or artifact['name'] != '@oai/artifact-tool':
+        raise ValueError('Missing or invalid @oai/artifact-tool manifest')
+    lock = modules / '.pnpm/lock.yaml'
+    identity = {
+        'package_manifests': dict(sorted(manifests.items())),
+        'lockfiles_sha256': {'.pnpm/lock.yaml': hashlib.sha256(lock.read_bytes()).hexdigest()}
+                           if lock.is_file() else {},
+    }
+    # shortcut: metadata identifies versions, not binary integrity; use signed artifacts for attestation.
+    return {
+        'modules_path': str(modules), 'artifact_tool': artifact, **identity,
+        'identity_scope': 'installed package manifests and available pnpm lock; excludes code/binary contents',
+        'dependency_set_sha256': hashlib.sha256(json.dumps(
+            identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('output', help='new absolute directory outside Git')
@@ -73,6 +130,8 @@ def main():
             raise ValueError('Supply executable Node and Godot paths')
     if not args.modules.is_dir():
         raise ValueError('Supply the managed node_modules directory')
+    args.modules = args.modules.resolve()
+    dependencies = dependency_provenance(args.modules)
     args.node = args.node.resolve()
     args.godot = args.godot.resolve()
     version = subprocess.check_output([str(args.godot), '--version'], text=True).strip()
@@ -178,7 +237,10 @@ def main():
                   str(references / 'portfolio-reference.json')],
                  evidence / f'checkpoint-{name}.log', 'PASS ')
     digest = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
-    assert digest(builder) == digest(execution_copy), 'Execution copy differs from source'
+    if digest(builder) != digest(execution_copy):
+        raise ValueError('Execution copy differs from source')
+    if dependency_provenance(args.modules) != dependencies:
+        raise ValueError('Managed dependency metadata changed during the build')
     with (evidence / 'workbook-parity.json').open('x') as destination:
         json.dump(parity, destination, indent=2)
     provenance = {
@@ -186,6 +248,7 @@ def main():
         'portfolio_reference_sha256': portfolio_hash,
         'godot_version': version, 'builder_sha256': digest(builder),
         'build_phases': list(BUILD_PHASES),
+        'managed_dependencies': dependencies,
         'node_version': subprocess.check_output([str(args.node), '--version'], text=True).strip(),
         'source_sha256': {name: digest(ROOT / name) for name in (
             'scripts/build-workbook.py', 'scripts/spreadsheet/build-policy-lab.mjs',

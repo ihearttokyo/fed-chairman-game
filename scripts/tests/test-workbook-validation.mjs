@@ -29,7 +29,7 @@ assert.match(driver, /f'workbook-build-\{phase\}\.log'/, 'Separate phase logs');
 assert.match(driver, /f'COMPLETED workbook phase \{phase\}'/, 'Separate phase completion markers');
 assert.match(driver, /timeout=900/, 'Keep the existing per-tool bound');
 const aggregateStart = driver.indexOf("with (evidence / 'workbook-parity.json').open('x')");
-const savedChecksEnd = driver.indexOf('    assert digest(builder) == digest(execution_copy)');
+const savedChecksEnd = driver.indexOf('    if digest(builder) != digest(execution_copy):');
 assert.ok(savedChecksEnd >= 0 && aggregateStart > savedChecksEnd, 'Final aggregate follows every saved-file check and source-copy assertion');
 const preflightStart = source.indexOf('for (const path of phaseOutputs(buildPhase))'), preflightEnd = source.indexOf('const workbook = ', preflightStart);
 assert.ok(preflightStart >= 0 && preflightEnd > preflightStart, 'Replacement preflight precedes authoring');

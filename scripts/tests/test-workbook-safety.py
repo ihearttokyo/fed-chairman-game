@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location('build_workbook', ROOT / 'scripts/build-workbook.py')
@@ -24,6 +25,119 @@ def rejected_output(path, message):
         assert message in str(error), error
     else:
         raise AssertionError(f'Accepted unsafe output: {path}')
+
+
+# Managed package metadata identifies bundled/nested versions without loading Node.
+with tempfile.TemporaryDirectory(prefix='fed-workbook-dependencies-') as directory:
+    modules = Path(directory) / 'node_modules'
+    package_data = {
+        '@oai/artifact-tool/package.json': {
+            'name': '@oai/artifact-tool', 'version': '2.8.91',
+            'dependencies': {'skia-canvas': '^3.0.6', '@oai/walnut': '0.1.258'},
+            'bundledDependencies': ['@oai/walnut', 'skia-canvas'],
+        },
+        '@oai/artifact-tool/node_modules/@oai/walnut/package.json': {
+            'name': '@oai/walnut', 'version': '0.1.258',
+        },
+        '@oai/artifact-tool/node_modules/skia-canvas/package.json': {
+            'name': 'skia-canvas', 'version': '3.0.8',
+        },
+        'debug/package.json': {'name': 'debug', 'version': '4.4.3'},
+    }
+    for relative, data in package_data.items():
+        path = modules / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data))
+    lock = modules / '.pnpm/lock.yaml'
+    lock.parent.mkdir()
+    lock.write_text("lockfileVersion: '9.0'\n")
+    original = builder.dependency_provenance(modules)
+    artifact = modules / '@oai/artifact-tool/package.json'
+    assert original['artifact_tool'] == {
+        'name': '@oai/artifact-tool', 'version': '2.8.91',
+        'sha256': hashlib.sha256(artifact.read_bytes()).hexdigest(),
+    }
+    assert len(original['package_manifests']) == 4
+    assert original['lockfiles_sha256'] == {'.pnpm/lock.yaml': hashlib.sha256(lock.read_bytes()).hexdigest()}
+    identity_bytes = json.dumps({'package_manifests': original['package_manifests'],
+                                 'lockfiles_sha256': original['lockfiles_sha256']},
+                                sort_keys=True, separators=(',', ':')).encode()
+    assert original['dependency_set_sha256'] == hashlib.sha256(identity_bytes).hexdigest()
+    assert builder.dependency_provenance(modules) == original, 'Stable metadata has stable provenance'
+    changes = 0
+    for relative in package_data:
+        path = modules / relative
+        raw = path.read_bytes()
+        data = json.loads(raw)
+        data['version'] += '-changed'
+        path.write_text(json.dumps(data))
+        assert builder.dependency_provenance(modules)['dependency_set_sha256'] != original['dependency_set_sha256'], relative
+        path.write_bytes(raw)
+        changes += 1
+    raw = artifact.read_bytes()
+    artifact.write_bytes(raw + b'\n')
+    changed = builder.dependency_provenance(modules)
+    assert changed['artifact_tool']['version'] == original['artifact_tool']['version']
+    assert changed['artifact_tool']['sha256'] != original['artifact_tool']['sha256']
+    assert changed['dependency_set_sha256'] != original['dependency_set_sha256']
+    artifact.write_bytes(raw)
+    changes += 1
+    lock.write_text("lockfileVersion: '9.0'\n# changed installation\n")
+    assert builder.dependency_provenance(modules)['dependency_set_sha256'] != original['dependency_set_sha256']
+    lock.rename(lock.with_suffix('.absent'))
+    without_lock = builder.dependency_provenance(modules)
+    assert without_lock['lockfiles_sha256'] == {} and len(without_lock['package_manifests']) == 4
+    assert without_lock['dependency_set_sha256'] != original['dependency_set_sha256']
+    changes += 2
+    added = modules / 'added/package.json'
+    added.parent.mkdir()
+    added.write_text('{"name":"added","version":"1.0.0"}')
+    assert builder.dependency_provenance(modules)['dependency_set_sha256'] != without_lock['dependency_set_sha256']
+    changes += 1
+    invalid_metadata = [
+        (artifact, None), (artifact, b'{'), (artifact, b'[]'),
+        (artifact, b'{"version":"2.8.91"}'),
+        (artifact, b'{"name":"@oai/artifact-tool"}'),
+        (artifact, b'{"name":"@oai/artifact-tool","version":" "}'),
+        (artifact, b'{"name":"@oai/artifact-tool","version":2}'),
+        (artifact, b'{"name":"other","version":"2.8.91"}'),
+        (modules / '@oai/artifact-tool/node_modules/skia-canvas/package.json', b'{'),
+        (modules / '@oai/artifact-tool/node_modules/@oai/walnut/package.json', None),
+        (added, b'{"name":"added"}'),
+    ]
+    rejected = 0
+    for path, replacement in invalid_metadata:
+        raw = path.read_bytes()
+        if replacement is None:
+            path.rename(path.with_suffix('.absent'))
+        else:
+            path.write_bytes(replacement)
+        try:
+            builder.dependency_provenance(modules)
+        except ValueError as error:
+            assert 'manifest' in str(error), error
+            rejected += 1
+        else:
+            raise AssertionError(f'Accepted invalid managed metadata: {path}')
+        output = Path(directory) / 'must-not-be-created'
+        arguments = ['build-workbook.py', str(output), '--node', sys.executable,
+                     '--godot', sys.executable, '--modules', str(modules)]
+        with patch.object(sys, 'argv', arguments), patch.object(
+                builder.subprocess, 'check_output',
+                side_effect=AssertionError('Metadata refusal must precede tool invocation')):
+            try:
+                builder.main()
+            except ValueError as error:
+                assert 'manifest' in str(error), error
+            else:
+                raise AssertionError('CLI preflight accepted invalid dependency metadata')
+        assert not output.exists(), 'Invalid metadata must not reserve output'
+        if replacement is None:
+            path.with_suffix('.absent').rename(path)
+        else:
+            path.write_bytes(raw)
+    assert rejected == len(invalid_metadata)
+print(f'PASS: managed dependency provenance: 4 manifests, {changes} identity changes, {rejected} metadata refusals (Python fixtures)')
 
 
 with tempfile.TemporaryDirectory(prefix='fed-workbook-safety-') as directory:
@@ -73,6 +187,10 @@ with tempfile.TemporaryDirectory(prefix='fed-workbook-safety-') as directory:
             failed = True
         assert failed == rejected, (text, status)
 print('PASS: existing/internal/symlink workbook outputs and runtime-error gates (synthetic CLI evidence)')
+
+if sys.argv[1:] == ['--python-only']:
+    print('NOT RUN: real engine integration (--python-only)')
+    raise SystemExit(0)
 
 # Real engine path: fixed variants must have complete, finite quarterly states.
 godot = shutil.which('godot')
@@ -230,3 +348,41 @@ print('PASS: real Godot15 source-bound balance traces, zero-access default, matu
 # Exact raw JSON avoids formatting loss in an otherwise valid native numeric snapshot.
 assert all(f['portfolio_reference_json'].encode() == portfolio_bytes for f in fixtures)
 print('PASS: exact source JSON bytes and hashes retained in every native balance trace')
+
+
+
+# Execute the actual identity guard and digest on real matching/mismatching files.
+identity_code = r"""
+import ast, hashlib, sys
+from pathlib import Path
+source = ast.parse(Path(sys.argv[1]).read_text())
+main = next(node for node in source.body if isinstance(node, ast.FunctionDef) and node.name == 'main')
+selected = [node for node in main.body if ast.unparse(node).startswith('digest = lambda') or 'Execution copy differs from source' in ast.unparse(node)]
+if len(selected) != 2:
+    raise RuntimeError('Production source-copy identity guard missing')
+module = ast.fix_missing_locations(ast.Module(body=selected, type_ignores=[]))
+exec(compile(module, '<actual workbook identity guard>', 'exec', optimize=sys.flags.optimize),
+     {'hashlib': hashlib, 'builder': Path(sys.argv[2]), 'execution_copy': Path(sys.argv[3])})
+"""
+with tempfile.TemporaryDirectory(prefix='fed-source-copy-identity-') as directory:
+    original = Path(directory) / 'source.mjs'
+    copy = Path(directory) / 'execution.mjs'
+    original.write_text('same source')
+    modes = [([], dict(os.environ, PYTHONOPTIMIZE='')),
+             (['-O'], dict(os.environ, PYTHONOPTIMIZE='')),
+             ([], dict(os.environ, PYTHONOPTIMIZE='1'))]
+    failures = []
+    for flags, environment in modes:
+        for changed in (False, True):
+            copy.write_text('different source' if changed else 'same source')
+            result = subprocess.run([sys.executable, *flags, '-c', identity_code,
+                                     str(ROOT / 'scripts/build-workbook.py'), str(original), str(copy)],
+                                    capture_output=True, text=True, env=environment)
+            if changed:
+                if result.returncode == 0 or 'Execution copy differs from source' not in result.stderr:
+                    failures.append('Optimized source-copy mismatch accepted')
+            elif result.returncode != 0:
+                failures.append('Matching source copy rejected: ' + result.stderr)
+    if failures:
+        raise AssertionError('\n'.join(failures))
+print('PASS: actual source-copy guard accepts matches and rejects drift in normal/-O/inherited modes')
