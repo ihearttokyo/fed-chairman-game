@@ -3,6 +3,7 @@ from pathlib import Path
 import json
 import os
 import posixpath
+import re
 import subprocess
 import sys
 import tempfile
@@ -36,6 +37,117 @@ def validate_policy_inputs(archive):
         require(rule.get('showErrorMessage') in ('1', 'true'), 'Policy input validation alert disabled')
         require(rule.get('errorStyle', 'stop') == 'stop', 'Policy input validation must Stop')
     return path
+
+
+
+NEW_CASES = {
+    'table-calculated': 'unexpected workbook table',
+    'table-totals': 'unexpected workbook table',
+    'table-renamed-type': 'unexpected workbook table',
+    'table-renamed-relationship': 'unexpected workbook table',
+    'uppercase-external-rels': 'active content relationship',
+    'uppercase-safe-rels': None,
+    'opc-case-duplicate': 'duplicate package part',
+    'chart-order-swapped': 'chart series order',
+    'chart-order-duplicated': 'chart series order',
+    'chart-order-missing': 'chart series order',
+    'chart-index-duplicated': 'chart series idx',
+    'chart-safe-indices': None,
+    'shared-master-no-ref': 'shared formula group',
+    'shared-master-outside': 'shared formula group',
+    'shared-master-reversed': 'shared formula group',
+    'shared-master-no-index': 'shared formula group',
+    'shared-master-duplicated': 'shared formula group',
+    'shared-master-overlap': 'shared formula group',
+    'shared-disjoint-groups': None,
+    'shared-master-single-cell': None,
+    'shared-follower-text': None,
+}
+
+
+def review_mutations(source, defect, row_map):
+    if defect not in NEW_CASES:
+        return {}
+    content_types = ET.fromstring(source.read('[Content_Types].xml'))
+    rel_namespace = '{http://schemas.openxmlformats.org/package/2006/relationships}'
+    if defect.startswith('table-'):
+        path = 'xl/opaque.xml' if 'renamed' in defect else 'xl/tables/table1.xml'
+        table = ET.Element('{' + NS['s'] + '}table', id='1', name='InjectedTable', displayName='InjectedTable', ref='E20:E21')
+        columns = ET.SubElement(table, '{' + NS['s'] + '}tableColumns', count='1')
+        col = ET.SubElement(columns, '{' + NS['s'] + '}tableColumn', id='1', name='External')
+        ET.SubElement(col, '{' + NS['s'] + '}' + ('totalsRowFormula' if defect == 'table-totals' else 'calculatedColumnFormula')).text = 'WEBSERVICE("https://example.invalid/table")'
+        output = {path: ET.tostring(table, encoding='utf-8')}
+        if defect != 'table-renamed-relationship':
+            ET.SubElement(content_types, '{http://schemas.openxmlformats.org/package/2006/content-types}Override', PartName='/' + path, ContentType='application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml')
+            output['[Content_Types].xml'] = ET.tostring(content_types, encoding='utf-8')
+        if defect != 'table-renamed-type':
+            rels = ET.Element(rel_namespace + 'Relationships')
+            ET.SubElement(rels, rel_namespace + 'Relationship', Id='injected-table', Type=NS['r'] + '/table', Target='/' + path)
+            output['xl/worksheets/_rels/sheet2.xml.rels'] = ET.tostring(rels, encoding='utf-8')
+            table_parts = ET.Element('{' + NS['s'] + '}tableParts', count='1')
+            ET.SubElement(table_parts, '{' + NS['s'] + '}tablePart', {'{' + NS['r'] + '}id': 'injected-table'})
+            data, count = re.subn(rb'(</(?:\w+:)?worksheet>\s*)$',
+                                  lambda match: ET.tostring(table_parts, encoding='utf-8') + match.group(1),
+                                  source.read('xl/worksheets/sheet2.xml'))
+            require(count == 1, 'Table mutation requires the actual worksheet closing tag')
+            output['xl/worksheets/sheet2.xml'] = data
+        return output
+    if defect.startswith('uppercase-'):
+        part = ET.Element(rel_namespace + 'Relationships')
+        if defect == 'uppercase-external-rels':
+            ET.SubElement(part, rel_namespace + 'Relationship', Id='external', Type=NS['r'] + '/hyperlink', Target='https://example.invalid', TargetMode='External')
+        return {'xl/worksheets/_rels/sheet2.xml.RELS': ET.tostring(part, encoding='utf-8')}
+    chart_path = next(part.get('PartName').lstrip('/') for part in content_types if part.get('ContentType', '').endswith('drawingml.chart+xml'))
+    if defect == 'opc-case-duplicate':
+        return {chart_path.upper(): source.read(chart_path)}
+    if defect.startswith('chart-'):
+        chart = ET.fromstring(source.read(chart_path)); ns = '{http://schemas.openxmlformats.org/drawingml/2006/chart}'
+        series = chart.findall('.//' + ns + 'ser')
+        if defect == 'chart-order-swapped':
+            series[0].find(ns + 'order').set('val', '1'); series[1].find(ns + 'order').set('val', '0')
+        elif defect == 'chart-order-duplicated':
+            series[1].find(ns + 'order').set('val', '0')
+        elif defect == 'chart-order-missing':
+            series[0].remove(series[0].find(ns + 'order'))
+        elif defect == 'chart-index-duplicated':
+            series[1].find(ns + 'idx').set('val', '0')
+        else:
+            for i, item in enumerate(series):
+                item.find(ns + 'idx').set('val', str(10 + i * 3))
+                item.find(ns + 'order').set('val', '+00' if i == 0 else str(i))
+        return {chart_path: ET.tostring(chart, encoding='utf-8')}
+    path = 'xl/worksheets/sheet4.xml'; data = bytearray()
+    with source.open(path) as stream:
+        for chunk in iter(lambda: stream.read(131072), b''):
+            data.extend(chunk)
+    row = json.loads(row_map.read_text())['treasury_cohorts_pct_initial_gdp_0']
+    addresses = [f'E{row}', f'G{row}'] if defect == 'shared-disjoint-groups' else [f'E{row}', f'F{row}'] if defect in ('shared-master-duplicated', 'shared-follower-text', 'shared-master-overlap') else [f'E{row}']
+    for address in addresses:
+        match = re.search(rb'<(?:\w+:)?c\b[^>]*\br="' + address.encode() + rb'"[^>]*>.*?</(?:\w+:)?c>', data, re.S)
+        require(match is not None, 'Shared mutation requires an actual saved cell')
+        declarations = b' '.join(re.findall(rb'xmlns(?::[\w]+)?="[^"]*"', data[:2000]))
+        cell = ET.fromstring(b'<cells ' + declarations + b'>' + match.group() + b'</cells>')[0]
+        formula = cell.find('s:f', NS); require(formula is not None, 'Shared mutation requires an actual saved formula')
+        formula.set('t', 'shared'); formula.set('si', '999998')
+        formula.set('ref', f'E{row}:F{row}')
+        if defect == 'shared-master-overlap' and address.startswith('F'):
+            formula.set('si', '999999'); formula.set('ref', f'F{row}:G{row}')
+        elif defect == 'shared-disjoint-groups' and address.startswith('G'):
+            formula.set('si', '999999'); formula.set('ref', f'G{row}:H{row}')
+        if defect == 'shared-master-no-ref':
+            formula.attrib.pop('ref')
+        elif defect == 'shared-master-outside':
+            formula.set('ref', f'F{row}:F{row}')
+        elif defect == 'shared-master-reversed':
+            formula.set('ref', f'F{row}:E{row}')
+        elif defect == 'shared-master-no-index':
+            formula.attrib.pop('si')
+        elif defect == 'shared-master-single-cell':
+            formula.set('ref', address)
+        if defect == 'shared-follower-text' and address.startswith('F'):
+            formula.attrib.pop('ref')
+        data[match.start():match.end()] = ET.tostring(cell, encoding='utf-8')
+    return {path: data}
 
 
 root = Path(__file__).resolve().parents[2]
@@ -103,6 +215,7 @@ with tempfile.TemporaryDirectory(prefix='fed-chart-regression-') as directory:
         'safe-defined-name': ("'Policy Lab'!$B$58:$B$106", 'name'),
     }
     defects += [(name, None if name.startswith('safe-') else 'unsupported workbook formula') for name in formula_cases]
+    defects += list(NEW_CASES.items())
     defects += validation_defects
     if campaign:
         defects.append(('campaign-note', 'stale or missing campaign explanation'))
@@ -111,6 +224,7 @@ with tempfile.TemporaryDirectory(prefix='fed-chart-regression-') as directory:
         broken = Path(directory) / f'{defect}.xlsx'
         changed = False
         with zipfile.ZipFile(workbook) as source, zipfile.ZipFile(broken, 'w') as target:
+            review_changes = review_mutations(source, defect, row_map)
             charts = {part.attrib['PartName'].lstrip('/')
                       for part in ET.fromstring(source.read('[Content_Types].xml'))
                       if part.attrib.get('ContentType') == 'application/vnd.openxmlformats-officedocument.drawingml.chart+xml'}
@@ -141,7 +255,11 @@ with tempfile.TemporaryDirectory(prefix='fed-chart-regression-') as directory:
                 target_path = relationships[economy_sheet.get('{' + NS['r'] + '}id')]
                 economy_path = target_path.lstrip('/') if target_path.startswith('/') else posixpath.normpath('xl/' + target_path)
             for info in source.infolist():
-                data = source.read(info.filename)
+                if info.filename in review_changes:
+                    data = review_changes.pop(info.filename)
+                    changed = True
+                else:
+                    data = source.read(info.filename)
                 if defect in formula_cases and info.filename == formula_path:
                     part = ET.fromstring(data)
                     if location == 'name':
@@ -290,6 +408,9 @@ with tempfile.TemporaryDirectory(prefix='fed-chart-regression-') as directory:
                         changed = True
                     data = ET.tostring(chart, encoding='utf-8', xml_declaration=True)
                 target.writestr(info, data)
+            for path, data in review_changes.items():
+                target.writestr(path, data)
+                changed = True
             if defect.startswith(('vba-', 'connections-', 'xlm-')):
                 target.writestr('xl/opaque.bin', b'active-content-mutation')
         require(changed, 'Fault injection must corrupt actual saved workbook content')

@@ -23,6 +23,9 @@ NS = {
     'c': 'http://schemas.openxmlformats.org/drawingml/2006/chart',
     'a': 'http://schemas.openxmlformats.org/drawingml/2006/main',
 }
+ASCII_LOWER = str.maketrans('ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')
+
+
 def require(condition, message):
     if not condition:
         raise AssertionError(message)
@@ -70,21 +73,65 @@ def coordinates(address):
     return col, int(match[2])
 
 
+def unsigned_integer(value, message):
+    require(isinstance(value, str) and re.fullmatch(r'\+?[0-9]+', value) is not None, message)
+    number = int(value)
+    require(number <= 4294967295, message)
+    return number
+
+
 def has_formula(cell, shared):
     formula = cell.find('s:f', NS)
     if formula is None:
         return False
-    if (formula.text or '').strip():
-        return True
-    if formula.get('t') != 'shared' or formula.get('si') not in shared:
+    if formula.get('t') != 'shared':
+        return bool((formula.text or '').strip())
+    index = unsigned_integer(formula.get('si'), 'Full-state parity missing formula: shared formula group index')
+    anchor = shared.get(index)
+    if anchor is None:
         return False
-    anchor = shared[formula.get('si')]
     bounds = anchor.get('ref', '').split(':')
-    if len(bounds) != 2:
+    if len(bounds) not in (1, 2) or not all(re.fullmatch(r'\$?[A-Z]+\$?[1-9][0-9]*', address) for address in bounds):
         return False
-    first, last = map(coordinates, bounds)
+    first, last = coordinates(bounds[0]), coordinates(bounds[-1])
     point = coordinates(cell.attrib['r'])
     return all(low <= value <= high for low, value, high in zip(first, point, last))
+
+
+def shared_formulas(cells):
+    shared = {}
+    members = []
+    for cell in cells.values():
+        formula = cell.find('s:f', NS)
+        if formula is None or formula.get('t') != 'shared':
+            continue
+        members.append(cell)
+        index = unsigned_integer(formula.get('si'), 'Full-state parity missing formula: shared formula group index')
+        # A follower can carry ignored text; only ref identifies a master.
+        if formula.get('ref') is not None:
+            require((formula.text or '').strip() and index not in shared,
+                    'Full-state parity missing formula: duplicate or empty shared formula group master')
+            shared[index] = formula
+    for cell in members:
+        require(has_formula(cell, shared), 'Full-state parity missing formula: shared formula group range or master')
+    rectangles = []
+    for anchor in shared.values():
+        bounds = anchor.get('ref').split(':')
+        first, last = coordinates(bounds[0]), coordinates(bounds[-1])
+        require(all(any(last[axis] < prior_first[axis] or prior_last[axis] < first[axis]
+                        for axis in (0, 1)) for prior_first, prior_last in rectangles),
+                'Full-state parity missing formula: overlapping shared formula group ranges')
+        rectangles.append((first, last))
+    return shared
+
+
+def series_numbers(series, tag, path):
+    values = []
+    for item in series:
+        nodes = item.findall('c:' + tag, NS)
+        require(len(nodes) == 1, (path, 'chart series ' + tag))
+        values.append(unsigned_integer(nodes[0].get('val'), (path, 'chart series ' + tag)))
+    return values
 
 
 # Fixed builder dialect: literals, arithmetic, local A1 references and these pure functions.
@@ -110,17 +157,20 @@ def validate_formulas(part, path):
 for filename in args.workbooks:
     with zipfile.ZipFile(filename) as archive:
         names = archive.namelist()
-        require(len(names) == len(set(names)), ('duplicate package part', filename))
+        require(len(names) == len({name.translate(ASCII_LOWER) for name in names}), ('duplicate package part', filename))
+        require(not any('/tables/' in ('/' + name.translate(ASCII_LOWER)) for name in names), 'unexpected workbook table part')
         content_types = ET.fromstring(archive.read('[Content_Types].xml'))
         forbidden = ('vba', 'macroenabled', 'macrosheet', 'activex', 'oleobject', 'externallink', 'connections', 'querytable')
         for part in content_types:
+            require('spreadsheetml.table' not in part.get('ContentType', '').lower(), 'unexpected workbook table type')
             require(not any(token in part.get('ContentType', '').lower() for token in forbidden),
                     ('active content type', part.attrib))
-        relationship_parts = {name for name in names if name.endswith('.rels')}
+        relationship_parts = {name for name in names if name.translate(ASCII_LOWER).endswith('.rels')}
         relationship_parts.update(part.get('PartName', '').lstrip('/') for part in content_types
                                   if part.get('ContentType') == 'application/vnd.openxmlformats-package.relationships+xml' and part.get('PartName'))
         for path in relationship_parts:
             for relationship in ET.fromstring(archive.read(path)):
+                require(relationship.get('Type', '').lower().rsplit('/', 1)[-1] != 'table', 'unexpected workbook table relationship')
                 target = relationship.get('Target', '')
                 require(relationship.get('TargetMode', '').lower() != 'external'
                         and not urlsplit(target).scheme and not target.startswith('//')
@@ -150,9 +200,7 @@ for filename in args.workbooks:
                     values.append(''.join(t.text or '' for t in cell.findall('.//s:t', NS)))
             require(expected_note in values, 'stale or missing campaign explanation')
         cells = {c.attrib['r']: c for c in ET.fromstring(archive.read(sheets['Economy'])).findall('.//s:c', NS)}
-        shared = {formula.get('si'): formula for cell in cells.values()
-                  if (formula := cell.find('s:f', NS)) is not None
-                  and formula.get('t') == 'shared' and (formula.text or '').strip()}
+        shared = shared_formulas(cells)
         worst = 0
         for quarter, state in enumerate([reference['initial_state']] + [r['state'] for r in reference['quarters']]):
             for field, value in flatten_state(state).items():
@@ -172,6 +220,8 @@ for filename in args.workbooks:
         for name, path in sheets.items():
             part = ET.fromstring(archive.read(path))
             validate_formulas(part, path)
+            if name != 'Economy':
+                shared_formulas({cell.attrib['r']: cell for cell in part.findall('.//s:c', NS)})
             errors.extend((name, c.attrib['r'], c.find('s:v', NS).text)
                           for c in part.findall('.//s:c', NS)
                           if c.attrib.get('t') == 'e')
@@ -193,6 +243,9 @@ for filename in args.workbooks:
                                    and f.attrib.get('sourceLinked') in ('0', 'false') for f in formats), (path, title, 'ambiguous value-axis precision'))
             series = chart.findall('.//c:ser', NS)
             require(title in expected_series and len(series) == len(expected_series[title]), (path, title, 'missing chart series'))
+            require(series_numbers(series, 'order', path) == list(range(len(series))), (path, 'chart series order'))
+            identities = series_numbers(series, 'idx', path)
+            require(len(identities) == len(set(identities)), (path, 'chart series idx'))
             palettes.append([s.find('c:spPr/a:ln/a:solidFill/a:srgbClr', NS).attrib['val'] for s in series])
             for item, col in zip(series, expected_series[title]):
                 category = item.find('c:cat/c:strRef/c:f', NS)
