@@ -601,7 +601,8 @@ func _apply_input(input: SpinBox) -> void:
 		input.apply()
 
 func _compare() -> void:
-	_apply_policy_inputs()
+	if career.decisions.size() < Career.MAX_QUARTERS:
+		_apply_policy_inputs()
 	_preview()
 	var text := _decision_briefing()
 	var dialog := ReportDialog.new()
@@ -610,6 +611,7 @@ func _compare() -> void:
 	box.custom_minimum_size = Vector2(690, 450)
 	_label(box, "Jump to section", 13, MUTED)
 	var chooser := OptionButton.new()
+	chooser.allow_reselect = true
 	chooser.accessibility_name = "Comparison section"
 	chooser.tooltip_text = "Jump within the complete report. All calculations, explanations and limits remain available."
 	box.add_child(chooser)
@@ -651,7 +653,7 @@ func _refresh(reset_controls := false) -> void:
 	var complete := career.decisions.size() >= Career.MAX_QUARTERS
 	case_title.text = career.cases[career.scenario_id].label
 	var n: float = career.model.nominal_gdp_ratio(s)
-	case_detail.text = "Holdings %.1f%% · Loans %.2f%% · Reserves %.2f%% · RRP %.2f%%\nUnits: current annual GDP" % [s.asset_stock_pct_initial_gdp / n, s.outstanding_liquidity_pct_initial_gdp / n, s.reserves_pct_initial_gdp / n, s.reverse_repo_pct_initial_gdp / n]
+	case_detail.text = "Holdings %.1f%% · Term premium %+.3f pp · Loans %.2f%% · Reserves %.2f%% · RRP %.2f%%\nUnits: current annual GDP (holdings, loans, reserves, RRP)" % [s.asset_stock_pct_initial_gdp / n, s.term_premium_pct, s.outstanding_liquidity_pct_initial_gdp / n, s.reserves_pct_initial_gdp / n, s.reverse_repo_pct_initial_gdp / n]
 	quarter_label.text = "CAREER COMPLETE · %d MEETINGS" % Career.MAX_QUARTERS if complete else "YEAR %02d / Q%d   ·   MEETING %d" % [int(s.quarter_index / 4) + 1, int(s.quarter_index) % 4 + 1, s.quarter_index + 1]
 	var assessment := career.mandate_assessment()
 	mandate_label.text = _mandate_summary(assessment)
@@ -675,22 +677,26 @@ func _refresh(reset_controls := false) -> void:
 	for chart in charts:
 		chart.history = career.history
 		chart.queue_redraw()
-	var shock: Dictionary = career.current_briefing()
-	var refinancing_request: float = shock.get("refinancing_need_pct_initial_gdp", 0.0)
-	var refinancing_need := minf(refinancing_request, s.outstanding_liquidity_pct_initial_gdp)
-	var collateral: float = shock.get("eligible_collateral_pct_initial_gdp", 0.0)
-	var haircut: float = shock.get("collateral_haircut_pct", 0.0)
-	var eligibility: float = shock.get("liquidity_eligibility_pct", 0.0)
-	var lending_value := collateral * (1.0 - haircut / 100.0) * (eligibility / 100.0)
-	briefing.text = "Demand impulse %+.2f pp · supply innovation %+.2f pp · output gap %+.2f%%." % [shock.get("demand_shock_pct", 0), shock.get("supply_innovation_pct", 0), s.output_gap_pct]
-	if shock.get("funding_need_pct_initial_gdp", 0.0) > 0.0 or refinancing_request > 0.0 or s.outstanding_liquidity_pct_initial_gdp > 0.0 or collateral > 0.0:
-		briefing.text += "\nFunding need %.2f (new) · Requested refinancing %.2f · Refinancing need %.2f (%% current GDP).\nMaturing principal %.2f (short loans) · Collateral before haircut %.2f · Lending value %.2f (%% current GDP).\nCollateral haircut %.2f%% · Eligibility %.2f%%." % [shock.get("funding_need_pct_initial_gdp", 0) / n, refinancing_request / n, refinancing_need / n, s.outstanding_liquidity_pct_initial_gdp / n, collateral / n, lending_value / n, haircut, eligibility]
-	if shock.get("solvency_risk_innovation_pct", 0.0) != 0.0 or s.solvency_risk_wedge_pct != 0.0:
-		briefing.text += "\nCurrent impairment impulse %+.2f pp · Prior impairment %.2f pp (spread proxy, not booked bank loss)." % [shock.get("solvency_risk_innovation_pct", 0.0), s.solvency_risk_wedge_pct]
-	briefing.tooltip_text = "Refinancing need is capped by maturing short-loan principal. Lending value applies the current collateral haircut and eligibility. Impairment is a credit-spread proxy; liquidity lending cannot create bank capital."
+	if complete:
+		briefing.text = "Career complete at Q240. Review final outcomes in Data & journal."
+		briefing.tooltip_text = "All 240 decisions are complete; there is no next meeting."
+	else:
+		var shock: Dictionary = career.current_briefing()
+		var refinancing_request: float = shock.get("refinancing_need_pct_initial_gdp", 0.0)
+		var refinancing_need := minf(refinancing_request, s.outstanding_liquidity_pct_initial_gdp)
+		var collateral: float = shock.get("eligible_collateral_pct_initial_gdp", 0.0)
+		var haircut: float = shock.get("collateral_haircut_pct", 0.0)
+		var eligibility: float = shock.get("liquidity_eligibility_pct", 0.0)
+		var lending_value := collateral * (1.0 - haircut / 100.0) * (eligibility / 100.0)
+		briefing.text = "Demand impulse %+.2f pp · supply innovation %+.2f pp · output gap %+.2f%%." % [shock.get("demand_shock_pct", 0), shock.get("supply_innovation_pct", 0), s.output_gap_pct]
+		if shock.get("funding_need_pct_initial_gdp", 0.0) > 0.0 or refinancing_request > 0.0 or s.outstanding_liquidity_pct_initial_gdp > 0.0 or collateral > 0.0:
+			briefing.text += "\nFunding need %.2f (new) · Requested refinancing %.2f · Refinancing need %.2f (%% current GDP).\nMaturing principal %.2f (short loans) · Collateral before haircut %.2f · Lending value %.2f (%% current GDP).\nCollateral haircut %.2f%% · Eligibility %.2f%%." % [shock.get("funding_need_pct_initial_gdp", 0) / n, refinancing_request / n, refinancing_need / n, s.outstanding_liquidity_pct_initial_gdp / n, collateral / n, lending_value / n, haircut, eligibility]
+		if shock.get("solvency_risk_innovation_pct", 0.0) != 0.0 or s.solvency_risk_wedge_pct != 0.0:
+			briefing.text += "\nCurrent impairment impulse %+.2f pp · Prior impairment %.2f pp (spread proxy, not booked bank loss)." % [shock.get("solvency_risk_innovation_pct", 0.0), s.solvency_risk_wedge_pct]
+		briefing.tooltip_text = "Refinancing need is capped by maturing short-loan principal. Lending value applies the current collateral haircut and eligibility. Impairment is a credit-spread proxy; liquidity lending cannot create bank capital."
+		briefing.text += "\nDeferred demand %+.2f%% potential · prior release %+.2f pp." % [s.deferred_demand_pct, s.demand_release_pct]
+		briefing.text += "\n\n" + career.situation_briefing()
 	briefing.accessibility_description = briefing.tooltip_text
-	briefing.text += "\nDeferred demand %+.2f%% potential · prior release %+.2f pp." % [s.deferred_demand_pct, s.demand_release_pct]
-	briefing.text += "\n\n" + career.situation_briefing()
 	if reset_controls:
 		loading_controls = true
 		for input in [rate, guidance, assets, liquidity, inflation_response, activity_response]:
@@ -726,6 +732,9 @@ func _policy_error(error: String) -> String:
 func _preview() -> void:
 	if loading_controls or forecast_label == null or career.state.is_empty():
 		return
+	if career.decisions.size() >= Career.MAX_QUARTERS:
+		forecast_label.text = "CAREER COMPLETE\nFinal outcomes at Q240. Compare paths is diagnostic only; no further decisions."
+		return
 	var result: Dictionary = career.forecast(_policy())
 	if not result.ok:
 		forecast_label.text = "Preview unavailable: " + _policy_error(result.error)
@@ -748,6 +757,8 @@ func _decision_briefing() -> String:
 	var reference: Dictionary = held.states[0]
 	var n: float = first.decision_nominal_gdp_ratio
 	var text := "CURRENT MEETING / REQUESTED AND APPLIED\nRequested rate %.2f%% · Applied rate %.2f%%\nRequested assets %+.2f · Applied assets %+.2f\nRequested lending %.2f · Applied lending %.2f\n\nNominal rates apply in full on a 1bp quote grid; arrow convenience is 25bp. Negative policy is a U.S. counterfactual with diminishing effective borrowing-rate benefits. No invented purchase, stock or lending-offer ceilings. Runoff cannot exceed principal due. Lending is limited by borrower demand, eligibility, lending value and settlement. Asset and loan amounts here use %% of current annual GDP.\n\n" % [policy.policy_rate_request_pct, first.policy_rate_pct, policy.asset_flow_request_pct_initial_gdp / n, first.asset_flow_applied_pct_initial_gdp / n, policy.liquidity_request_pct_initial_gdp / n, first.liquidity_applied_pct_initial_gdp / n]
+	if career.decisions.size() >= Career.MAX_QUARTERS:
+		text = "CAREER COMPLETE / DIAGNOSTIC COMPARISON\nAll paths below continue beyond Q240, not extra playable turns.\n\n" + text
 	text += "PORTFOLIO AND FUNDING / CURRENT MEETING\nPrincipal due %.2f; runoff %.2f; reinvested %.2f\nLong runoff %.2f; reserve-maintenance bills %.2f; total-asset change %+.2f\nSterilization requested %.2f; applied RRP %.2f; unfulfilled %.2f\nLoan principal repaid %.2f; refinancing %.2f; new local lending %.2f; aggregate lending %.2f\nEnding reserves %.2f; reserve-scarcity premium %.3f pp\n\n" % [first.principal_due_pct_initial_gdp / n, first.principal_runoff_pct_initial_gdp / n, first.principal_reinvestment_pct_initial_gdp / n, first.long_securities_runoff_pct_initial_gdp / n, first.reserve_maintenance_purchase_pct_initial_gdp / n, first.total_asset_change_pct_initial_gdp / n, first.sterilization_requested_pct_initial_gdp / n, first.sterilization_applied_pct_initial_gdp / n, first.sterilization_unfulfilled_pct_initial_gdp / n, first.liquidity_repayment_pct_initial_gdp / n, first.liquidity_refinancing_applied_pct_initial_gdp / n, first.liquidity_new_need_applied_pct_initial_gdp / n, first.liquidity_aggregate_applied_pct_initial_gdp / n, first.reserves_pct_initial_gdp / first.ending_nominal_gdp_ratio, first.reserve_scarcity_wedge_pct]
 	text += "Lending value %.2f; Eligible local demand %.2f; aggregate demand %.2f\nBinding constraints: lending offer %s, collateral %s, eligibility %s; RRP uptake %s, collateral %s, reserves %s\n\n" % [first.lending_collateral_capacity_pct_initial_gdp / n, first.eligible_local_need_pct_initial_gdp / n, first.liquidity_aggregate_need_pct_initial_gdp / n, "yes" if first.liquidity_offer_binding or first.liquidity_aggregate_offer_binding else "no", "yes" if first.liquidity_collateral_binding or first.liquidity_aggregate_collateral_binding else "no", "yes" if first.liquidity_eligibility_binding else "no", "yes" if first.sterilization_uptake_binding else "no", "yes" if first.sterilization_collateral_binding else "no", "yes" if first.sterilization_reserve_binding else "no"]
 	var s: Dictionary = career.state
@@ -784,7 +795,7 @@ func _decision_briefing() -> String:
 		text += "Q+8 / A VS B\nNominal rate %.2f%% vs %.2f%%\nEffective borrowing rate %.3f%% vs %.3f%%\n\nB / Q+8 PROMISE-FOLLOW\nInflation %.3f%%; unemployment %.3f%%; output gap %+.3f%%\nCredibility %.1f / 100; public support %.1f / 100\n\n" % [a.policy_rate_pct, b.policy_rate_pct, a.effective_policy_rate_pct, b.effective_policy_rate_pct, b.four_quarter_inflation_pct, b.unemployment_rate_pct, b.output_gap_pct, 100 * b.credibility, b.public_support]
 		text += "Q+8 / B MINUS A\nInflation %s; unemployment %s\nOutput gap %s; credibility %s; support %s\n\n" % [_change_text(b.four_quarter_inflation_pct - a.four_quarter_inflation_pct, 3, "pp"), _change_text(b.unemployment_rate_pct - a.unemployment_rate_pct, 3, "pp"), _change_text(b.output_gap_pct - a.output_gap_pct, 3, "pp"), _change_text(100 * (b.credibility - a.credibility), 2), _change_text(b.public_support - a.public_support, 2)]
 	text += "Q+1 / WHY CREDIBILITY AND SUPPORT MOVE\nSELECTED vs HOLD\nCredibility %.1f vs %.1f / 100\nPublic support %.1f vs %.1f / 100\nInflation-miss memory %.3f vs %.3f pp\nEffective rate %.3f%% vs %.3f%%\nDesired real restraint %+.3f vs %+.3f pp\nEffective-stance distance %.3f vs %.3f pp\nTransmission-frontier shortfall %.3f vs %.3f pp\nStance adequacy %.1f vs %.1f / 100\nPrior-promise follow-through %.1f vs %.1f / 100\nCurrent hardship %.3f vs %.3f support points\nHardship memory %.3f vs %.3f support points\n\n" % [100 * first.credibility, 100 * reference.credibility, first.public_support, reference.public_support, first.inflation_miss_memory_pct, reference.inflation_miss_memory_pct, first.effective_policy_rate_pct, reference.effective_policy_rate_pct, first.stance_target_gap_pct, reference.stance_target_gap_pct, first.stance_distance_pct, reference.stance_distance_pct, first.stance_best_feasible_distance_pct, reference.stance_best_feasible_distance_pct, 100 * first.stance_adequacy_score, 100 * reference.stance_adequacy_score, 100 * first.guidance_followthrough_score, 100 * reference.guidance_followthrough_score, first.current_hardship, reference.current_hardship, first.public_hardship_memory, reference.public_hardship_memory]
-	text += "Credibility combines 40%% inflation performance, 40%% stance, 20%% follow-through. Remembered inflation misses reduce performance. Stance compares current effective financing restraint with the unsaturated desired real gap. Other staged tools and the quote are held fixed when calculating the relaxed continuous transmission frontier. The 1bp grid can leave a small remaining distance. Unattainable restraint reduces adequacy even at best effort; extreme nominal cuts cannot earn full credit merely by matching a nominal rule. Inflation memory and the desired gap use prior observations; current market inputs are disclosed. Without a prior announcement, follow-through is neutral. Credibility closes %.0f%% of the distance to its combined score each quarter.\n\nPublic support closes %.0f%% of the distance to its hardship-implied level each quarter. Current inflation/deflation and employment hardship reduce that level; weighted hardship memory prolongs the effect after conditions improve. These scores and the stance rule are game assumptions, not an optimal policy or a measured institutional reputation.\n\n" % [100 * career.params.credibility_adjustment, 100 * career.params.public_support_adjustment]
+	text += "Credibility combines 40%% inflation performance, 40%% stance, 20%% follow-through. Remembered inflation misses reduce performance. Stance compares current effective financing restraint with the unsaturated desired real gap. Other staged tools and the quote are held fixed when calculating the relaxed continuous transmission frontier. The 1bp grid can leave a small remaining distance. Unattainable restraint reduces adequacy even at best effort; extreme nominal cuts cannot earn full credit merely by matching a nominal rule. Inflation memory and the desired gap use prior observations; current market inputs are disclosed. Without a prior announcement, follow-through is neutral. Credibility closes %.0f%% of the distance to its combined score each quarter.\n\nPublic support closes %.0f%% of the distance to its hardship-implied level each quarter. Absolute inflation distance from the %.2f%% target (including below-target positive inflation) and unemployment above the structural reference reduce that level; weighted hardship memory prolongs the effect after conditions improve. These scores and the stance rule are game assumptions, not an optimal policy or a measured institutional reputation.\n\n" % [100 * career.params.credibility_adjustment, 100 * career.params.public_support_adjustment, career.params.inflation_target_pct]
 	text += "CURRENT TRANSMISSION / SELECTED VS HOLD\nLong yield %.3f%% vs %.3f%%\nCredit spread %.3f%% vs %.3f%%\nUncovered funding %.2f vs %.2f\n\n" % [first.long_yield_pct, reference.long_yield_pct, first.credit_spread_pct, reference.credit_spread_pct, first.uncovered_funding_pct_initial_gdp / n, reference.uncovered_funding_pct_initial_gdp / n]
 	text += "Q+1 immediate financing gap %+.3f pp; retained %+.3f pp\n" % [first.spot_financial_gap_pct, first.financial_restraint_gap_pct]
 	text += "Vs HOLD immediate %s; retained %s\n" % [_change_text(first.spot_financial_gap_pct - reference.spot_financial_gap_pct, 3, "pp"), _change_text(first.financial_restraint_gap_pct - reference.financial_restraint_gap_pct, 3, "pp")]

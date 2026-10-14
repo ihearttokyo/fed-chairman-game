@@ -45,6 +45,7 @@ class UnavailableReviewReferenceModel:
 		return policy
 
 var failures := 0
+var checks := 0
 var pending_review: Button
 func _process(_delta: float) -> bool:
 	if pending_review != null:
@@ -53,6 +54,7 @@ func _process(_delta: float) -> bool:
 		action.pressed.emit()
 	return false
 func check(condition: bool, message: String) -> void:
+	checks += 1
 	if not condition:
 		failures += 1
 		printerr("FAIL: " + message)
@@ -292,15 +294,66 @@ func check_terminal_career(game: Control) -> void:
 	check(review.title == "Your 12-quarter policy review", "completion retains the final realized policy review")
 	review.get_ok_button().pressed.emit()
 	await process_frame
+	check_terminal_cockpit(game, "final adoption")
 	var preserved: PackedByteArray = game.career.encode()
 	check(game.career.restore(bytes_to_var(preserved)).ok, "completed career restores through real replay")
 	game._refresh(true)
 	check(game.quarter_label.text == "CAREER COMPLETE · 240 MEETINGS" and game.decision_button.disabled, "restored completion uses the same shared refresh")
+	check_terminal_cockpit(game, "replay restore")
 	var terminal_report: String = game._decision_briefing()
 	check(terminal_report.contains("CURRENT MEETING / REQUESTED AND APPLIED") and game.career.encode() == preserved, "terminal comparison remains available without changing completed history")
 	check(terminal_report.contains("Beyond Q240: diagnostic continuation only, not extra playable turns."), "continuation beyond retirement cannot advertise extra playable meetings")
+	check(terminal_report.begins_with("CAREER COMPLETE / DIAGNOSTIC COMPARISON\n"), "terminal comparison labels its entire continuation as diagnostic")
+	game.rate.get_line_edit().text = "9.25"
+	var pending: String = game.rate.get_line_edit().text
+	var numeric: float = game.rate.value
+	game._preview()
+	game._refresh()
+	game._compare()
+	await process_frame
+	await process_frame
+	check(game.rate.get_line_edit().text == pending and game.rate.value == numeric and game.career.encode() == preserved, "terminal preview, refresh and comparison preserve pending edits and completed career bytes")
+	var comparison: AcceptDialog = game.get_child(game.get_child_count() - 1)
+	comparison.get_ok_button().pressed.emit()
+	await process_frame
 	game._start_career("supply_shock", 1)
 	check(game.quarter_label.text == "YEAR 01 / Q1   ·   MEETING 1" and not game.decision_button.disabled and game.decision_button.text == "Adopt decision  →  Next quarter", "new career restores ordinary meeting and action labels")
+func check_terminal_cockpit(game: Control, context: String) -> void:
+	check(game.briefing.text.begins_with("Career complete at Q240.") and not game.briefing.text.contains("Demand impulse") and not game.briefing.text.contains("Funding need"), context + " replaces phantom meeting inputs with completed-career context")
+	check(game.forecast_label.text.begins_with("CAREER COMPLETE\n") and not game.forecast_label.text.contains("APPLIED NOW") and not game.forecast_label.text.contains("CONDITIONAL Q+8"), context + " suppresses the nonexistent playable forecast")
+
+func check_backaudit_readouts(game: Control) -> void:
+	var premiums: Array[float] = []
+	for flow in [4.0, -4.0]:
+		game._start_career("base", 417)
+		var initial_premium: float = game.career.state.term_premium_pct
+		game.assets.value = flow
+		game._advance()
+		check(game.career.state.quarter_index == 1, "matched purchase/runoff fixture adopts one actual quarter")
+		var current: Dictionary = game.career.state
+		var holdings := "Holdings %.1f%%" % (current.asset_stock_pct_initial_gdp / game.career.model.nominal_gdp_ratio(current))
+		check(game.case_detail.text.contains(holdings + " · Term premium %+.3f pp" % current.term_premium_pct), "purchase/runoff displays the actual current term premium beside holdings")
+		premiums.append(current.term_premium_pct)
+		check(current.term_premium_pct < initial_premium if flow > 0.0 else current.term_premium_pct > initial_premium, "matched purchases lower and runoff raises the separately displayed term premium")
+	check(premiums[0] < premiums[1], "matched purchase/runoff produces distinguishable term-premium values")
+	game._start_career("base", 417)
+	var initial: Dictionary = game.career.model.initial_state(game.career.params, {"annualized_quarterly_inflation_pct": 1.0, "expected_short_inflation_pct": 1.0, "expected_long_inflation_pct": 1.0})
+	check(initial.ok, "below-target positive-inflation fixture uses validated model initialization")
+	if initial.ok:
+		game.career.state = initial.state
+		game.career.history = [initial.state.duplicate(true)]
+		game._refresh(true)
+		var selected: Dictionary = game.career.forecast(game._policy())
+		check(selected.ok, "positive below-target inflation has a valid native forecast")
+		if selected.ok:
+			var first: Dictionary = selected.states[0]
+			check(first.four_quarter_inflation_pct > 0.0 and first.four_quarter_inflation_pct < game.career.params.inflation_target_pct, "hardship explanation fixture remains positive and below target")
+			var burden: float = game.career.params.public_inflation_burden_weight * abs(first.four_quarter_inflation_pct - game.career.params.inflation_target_pct)
+			var employment: float = game.career.params.public_unemployment_burden_weight * maxf(0.0, first.unemployment_rate_pct - first.structural_unemployment_pct)
+			check(burden > 0.0 and abs(first.current_hardship - burden - employment) < 1e-10, "below-target positive inflation contributes target-distance hardship, not deflation")
+			var report: String = game._decision_briefing()
+			check(report.contains("Absolute inflation distance from the %.2f%% target (including below-target positive inflation)" % game.career.params.inflation_target_pct) and report.contains("Current hardship %.3f" % first.current_hardship), "comparison explains absolute target distance beside the actual hardship calculation")
+
 func check_situation_ui(game: Control) -> void:
 	check(game.briefing.text.contains("MARKETS /") and game.briefing.text.contains("PUBLIC /") and game.briefing.text.contains("FUNDING /"), "shared cockpit refresh exposes offline situation interpretation")
 	game._start_career("funding_stress", 41)
@@ -791,6 +844,15 @@ func check_review_staff_dialog(game: Control) -> void:
 	check(review_staff_snapshot(game) == failure_preserved, "hold failure cannot mutate the career or staged inputs")
 	game.career.model = original_model
 	game._start_career("supply_shock", 1)
+func activate_comparison_section(chooser: OptionButton, index: int) -> void:
+	chooser.show_popup()
+	await process_frame
+	await process_frame
+	check(chooser.get_popup().visible, "section activation opens the actual native popup")
+	chooser.get_popup().set_focused_item(index)
+	await quit_key(chooser.get_popup(), KEY_ENTER)
+	check(chooser.selected == index and not chooser.get_popup().visible, "native popup Return activates the requested section")
+
 func check_comparison_navigation(game: Control) -> void:
 	var destinations := [["Meeting", "CURRENT MEETING /"], ["Deliberation", "COMMITTEE DELIBERATION /"], ["Guidance", "GUIDANCE /"], ["Guidance continuation", "GUIDANCE CONTINUATION /"], ["Scores", "Q+1 / WHY"], ["Forecasts", "CURRENT TRANSMISSION /"], ["Tools", "ONE-CONTROL CONTRASTS /"], ["Limits", "REFERENCE AND LIMITS"]]
 	for case_id in ["funding_stress", "base"]:
@@ -823,8 +885,7 @@ func check_comparison_navigation(game: Control) -> void:
 			for index in range(mini(chooser.item_count, destinations.size())):
 				check(chooser.get_item_text(index) == destinations[index][0], "comparison sections retain their named order")
 				var paragraph := expected.substr(0, expected.find(destinations[index][1])).count("\n")
-				chooser.select(index)
-				chooser.item_selected.emit(index)
+				await activate_comparison_section(chooser, index)
 				await process_frame
 				check(body.get_line(paragraph).begins_with(destinations[index][1]) and paragraph >= body.get_first_visible_line() and paragraph <= body.get_last_full_visible_line(), "selecting %s brings its actual heading into view" % destinations[index][0])
 				check(chooser.get_global_rect().end.y <= body.get_global_rect().position.y and chooser.is_visible_in_tree(), "section navigation remains above the scrolling report")
@@ -832,8 +893,7 @@ func check_comparison_navigation(game: Control) -> void:
 			body.select_all()
 			check(body.get_selected_text() == expected, "the full comparison remains available to native selection")
 			body.deselect()
-			chooser.select(0)
-			chooser.item_selected.emit(0)
+			await activate_comparison_section(chooser, 0)
 			body.grab_focus()
 			var page_down := InputEventKey.new()
 			page_down.keycode = KEY_PAGEDOWN
@@ -841,6 +901,9 @@ func check_comparison_navigation(game: Control) -> void:
 			dialog.push_input(page_down)
 			await process_frame
 			check(body.has_focus() and body.get_v_scroll_bar().value > 0, "comparison retains native keyboard scrolling after a section jump")
+			await activate_comparison_section(chooser, 0)
+			check(body.get_first_visible_line() == 0, "reselecting the already-selected Meeting through native popup input restores its heading after independent scrolling")
+			body.grab_focus()
 			var tab := InputEventKey.new()
 			tab.keycode = KEY_TAB
 			tab.pressed = true
@@ -1403,6 +1466,16 @@ func run() -> void:
 	var game = load("res://main.tscn").instantiate()
 	root.add_child(game)
 	await process_frame
+	if OS.get_cmdline_user_args().has("--backaudit-ui-only"):
+		await check_terminal_career(game)
+		check_backaudit_readouts(game)
+		await check_comparison_navigation(game)
+		print("BACKAUDIT_UI_COUNTS: checks=%d failures=%d" % [checks, failures])
+		if failures == 0:
+			print("PASS: four backaudit UI regressions, actual popup input and terminal replay/purity")
+		game.free()
+		quit(1 if failures else 0)
+		return
 	if OS.get_cmdline_user_args().is_empty() or OS.get_cmdline_user_args().has("--release-check-only"):
 		await check_release_comparison(game)
 	if OS.get_cmdline_user_args().has("--release-check-only"):
@@ -1511,6 +1584,7 @@ func run() -> void:
 		game.free()
 		quit(1 if failures else 0)
 		return
+	check_backaudit_readouts(game)
 	await check_terminal_career(game)
 	if OS.get_cmdline_user_args().has("--terminal-only"):
 		if failures == 0:
