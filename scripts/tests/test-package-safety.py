@@ -5,6 +5,9 @@ import subprocess
 import tempfile
 
 root = Path(__file__).resolve().parents[2]
+baseline_marker = 'PASS: 187 release-safe checks; eight 20-quarter careers, lossless replay, main scene and city'
+if f'print("{baseline_marker}")' not in (root / 'game/play/build_check.gd').read_text():
+    raise ValueError('Release fixture marker differs from the actual build-check producer')
 assert not any((root / path).exists() for path in (
     'native/FedChairmanGame/Package.swift', '.github/workflows/verify.yml',
     'package.json')), 'Godot must be the sole maintained frontend and build path'
@@ -24,11 +27,11 @@ failures = []
 guidance_marker = 'PASS: bundled guidance continuation and comparison'
 mandate_marker = 'PASS: bundled mandate assessment and realized feedback'
 incomplete_completions = (
-    ('missing mandate', 'PASS: 187 release-safe checks\n' + guidance_marker + '\n'),
-    ('suffixed mandate', 'PASS: 187 release-safe checks\n' + guidance_marker + '\n' + mandate_marker + '; incomplete\n'),
-    ('baseline only', 'PASS: 187 release-safe checks\n'),
+    ('missing mandate', 'PASS: 187 release-safe checks; eight 20-quarter careers, lossless replay, main scene and city\n' + guidance_marker + '\n'),
+    ('suffixed mandate', 'PASS: 187 release-safe checks; eight 20-quarter careers, lossless replay, main scene and city\n' + guidance_marker + '\n' + mandate_marker + '; incomplete\n'),
+    ('baseline only', 'PASS: 187 release-safe checks; eight 20-quarter careers, lossless replay, main scene and city\n'),
     ('guidance only', guidance_marker + '\n'),
-    ('suffixed guidance', 'PASS: 187 release-safe checks\n' + guidance_marker + '; incomplete\n'),
+    ('suffixed guidance', 'PASS: 187 release-safe checks; eight 20-quarter careers, lossless replay, main scene and city\n' + guidance_marker + '; incomplete\n'),
 )
 workflow = (root / '.github/workflows/godot.yml').read_text()
 ci_step = workflow.split('      - name: Import and test playable Godot game\n', 1)[1].split('\n      - ', 1)[0]
@@ -73,7 +76,7 @@ with tempfile.TemporaryDirectory(prefix='fed-runtime-error-guards-') as director
         rejected = bool(marker or exit_code)
         log.write_text((marker + ' synthetic runtime failure\n' if marker else '')
                        + 'PASS: isolated Godot user storage verified before fixture writes; synthetic output only\n'
-                       + 'PASS: 187 release-safe checks; synthetic output only\n'
+                       + 'PASS: 187 release-safe checks; eight 20-quarter careers, lossless replay, main scene and city\n'
                        + guidance_marker + '\n'
                        + mandate_marker + '\n'
                        + 'PASS: comparison count, exact parity and paired timing fixture; synthetic output only\n')
@@ -114,12 +117,13 @@ with tempfile.TemporaryDirectory(prefix='fed-runtime-error-guards-') as director
             failures.append(f'CI verification accepts incomplete completion: {label}')
     # A generic PASS cannot certify completion of the additional comparison fixture.
     log.write_text('PASS: isolated Godot user storage verified before fixture writes; synthetic output only\n'
-                   + 'PASS: 187 release-safe checks; synthetic output only\n')
+                   + 'PASS: 187 release-safe checks; eight 20-quarter careers, lossless replay, main scene and city\n')
     environment['FED_TEST_EXIT'] = '0'
     incomplete = subprocess.run(['bash', str(root / 'scripts/test-game.sh')],
                                 env=environment, capture_output=True, text=True)
     assert incomplete.returncode != 0, 'comparison wrapper must require its own completion marker'
-assert not failures, '\n'.join(failures)
+if failures:
+    raise AssertionError('\n'.join(failures))
 print('PASS: runtime log gates reject errors before continuation (synthetic CLI evidence)')
 
 # Simulate engine log writes without launching an engine or accessing real userdata.
@@ -139,7 +143,7 @@ with tempfile.TemporaryDirectory(prefix='fed-release-userdata-guard-') as direct
     binary = app / 'Contents/MacOS/candidate'
     binary.write_bytes(b'\xcf\xfa\xed\xfe')
     engine_homes = []
-    release_output = 'PASS: 187 release-safe checks; synthetic engine only\n' + guidance_marker + '\n' + mandate_marker + '\n'
+    release_output = 'PASS: 187 release-safe checks; eight 20-quarter careers, lossless replay, main scene and city\n' + guidance_marker + '\n' + mandate_marker + '\n'
     def fake_release_tool(command, **kwargs):
         if '--headless' not in command:
             assert Path((kwargs.get('env') or os.environ)['HOME']) == home, 'signing tools retain normal HOME'
@@ -165,9 +169,202 @@ with tempfile.TemporaryDirectory(prefix='fed-release-userdata-guard-') as direct
             rejected = False
             try:
                 runpy.run_path(str(root / 'scripts/tests/verify-game-release.py'), run_name='__main__')
-            except AssertionError:
+            except (AssertionError, ValueError):
                 rejected = True
             assert rejected, f'Native release verifier accepts incomplete completion: {label}'
     assert engine_homes and all(path != home for path in engine_homes), 'release check must isolate engine HOME'
     assert protected.read_text() == 'player crash evidence', 'release check must preserve player logs'
 print('PASS: release self-check preserves player userdata (simulated engine writes)')
+
+
+# Execute the real verifier in fresh optimized interpreters; the fixture tools
+# replace every subprocess, so no native executable or signing tool can launch.
+import sys
+release_fixture = r"""
+import os, plistlib, runpy, subprocess, sys
+from pathlib import Path
+from unittest.mock import patch
+app = Path(sys.argv[2])
+case = sys.argv[3]
+embedded_headers = {'embedded_mh32_be': 'feedface', 'embedded_mh32_le': 'cefaedfe',
+                    'embedded_fat64_be': 'cafebabf', 'embedded_fat64_le': 'bfbafeca'}
+(app / 'Contents/Resources/native.so').write_bytes(bytes.fromhex(embedded_headers.get(case, 'cffaedfe')))
+info = {'CFBundleExecutable': 'candidate', 'CFBundleIdentifier': 'local.fed-chairman-game.policy-lab'}
+if case == 'bundle': info['CFBundleIdentifier'] = 'wrong.bundle'
+(app / 'Contents/Info.plist').write_bytes(plistlib.dumps(info))
+log = 'PASS: 187 release-safe checks; eight 20-quarter careers, lossless replay, main scene and city\nPASS: bundled guidance continuation and comparison\nPASS: bundled mandate assessment and realized feedback\n'
+for marker in ('SCRIPT ERROR:', 'ERROR:', 'FAIL:'):
+    if case == marker: log += marker + ' zero-exit failure\n'
+for label, marker in (('baseline', 'PASS: 187 release-safe checks; eight 20-quarter careers, lossless replay, main scene and city'), ('guidance', 'PASS: bundled guidance continuation and comparison'), ('mandate', 'PASS: bundled mandate assessment and realized feedback')):
+    if case == label: log = log.replace(marker + '\n', '')
+    if case == label + '_suffix': log = log.replace(marker + '\n', marker + '; incomplete\n')
+signature = 'TeamIdentifier=TESTTEAM\nAuthority=Developer ID Application: Fixture\n(runtime)\nTimestamp=fixture\n'
+for label, marker in (('team', 'TeamIdentifier=TESTTEAM'), ('authority', 'Authority=Developer ID Application:'), ('runtime', '(runtime)'), ('timestamp', 'Timestamp=')):
+    if case == label: signature = signature.replace(marker, 'invalid')
+def fake(command, **kwargs):
+    output = ''
+    if command[0] == 'lipo':
+        output = 'arm64\n'
+        if case == 'architecture' or (case.startswith('embedded_') and command[-1].endswith('native.so')): output = 'x86_64\n'
+    elif command[0] == 'codesign' and '-d' in command: output = signature
+    elif '--headless' in command: output = log
+    return subprocess.CompletedProcess(command, 0, output, '')
+verifier = sys.argv[1]
+with patch('sys.argv', [verifier, str(app), 'TESTTEAM']), patch('subprocess.run', side_effect=fake):
+    runpy.run_path(verifier, run_name='__main__')
+"""
+release_cases = ('clean', 'architecture', 'embedded_architecture', 'bundle', 'team', 'authority',
+                 'runtime', 'timestamp', 'baseline', 'guidance', 'mandate', 'baseline_suffix',
+                 'guidance_suffix', 'mandate_suffix', 'SCRIPT ERROR:', 'ERROR:', 'FAIL:',
+                 'embedded_mh32_be', 'embedded_mh32_le', 'embedded_fat64_be', 'embedded_fat64_le')
+release_failures = []
+with tempfile.TemporaryDirectory(prefix='fed-optimized-release-') as directory:
+    app = Path(directory) / 'Fixture.app'
+    (app / 'Contents/MacOS').mkdir(parents=True)
+    (app / 'Contents/Resources').mkdir()
+    (app / 'Contents/MacOS/candidate').write_bytes(b'\xcf\xfa\xed\xfe')
+    (app / 'Contents/Resources/native.so').write_bytes(b'\xcf\xfa\xed\xfe')
+    for mode, flags, optimize in (('normal', [], ''), ('-O', ['-O'], ''), ('PYTHONOPTIMIZE=2', [], '2')):
+        for case in release_cases:
+            env = dict(os.environ)
+            env.pop('PYTHONOPTIMIZE', None)
+            if optimize: env['PYTHONOPTIMIZE'] = optimize
+            result = subprocess.run([sys.executable, *flags, '-c', release_fixture,
+                                     str(root / 'scripts/tests/verify-game-release.py'), str(app), case],
+                                    env=env, capture_output=True, text=True)
+            if (result.returncode == 0) != (case == 'clean'):
+                release_failures.append(f'{mode}: unexpected release acceptance for {case}, exit={result.returncode}')
+            if case != 'clean' and 'PASS: ARM64-only' in result.stdout:
+                release_failures.append(f'{mode}: final PASS printed for {case}')
+print(f'COUNTS release_gate_cases={len(release_cases) * 3} failures={len(release_failures)}')
+
+# An invalid toolchain must fail before even exporting or reaching lipo/codesign.
+with tempfile.TemporaryDirectory(prefix='fed-toolchain-package-') as directory:
+    temporary = Path(directory)
+    tools = temporary / 'bin'
+    tools.mkdir()
+    engine = tools / 'godot'
+    engine.write_text('#!/bin/sh\nif [ "$1" = --version ]; then printf "%s\\n" "$FED_FAKE_VERSION"; exit 0; fi\nprintf "export\\n" >> "$FED_TEST_DOWNSTREAM"\n')
+    engine.chmod(0o755)
+    for command in ('lipo', 'codesign', 'ditto'):
+        tool = tools / command
+        tool.write_text('#!/bin/sh\nprintf "%s\\n" "$0" >> "$FED_TEST_DOWNSTREAM"\nexit 73\n')
+        tool.chmod(0o755)
+    for index, version in enumerate(('4.6.stable.official.fixture', '4.7.2.stable.official.fixture')):
+        trace = temporary / f'trace-{index}'
+        env = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ['PATH'], HOME=str(temporary),
+                   FED_FAKE_VERSION=version, FED_TEST_DOWNSTREAM=str(trace))
+        result = subprocess.run(['bash', str(root / 'scripts/package-game.sh'), str(temporary / f'output-{index}'),
+                                 'fixture identity', 'TESTTEAM'], env=env, capture_output=True, text=True)
+        if result.returncode == 0 or trace.exists():
+            release_failures.append(f'packager reached export/signing with unverified engine {version}')
+helper = root / 'scripts/tests/verify-godot-toolchain.py'
+if not helper.exists():
+    release_failures.append('official byte-pin verifier is missing')
+else:
+    import hashlib
+    import shutil
+    helper_globals = runpy.run_path(str(helper), run_name='toolchain_fixture')
+    verify = helper_globals['verify']
+    globals_ = verify.__globals__
+    # The vendor archive chain is independent evidence; fixtures test byte pins
+    # without requiring a disposable installer cache on every packaging run.
+    with tempfile.TemporaryDirectory(prefix='fed-toolchain-pins-') as directory:
+        temporary = Path(directory)
+        engine = temporary / 'godot'
+        engine.write_bytes(b'fixture-engine-original')
+        template = temporary / 'macos.zip'
+        template.write_bytes(b'fixture-official-template')
+        engine_hash = hashlib.sha256(engine.read_bytes()).hexdigest()
+        template_hash = hashlib.sha256(template.read_bytes()).hexdigest()
+        assert not (temporary / 'Library/Caches/Homebrew/Cask/godot--4.7.2.zip').exists()
+        cases = ('clean_without_installer', 'version', 'engine', 'template', 'missing_template')
+        for case in cases:
+            engine.write_bytes(b'fixture-engine-original' if case != 'engine' else b'custom-engine')
+            template.write_bytes(b'fixture-official-template' if case != 'template' else b'custom-template')
+            selected_template = temporary / 'missing-template.zip' if case == 'missing_template' else template
+            output = '4.6.stable.official.fixture\n' if case == 'version' else '4.7.2.stable.official.fixture\n'
+            with patch.dict(globals_, ENGINE_SHA256=engine_hash, MACOS_TEMPLATE_SHA256=template_hash), \
+                    patch('subprocess.run', return_value=subprocess.CompletedProcess([], 0, output, '')):
+                rejected = False
+                try:
+                    verify(engine, selected_template)
+                except TypeError as error:
+                    release_failures.append(f'Byte-pin verifier still requires installer API: {case}: {error}')
+                    rejected = True
+                except (ValueError, FileNotFoundError):
+                    rejected = True
+                if rejected != (case != 'clean_without_installer'):
+                    release_failures.append(f'Official byte-pin verifier wrong result: {case}')
+        print(f'COUNTS toolchain_pin_cases={len(cases)}')
+    # Exercise the real packaging shell with synthetic expected hashes in a
+    # private helper copy. Wrong version/engine/template must stop before export.
+    with tempfile.TemporaryDirectory(prefix='fed-toolchain-tripwire-') as directory:
+        temporary = Path(directory)
+        fixture_root = temporary / 'source'
+        (fixture_root / 'scripts/tests').mkdir(parents=True)
+        (fixture_root / 'game').mkdir()
+        shutil.copy2(root / 'scripts/package-game.sh', fixture_root / 'scripts/package-game.sh')
+        shutil.copy2(root / 'game/export_presets.cfg', fixture_root / 'game/export_presets.cfg')
+        home = temporary / 'home'
+        template = home / 'Library/Application Support/Godot/export_templates/4.7.2.stable/macos.zip'
+        template.parent.mkdir(parents=True)
+        template_bytes = b'synthetic matching template'
+        tools = temporary / 'bin'
+        tools.mkdir()
+        engine = tools / 'godot'
+        engine_text = '#!/bin/sh\nif [ "$1" = --version ]; then printf "%s\\n" "$FED_FAKE_VERSION"; exit 0; fi\nprintf "export\\n" >> "$FED_TEST_DOWNSTREAM"\nprintf "%s\\n" "$FED_FAKE_EXPORT_LOG"\nexit "$FED_FAKE_EXPORT_EXIT"\n'
+        engine.write_text(engine_text)
+        engine.chmod(0o755)
+        for command in ('lipo', 'codesign', 'ditto'):
+            tripwire = tools / command
+            tripwire.write_text('#!/bin/sh\nprintf "%s\\n" "$0" >> "$FED_TEST_DOWNSTREAM_NATIVE"\nexit 73\n')
+            tripwire.chmod(0o755)
+        synthetic_engine_hash = hashlib.sha256(engine.read_bytes()).hexdigest()
+        synthetic_template_hash = hashlib.sha256(template_bytes).hexdigest()
+        helper_text = helper.read_text()
+        for name, value in (('ENGINE_SHA256', synthetic_engine_hash), ('MACOS_TEMPLATE_SHA256', synthetic_template_hash)):
+            helper_text = '\n'.join(f"{name} = '{value}'" if line.startswith(name + ' = ') else line for line in helper_text.split('\n'))
+        (fixture_root / 'scripts/tests/verify-godot-toolchain.py').write_text(helper_text)
+        assert not (home / 'Library/Caches/Homebrew/Cask/godot--4.7.2.zip').exists()
+        package_cases = ('clean_without_installer', 'version', 'engine', 'template')
+        for index, case in enumerate(package_cases):
+            engine.write_text(engine_text + ('# custom bytes\n' if case == 'engine' else ''))
+            template.write_bytes(b'custom template' if case == 'template' else template_bytes)
+            trace = temporary / f'trace-{index}'
+            downstream = temporary / f'native-{index}'
+            version = '4.6.stable.official.fixture' if case == 'version' else '4.7.2.stable.official.fixture'
+            env = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ['PATH'], HOME=str(home),
+                       FED_FAKE_VERSION=version, FED_TEST_DOWNSTREAM=str(trace),
+                       FED_TEST_DOWNSTREAM_NATIVE=str(downstream), FED_FAKE_EXPORT_LOG='synthetic export',
+                       FED_FAKE_EXPORT_EXIT='73')
+            result = subprocess.run(['bash', str(fixture_root / 'scripts/package-game.sh'), str(temporary / f'output-{index}'),
+                                     'fixture identity', 'TESTTEAM'], env=env, capture_output=True, text=True)
+            exported = trace.exists() and trace.read_text() == 'export\n'
+            if exported != (case == 'clean_without_installer') or (exported and result.returncode != 73) or downstream.exists():
+                release_failures.append(f'Packager byte-pin/version boundary wrong result: {case}: {result.stderr}')
+        print(f'COUNTS toolchain_package_cases={len(package_cases)}')
+        engine.write_text(engine_text)
+        template.write_bytes(template_bytes)
+        export_cases = (('SCRIPT ERROR:', 0), ('ERROR:', 0), ('FAIL:', 0), ('', 42))
+        for index, (error_marker, exit_code) in enumerate(export_cases):
+            trace = temporary / f'export-trace-{index}'
+            downstream = temporary / f'export-native-{index}'
+            output = temporary / f'export-output-{index}'
+            env = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ['PATH'], HOME=str(home),
+                       FED_FAKE_VERSION='4.7.2.stable.official.fixture', FED_TEST_DOWNSTREAM=str(trace),
+                       FED_TEST_DOWNSTREAM_NATIVE=str(downstream), FED_FAKE_EXPORT_LOG=error_marker + ' synthetic export',
+                       FED_FAKE_EXPORT_EXIT=str(exit_code))
+            result = subprocess.run(['bash', str(fixture_root / 'scripts/package-game.sh'), str(output),
+                                     'fixture identity', 'TESTTEAM'], env=env, capture_output=True, text=True)
+            exported = trace.exists() and trace.read_text() == 'export\n'
+            verified = (output / 'toolchain.log').exists() and 'PASS: official Godot toolchain' in (output / 'toolchain.log').read_text()
+            logged = (output / 'export.log').exists() and error_marker + ' synthetic export' in (output / 'export.log').read_text()
+            if result.returncode == 0 or not exported or not verified or not logged or downstream.exists():
+                release_failures.append(f'Export boundary reached thinning/signing or skipped export: {error_marker or "nonzero exit"}, exit={result.returncode}, downstream={downstream.exists()}')
+            print(f'EXPORT_BOUNDARY marker={error_marker or "nonzero exit"!r} process_exit={result.returncode} export_reached={exported} downstream_reached={downstream.exists()}')
+        print(f'COUNTS export_error_cases={len(export_cases)}')
+
+if release_failures:
+    raise AssertionError('\n'.join(release_failures))
+print('PASS: optimized release gates and cache-independent official byte pins (synthetic tools only)')
