@@ -59,11 +59,14 @@ assert.ok(source.endsWith('console.log(`COMPLETED workbook phase ${buildPhase}`)
 const inventorySource = await fs.readFile(new URL('../spreadsheet/generate-formula-inventory.mjs', import.meta.url), 'utf8');
 assert.match(driver, /generate-formula-inventory\.mjs/, 'Generate authored inventory before saved-file checks');
 assert.ok(driver.indexOf("'authored-formula-inventory.log'") < driver.indexOf("'workbook-export-check.log'"), 'Inventory qualifies every saved-file consumer');
+assert.ok(driver.includes("ROOT / 'scripts/tests/upstream77-inventory.mjs'")
+  && driver.indexOf("'authored-formula-inventory.log'") < driver.indexOf("'upstream77-authored-metadata.log'")
+  && driver.indexOf("'upstream77-authored-metadata.log'") < driver.indexOf("'workbook-export-check.log'"), 'upstream77 source-metadata regression runs before saved-file acceptance');
 assert.ok(inventorySource.includes('Authored inventory row map differs from builder output'), 'Fail closed on author/layout drift');
 assert.ok(inventorySource.includes("{ flag: 'wx' }"), 'Never replace an existing expected inventory');
 assert.ok(!inventorySource.includes('SpreadsheetFile') && !inventorySource.includes('readFile(workbook'), 'Authored inventory cannot derive expectations from candidate XLSX');
 assert.ok(inventorySource.includes('set formulas(matrix)') && inventorySource.includes('upstream_formulas: upstream'), 'Record upstream range emissions, not noStyle discards');
-assert.ok(inventorySource.includes("slice('const parameterRow = ', 'const p = ')") && inventorySource.includes("slice('const sourceStart = ', 'const f = ')"), 'Include parameter guards and source-ladder checks');
+assert.ok(inventorySource.includes("slice(\"assumptions.getRange('B5:F5').values\", 'const p = ')") && inventorySource.includes("slice('const sourceStart = ', 'const f = ')"), 'Include parameter headers/guards and source-ladder checks');
 assert.ok(inventorySource.includes('set values(matrix)') && inventorySource.includes('const broadcast = !formula'), 'input54 records actual values matrix/broadcast semantics');
 assert.ok(inventorySource.includes("slice('const checkpointFixtureEdits = '") && inventorySource.includes('checkpoint_inputs: checkpointInputs'), 'input54 checkpoint inputs use the actual authored writer');
 assert.ok(!inventorySource.includes('filter(([address]) => policyReferences.has(address))'), 'input54 retains every calculated Policy output');
@@ -317,7 +320,7 @@ const selectorStart = source.indexOf('for (const [address, max] of '), selectorE
 assert.ok(selectorStart >= 0 && selectorEnd > selectorStart, 'Locate the actual selector validation emitter');
 const selectorRules = new Map();
 vm.runInNewContext(source.slice(selectorStart, selectorEnd), {
-  cases: Array(7), lab: { getRange(ref) { return { set dataValidation(value) { selectorRules.set(ref, value.rule); } }; } },
+  cases: Array(7), lab: { getRange(ref) { return { set dataValidation(value) { selectorRules.set(ref, value.rule); assert.equal(value.ignoreBlanks, false); assert.equal(value.errorAlert.show, true); assert.equal(value.errorAlert.style, 'stop'); } }; } },
 });
 const horizonFormula = 'COUNTA($B$58:$B$106)-1', quarterRule = selectorRules.get('C5');
 assert.equal(quarterRule.type, 'whole'); assert.equal(quarterRule.operator, 'between');

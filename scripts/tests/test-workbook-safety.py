@@ -5,6 +5,7 @@ import hashlib
 import json
 import math
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -322,15 +323,16 @@ print('PASS: actual source-copy guard accepts matches and rejects drift in norma
 # input54: the actual typed-literal guard keeps blank, numeric and boolean inputs distinct.
 input54_tree = ast.parse((ROOT / 'scripts/spreadsheet/check-workbook.py').read_text())
 input54_nodes = [node for node in input54_tree.body if isinstance(node, ast.FunctionDef)
-                 and node.name in ('require', 'validate_authored_literals')]
-assert len(input54_nodes) == 2, 'Locate actual input54 guard'
-input54_scope = {'NS': {'s': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}, 'math': math}
+                 and node.name in ('require', 'validate_authored_literals', 'saved_string', 'cached_string', 'string_text', 'unsigned_integer')]
+assert len(input54_nodes) == 6, 'Locate actual input54 guard and string decoders'
+input54_scope = {'NS': {'s': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}, 'math': math, 're': re}
 exec(compile(ast.Module(body=input54_nodes, type_ignores=[]), '<actual typed-input guard>', 'exec'), input54_scope)
 for expected, kind, raw in [(None, 'n', None), (0, 'n', '0'), (1e-15, 'n', '1e-15'), (True, 'b', '1'), (False, 'b', '0')]:
     xml = '<c xmlns="' + input54_scope['NS']['s'] + '" r="A1" t="' + kind + '">' + ('' if raw is None else '<v>' + raw + '</v>') + '</c>'
     input54_scope['validate_authored_literals']({'A1': ET.fromstring(xml)}, {'A1': expected}, 'Assumptions')
 for expected, children, kind in [(None, '<v>0</v>', 'n'), (0, '', 'n'), (True, '<v>1</v>', 'n'),
                                   (1, '<v>1</v>', 'b'), (1, '<v>1</v>', 'str'), (1e-15, '<v>0</v>', 'n'),
+                                  (0.4, '<v>0.40000000000004</v>', 'n'),
                                   (1, '<v>NaN</v>', 'n'), (1, '<f>0</f><v>1</v>', 'n')]:
     cell = ET.fromstring('<c xmlns="' + input54_scope['NS']['s'] + '" r="A1" t="' + kind + '">' + children + '</c>')
     try:
@@ -348,6 +350,25 @@ for address, value in [('C4', 3), ('C5', 48), ('C6', 1)]:
     else:
         raise AssertionError('label60 accepted a fractional discrete selector')
 print('PASS: input54 actual typed source input guard (simulated XML)')
+
+# upstream77 uses the actual literal-only string readers, including shared/rich forms.
+for kind, children, strings in [
+    ('str', '<v>Authored text</v>', []), ('s', '<v>0</v>', ['Authored text']),
+    ('inlineStr', '<is><t>Authored text</t></is>', []),
+    ('inlineStr', '<is><r><t>Authored </t></r><r><t>text</t></r></is>', []),
+]:
+    cell = ET.fromstring('<c xmlns="' + input54_scope['NS']['s'] + '" t="' + kind + '">' + children + '</c>')
+    input54_scope['validate_authored_literals']({'A1': cell}, {'A1': 'Authored text'}, 'Assumptions', strings)
+for kind, children in [('str', '<f>"Authored text"</f><v>Authored text</v>'),
+                       ('n', '<v>2</v>'), ('str', '<v>Changed text</v>'), ('s', '<v>1</v>')]:
+    cell = ET.fromstring('<c xmlns="' + input54_scope['NS']['s'] + '" t="' + kind + '">' + children + '</c>')
+    try:
+        input54_scope['validate_authored_literals']({'A1': cell}, {'A1': 'Authored text'}, 'Assumptions', ['Authored text'])
+    except AssertionError as error:
+        assert 'authored literal mismatch' in str(error)
+    else:
+        raise AssertionError('upstream77 accepted wrong authored text/type/formula')
+print('PASS: upstream77 actual string guard preserves scalar/shared/rich text and refuses formulas/impostors (simulated XML)')
 
 # Exact authored expressions need no token normalization; differing expressions still do.
 checker_tree = ast.parse((ROOT / 'scripts/spreadsheet/check-workbook.py').read_text())

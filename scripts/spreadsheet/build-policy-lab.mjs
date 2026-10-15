@@ -120,7 +120,10 @@ cell(lab, 'B5', 'Quarter shown'); cell(lab, 'C5', 48);
 cell(lab, 'B6', 'Benchmark policy'); cell(lab, 'C6', 1);
 cell(lab, 'E6', '=CHOOSE(C6,"Feedback rule","Hold previous rate")', true);
 input(lab, 'C4:C6');
-for (const [address, max] of [['C4', cases.length], ['C5', 'COUNTA($B$58:$B$106)-1'], ['C6', 2]]) lab.getRange(address).dataValidation = { rule: { type: 'whole', operator: 'between', formula1: address === 'C5' ? 0 : 1, formula2: max } };
+for (const [address, max] of [['C4', cases.length], ['C5', 'COUNTA($B$58:$B$106)-1'], ['C6', 2]]) lab.getRange(address).dataValidation = {
+  rule: { type: 'whole', operator: 'between', formula1: address === 'C5' ? 0 : 1, formula2: max }, ignoreBlanks: false,
+  errorAlert: { show: true, style: 'stop', title: 'Whole number required', message: 'Enter a whole number within the selector range.' },
+};
 cell(lab, 'B8', 'Edit amber cells. Policy blanks use the selected benchmark; zero is an explicit decision.');
 cell(lab, 'B9', 'Design assumptions, not a forecast. All cases include small seed-1 shocks.');
 for (let n = 0; n < cases.length; n++) cell(lab, `J${4 + n}`, `${n + 1}. ${cases[n].scenario.label}`);
@@ -159,7 +162,7 @@ for (let i = 0; i < source.parameters.length; i++) {
   cell(assumptions, `D${row}`, `=IF(${domain},${ref},NA())`, true);
   cell(assumptions, `E${row}`, record.unit); cell(assumptions, `F${row}`, record.classification.replaceAll('_', ' '));
   cell(assumptions, `H${row}`, record.description);
-  if (record.source) cell(assumptions, `J${row}`, record.source);
+  cell(assumptions, `J${row}`, record.source || null);
   input(assumptions, ref);
 }
 assumptions.getRange('E5:E150').format.columnWidth = 31;

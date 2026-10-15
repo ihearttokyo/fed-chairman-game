@@ -18,6 +18,7 @@ export async function authoredInventory(builder, references, rowMap) {
   const cases = referenceBytes.map(bytes => JSON.parse(bytes));
   const formulas = {}, literals = {}, upstream = { Assumptions: {}, Shocks: {}, Policy: {}, 'Policy Lab': {} };
   const typed = Object.fromEntries(Object.keys(upstream).map(name => [name, {}]));
+  const validations = Object.fromEntries(Object.keys(upstream).map(name => [name, {}]));
   const editable = Object.fromEntries(Object.keys(upstream).map(name => [name, new Set()]));
   const write = (sheet, address, value, formula = false) => {
     if (sheet.name === 'Economy') {
@@ -26,10 +27,9 @@ export async function authoredInventory(builder, references, rowMap) {
     } else if (formula) { upstream[sheet.name][address] = value; delete typed[sheet.name][address]; }
     else {
       delete upstream[sheet.name][address];
-      if (value === null || typeof value === 'boolean' || typeof value === 'number') {
-        assert.ok(typeof value !== 'number' || Number.isFinite(value), 'Finite authored input');
-        typed[sheet.name][address] = value;
-      }
+      assert.ok(value === null || ['boolean', 'number', 'string'].includes(typeof value), 'Scalar authored input');
+      assert.ok(typeof value !== 'number' || Number.isFinite(value), 'Finite authored input');
+      typed[sheet.name][address] = value;
     }
   };
   const addresses = ref => {
@@ -57,7 +57,8 @@ export async function authoredInventory(builder, references, rowMap) {
       }
     };
     return { format: {}, setNumberFormat() {}, set values(matrix) { record(matrix, false); },
-      set formulas(matrix) { record(matrix, true); } };
+      set formulas(matrix) { record(matrix, true); },
+      set dataValidation(value) { validations[name][ref] = value; } };
   } });
   const economy = sheet('Economy'), assumptions = sheet('Assumptions'), shocks = sheet('Shocks'), policy = sheet('Policy'), lab = sheet('Policy Lab');
   const input = (sheet, ref) => {
@@ -69,12 +70,12 @@ export async function authoredInventory(builder, references, rowMap) {
   // Execute the existing authoring sinks without Workbook construction, calculation or XLSX input.
   const program = [
     slice('const arrayShapes = ', 'const out = '),
-    slice('const column = ', 'const cell = '), line('const clamp = '),
+    slice('const column = ', 'const cell = '), line('const human = '), line('const clamp = '),
     slice('for (const sheet of [lab, policy, assumptions, economy, shocks]) {', 'lab.tabColor = '),
-    slice("cell(lab, 'B4', 'Case number');", '// Parameters have one editable value'), slice('const parameterRow = ', 'const p = '),
+    slice("cell(lab, 'B4', 'Case number');", '// Parameters have one editable value'), slice("assumptions.getRange('B5:F5').values", 'const p = '),
     slice('const p = ', 'const weightsRow = '), slice('const weightsRow = ', 'const initialParameter = '),
     slice('const initialParameter = ', 'const shockKeys = '),
-    slice('const shockKeys = ', 'const shockNoteRow = '),
+    slice('const shockKeys = ', 'const R = '),
     slice('const R = ', 'const sourceStart = '), slice('const sourceStart = ', 'const f = '),
     slice('const f = ', 'for (const [key, row] of Object.entries(R)) cell(economy,'),
     slice('for (let q = 0; q <= 48; q++) {\n  const col = column(q + 4);\n  for (const [label, key]', "if (buildPhase === 'main') await fs.writeFile"),
@@ -83,12 +84,12 @@ export async function authoredInventory(builder, references, rowMap) {
     slice('const checkpointEdits = ', 'const human = '), line('const plotKeys = '),
     slice('const policyRows = ', "if (buildPhase === 'main') {"),
     slice('const checkpointFixtureEdits = ', "if (buildPhase !== 'main') {"),
-    '\n({ rows: R, stateFields: Object.keys(flattenState(source.initial_state)), summaryFields: Object.fromEntries(metrics.map(([field], i) => [`C${12 + i}`, field])), checkpointFixtureEdits })',
+    '\n({ rows: R, stateFields: Object.keys(flattenState(source.initial_state)), policyOutputs, endingStocks: Array.from(endingStocks), summaryFields: Object.fromEntries(metrics.map(([field], i) => [`C${12 + i}`, field])), checkpointFixtureEdits })',
   ].join('\n');
   const emitted = vm.runInNewContext(program, {
     assert, ids, cases, source: cases[0], portfolio: JSON.parse(cases[0].portfolio_reference_json),
     portfolioHash: cases[0].portfolio_reference_sha256, economy, assumptions, shocks, policy, lab, input,
-    headers: () => {}, human: key => key, C: { pale: '', ink: '' }, cell: write,
+    headers: () => {}, C: { pale: '', ink: '' }, cell: write,
   }, { timeout: 10000 });
   assert.deepEqual(JSON.parse(JSON.stringify(emitted.rows)), rowMap, 'Authored inventory row map differs from builder output');
   const required = { ...formulas, ...Object.fromEntries(Object.keys(literals).map(address => [address, null])) };
@@ -105,7 +106,7 @@ export async function authoredInventory(builder, references, rowMap) {
   const policyReferences = new Set([...Object.values(formulas), ...Object.values(upstream.Assumptions), ...Object.values(upstream.Shocks)]
     .flatMap(formula => Array.from(formula.matchAll(/'Policy'!\$?([A-Z]+)\$?([0-9]+)/g), match => match[1] + match[2])));
   const literalInputs = Object.fromEntries(Object.entries(typed).map(([name, values]) => [name,
-    name === 'Assumptions' ? values : Object.fromEntries(Object.entries(values).filter(([address]) => editable[name].has(address)))]));
+    name !== 'Policy Lab' ? values : Object.fromEntries(Object.entries(values).filter(([address]) => editable[name].has(address) || ['B5', 'B8', 'B9'].includes(address)))]));
   assert.equal(Object.keys(upstream.Policy).length, 20 * 48 + 1, 'All authored Policy calculated outputs and case header');
   const checkpointBytes = await fs.readFile(new URL('late-checkpoints.json', references));
   const checkpoints = JSON.parse(checkpointBytes);
@@ -121,7 +122,7 @@ export async function authoredInventory(builder, references, rowMap) {
     return { name: fixture.name, reference_sha256: hash(raw), literals: overlay };
   }));
   assert.ok(Object.keys(upstream.Assumptions).length > 0 && Object.keys(upstream.Shocks).length > 0, 'Require authored upstream formula emissions');
-  return { schema_version: 3, benchmark_labels: Array.from(upstream['Policy Lab'].E6.matchAll(/"((?:[^"]|"")*)"/g), match => match[1].replaceAll('""', '"')), summary_fields: emitted.summaryFields, literal_inputs: literalInputs, checkpoint_inputs: checkpointInputs, case_order: Array.from(ids), upstream_formulas: upstream, policy_input_addresses: Array.from(policyReferences).sort(), builder_sha256: hash(bytes), generator_sha256: hash(await fs.readFile(new URL(import.meta.url))), row_map_sha256: hash(JSON.stringify(rowMap)),
+  return { schema_version: 3, benchmark_labels: Array.from(upstream['Policy Lab'].E6.matchAll(/"((?:[^"]|"")*)"/g), match => match[1].replaceAll('""', '"')), summary_fields: emitted.summaryFields, policy_output_fields: Array.from(emitted.policyOutputs), ending_stock_fields: Array.from(emitted.endingStocks), data_validations: validations, literal_inputs: literalInputs, checkpoint_inputs: checkpointInputs, case_order: Array.from(ids), upstream_formulas: upstream, policy_input_addresses: Array.from(policyReferences).sort(), builder_sha256: hash(bytes), generator_sha256: hash(await fs.readFile(new URL(import.meta.url))), row_map_sha256: hash(JSON.stringify(rowMap)),
     reference_sha256: Object.fromEntries(Array.from(ids, (id, i) => [id, hash(referenceBytes[i])])),
     state_fields: Array.from(emitted.stateFields), formulas: required };
 }

@@ -113,6 +113,65 @@ def worksheet_cells(part, path):
     return cells
 
 
+def validate_cell_visibility(part, cells, name):
+    message = ('required cell visibility', name)
+    required = set(literal_inputs.get(name, {})) | set(formula_inventory['upstream_formulas'].get(name, {}))
+    required.update(address for address, cell in cells.items() if len(cell))
+    if name == 'Economy':
+        required.update(formula_inventory['formulas'])
+    points = [coordinates(address) for address in required]
+    cols = {point[0] for point in points}; rows_required = {point[1] for point in points}
+    if name == 'Policy Lab':
+        for first_col, first_row, last_col, last_row in CHART_ANCHORS.values():
+            cols.update(range(first_col + 1, last_col + 1))
+            rows_required.update(range(first_row + 1, last_row + 1))
+    formats = part.findall('s:sheetFormatPr', NS)
+    require(len(formats) == len(part.findall('.//s:sheetFormatPr', NS)) <= 1
+            and all(len(node) == 0 for node in formats), message + ('ambiguous defaults',))
+    settings = formats[0].attrib if formats else {}
+    def hidden(value, default=False):
+        require(value is None or value in ('0', 'false', '1', 'true'), message + ('hidden flag',))
+        return default if value is None else value in ('1', 'true')
+    def positive(value):
+        if value is None:
+            return True  # Absent size uses the ordinary spreadsheet default, not zero.
+        try:
+            size = float(value)
+        except (ValueError, TypeError):
+            raise AssertionError(message + ('dimension',))
+        require(math.isfinite(size) and size >= 0, message + ('dimension',))
+        return size > 0
+    default_hidden = hidden(settings.get('zeroHeight'))
+    default_height = positive(settings.get('defaultRowHeight'))
+    default_width = positive(settings.get('defaultColWidth'))
+    row_nodes = part.findall('s:sheetData/s:row', NS)
+    require(len(row_nodes) == len(part.findall('.//s:row', NS)), message + ('ambiguous rows',))
+    explicit_rows = {int(node.get('r')): node for node in row_nodes}
+    for identity in rows_required:
+        node = explicit_rows.get(identity)
+        attributes = node.attrib if node is not None else {}
+        require(not hidden(attributes.get('hidden'), default_hidden)
+                and (positive(attributes['ht']) if 'ht' in attributes else default_height), message + ('row', identity))
+    containers = part.findall('s:cols', NS)
+    column_nodes = [node for container in containers for node in container]
+    require(len(containers) == len(part.findall('.//s:cols', NS))
+            and len(column_nodes) == len(part.findall('.//s:col', NS))
+            and all(node.tag == '{' + NS['s'] + '}col' and len(node) == 0 for node in column_nodes),
+            message + ('ambiguous columns',))
+    covered = set()
+    for node in column_nodes:
+        first = unsigned_integer(node.get('min'), message); last = unsigned_integer(node.get('max'), message)
+        require(1 <= first <= last <= 16384, message + ('column interval',))
+        affected = {identity for identity in cols if first <= identity <= last}
+        require(not (affected & covered), message + ('overlapping columns',))
+        covered.update(affected)
+        if affected:
+            require(not hidden(node.get('hidden'))
+                    and (positive(node.get('width')) if node.get('width') is not None else default_width),
+                    message + ('columns', first, last))
+    require(not (cols - covered) or default_width, message + ('default column width',))
+
+
 def has_formula(cell, shared):
     formula = cell.find('s:f', NS)
     if formula is None:
@@ -226,14 +285,18 @@ else:
     literal_inputs['Policy Lab']['C4'] = case_order.index(case) + 1
 
 
-def validate_authored_literals(cells, expected, sheet):
+def validate_authored_literals(cells, expected, sheet, strings=()):
     for address, value in expected.items():
         cell = cells.get(address)
         failure = ('authored literal mismatch', sheet, address, value)
         if cell is None:
             require(value is None, failure)
             continue
-        require(cell.find('s:f', NS) is None and cell.find('s:is', NS) is None, failure)
+        require(cell.find('s:f', NS) is None, failure)
+        if isinstance(value, str):
+            require(saved_string(cell, strings, failure) == value, failure)
+            continue
+        require(cell.find('s:is', NS) is None, failure)
         saved = cell.find('s:v', NS)
         kind = cell.get('t', 'n')
         if value is None:
@@ -248,11 +311,32 @@ def validate_authored_literals(cells, expected, sheet):
                 actual = float(saved.text)
             except (ValueError, TypeError):
                 raise AssertionError(failure)
-            if sheet == 'Policy Lab' and address in ('C4', 'C5', 'C6'):
-                require(actual == value, failure)
-                continue
-            # Relative rounding allowance is capped by the existing 1e-7 parity contract; zero stays exact.
-            require(math.isfinite(actual) and abs(actual - value) <= min(1e-7, abs(value) * 1e-12), failure)
+            require(actual == value, failure)
+
+
+def validate_authored_validations(part, expected, sheet):
+    message = ('authored data validation', sheet)
+    containers = part.findall('s:dataValidations', NS)
+    require(containers == [node for node in part.iter() if node.tag.rsplit('}', 1)[-1] == 'dataValidations']
+            and len(containers) == bool(expected), message)
+    rules = containers[0].findall('s:dataValidation', NS) if containers else []
+    require(rules == [node for node in part.iter() if node.tag.rsplit('}', 1)[-1] == 'dataValidation']
+            and (not containers or len(containers[0]) == len(rules))
+            and len(rules) == len(expected) and {rule.get('sqref') for rule in rules} == set(expected), message)
+    if containers and containers[0].get('count') is not None:
+        require(unsigned_integer(containers[0].get('count'), message) == len(rules), message)
+    for rule in rules:
+        authored = expected[rule.get('sqref')]['rule']
+        require(rule.get('type', 'none') == authored['type']
+                and rule.get('operator', 'between') == authored.get('operator', 'between'), message)
+        children = ['formula1', 'formula2'] if 'formula2' in authored else ['formula1']
+        require([child.tag for child in rule] == ['{' + NS['s'] + '}' + name for name in children], message)
+        for name in children:
+            value = rule.find('s:' + name, NS)
+            require(len(value) == 0 and canonical_formula(value.text or '') == canonical_formula(str(authored[name])), message)
+        require(rule.get('allowBlank', 'false') in ('0', 'false'), ('authored data validation blanks', sheet))
+        require(rule.get('showErrorMessage', 'false') in ('1', 'true'), ('authored data validation alert disabled', sheet))
+        require(rule.get('errorStyle', 'stop') == 'stop', ('authored data validation must Stop', sheet))
 
 
 FORMULA_QUOTED = re.compile(r'("(?:[^"]|"")*"|\'(?:[^\']|\'\')*\'!)')
@@ -520,6 +604,52 @@ def saved_number(cell, message):
     return number
 
 
+def native_prior_commitment(prior, state, increment):
+    if not prior['guidance_active']:
+        return state['policy_rate_pct']
+    implied = (prior['guidance_rate_pct']
+               + prior['guidance_inflation_sensitivity'] * (prior['four_quarter_inflation_pct'] - prior['guidance_reference_inflation_pct'])
+               + prior['guidance_output_gap_sensitivity'] * (prior['output_gap_pct'] - prior['guidance_reference_output_gap_pct']))
+    scaled = implied / increment
+    require(math.isfinite(scaled), 'Policy output cache native prior commitment')
+    whole = math.floor(abs(scaled))
+    # Godot roundf uses half-away-from-zero; adding 0.5 can erase a neighboring float.
+    return math.copysign(whole + (abs(scaled) - whole >= 0.5), scaled) * increment
+
+
+def validate_policy_caches(cells, economy):
+    fields = formula_inventory.get('policy_output_fields')
+    stocks = formula_inventory.get('ending_stock_fields')
+    initial = reference['initial_state']
+    require(isinstance(fields, list) and len(fields) == 20 and all(isinstance(field, str) and (field in initial or field == 'prior_commitment') for field in fields)
+            and len(set(fields)) == len(fields) and isinstance(stocks, list) and len(stocks) == 5
+            and all(isinstance(field, str) and field in initial for field in stocks) and len(set(stocks)) == len(stocks),
+            'Policy output cache inventory')
+    increments = [record['value'] for record in reference['parameters'] if record['key'] == 'minimum_rate_increment_pct']
+    require(len(increments) == 1 and type(increments[0]) in (int, float)
+            and math.isfinite(increments[0]) and increments[0] > 0, 'Policy output cache native rate increment')
+    prior = initial
+    for q, quarter in enumerate(reference['quarters'], 1):
+        state = quarter['state']
+        commitment = native_prior_commitment(prior, state, increments[0])
+        helper_address = f'{column(q + 4)}{rows["prior_commitment"]}'
+        helper = saved_number(economy.get(helper_address), ('Policy output cache helper', helper_address))
+        require(math.isfinite(commitment) and abs(helper - commitment) < 1e-7,
+                ('Policy output cache helper parity', helper_address))
+        for i, field in enumerate(fields):
+            address = f'{column(q + 4)}{20 + i}'
+            actual = saved_number(cells.get(address), ('Policy output cache', address))
+            expected = commitment if field == 'prior_commitment' else state[field]
+            require(type(expected) in (int, float) and math.isfinite(expected), ('Policy output cache native value', field))
+            if field.endswith('_pct_initial_gdp'):
+                ratio = quarter['trace']['ending_nominal_gdp_ratio' if field in stocks else 'decision_nominal_gdp_ratio']
+                require(type(ratio) in (int, float) and math.isfinite(ratio) and ratio > 0,
+                        ('Policy output cache native GDP ratio', address))
+                expected /= ratio
+            require(math.isfinite(expected) and abs(actual - expected) < 1e-7, ('Policy output cache parity', address))
+        prior = state
+
+
 def chart_cache(ref, kind, values, message):
     cache_tag = '{' + NS['c'] + '}' + kind
     require(all(child.tag in {'{' + NS['c'] + '}f', cache_tag} for child in ref), message)
@@ -754,6 +884,8 @@ for filename in args.workbooks:
             sheet_cells = worksheet_cells(part, path)
             validate_formulas(part, path)
             sheet_data[name] = sheet_cells
+            if name in ('Policy Lab', 'Policy', 'Assumptions', 'Economy', 'Shocks'):
+                validate_cell_visibility(part, sheet_cells, name)
             drawing_refs.extend((path, node.get('{' + NS['r'] + '}id')) for node in part.findall('s:drawing', NS))
             if name != 'Economy':
                 sheet_shared = shared_formulas(sheet_cells)
@@ -768,16 +900,21 @@ for filename in args.workbooks:
                         ('interactive sheet protection: ambiguous declaration', name))
                 require(not protection or (len(protection[0]) == 0
                         and protection[0].get('sheet', 'false') in ('0', 'false')), ('interactive sheet protection', name))
+                validations = formula_inventory.get('data_validations')
+                require(isinstance(validations, dict) and isinstance(validations.get(name), dict),
+                        ('incomplete authored data validation inventory', name))
+                validate_authored_validations(part, validations[name], name)
         require(not errors, errors[:10])
         validate_authored_formulas(cells, shared)
+        strings = shared_strings(archive, parts, part_types) if any(cell.get('t') == 's' for table in sheet_data.values() for cell in table.values()) else []
         for name, expected in literal_inputs.items():
-            validate_authored_literals(sheet_data[name], expected, name)
+            validate_authored_literals(sheet_data[name], expected, name, strings)
+        validate_policy_caches(sheet_data['Policy'], cells)
         charts = [item.attrib['PartName'].lstrip('/') for item in content_types
                   if item.attrib.get('ContentType', '').lower() == 'application/vnd.openxmlformats-officedocument.drawingml.chart+xml']
         require(len(charts) == 4, 'validation failed')
         anchors = validate_chart_reachability(archive, parts, part_types, drawing_refs, content_types, charts)
         lab = sheet_data['Policy Lab']
-        strings = shared_strings(archive, parts, part_types) if any(cell.get('t') == 's' for table in sheet_data.values() for cell in table.values()) else []
         plot_values = dashboard_values(lab, cells, strings)
         for name in ('Policy Lab', 'Policy', 'Assumptions', 'Economy', 'Shocks'):
             address = 'E4' if name == 'Policy Lab' else 'D3'

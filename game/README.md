@@ -155,9 +155,18 @@ ordered parameters, scenario inputs and state-key layout.
 Schema 3 contracts cover Economy, calculated Assumptions/Shocks, and every
 Policy output formula. Dashboard summaries need native-cache parity; case and
 benchmark labels must match their sources. Typed numeric/boolean/blank inputs and Policy
-selectors/overrides must match the selected native reference; checkpoint overlays
+selectors/overrides must match the selected native reference exactly after numeric
+parsing; equivalent numeric spelling is valid. Output-cache tolerance remains 1e-7. Checkpoint overlays
 come from the same authored checkpoint writer and bind the exact segment export. Reference/map/sidecar remain trusted expected inputs, not a producer
 authentication scheme.
+
+Authored literals also bind Assumptions labels, units, classifications,
+descriptions and sources, including blank provenance, and Policy/Shocks decision
+headers. Checkpoint labels and cleared suffix headers come from the actual writer.
+The five source-authored validation rules must retain their ranges, types,
+bounds and blank-forbidding Stop alerts. Earlier exports without selector alerts
+are unsafe regressions under this stronger contract. Preserve them and validate
+source-bound metadata-upgraded copies separately.
 
 The checker reads the supplied workbook without editing it. It verifies all
 quarterly state values for the default supply case, authored formula bindings,

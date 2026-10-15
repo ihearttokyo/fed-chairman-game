@@ -485,7 +485,333 @@ def label60_mutations(source, defect, row_map):
     return {path: ET.tostring(part, encoding='utf-8', xml_declaration=True)}
 
 
+INPUT72_CASES = {
+    **{f'input72-{name}': 'authored literal mismatch' for name in ('fixed-tiny', 'target-tiny', 'continuous-tiny')},
+    'input72-numeric-spelling': None,
+}
+NEW_CASES.update(INPUT72_CASES)
+
+
+def input72_mutations(source, defect, row_map):
+    name = defect.removeprefix('input72-')
+    address = {'fixed-tiny': 'C7', 'target-tiny': 'C6', 'continuous-tiny': 'C79', 'numeric-spelling': 'C7'}[name]
+    path = 'xl/worksheets/sheet3.xml'; part = ET.fromstring(source.read(path))
+    cell = part.find(f'.//s:c[@r="{address}"]', NS)
+    require(cell is not None and cell.find('s:f', NS) is None and cell.find('s:v', NS) is not None,
+            'input72 requires an actual authored numeric input')
+    value = cell.find('s:v', NS); prior = float(value.text)
+    value.text = format(prior, '.17e') if name == 'numeric-spelling' else repr(prior + abs(prior) * 1e-13)
+    return {path: ET.tostring(part, encoding='utf-8', xml_declaration=True)}
+
+
+UPSTREAM77_CASES = {
+    **{f'upstream77-metadata-{name}': 'authored literal mismatch' for name in
+       ('label', 'unit', 'classification', 'description', 'source', 'blank-source', 'missing', 'formula', 'numeric')},
+    **{f'upstream77-header-{sheet}-{address}': 'authored literal mismatch'
+       for sheet in ('policy', 'shocks') for address in ('E4', 'AZ4')},
+    **{f'upstream77-checkpoint-{address}': 'authored literal mismatch' for address in ('B5', 'B8', 'B9')},
+    **{f'upstream77-selector-{name}': 'authored data validation' for name in
+       ('missing', 'removed', 'decimal', 'operator', 'minimum', 'maximum', 'horizon', 'benchmark',
+        'overlap', 'extra', 'duplicate', 'wrapped', 'wrapped-container', 'duplicate-container', 'count',
+        'duplicate-formula', 'blank', 'alert-missing', 'alert-false', 'warning', 'unknown-alert')},
+    **{f'upstream77-{name}': None for name in
+       ('metadata-str', 'metadata-inline', 'metadata-rich', 'metadata-shared', 'metadata-shared-rich',
+        'selector-defaults', 'selector-words', 'selector-canonical')},
+}
+NEW_CASES.update(UPSTREAM77_CASES)
+
+
+def upstream77_mutations(source, defect, row_map):
+    kind = defect.removeprefix('upstream77-')
+    path = 'xl/worksheets/' + ('sheet2.xml' if kind.startswith('header-policy-') else
+                              'sheet5.xml' if kind.startswith('header-shocks-') else
+                              'sheet3.xml' if kind.startswith('metadata-') else 'sheet1.xml')
+    part = ET.fromstring(source.read(path)); namespace = '{' + NS['s'] + '}'
+    changes = {}
+    if kind.startswith('selector-'):
+        action = kind.removeprefix('selector-')
+        container = part.find('s:dataValidations', NS)
+        require(container is not None and len(container) == 3, 'upstream77 requires actual three selector rules')
+        rule = container[0]
+        if action == 'missing': part.remove(container)
+        elif action == 'removed': container.remove(rule); container.set('count', str(len(container)))
+        elif action == 'decimal': rule.set('type', 'decimal')
+        elif action == 'operator': rule.set('operator', 'equal')
+        elif action == 'minimum': rule.find('s:formula1', NS).text = '0'
+        elif action == 'maximum': rule.find('s:formula2', NS).text = '9'
+        elif action == 'horizon': container[1].find('s:formula2', NS).text = '48'
+        elif action == 'benchmark': container[2].find('s:formula2', NS).text = '3'
+        elif action == 'overlap': rule.set('sqref', 'C4:C6')
+        elif action in ('extra', 'duplicate'):
+            other = ET.fromstring(ET.tostring(rule))
+            if action == 'extra': other.set('sqref', 'C4 C5')
+            container.append(other); container.set('count', str(len(container)))
+        elif action == 'wrapped': container.remove(rule); ET.SubElement(container, namespace + 'wrapper').append(rule)
+        elif action == 'wrapped-container': part.remove(container); ET.SubElement(part, namespace + 'wrapper').append(container)
+        elif action == 'duplicate-container': part.append(ET.fromstring(ET.tostring(container)))
+        elif action == 'count': container.set('count', '2')
+        elif action == 'duplicate-formula': rule.append(ET.fromstring(ET.tostring(rule[0])))
+        elif action == 'blank': rule.set('allowBlank', 'true')
+        elif action == 'alert-missing': rule.attrib.pop('showErrorMessage', None)
+        elif action == 'alert-false': rule.set('showErrorMessage', 'false')
+        elif action == 'warning': rule.set('errorStyle', 'warning')
+        elif action == 'unknown-alert': rule.set('showErrorMessage', 'yes')
+        elif action in ('defaults', 'words', 'canonical'):
+            for rule in container:
+                if action == 'defaults':
+                    rule.attrib.pop('allowBlank', None); rule.attrib.pop('errorStyle', None); rule.attrib.pop('operator', None)
+                elif action == 'words': rule.set('allowBlank', 'false'); rule.set('showErrorMessage', 'true')
+                else:
+                    for formula in rule: formula.text = ' = ' + formula.text.lower().replace(',', ', ')
+            if action == 'defaults': container.attrib.pop('count', None)
+        else: raise AssertionError(action)
+    else:
+        cells = {cell.get('r'): cell for cell in part.findall('s:sheetData/s:row/s:c', NS)}
+        action = kind.removeprefix('metadata-')
+        address = kind.rsplit('-', 1)[-1] if kind.startswith(('header-', 'checkpoint-')) else {
+            'label': 'B6', 'unit': 'E6', 'classification': 'F6', 'description': 'H6', 'source': 'J6',
+            'blank-source': 'J8'}.get(action, 'B6')
+        cell = cells.get(address)
+        if cell is None:
+            row = next(row for row in part.findall('s:sheetData/s:row', NS) if row.get('r') == re.sub('[A-Z]', '', address))
+            cell = ET.SubElement(row, namespace + 'c', r=address)
+        if action == 'missing':
+            next(row for row in part.findall('s:sheetData/s:row', NS) if cell in row).remove(cell)
+        else:
+            original = cell.findtext('s:v', namespaces=NS)
+            inline = cell.find('s:is', NS)
+            if inline is not None: original = ''.join(inline.itertext())
+            attrs = dict(cell.attrib); cell.clear(); cell.attrib.update(attrs)
+            text = original if action in ('str', 'inline', 'rich', 'shared', 'shared-rich') else 'Changed authored text'
+            if action == 'numeric': cell.set('t', 'n'); ET.SubElement(cell, namespace + 'v').text = '2'
+            elif action in ('inline', 'rich'):
+                cell.set('t', 'inlineStr'); inline = ET.SubElement(cell, namespace + 'is')
+                if action == 'rich':
+                    for value in (text[:3], text[3:]): ET.SubElement(ET.SubElement(inline, namespace + 'r'), namespace + 't').text = value
+                else: ET.SubElement(inline, namespace + 't').text = text
+            elif action in ('shared', 'shared-rich'):
+                exists = 'xl/sharedStrings.xml' in source.namelist()
+                table = ET.fromstring(source.read('xl/sharedStrings.xml')) if exists else ET.Element(namespace + 'sst')
+                index = len(table); item = ET.SubElement(table, namespace + 'si')
+                if action == 'shared-rich':
+                    for value in (text[:3], text[3:]): ET.SubElement(ET.SubElement(item, namespace + 'r'), namespace + 't').text = value
+                else: ET.SubElement(item, namespace + 't').text = text
+                if table.get('count') is not None: table.set('count', str(int(table.get('count')) + 1))
+                if table.get('uniqueCount') is not None: table.set('uniqueCount', str(len(table)))
+                changes['xl/sharedStrings.xml'] = ET.tostring(table, encoding='utf-8')
+                if not exists:
+                    rels = ET.fromstring(source.read('xl/_rels/workbook.xml.rels'))
+                    ET.SubElement(rels, '{http://schemas.openxmlformats.org/package/2006/relationships}Relationship',
+                                  Id='upstream77Strings', Type=NS['r'] + '/sharedStrings', Target='sharedStrings.xml')
+                    changes['xl/_rels/workbook.xml.rels'] = ET.tostring(rels, encoding='utf-8')
+                    types = ET.fromstring(source.read('[Content_Types].xml'))
+                    ET.SubElement(types, '{http://schemas.openxmlformats.org/package/2006/content-types}Override',
+                                  PartName='/xl/sharedStrings.xml', ContentType='application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml')
+                    changes['[Content_Types].xml'] = ET.tostring(types, encoding='utf-8')
+                cell.set('t', 's'); ET.SubElement(cell, namespace + 'v').text = str(index)
+            else:
+                cell.set('t', 'str')
+                if action == 'formula': ET.SubElement(cell, namespace + 'f').text = '"' + original + '"'
+                ET.SubElement(cell, namespace + 'v').text = text
+    changes[path] = ET.tostring(part, encoding='utf-8')
+    return changes
+
+
+def validate_view77_guidance_oracle(checker):
+    import ast
+    import math
+    definitions = [node for node in ast.parse(checker.read_text()).body
+                   if isinstance(node, ast.FunctionDef) and node.name == 'native_prior_commitment']
+    require(len(definitions) == 1, 'view77 native guidance oracle definition')
+    namespace = {'math': math, 'require': require}
+    exec(compile(ast.Module(body=definitions, type_ignores=[]), str(checker), 'exec'), namespace)
+    oracle = namespace['native_prior_commitment']
+    prior = dict(guidance_active=True, guidance_rate_pct=0, guidance_inflation_sensitivity=0,
+                 four_quarter_inflation_pct=2, guidance_reference_inflation_pct=2,
+                 guidance_output_gap_sensitivity=0, output_gap_pct=0, guidance_reference_output_gap_pct=0)
+    state = {'policy_rate_pct': 3.5}
+    for magnitude in (0.5, 1.5, 2.5, 3.5):
+        for sign in (-1, 1):
+            tie = sign * magnitude
+            for value, expected in ((tie, sign * (math.floor(magnitude) + 1)),
+                                    (math.nextafter(tie, 0), sign * math.floor(magnitude)),
+                                    (math.nextafter(tie, math.copysign(math.inf, tie)), sign * (math.floor(magnitude) + 1))):
+                prior['guidance_rate_pct'] = value
+                require(oracle(prior, state, 1) == expected, ('view77 native half-away rounding', value, expected))
+    for sign in (-1, 1):
+        prior['guidance_rate_pct'] = sign * 0.005
+        require(oracle(prior, state, 0.01) == sign * 0.01, 'view77 native rate increment')
+    prior.update(guidance_rate_pct=2, guidance_inflation_sensitivity=0.5, four_quarter_inflation_pct=4,
+                 guidance_output_gap_sensitivity=-0.25, output_gap_pct=-2, guidance_reference_output_gap_pct=2)
+    require(oracle(prior, state, 0.01) == 4, 'view77 previous-state conditional guidance')
+    prior['guidance_active'] = False
+    require(oracle(prior, state, 0.01) == 3.5, 'view77 inactive guidance uses current applied rate')
+
+
+VIEW77_CASES = {
+    **{f'view77-policy-{name}': 'Policy output cache' for name in (
+        'first', 'last', 'missing', 'empty', 'bool', 'string', 'nan', 'infinity', 'text',
+        'helper-first', 'helper-last', 'helper-missing', 'helper-bool', 'helper-nan',
+        'flow-ending-gdp', 'stock-meeting-gdp', 'helper-coherent', 'helper-only', 'economy-helper-missing', 'economy-helper-bool', 'economy-helper-nan', 'economy-helper-last')},
+    **{f'view77-{name}': 'required cell visibility' for name in (
+        'lab-row', 'policy-row', 'assumptions-row', 'shocks-row', 'economy-row',
+        'lab-col', 'policy-col', 'assumptions-col', 'shocks-col', 'economy-col',
+        'policy-last-input', 'policy-last-output', 'policy-output-label', 'assumptions-metadata',
+        'shocks-header', 'title-row', 'chart-row', 'chart-col', 'policy-range',
+        'zero-height', 'nan-height', 'infinity-height', 'negative-height',
+        'zero-width', 'nan-width', 'infinity-width', 'negative-width',
+        'default-zero-height', 'default-zero-width', 'default-hidden', 'default-hidden-height-only',
+        'bad-row-hidden', 'bad-col-hidden', 'bad-default-hidden', 'overlap-col',
+        'wrapped-cols', 'wrapped-col', 'wrapped-row', 'duplicate-format', 'wrapped-format')},
+    **{f'view77-{name}': None for name in (
+        'policy-spelling', 'policy-shared', 'visible-false', 'visible-zero',
+        'missing-defaults', 'positive-overrides', 'default-hidden-overrides',
+        'unrelated-unused', 'split-cols', 'policy-wide-column', 'dimension-spelling')},
+}
+NEW_CASES.update(VIEW77_CASES)
+
+
+def view77_mutations(source, defect, row_map):
+    kind = defect.removeprefix('view77-')
+    if kind.startswith('policy-') and kind not in (
+            'policy-row', 'policy-col', 'policy-last-input', 'policy-last-output',
+            'policy-output-label', 'policy-range', 'policy-wide-column'):
+        path = 'xl/worksheets/sheet2.xml'; part = ET.fromstring(source.read(path))
+        cells = {cell.get('r'): cell for cell in part.findall('s:sheetData/s:row/s:c', NS)}
+        native = json.loads(reference.read_text())
+        states = [native['initial_state']] + [q['state'] for q in native['quarters']]
+        inventory = json.loads(row_map.with_suffix('.formulas.json').read_text())
+        fields, stocks = inventory['policy_output_fields'], set(inventory['ending_stock_fields'])
+        def column(n):
+            label = ''
+            while n:
+                n, remainder = divmod(n - 1, 26); label = chr(65 + remainder) + label
+            return label
+        if kind in ('policy-helper-coherent', 'policy-helper-only', 'policy-economy-helper-missing', 'policy-economy-helper-bool', 'policy-economy-helper-nan', 'policy-economy-helper-last'):
+            q = len(states) - 1 if kind == 'policy-economy-helper-last' else 1
+            economy_path = 'xl/worksheets/sheet4.xml'; economy = ET.fromstring(source.read(economy_path))
+            address = f'{column(q + 4)}{json.loads(row_map.read_text())["prior_commitment"]}'
+            helper = economy.find(f's:sheetData/s:row/s:c[@r="{address}"]', NS)
+            cache = helper.find('s:v', NS)
+            require(cache is not None and helper.find('s:f', NS) is not None, 'view77 requires an actual prior-commitment helper')
+            if kind == 'policy-economy-helper-missing': helper.remove(cache)
+            elif kind == 'policy-economy-helper-bool': helper.set('t', 'b'); cache.text = '1'
+            elif kind == 'policy-economy-helper-nan': cache.text = 'NaN'
+            else:
+                cache.text = repr(float(cache.text) + 0.25)
+                if kind == 'policy-helper-coherent': cells[f'{column(q + 4)}21'].find('s:v', NS).text = cache.text
+            changes = {economy_path: ET.tostring(economy, encoding='utf-8', xml_declaration=True)}
+            if kind == 'policy-helper-coherent': changes[path] = ET.tostring(part, encoding='utf-8', xml_declaration=True)
+            return changes
+        address = (f'{column(len(states) + 3)}{21 if kind == 'policy-helper-last' else 39}'
+                   if kind in ('policy-last', 'policy-helper-last') else 'E21' if kind.startswith('policy-helper-') else 'E20')
+        kind = kind.replace('policy-helper-', 'policy-')
+        cell = cells[address]; cache = cell.find('s:v', NS)
+        require(cache is not None and cell.find('s:f', NS) is not None, 'view77 requires a saved calculated output')
+        if kind in ('policy-flow-ending-gdp', 'policy-stock-meeting-gdp'):
+            candidates = []
+            for q in range(1, len(states)):
+                for i, field in enumerate(fields):
+                    if field.endswith('_pct_initial_gdp') and ((field in stocks) == kind.startswith('policy-stock-')):
+                        trace = native['quarters'][q - 1]['trace']
+                        correct = states[q][field] / trace['ending_nominal_gdp_ratio' if field in stocks else 'decision_nominal_gdp_ratio']
+                        wrong = states[q][field] / trace['decision_nominal_gdp_ratio' if field in stocks else 'ending_nominal_gdp_ratio']
+                        if abs(correct - wrong) > 1e-6:
+                            candidates.append((f'{column(q + 4)}{20 + i}', correct, wrong, q, field))
+            require(candidates, 'view77 requires a real nonzero flow/stock with distinct meeting/ending GDP')
+            address, correct, wrong, q, field = candidates[0]; cache = cells[address].find('s:v', NS)
+            require(abs(float(cache.text) - correct) < 1e-7, 'view77 native unit-conversion fixture')
+            cache.text = repr(wrong)
+        elif kind == 'policy-missing': cell.remove(cache)
+        elif kind == 'policy-empty': cache.text = None
+        elif kind in ('policy-bool', 'policy-string'):
+            cell.set('t', 'b' if kind == 'policy-bool' else 'str'); cache.text = '1'
+        elif kind in ('policy-nan', 'policy-infinity', 'policy-text'):
+            cache.text = {'policy-nan': 'NaN', 'policy-infinity': 'INF', 'policy-text': 'wrong'}[kind]
+        elif kind == 'policy-spelling':
+            cell.attrib.pop('t', None); cache.text = format(float(cache.text), '.17e')
+        elif kind == 'policy-shared':
+            master = cell.find('s:f', NS); master.set('t', 'shared'); master.set('si', '777001'); master.set('ref', 'E20:F20')
+            follower = cells['F20'].find('s:f', NS); follower.text = None; follower.set('t', 'shared'); follower.set('si', '777001')
+        else: cache.text = repr(float(cache.text) + 0.25)
+        return {path: ET.tostring(part, encoding='utf-8', xml_declaration=True)}
+    targets = {
+        'lab-row': (1, 4, None), 'policy-row': (2, 6, None), 'assumptions-row': (3, 6, None),
+        'shocks-row': (5, 7, None), 'economy-row': (4, 4, None),
+        'lab-col': (1, None, 3), 'policy-col': (2, None, 5), 'assumptions-col': (3, None, 3),
+        'shocks-col': (5, None, 5), 'economy-col': (4, None, 4),
+        'policy-last-input': (2, 14, None), 'policy-last-output': (2, 39, None),
+        'policy-output-label': (2, None, 2), 'assumptions-metadata': (3, None, 10),
+        'shocks-header': (5, 4, None), 'title-row': (3, 2, None),
+        'chart-row': (1, 35, None), 'chart-col': (1, None, 16),
+    }
+    index, row_index, col_index = targets.get(kind, (2 if kind in ('policy-range', 'policy-wide-column') else 1, 4, 3))
+    path = f'xl/worksheets/sheet{index}.xml'; part = ET.fromstring(source.read(path))
+    data = part.find('s:sheetData', NS); columns = part.find('s:cols', NS); fmt = part.find('s:sheetFormatPr', NS)
+    row = data.find(f's:row[@r="{row_index}"]', NS) if row_index else None
+    if row_index and row is None: row = ET.SubElement(data, '{' + NS['s'] + '}row', r=str(row_index))
+    col = next((c for c in columns if int(c.get('min')) <= col_index <= int(c.get('max'))), None) if col_index else None
+    if kind in targets:
+        (row if row_index else col).set('hidden', '1')
+    elif kind == 'policy-range':
+        columns.clear(); ET.SubElement(columns, '{' + NS['s'] + '}col', min='5', max='52', hidden='1')
+    elif kind.endswith('-height') and kind.split('-')[0] in ('zero', 'nan', 'infinity', 'negative'):
+        row.set('ht', {'zero': '0', 'nan': 'NaN', 'infinity': 'INF', 'negative': '-1'}[kind.split('-')[0]])
+    elif kind.endswith('-width') and kind.split('-')[0] in ('zero', 'nan', 'infinity', 'negative'):
+        col.set('width', {'zero': '0', 'nan': 'NaN', 'infinity': 'INF', 'negative': '-1'}[kind.split('-')[0]])
+    elif kind == 'default-zero-height':
+        fmt.set('defaultRowHeight', '0'); row.attrib.pop('ht', None); row.attrib.pop('customHeight', None)
+    elif kind == 'default-zero-width':
+        fmt.set('defaultColWidth', '0'); col.attrib.pop('width', None); col.attrib.pop('customWidth', None)
+    elif kind in ('default-hidden', 'default-hidden-height-only'):
+        fmt.set('zeroHeight', 'true')
+        if kind == 'default-hidden': row.attrib.pop('ht', None); row.attrib.pop('customHeight', None)
+    elif kind == 'bad-row-hidden': row.set('hidden', 'maybe')
+    elif kind == 'bad-col-hidden': col.set('hidden', 'maybe')
+    elif kind == 'bad-default-hidden': fmt.set('zeroHeight', 'maybe')
+    elif kind == 'overlap-col': ET.SubElement(columns, '{' + NS['s'] + '}col', min='3', max='3', hidden='0', width='15')
+    elif kind in ('wrapped-cols', 'wrapped-col', 'wrapped-row', 'wrapped-format'):
+        wrapper = ET.SubElement(part, '{' + NS['s'] + '}extLst')
+        if kind == 'wrapped-cols': part.remove(columns); wrapper.append(columns)
+        elif kind == 'wrapped-col': columns.remove(col); wrapper.append(col)
+        elif kind == 'wrapped-row': ET.SubElement(wrapper, '{' + NS['s'] + '}row', r='4', hidden='1')
+        else: part.remove(fmt); wrapper.append(fmt)
+    elif kind == 'duplicate-format': ET.SubElement(part, '{' + NS['s'] + '}sheetFormatPr', defaultRowHeight='15')
+    elif kind in ('visible-false', 'visible-zero'):
+        value = 'false' if kind == 'visible-false' else '0'; fmt.set('zeroHeight', value)
+        for node in list(data) + list(columns): node.set('hidden', value)
+    elif kind == 'missing-defaults':
+        part.remove(fmt); row.attrib.pop('ht', None); row.attrib.pop('customHeight', None)
+        col.attrib.pop('width', None); col.attrib.pop('customWidth', None)
+    elif kind in ('positive-overrides', 'default-hidden-overrides'):
+        fmt.set('defaultRowHeight', '0'); fmt.set('defaultColWidth', '0')
+        fmt.set('zeroHeight', 'true' if kind == 'default-hidden-overrides' else 'false')
+        existing = {int(node.get('r')): node for node in data}
+        for r in range(1, 107):
+            node = existing.get(r)
+            if node is None: node = ET.SubElement(data, '{' + NS['s'] + '}row', r=str(r))
+            node.set('ht', '22'); node.set('hidden', 'false')
+        for node in columns: node.set('width', '12'); node.set('hidden', 'false')
+    elif kind == 'unrelated-unused':
+        ET.SubElement(data, '{' + NS['s'] + '}row', r='1000', hidden='1', ht='0')
+        ET.SubElement(columns, '{' + NS['s'] + '}col', min='1000', max='1001', hidden='1', width='0')
+    elif kind == 'split-cols':
+        columns.remove(col); other = ET.Element('{' + NS['s'] + '}cols')
+        part.insert(list(part).index(columns) + 1, other); other.append(col)
+    elif kind == 'policy-wide-column':
+        columns.clear(); ET.SubElement(columns, '{' + NS['s'] + '}col', min='2', max='52', hidden='0', width='12')
+    elif kind == 'dimension-spelling': row.set('ht', '+2.200e1'); col.set('width', '+1.500e1')
+    else: raise AssertionError(('unknown view77 mutation', defect))
+    return {path: ET.tostring(part, encoding='utf-8', xml_declaration=True)}
+
+
 def review_mutations(source, defect, row_map):
+    if defect in VIEW77_CASES:
+        return view77_mutations(source, defect, row_map)
+    if defect in UPSTREAM77_CASES:
+        return upstream77_mutations(source, defect, row_map)
+    if defect in INPUT72_CASES:
+        return input72_mutations(source, defect, row_map)
     if defect in LABEL60_CASES:
         return label60_mutations(source, defect, row_map)
     if defect in DISPLAY58_CASES:
@@ -1078,6 +1404,7 @@ with zipfile.ZipFile(workbook) as archive:
 campaign = Path(sys.argv[4]) if len(sys.argv) == 5 else None
 checker = [sys.executable, str(root / 'scripts/spreadsheet/check-workbook.py'),
            str(workbook), '--reference', str(reference), '--map', str(row_map), '--reference-set', str(reference_set)]
+validate_view77_guidance_oracle(Path(checker[1]))
 if campaign:
     checker += ['--campaign-reference', str(campaign)]
     expected_note = 'Recurring crises: ' + json.loads(campaign.read_text())['scenario']['description']
@@ -1228,6 +1555,9 @@ with tempfile.TemporaryDirectory(prefix='fed-chart-regression-') as directory:
                         formula = ET.SubElement(rule, '{' + NS['s'] + '}formula')
                     else:
                         address = f'E{json.loads(row_map.read_text())["actual_output_index"]}' if location == 'economy' else 'E20' if location == 'policy' else 'E4'
+                        # Lexer positives must leave authored decision headers intact.
+                        if defect in ('safe-formula-literals', 'safe-formula-reference'):
+                            address = 'C4'
                         cell = next(cell for cell in part.findall('.//s:c', NS) if cell.get('r') == address)
                         formula = cell.find('s:f', NS)
                         if formula is None:
