@@ -163,6 +163,10 @@ authentication scheme.
 Authored literals also bind Assumptions labels, units, classifications,
 descriptions and sources, including blank provenance, and Policy/Shocks decision
 headers. Checkpoint labels and cleared suffix headers come from the actual writer.
+Policy Lab captions, scenario keys and metric/calendar labels also bind to the
+source writer, including checkpoint-cleared suffixes. Validation comparisons
+preserve reference anchors; scalar formula spelling keeps its existing equivalence.
+All five worksheet records, including the Economy audit sheet, must remain visible.
 The five source-authored validation rules must retain their ranges, types,
 bounds and blank-forbidding Stop alerts. Earlier exports without selector alerts
 are unsafe regressions under this stronger contract. Preserve them and validate

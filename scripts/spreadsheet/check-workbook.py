@@ -333,7 +333,8 @@ def validate_authored_validations(part, expected, sheet):
         require([child.tag for child in rule] == ['{' + NS['s'] + '}' + name for name in children], message)
         for name in children:
             value = rule.find('s:' + name, NS)
-            require(len(value) == 0 and canonical_formula(value.text or '') == canonical_formula(str(authored[name])), message)
+            require(len(value) == 0 and canonical_formula(value.text or '', preserve_anchors=True)
+                    == canonical_formula(str(authored[name]), preserve_anchors=True), message)
         require(rule.get('allowBlank', 'false') in ('0', 'false'), ('authored data validation blanks', sheet))
         require(rule.get('showErrorMessage', 'false') in ('1', 'true'), ('authored data validation alert disabled', sheet))
         require(rule.get('errorStyle', 'stop') == 'stop', ('authored data validation must Stop', sheet))
@@ -343,7 +344,7 @@ FORMULA_QUOTED = re.compile(r'("(?:[^"]|"")*"|\'(?:[^\']|\'\')*\'!)')
 FORMULA_REFERENCE = re.compile(r'(?<![A-Z0-9_])(\$?)([A-Z]{1,3})(\$?)([1-9][0-9]*)(?![A-Z0-9_])', re.IGNORECASE | re.ASCII)
 
 
-def canonical_formula(text):
+def canonical_formula(text, preserve_anchors=False):
     tokens = []
     for token in SAFE_FORMULA_TOKENS.findall(text.strip().removeprefix('=')):
         if token.isspace():
@@ -353,7 +354,8 @@ def canonical_formula(text):
         elif token.startswith("'"):
             tokens.append(token[1:-2].replace("''", "'").upper() + '!')
         else:
-            tokens.append(re.sub(r'\s+', '', token).replace('$', '').upper())
+            token = re.sub(r'\s+', '', token).upper()
+            tokens.append(token if preserve_anchors else token.replace('$', ''))
     return tokens
 
 
@@ -604,6 +606,97 @@ def saved_number(cell, message):
     return number
 
 
+def upstream_cache_expectations(inventory, inputs, label):
+    message = 'upstream calculated cache inventory'
+    layout = inventory.get('upstream_cache_layout')
+    require(isinstance(layout, dict) and set(layout) == {'parameter_rows', 'initial_parameter', 'initial_rows',
+            'shock_rows', 'case_stride', 'source_start', 'shock_defaults'}, message)
+    for name in ('parameter_rows', 'initial_rows', 'shock_rows'):
+        mapping = layout[name]
+        require(isinstance(mapping, dict) and mapping and all(isinstance(key, str) and type(row) is int and row > 0
+                for key, row in mapping.items()) and len(set(mapping.values())) == len(mapping), message)
+    parameters, initials, shocks = (layout[name] for name in ('parameter_rows', 'initial_rows', 'shock_rows'))
+    aliases = layout['initial_parameter']; defaults = layout['shock_defaults']
+    require(isinstance(aliases, dict) and set(aliases) <= set(initials)
+            and all(isinstance(value, str) and value in parameters for value in aliases.values())
+            and isinstance(defaults, dict) and set(defaults) == set(shocks), message)
+    count = len(inventory['case_order'])
+    require(type(layout['case_stride']) is int and layout['case_stride'] == count + 2
+            and type(layout['source_start']) is int and layout['source_start'] > 2, message)
+    selected = inputs['Policy Lab']['C4']
+    require(type(selected) in (int, float) and math.isfinite(selected) and selected == int(selected)
+            and 1 <= selected <= count, message)
+    selected = int(selected) - 1
+    expected = {'Assumptions': {'D3': label}, 'Shocks': {'D3': label}}
+    def literal(sheet, address):
+        require(address in inputs[sheet], (message, sheet, address, 'missing source literal'))
+        return inputs[sheet][address]
+    def put(sheet, address, value):
+        require(address not in expected[sheet], (message, sheet, address, 'duplicate oracle address'))
+        expected[sheet][address] = value
+    def initial_value(key, case):
+        address = f'D{initials[key] + case + 1}'
+        if address in inputs['Assumptions']:
+            return literal('Assumptions', address)
+        if key in aliases:
+            return literal('Assumptions', f'C{parameters[aliases[key]]}')
+        if key == 'r_star_reference_pct':
+            require('r_star_pct' in initials, message)
+            return initial_value('r_star_pct', case)
+        return 0
+    for row in parameters.values():
+        put('Assumptions', f'D{row}', literal('Assumptions', f'C{row}'))
+    for key, row in initials.items():
+        put('Assumptions', f'D{row}', initial_value(key, selected))
+        for case in range(count):
+            address = f'D{row + case + 1}'
+            if address not in inputs['Assumptions']:
+                put('Assumptions', address, initial_value(key, case))
+    start = layout['source_start']
+    principal = literal('Assumptions', f'C{start - 4}'); mbs = literal('Assumptions', f'C{start - 3}')
+    require(all(type(value) in (int, float) and math.isfinite(value) and value > 0 for value in (principal, mbs)), message)
+    put('Assumptions', f'D{start - 2}', principal / (principal + mbs * 1e9))
+    weights = [literal('Assumptions', f'C{start + i}') for i in range(120)]
+    valid = (all(type(value) in (int, float) and math.isfinite(value) and value >= 0 for value in weights)
+             and abs(sum(weights) - 1) <= 1e-12)
+    put('Assumptions', f'D{start - 1}', valid)
+    for i, value in enumerate(weights):
+        put('Assumptions', f'D{start + i}', value)
+    for key, row in shocks.items():
+        for q in range(48):
+            col = column(q + 5)
+            value = literal('Shocks', f'{col}{row + selected + 1}')
+            if value is None:
+                require(key == 'potential_growth_pct' and defaults[key] is None, message)
+                value = 'unchanged'
+            put('Shocks', f'{col}{row}', value)
+    for sheet, values in expected.items():
+        require(set(values) == set(inventory['upstream_formulas'][sheet]), (message, sheet, 'oracle coverage'))
+        require(all(isinstance(value, (str, bool)) or (type(value) in (int, float) and math.isfinite(value))
+                    for value in values.values()), (message, sheet, 'expected scalar type'))
+    return expected
+
+
+def validate_upstream_caches(sheet_data, strings):
+    expected = upstream_cache_expectations(formula_inventory, literal_inputs, reference['scenario']['label'])
+    if reference['initial_state']['quarter_index'] == 0:
+        for key, row in formula_inventory['upstream_cache_layout']['initial_rows'].items():
+            if key in reference['initial_state']:
+                require(abs(expected['Assumptions'][f'D{row}'] - reference['initial_state'][key]) < 1e-7,
+                        ('upstream calculated cache native cold initial', key))
+    for sheet, values in expected.items():
+        for address, value in values.items():
+            cell = sheet_data[sheet].get(address)
+            message = ('upstream calculated cache', sheet, address)
+            if isinstance(value, str):
+                require(cached_string(cell, strings, message) == value, message)
+            elif isinstance(value, bool):
+                require(cell is not None and cell.get('t') == 'b'
+                        and cell.findtext('s:v', namespaces=NS) == ('1' if value else '0'), message)
+            else:
+                require(abs(saved_number(cell, message) - value) < 1e-7, message)
+
+
 def native_prior_commitment(prior, state, increment):
     if not prior['guidance_active']:
         return state['policy_rate_pct']
@@ -819,7 +912,7 @@ for filename in args.workbooks:
         require(len(identities) == len(set(identities)), ('worksheet inventory', 'sheetId'))
         sheets = {}
         for sheet in records:
-            if sheet.get('name') in ('Policy Lab', 'Policy', 'Assumptions', 'Shocks'):
+            if sheet.get('name') in ('Policy Lab', 'Policy', 'Assumptions', 'Economy', 'Shocks'):
                 require(sheet.get('state', 'visible') == 'visible', ('interactive worksheet visibility', sheet.get('name')))
             sheets[sheet.attrib['name']] = relationship_target(archive, parts, part_types, 'xl/workbook.xml', sheet.attrib['{' + NS['r'] + '}id'], 'worksheet')
         require({'Policy Lab', 'Policy', 'Assumptions', 'Economy', 'Shocks'} <= set(sheets), 'worksheet inventory: missing required sheet')
@@ -890,7 +983,10 @@ for filename in args.workbooks:
             if name != 'Economy':
                 sheet_shared = shared_formulas(sheet_cells)
                 if name in formula_inventory['upstream_formulas']:
-                    validate_authored_formulas(sheet_cells, sheet_shared, formula_inventory['upstream_formulas'][name])
+                    # The checkpoint writer's cleared plot cells are bound by its literal overlay below.
+                    validate_authored_formulas(sheet_cells, sheet_shared,
+                        {address: formula for address, formula in formula_inventory['upstream_formulas'][name].items()
+                         if address not in literal_inputs.get(name, {})})
             errors.extend((name, c.attrib['r'], c.find('s:v', NS).text)
                           for c in sheet_cells.values()
                           if c.attrib.get('t') == 'e')
@@ -926,6 +1022,7 @@ for filename in args.workbooks:
                 and selector in (1, 2), 'dashboard cached label benchmark inventory')
         require(cached_string(lab.get('E6'), strings, 'dashboard cached label benchmark') == labels[int(selector) - 1],
                 'dashboard cached label benchmark')
+        validate_upstream_caches(sheet_data, strings)
         expected_series = {'Inflation and expectations (%)': ['C', 'D', 'E'], 'Unemployment (%)': ['F', 'G'],
                            'Policy and long yield (%)': ['H', 'I'], 'Model confidence scores (0–100)': ['J', 'K']}
         palettes = []

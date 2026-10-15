@@ -805,7 +805,238 @@ def view77_mutations(source, defect, row_map):
     return {path: ET.tostring(part, encoding='utf-8', xml_declaration=True)}
 
 
+META89_CASES = {
+    **{f'meta89-anchor-{row}-{kind}': 'authored data validation'
+       for row in (6, 10) for kind in ('row', 'column', 'both')},
+    **{f'meta89-label-{address}': 'authored literal mismatch' for address in
+       ('B2', 'B4', 'B6', 'J4', 'J11', 'B12', 'B17', 'D12', 'D17', 'F12', 'F14', 'F16', 'B54', 'B57', 'B58', 'B106')},
+    **{f'meta89-economy-{state}': 'interactive worksheet visibility' for state in ('hidden', 'veryHidden')},
+    **{f'meta89-{name}': None for name in ('validation-canonical', 'scalar-anchors', 'label-str', 'label-inline',
+                                        'label-rich', 'label-shared', 'label-shared-rich', 'economy-default', 'economy-visible')},
+}
+NEW_CASES.update(META89_CASES)
+# Full source capture now catches these same saved-cell defects before chart presentation checks.
+NEW_CASES.update({f'chart19-{name}': 'authored literal mismatch'
+                  for name in ('header', 'header-formula', 'quarter-label', 'quarter-label-formula')})
+NEW_CASES.update({f'chart19-{name}': 'authored formula mismatch' for name in ('source-formula', 'credibility-scale')})
+
+
+def meta89_mutations(source, defect, row_map):
+    kind = defect.removeprefix('meta89-')
+    namespace = '{' + NS['s'] + '}'
+    if kind.startswith('economy-'):
+        part = ET.fromstring(source.read('xl/workbook.xml'))
+        record = next(sheet for sheet in part.find('s:sheets', NS) if sheet.get('name') == 'Economy')
+        state = kind.removeprefix('economy-')
+        if state == 'default': record.attrib.pop('state', None)
+        else: record.set('state', state)
+        return {'xl/workbook.xml': ET.tostring(part, encoding='utf-8')}
+    if kind.startswith('anchor-') or kind == 'validation-canonical':
+        path = 'xl/worksheets/sheet2.xml'; part = ET.fromstring(source.read(path))
+        rules = part.findall('s:dataValidations/s:dataValidation', NS)
+        require(len(rules) == 2, 'meta89 actual Policy rules required')
+        if kind == 'validation-canonical':
+            for rule in rules:
+                formula = rule.find('s:formula1', NS)
+                formula.text = ' = ' + formula.text.lower().replace(',', ', ')
+        else:
+            _, row, anchor = kind.split('-')
+            rule = next(rule for rule in rules if rule.get('sqref').startswith('E' + row + ':'))
+            formula = rule.find('s:formula1', NS); original = 'E' + row
+            require(original in formula.text and '$' not in formula.text, 'meta89 actual source rule is relative')
+            formula.text = formula.text.replace(original, {'row': 'E$' + row, 'column': '$E' + row, 'both': '$E$' + row}[anchor])
+        return {path: ET.tostring(part, encoding='utf-8')}
+    path = 'xl/worksheets/sheet2.xml' if kind == 'scalar-anchors' else 'xl/worksheets/sheet1.xml'
+    part = ET.fromstring(source.read(path))
+    if kind == 'scalar-anchors':
+        formula = part.find('.//s:c[@r="E20"]/s:f', NS)
+        require(formula is not None and 'E20' in formula.text, 'meta89 actual scalar Policy formula required')
+        formula.text = formula.text.replace('E20', '$E$20')
+        return {path: ET.tostring(part, encoding='utf-8')}
+    action = kind.removeprefix('label-')
+    address = action if re.fullmatch('[A-Z]+[0-9]+', action) else 'B4'
+    cell = part.find(f'.//s:c[@r="{address}"]', NS)
+    require(cell is not None and cell.find('s:f', NS) is None, 'meta89 actual literal label required')
+    original = cell.findtext('s:v', namespaces=NS)
+    if cell.get('t') == 'inlineStr': original = ''.join(cell.find('s:is', NS).itertext())
+    require(isinstance(original, str), 'meta89 saved label text required')
+    attributes = dict(cell.attrib); cell.clear(); cell.attrib.update(attributes)
+    changes = {}
+    text = original if action in ('str', 'inline', 'rich', 'shared', 'shared-rich') else 'Changed source caption'
+    if action in ('inline', 'rich'):
+        cell.set('t', 'inlineStr'); inline = ET.SubElement(cell, namespace + 'is')
+        for value in ([text] if action == 'inline' else [text[:3], text[3:]]):
+            parent = inline if action == 'inline' else ET.SubElement(inline, namespace + 'r')
+            ET.SubElement(parent, namespace + 't').text = value
+    elif action in ('shared', 'shared-rich'):
+        table = ET.fromstring(source.read('xl/sharedStrings.xml')); index = len(table)
+        item = ET.SubElement(table, namespace + 'si')
+        for value in ([text] if action == 'shared' else [text[:3], text[3:]]):
+            parent = item if action == 'shared' else ET.SubElement(item, namespace + 'r')
+            ET.SubElement(parent, namespace + 't').text = value
+        if table.get('count') is not None: table.set('count', str(int(table.get('count')) + 1))
+        if table.get('uniqueCount') is not None: table.set('uniqueCount', str(len(table)))
+        changes['xl/sharedStrings.xml'] = ET.tostring(table, encoding='utf-8')
+        cell.set('t', 's'); ET.SubElement(cell, namespace + 'v').text = str(index)
+    else:
+        cell.set('t', 'str'); ET.SubElement(cell, namespace + 'v').text = text
+    changes[path] = ET.tostring(part, encoding='utf-8')
+    return changes
+
+
+def validate_cache89_oracles(checker, row_map):
+    import ast
+    import copy
+    import math
+    nodes = [node for node in ast.parse(checker.read_text()).body if isinstance(node, ast.FunctionDef)
+             and node.name in ('column', 'upstream_cache_expectations')]
+    require(len(nodes) == 2, 'cache89 oracle definitions')
+    namespace = {'math': math, 'require': require}
+    exec(compile(ast.Module(body=nodes, type_ignores=[]), str(checker), 'exec'), namespace)
+    oracle = namespace['upstream_cache_expectations']
+    inventory = json.loads(row_map.with_suffix('.formulas.json').read_text())
+    layout = inventory['upstream_cache_layout']; start = layout['source_start']; initial = inventory['literal_inputs']
+    for selected in range(1, len(inventory['case_order']) + 1):
+        inputs = copy.deepcopy(initial); inputs['Policy Lab']['C4'] = selected
+        values = oracle(inventory, inputs, 'unit')
+        require(all(set(values[sheet]) == set(inventory['upstream_formulas'][sheet]) for sheet in values), 'cache89 exact oracle coverage')
+        for row in layout['parameter_rows'].values():
+            require(values['Assumptions'][f'D{row}'] == inputs['Assumptions'][f'C{row}'], 'cache89 parameter identity')
+        for key, row in layout['shock_rows'].items():
+            for q in range(48):
+                col = namespace['column'](q + 5); source = inputs['Shocks'][f'{col}{row + selected}']
+                require(values['Shocks'][f'{col}{row}'] == ('unchanged' if source is None else source), 'cache89 raw source shock identity')
+    for overlay in inventory['checkpoint_inputs']:
+        inputs = {sheet: dict(values, **overlay['literals'][sheet]) for sheet, values in initial.items()}
+        values = oracle(inventory, inputs, 'unit')
+        for row in layout['parameter_rows'].values():
+            require(values['Assumptions'][f'D{row}'] == inputs['Assumptions'][f'C{row}'], 'cache89 checkpoint C identity')
+    # These six saved overlays have no parameter_overrides; exercise an explicit trusted C override separately.
+    inputs = copy.deepcopy(initial)
+    key = next(iter(layout['initial_parameter'])); row = layout['parameter_rows'][layout['initial_parameter'][key]]
+    inputs['Assumptions'][f'C{row}'] += 0.5
+    selected = next(case for case in range(len(inventory['case_order']))
+                    if f'D{layout['initial_rows'][key] + case + 1}' not in inputs['Assumptions'])
+    inputs['Policy Lab']['C4'] = selected + 1
+    values = oracle(inventory, inputs, 'unit')
+    require(values['Assumptions'][f'D{row}'] == inputs['Assumptions'][f'C{row}'], 'cache89 overridden parameter identity')
+    require(values['Assumptions'][f'D{layout['initial_rows'][key]}'] == inputs['Assumptions'][f'C{row}'], 'cache89 overridden active initial alias')
+
+    inputs = copy.deepcopy(initial); inputs['Assumptions'][f'C{start - 4}'] = 1e9; inputs['Assumptions'][f'C{start - 3}'] = 1
+    for i in range(120): inputs['Assumptions'][f'C{start + i}'] = 0
+    for weight, expected in ((1, True), (math.nextafter(1 + 1e-12, 1), True), (1 + 1e-12, False)):
+        inputs['Assumptions'][f'C{start}'] = weight; values = oracle(inventory, inputs, 'unit')
+        require(values['Assumptions'][f'D{start - 1}'] is expected, 'cache89 ladder tolerance boundary')
+        require(values['Assumptions'][f'D{start - 2}'] == 0.5, 'cache89 source share units')
+    inputs['Assumptions'][f'C{start}'] = -1; inputs['Assumptions'][f'C{start + 1}'] = 2
+    require(oracle(inventory, inputs, 'unit')['Assumptions'][f'D{start - 1}'] is False, 'cache89 ladder nonnegative predicate')
+    inputs['Assumptions'][f'C{start}'] = True
+    require(oracle(inventory, inputs, 'unit')['Assumptions'][f'D{start - 1}'] is False, 'cache89 COUNT excludes boolean')
+    for defect in ('missing-formula', 'extra-formula', 'missing-layout-key', 'missing-source-literal'):
+        document = copy.deepcopy(inventory); inputs = copy.deepcopy(initial)
+        if defect == 'missing-formula': document['upstream_formulas']['Assumptions'].pop('D6')
+        elif defect == 'extra-formula': document['upstream_formulas']['Shocks']['BA999'] = '=0'
+        elif defect == 'missing-layout-key': document['upstream_cache_layout'].pop('shock_defaults')
+        else: inputs['Assumptions'].pop('C6')
+        try: oracle(document, inputs, 'unit')
+        except AssertionError as error: require('upstream calculated cache inventory' in str(error), ('cache89 fail-closed diagnostic', defect))
+        else: raise AssertionError(('cache89 missing refusal', defect))
+
+
+CACHE89_CASES = {
+    **{f'cache89-{target}-{action}': 'upstream calculated cache' for target in
+       ('parameter', 'initial', 'share', 'weight', 'shock', 'ladder', 'growth')
+       for action in ('wrong', 'missing', 'empty', 'wrong-type', 'nan', 'infinity')},
+    **{f'cache89-{target}-wrong': 'upstream calculated cache' for target in
+       ('initial-coherent', 'parameter-last', 'initial-last', 'fallback-alias', 'fallback-zero', 'fallback-rstar', 'weight-last', 'shock-last', 'growth-last')},
+    **{f'cache89-{name}': None for name in
+       ('numeric-spelling', 'numeric-default-type', 'numeric-shared', 'boolean-one',
+        'growth-string', 'growth-shared-rich')},
+    **{f'cache89-{target}-string': 'upstream calculated cache' for target in
+       ('parameter', 'initial', 'share', 'weight', 'shock', 'ladder')},
+    'cache89-source-tamper': 'authored literal mismatch',
+    'cache89-source-coherent': 'authored literal mismatch',
+}
+NEW_CASES.update(CACHE89_CASES)
+
+
+def cache89_mutations(source, defect, row_map):
+    name = defect.removeprefix('cache89-')
+    inventory = json.loads(row_map.with_suffix('.formulas.json').read_text())
+    layout = inventory['upstream_cache_layout']; parameters = layout['parameter_rows']; initials = layout['initial_rows']
+    source_start = layout['source_start']; upstream = inventory['upstream_formulas']['Assumptions']
+    target, action = name.rsplit('-', 1)
+    if name.endswith('-wrong-type'): target, action = name[:-11], 'wrong-type'
+    targets = {'parameter': 'D' + str(next(iter(parameters.values()))), 'parameter-last': 'D' + str(list(parameters.values())[-1]),
+               'initial': 'D' + str(next(iter(initials.values()))), 'initial-last': 'D' + str(list(initials.values())[-1]),
+               'share': f'D{source_start - 2}', 'ladder': f'D{source_start - 1}',
+               'weight': f'D{source_start}', 'weight-last': f'D{source_start + 119}',
+               'shock': 'E' + str(next(iter(layout['shock_rows'].values()))),
+               'shock-last': 'AZ' + str(list(layout['shock_rows'].values())[-1]),
+               'growth': 'E' + str(layout['shock_rows']['potential_growth_pct']),
+               'growth-last': 'AZ' + str(layout['shock_rows']['potential_growth_pct'])}
+    if name == 'initial-coherent-wrong':
+        native = json.loads(reference.read_text()); selected = inventory['case_order'].index(native['scenario']['id']) + 1
+        key = next(key for key, row in initials.items() if f'D{row + selected}' in upstream)
+        target, action = 'initial', 'coherent'; targets['initial'] = f'D{initials[key]}'
+        dependent_address = f'D{initials[key] + selected}'
+    if target.startswith('fallback-'):
+        key = next(iter(layout['initial_parameter'])) if target == 'fallback-alias' else ('r_star_reference_pct' if target == 'fallback-rstar' else 'deferred_demand_pct')
+        targets[target] = next(f'D{initials[key] + i}' for i in range(1, layout['case_stride'] - 1)
+                               if f'D{initials[key] + i}' in upstream)
+    if name in ('numeric-spelling', 'numeric-default-type', 'numeric-shared', 'source-tamper', 'source-coherent'):
+        target, action = 'parameter', name
+    elif name.startswith('boolean-'): target, action = 'ladder', name
+    elif name.startswith('growth-') and name in ('growth-string', 'growth-shared-rich'): target, action = 'growth', name
+    path = 'xl/worksheets/sheet5.xml' if target.startswith(('shock', 'growth')) else 'xl/worksheets/sheet3.xml'
+    part = ET.fromstring(source.read(path)); namespace = '{' + NS['s'] + '}'
+    cells = {c.get('r'): c for c in part.findall('s:sheetData/s:row/s:c', NS)}; address = targets[target]; cell = cells[address]; value = cell.find('s:v', NS)
+    require(value is not None and cell.find('s:f', NS) is not None, ('cache89 actual formula/cache', address))
+    changes = {}
+    if action == 'missing': cell.remove(value)
+    elif action == 'empty': value.text = None
+    elif action == 'string': cell.set('t', 'str'); value.text = '1'
+    elif action == 'coherent':
+        value.text = repr(float(value.text) + 0.25); cells[dependent_address].find('s:v', NS).text = value.text
+    elif action == 'wrong-type':
+        cell.set('t', 'n' if target in ('ladder', 'growth', 'growth-last') else 'b'); value.text = '1'
+    elif action in ('nan', 'infinity'):
+        cell.set('t', 'n'); value.text = 'NaN' if action == 'nan' else 'INF'
+    elif action == 'numeric-spelling': value.text = format(float(value.text), '.17e')
+    elif action == 'numeric-default-type': cell.attrib.pop('t', None)
+    elif action == 'numeric-shared':
+        formula = cell.find('s:f', NS); formula.set('t', 'shared'); formula.set('si', '890001'); formula.set('ref', address)
+    elif action in ('source-tamper', 'source-coherent'):
+        input_address = 'C' + address[1:]; saved = cells[input_address].find('s:v', NS); saved.text = repr(float(saved.text) + 0.25)
+        if action == 'source-coherent': value.text = saved.text
+    elif action in ('boolean-one',):
+        require(cell.get('t') == 'b' and value.text == '1', 'cache89 genuine true ladder')
+        value.text = '1'  # Boolean cache lexical values are 0/1, not XML attribute true/false.
+    elif action == 'growth-string':
+        require(cell.get('t') == 'str' and value.text == 'unchanged', 'cache89 actual unchanged growth')
+    elif action == 'growth-shared-rich':
+        require(cell.get('t') == 'str' and value.text == 'unchanged', 'cache89 actual unchanged growth')
+        # Reuse the existing shared-string package authoring fixture, retaining this calculated cell's formula.
+        changes = upstream77_mutations(source, 'upstream77-metadata-shared-rich', row_map)
+        table = ET.fromstring(changes['xl/sharedStrings.xml']); item = table[-1]
+        for node in list(item): item.remove(node)
+        for text in ('un', 'changed'): ET.SubElement(ET.SubElement(item, namespace + 'r'), namespace + 't').text = text
+        changes['xl/sharedStrings.xml'] = ET.tostring(table, encoding='utf-8')
+        changes.pop('xl/worksheets/sheet3.xml')
+        cell.set('t', 's'); value.text = str(len(table) - 1)
+    elif target == 'ladder': value.text = '0'
+    elif target.startswith('growth'):
+        cell.set('t', 'str'); value.text = 'changed'
+    else: value.text = repr(float(value.text) + 0.25)
+    changes[path] = ET.tostring(part, encoding='utf-8', xml_declaration=True)
+    return changes
+
+
 def review_mutations(source, defect, row_map):
+    if defect in CACHE89_CASES:
+        return cache89_mutations(source, defect, row_map)
+    if defect in META89_CASES:
+        return meta89_mutations(source, defect, row_map)
     if defect in VIEW77_CASES:
         return view77_mutations(source, defect, row_map)
     if defect in UPSTREAM77_CASES:
@@ -1405,6 +1636,7 @@ campaign = Path(sys.argv[4]) if len(sys.argv) == 5 else None
 checker = [sys.executable, str(root / 'scripts/spreadsheet/check-workbook.py'),
            str(workbook), '--reference', str(reference), '--map', str(row_map), '--reference-set', str(reference_set)]
 validate_view77_guidance_oracle(Path(checker[1]))
+validate_cache89_oracles(Path(checker[1]), row_map)
 if campaign:
     checker += ['--campaign-reference', str(campaign)]
     expected_note = 'Recurring crises: ' + json.loads(campaign.read_text())['scenario']['description']
@@ -1501,6 +1733,9 @@ with tempfile.TemporaryDirectory(prefix='fed-chart-regression-') as directory:
                     f'{name} ({mode}) accepted wrong authored source inputs')
         print(f'PASS: rejected {name} in all checker modes')
     for defect, error in defects:
+        if campaign and defect == 'cache89-growth-missing':
+            # The campaign scan rejects missing string values before upstream cache checks.
+            error = 'campaign string structure'
         broken = Path(directory) / f'{defect}.xlsx'
         changed = False
         with zipfile.ZipFile(workbook) as source, zipfile.ZipFile(broken, 'w') as target:

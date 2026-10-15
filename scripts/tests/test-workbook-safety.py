@@ -394,6 +394,22 @@ for actual, expected_calls in [('D6+1', 0), ('0', 2)]:
     assert len(normalizations) == expected_calls, 'Only differing expressions need normalization'
 print('PASS: actual authored-expression equality fast path and mismatch refusal (simulated XML cell)')
 
+# meta89: validation normalization preserves anchors; ordinary scalar normalization retains its existing contract.
+meta89_nodes = [node for node in checker_tree.body if isinstance(node, ast.FunctionDef) and node.name == 'canonical_formula']
+meta89_scope = {'re': re}
+meta89_tokens = next(node for node in checker_tree.body if isinstance(node, ast.Assign)
+                     and any(isinstance(target, ast.Name) and target.id == 'SAFE_FORMULA_TOKENS' for target in node.targets))
+exec(compile(ast.Module(body=[meta89_tokens, *meta89_nodes], type_ignores=[]), '<actual meta89 normalization>', 'exec'), meta89_scope)
+meta89_canonical = meta89_scope['canonical_formula']
+for anchored in ['E$6', '$E6', '$E$6']:
+    assert meta89_canonical('E6') == meta89_canonical(anchored), 'Existing scalar equivalence must remain valid'
+    assert meta89_canonical('E6', preserve_anchors=True) != meta89_canonical(anchored, preserve_anchors=True)
+for preserve in (False, True):
+    assert meta89_canonical(' = if ( E6 = "A$1, Mixed Case", \'Policy Lab\'!$C$5, 0)', preserve) == meta89_canonical(
+        'IF(E6="A$1, Mixed Case",\'Policy Lab\'!$C$5,0)', preserve)
+    assert '"A$1, Mixed Case"' in meta89_canonical('IF(E6="A$1, Mixed Case",1,0)', preserve)
+print('PASS: meta89 actual canonical tokenizer preserves validation anchors, quoted literals, whitespace/case and scalar anchor equivalence (simulated)')
+
 # Checkpoint identity includes the raw portfolio inputs consumed by authoring.
 input_nodes = [node for node in ast.walk(checker_tree) if isinstance(node, ast.FunctionDef)
                and node.name in ('require', 'flatten_state', 'authored_inputs')]
