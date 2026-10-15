@@ -30,6 +30,52 @@ def rejected_output(path, message):
         raise AssertionError(f'Accepted unsafe output: {path}')
 
 
+# timeout141: run every actual caller expression with a timeout-checking tool double.
+timeout141_main = next(node for node in ast.parse((ROOT / 'scripts/build-workbook.py').read_text()).body
+                       if isinstance(node, ast.FunctionDef) and node.name == 'main')
+timeout141_calls = [node for node in ast.walk(timeout141_main) if isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name) and node.func.id == 'run_tool']
+with tempfile.TemporaryDirectory(prefix='fed-timeout141-') as directory:
+    temporary = Path(directory)
+    timeouts = []
+
+    def timeout141_tool(command, log_path, completion, *, timeout=900):
+        expected = 3600 if Path(command[1]).name == 'test-workbook-file.py' else 900
+        if timeout != expected:
+            raise AssertionError(f'timeout141 {log_path.name}: expected {expected}s, got {timeout}s')
+        timeouts.append(timeout)
+
+    scope = {'run_tool': timeout141_tool, 'ROOT': ROOT, 'sys': sys,
+             'args': builder.argparse.Namespace(node=Path('/fixture/node'), godot=Path('/fixture/godot')),
+             'output': temporary, 'references': temporary / 'references', 'evidence': temporary,
+             'execution_copy': temporary / 'build-policy-lab.mjs',
+             'case': 'base', 'phase': 'main', 'name': 'late_hold_120_168'}
+    for call in timeout141_calls:
+        eval(compile(ast.Expression(call), '<actual wrapper timed caller>', 'eval', optimize=sys.flags.optimize), scope)
+    if timeouts.count(3600) != 1 or not timeouts.count(900):
+        raise AssertionError('Only one saved-file matrix caller may have the longer timeout')
+
+    for index, (keywords, expected) in enumerate([({}, 900), ({'timeout': 3600}, 3600)]):
+        def timeout141_process(command, **kwargs):
+            kwargs['stdout'].write('PASS fixture\n')
+            return subprocess.CompletedProcess(command, 0)
+
+        with patch.object(builder.subprocess, 'run', side_effect=timeout141_process) as process:
+            builder.run_tool(['fixture'], temporary / f'forward-{index}.log', 'PASS fixture', **keywords)
+        if process.call_args.kwargs['timeout'] != expected:
+            raise AssertionError('run_tool did not forward the default/explicit timeout unchanged')
+        expired = subprocess.TimeoutExpired(['fixture'], expected)
+        with patch.object(builder.subprocess, 'run', side_effect=expired):
+            try:
+                builder.run_tool(['fixture'], temporary / f'expired-{index}.log', 'PASS fixture', **keywords)
+            except subprocess.TimeoutExpired as error:
+                if error is not expired:
+                    raise AssertionError('run_tool replaced TimeoutExpired') from error
+            else:
+                raise AssertionError('run_tool swallowed TimeoutExpired')
+print(f'PASS: timeout141 {len(timeouts)} actual caller sites: one 3600s matrix, others 900s; two forwarding and two TimeoutExpired checks (Python mocks)')
+
+
 # Managed package metadata identifies bundled/nested versions without loading Node.
 with tempfile.TemporaryDirectory(prefix='fed-workbook-dependencies-') as directory:
     modules = Path(directory) / 'node_modules'

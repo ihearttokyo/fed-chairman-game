@@ -87,7 +87,7 @@ export async function authoredInventory(builder, references, rowMap) {
     slice('const initialParameter = ', 'const shockKeys = '),
     slice('const shockKeys = ', 'const R = '),
     slice('const R = ', 'const sourceStart = '), slice('const sourceStart = ', 'const f = '),
-    slice('const f = ', 'for (const [key, row] of Object.entries(R)) cell(economy,'),
+    slice('const f = ', 'economy.getRange(`B100:AZ'),
     slice('economy.getRange(`B100:AZ', "if (buildPhase === 'main') await fs.writeFile"),
     slice('// Player controls remain separate from the one calculation chain.', '// Compact output table and editable native charts'),
     slice('// Compact output table and editable native charts', 'const plotKeys = '),
@@ -117,7 +117,7 @@ export async function authoredInventory(builder, references, rowMap) {
   }
   const policyReferences = new Set([...Object.values(formulas), ...Object.values(upstream.Assumptions), ...Object.values(upstream.Shocks)]
     .flatMap(formula => Array.from(formula.matchAll(/'Policy'!\$?([A-Z]+)\$?([0-9]+)/g), match => match[1] + match[2])));
-  const literalInputs = typed;
+  const literalInputs = { ...typed, Economy: Object.fromEntries(Object.entries(literals).filter(([, value]) => typeof value === 'string')) };
   assert.equal(Object.keys(upstream.Policy).length, 20 * 48 + 1, 'All authored Policy calculated outputs and case header');
   const checkpointBytes = await fs.readFile(new URL('late-checkpoints.json', references));
   const checkpoints = JSON.parse(checkpointBytes);
@@ -138,7 +138,7 @@ export async function authoredInventory(builder, references, rowMap) {
   const fontFillPairs = [...new Set([{}, ...styles.values()].map(({ font = {}, fill = null }) =>
     JSON.stringify([font.name ?? null, font.size ?? null, font.color ?? null, font.bold ?? false, fill])))].map(value => JSON.parse(value));
   return { display_styles: { font_fill_pairs: fontFillPairs, number_formats: [...numberFormats],
-    boolean_literals: Object.entries({ Economy: literals, ...literalInputs }).flatMap(([name, values]) =>
+    boolean_literals: Object.entries({ Economy: literals, ...typed }).flatMap(([name, values]) =>
       Object.entries(values).filter(([, value]) => typeof value === 'boolean').map(([address]) => `${name}!${address}`)) }, schema_version: 3, benchmark_labels: Array.from(upstream['Policy Lab'].E6.matchAll(/"((?:[^"]|"")*)"/g), match => match[1].replaceAll('""', '"')), summary_fields: emitted.summaryFields, policy_output_fields: Array.from(emitted.policyOutputs), ending_stock_fields: Array.from(emitted.endingStocks), data_validations: validations, literal_inputs: literalInputs, checkpoint_inputs: checkpointInputs, case_order: Array.from(ids), upstream_formulas: upstream, policy_input_addresses: Array.from(policyReferences).sort(), builder_sha256: hash(bytes), generator_sha256: hash(await fs.readFile(new URL(import.meta.url))), row_map_sha256: hash(JSON.stringify(rowMap)),
     reference_sha256: Object.fromEntries(Array.from(ids, (id, i) => [id, hash(referenceBytes[i])])),
     upstream_cache_layout: emitted.upstreamCacheLayout, state_fields: Array.from(emitted.stateFields), formulas: required };

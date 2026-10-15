@@ -1219,7 +1219,76 @@ def display105_mutations(source, defect, row_map):
     return {path: ET.tostring(part, encoding='utf-8'), 'xl/styles.xml': ET.tostring(styles, encoding='utf-8')}
 
 
+DISPLAY142_CASES = {
+    **{f'display142-formula-{name}': None for name in ('quote', 'case', 'whitespace', 'anchors', 'shared', 'credibility-shared')},
+    **{f'display142-label-{name}': 'authored literal mismatch' for name in ('state', 'helper')},
+    **{f'display142-label-{name}': None for name in ('inline', 'shared', 'rich')},
+    'display142-wrong-reference': 'authored formula mismatch',
+    'display142-missing-scale': 'authored formula mismatch',
+    'display142-wrong-cache': 'dashboard source cache parity',
+}
+NEW_CASES.update(DISPLAY142_CASES)
+
+
+def display142_mutations(source, defect, row_map):
+    namespace = '{' + NS['s'] + '}'
+    label = defect.startswith('display142-label-')
+    path = 'xl/worksheets/sheet4.xml' if label else 'xl/worksheets/sheet1.xml'
+    part = ET.fromstring(source.read(path)); changes = {}
+    address = 'B6' if label else ('K58' if defect in ('display142-formula-credibility-shared', 'display142-missing-scale') else 'C58')
+    if defect == 'display142-label-helper':
+        address = 'B' + str(json.loads(row_map.read_text())['net_rrp_collateral_credit_0'])
+    cell = part.find(f'.//s:c[@r="{address}"]', NS)
+    require(cell is not None, 'display142 actual saved target')
+    if label:
+        value = cell.find('s:v', NS); require(cell.get('t') == 'str' and value is not None, 'display142 actual scalar label')
+        original = value.text
+        if defect in ('display142-label-state', 'display142-label-helper'):
+            value.text = 'four quarter inflation (%)' if defect.endswith('state') else 'unrelated helper label'
+            require(value.text != original, 'display142 label must change')
+        elif defect == 'display142-label-inline':
+            cell.set('t', 'inlineStr'); cell.remove(value)
+            ET.SubElement(ET.SubElement(cell, namespace + 'is'), namespace + 't').text = original
+        else:
+            changes = upstream77_mutations(source, 'upstream77-metadata-shared-rich', row_map)
+            changes.pop('xl/worksheets/sheet3.xml')
+            table = ET.fromstring(changes['xl/sharedStrings.xml']); item = table[-1]
+            for node in list(item): item.remove(node)
+            if defect == 'display142-label-rich':
+                for text in (original[:len(original) // 2], original[len(original) // 2:]):
+                    run = ET.SubElement(item, namespace + 'r'); ET.SubElement(run, namespace + 'rPr')
+                    ET.SubElement(run, namespace + 't').text = text
+            else:
+                ET.SubElement(item, namespace + 't').text = original
+            changes['xl/sharedStrings.xml'] = ET.tostring(table, encoding='utf-8')
+            cell.set('t', 's'); value.text = str(len(table) - 1)
+    else:
+        formula = cell.find('s:f', NS); require(formula is not None, 'display142 actual plot formula')
+        if defect == 'display142-wrong-reference': formula.text = "'Economy'!D14"
+        elif defect == 'display142-missing-scale':
+            require(formula.text.endswith('*100'), 'display142 original credibility scale'); formula.text = formula.text.removesuffix('*100')
+        elif defect == 'display142-wrong-cache':
+            value = cell.find('s:v', NS); value.text = repr(float(value.text) + 1)
+        else:
+            formula.text = {'display142-formula-quote': 'Economy!D13',
+                            'display142-formula-case': "'economy'!d13",
+                            'display142-formula-whitespace': "  'Economy'! D13  ",
+                            'display142-formula-anchors': 'Economy!$D$13',
+                            'display142-formula-shared': 'Economy!$D$13',
+                            'display142-formula-credibility-shared': " 'economy'!$D$38 * 100 "}.get(defect)
+            if defect == 'display142-formula-credibility-shared':
+                row = json.loads(row_map.read_text())['credibility']; formula.text = f" 'economy'!$D${row} * 100 "
+            if defect.endswith('shared'):
+                # The plot transposes source columns into rows; a singleton shared group preserves its exact expression.
+                used = [int(node.get('si')) for node in part.findall('.//s:f', NS) if node.get('t') == 'shared']
+                formula.set('t', 'shared'); formula.set('si', str(max(used, default=-1) + 1)); formula.set('ref', address)
+    changes[path] = ET.tostring(part, encoding='utf-8')
+    return changes
+
+
 def review_mutations(source, defect, row_map):
+    if defect in DISPLAY142_CASES:
+        return display142_mutations(source, defect, row_map)
     if defect in DISPLAY105_CASES:
         return display105_mutations(source, defect, row_map)
     if defect in CACHE89_CASES:

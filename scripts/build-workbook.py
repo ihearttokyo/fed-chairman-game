@@ -28,12 +28,12 @@ def new_output(value):
     return target
 
 
-def run_tool(command, log_path, completion):
+def run_tool(command, log_path, completion, *, timeout=900):
     if '--headless' in command:
         command = [command[0], '--log-file', str(log_path.with_suffix('.engine.log')), *command[1:]]
     with log_path.open('x') as log:
         result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT,
-                                text=True, timeout=900)
+                                text=True, timeout=timeout)
     text = log_path.read_text()
     if result.returncode or any(marker in text for marker in ('SCRIPT ERROR:', 'ERROR:', 'FAIL:')):
         raise ValueError(f'Tool failed; inspect {log_path}')
@@ -244,7 +244,7 @@ def main():
               str(output / 'Federal Reserve Policy Lab.xlsx'),
               str(references / 'supply_shock.json'), str(evidence / 'workbook-model-map.json'),
               str(references / 'mixed_crises.json'), '--reference-set', str(references)],
-             evidence / 'workbook-file-regression.log', 'PASS: real workbook accepted')
+             evidence / 'workbook-file-regression.log', 'PASS: real workbook accepted', timeout=3600)
     for record in checkpoints:
         name = record['name']
         run_tool([sys.executable, str(ROOT / 'scripts/spreadsheet/check-workbook.py'),

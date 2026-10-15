@@ -94,8 +94,36 @@ try {
   assert.ok(!observed.display_styles.font_fill_pairs.some(([, , color]) => color === palette.ink));
   assert.equal(observed.literal_inputs.Assumptions.B6, 'upstream77-' + source.parameters[0].key,
     'The actual human declaration runs in the pure VM; neither a host stub nor copied transform may replace it');
-} finally { await fs.rm(temporary, { recursive: true }); }
+} finally { await fs.unlink(path.join(temporary, 'builder.mjs')); await fs.rmdir(temporary); }
 console.log('PASS: upstream77 actual pure inventory binds parameter metadata, cold/late decision headers, five rules and source-emitted output fields; actual human declaration is live');
 console.log('PASS: meta89 actual-source layout bridge, complete Lab literals and checkpoint cleared-suffix overlays');
 
 console.log('PASS: display105 source-emitted paint pairs and number formats; changed actual palette reaches the contract');
+
+// display142 binds the final writer, not the earlier labels emitted before all helpers register.
+assert.equal(inventory.literal_inputs.Economy.B6, human('actual_output_index'));
+assert.equal(inventory.literal_inputs.Economy[`B${rows.net_rrp_collateral_credit_0}`], human('net_rrp_collateral_credit_0'));
+assert.ok(Object.values(inventory.literal_inputs.Economy).every(value => typeof value === 'string'));
+assert.ok(!Object.hasOwn(inventory.literal_inputs.Economy, 'D4'), 'Checkpoint numeric state literals stay outside label inputs');
+assert.ok(!Object.hasOwn(inventory.literal_inputs.Economy, 'D3'), 'Case header remains the authored formula');
+for (const [overlay] of checkpoints) {
+  assert.ok(Object.values(overlay.literals.Economy).every(value => typeof value === 'string'));
+  assert.ok(!Object.hasOwn(overlay.literals.Economy, 'D4'));
+}
+const finalLabelWriter = 'for (const [key, row] of Object.entries(R)) cell(economy, `B${row}`, human(key));';
+const finalLabelOffset = text.lastIndexOf(finalLabelWriter);
+assert.ok(finalLabelOffset > text.indexOf(finalLabelWriter), 'Require distinct initial and final source label writers');
+const labelDirectory = await fs.mkdtemp(path.join(path.dirname(process.argv[3]), 'display142-labels-'));
+try {
+  const changed = path.join(labelDirectory, 'builder.mjs');
+  const finalWriter = finalLabelWriter.replace('human(key)', "'display142-' + human(key)");
+  await fs.writeFile(changed, text.slice(0, finalLabelOffset) + finalWriter +
+    "\ncell(economy, 'BC999', true);" + text.slice(finalLabelOffset + finalLabelWriter.length));
+  const observed = await authoredInventory(changed, references, rows);
+  for (const address of ['B6', `B${rows.net_rrp_collateral_credit_0}`]) {
+    assert.equal(observed.literal_inputs.Economy[address], 'display142-' + inventory.literal_inputs.Economy[address]);
+  }
+  assert.ok(observed.display_styles.boolean_literals.includes('Economy!BC999'), 'String-only Economy inputs cannot shadow scalar Boolean capture');
+  assert.ok(!Object.hasOwn(observed.literal_inputs.Economy, 'BC999'));
+} finally { await fs.unlink(path.join(labelDirectory, 'builder.mjs')); await fs.rmdir(labelDirectory); }
+console.log('PASS: display142 final Economy label writer counterfactual and separate cold/checkpoint Boolean/numeric contracts');

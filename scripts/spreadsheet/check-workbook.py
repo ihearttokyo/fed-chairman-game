@@ -298,7 +298,7 @@ require(isinstance(formula_inventory.get('upstream_formulas'), dict)
         'incomplete authored upstream formula inventory')
 
 literal_inputs = formula_inventory.get('literal_inputs')
-require(isinstance(literal_inputs, dict) and set(literal_inputs) == {'Assumptions', 'Shocks', 'Policy', 'Policy Lab'}
+require(isinstance(literal_inputs, dict) and set(literal_inputs) == {'Assumptions', 'Shocks', 'Policy', 'Policy Lab', 'Economy'}
         and all(isinstance(values, dict) and values for values in literal_inputs.values()), 'incomplete authored literal inventory')
 checkbox_cells = set(formula_inventory.get('display_styles', {}).get('boolean_literals', []))
 # Expectation overlays execute the builder's checkpoint writer, not a second economic model.
@@ -1044,9 +1044,6 @@ def dashboard_values(lab, economy, strings):
             col = column(i); address = f'{col}{row}'; cell = lab.get(address)
             source = f'{column(q + 4)}{rows[field]}'
             scale = 100 if field == 'credibility' else 1
-            formula = f"'Economy'!{source}" + ('*100' if scale == 100 else '')
-            require(cell is not None and cell.findtext('s:f', namespaces=NS) == formula,
-                    ('dashboard source binding', address))
             value = saved_number(cell, ('dashboard numeric cache', address))
             expected = saved_number(economy.get(source), ('dashboard Economy source', source)) * scale
             require(abs(value - expected) < 1e-7, ('dashboard source cache parity', address))
