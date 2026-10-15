@@ -122,6 +122,10 @@ def dependency_provenance(modules):
     }
 
 
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('output', help='new absolute directory outside Git')
@@ -139,6 +143,7 @@ def main():
     dependencies = dependency_provenance(args.modules)
     args.node = args.node.resolve()
     args.godot = args.godot.resolve()
+    sources = source_snapshot()
     version = subprocess.check_output([str(args.godot), '--version'], text=True).strip()
     if not version.startswith('4.7.2.stable'):
         raise ValueError('Workbook reference paths require Godot 4.7.2')
@@ -248,7 +253,6 @@ def main():
                   str(evidence / 'workbook-model-map.json'), '--portfolio-reference',
                   str(references / 'portfolio-reference.json')],
                  evidence / f'checkpoint-{name}.log', 'PASS ')
-    digest = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
     if digest(builder) != digest(execution_copy):
         raise ValueError('Execution copy differs from source')
     if dependency_provenance(args.modules) != dependencies:
@@ -256,27 +260,38 @@ def main():
     with (evidence / 'workbook-parity.json').open('x') as destination:
         json.dump(parity, destination, indent=2)
     provenance = {
-        'git_head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
+        'git_head': sources['git_head'],
         'portfolio_reference_sha256': portfolio_hash,
-        'godot_version': version, 'builder_sha256': digest(builder),
+        'godot_version': version, 'builder_sha256': sources['source_sha256'][builder.relative_to(ROOT).as_posix()],
         'build_phases': list(BUILD_PHASES),
         'managed_dependencies': dependencies,
         'node_version': subprocess.check_output([str(args.node), '--version'], text=True).strip(),
+        'source_sha256': sources['source_sha256'],
+        'authored_formula_inventory_sha256': digest(evidence / 'workbook-model-map.formulas.json'),
+        'workbook_sha256': digest(output / 'Federal Reserve Policy Lab.xlsx'),
+        'checkpoint_workbooks_sha256': {path.name: digest(path) for path in sorted((output / 'late-checkpoints').glob('*.xlsx'))},
+        'model_sha256': sources['model_sha256'],
+        'references_sha256': {path.name: digest(path) for path in sorted(references.glob('*.json'))},
+        'native_recalculation': 'not performed by this command',
+    }
+    if source_snapshot() != sources:
+        raise ValueError('Build source snapshot changed during the build')
+    (evidence / 'build-provenance.json').write_text(json.dumps(provenance, indent=2) + '\n')
+    print(f'BUILT {output / "Federal Reserve Policy Lab.xlsx"}')
+
+
+def source_snapshot():
+    # shortcut: endpoint checks miss transient edits; use an immutable checkout for stronger attribution.
+    return {
+        'git_head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
         'source_sha256': {name: digest(ROOT / name) for name in (
             'scripts/build-workbook.py', 'scripts/spreadsheet/build-policy-lab.mjs',
             'scripts/spreadsheet/check-workbook.py', 'scripts/spreadsheet/generate-formula-inventory.mjs', 'scripts/tests/test-workbook-validation.mjs', 'game/tests/export_reference.gd',
             'game/tests/export_policy_variants.gd', 'game/tests/export_late_checkpoint_reference.gd',
             'scripts/tests/test-workbook-file.py', 'scripts/tests/upstream77-inventory.mjs')},
-        'authored_formula_inventory_sha256': digest(evidence / 'workbook-model-map.formulas.json'),
-        'workbook_sha256': digest(output / 'Federal Reserve Policy Lab.xlsx'),
-        'checkpoint_workbooks_sha256': {path.name: digest(path) for path in sorted((output / 'late-checkpoints').glob('*.xlsx'))},
         'model_sha256': {name: digest(ROOT / 'game/model' / name)
                          for name in ('economy.gd', 'parameters.json', 'scenarios.json', 'exogenous_shocks.json', 'portfolio_reference.json')},
-        'references_sha256': {path.name: digest(path) for path in sorted(references.glob('*.json'))},
-        'native_recalculation': 'not performed by this command',
     }
-    (evidence / 'build-provenance.json').write_text(json.dumps(provenance, indent=2) + '\n')
-    print(f'BUILT {output / "Federal Reserve Policy Lab.xlsx"}')
 
 
 if __name__ == '__main__':

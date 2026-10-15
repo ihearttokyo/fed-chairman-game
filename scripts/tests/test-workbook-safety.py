@@ -290,7 +290,8 @@ import ast, hashlib, sys
 from pathlib import Path
 source = ast.parse(Path(sys.argv[1]).read_text())
 main = next(node for node in source.body if isinstance(node, ast.FunctionDef) and node.name == 'main')
-selected = [node for node in main.body if ast.unparse(node).startswith('digest = lambda') or 'Execution copy differs from source' in ast.unparse(node)]
+selected = [node for node in source.body if isinstance(node, ast.FunctionDef) and node.name == 'digest']
+selected += [node for node in main.body if 'Execution copy differs from source' in ast.unparse(node)]
 if len(selected) != 2:
     raise RuntimeError('Production source-copy identity guard missing')
 module = ast.fix_missing_locations(ast.Module(body=selected, type_ignores=[]))
@@ -319,6 +320,135 @@ with tempfile.TemporaryDirectory(prefix='fed-source-copy-identity-') as director
     if failures:
         raise AssertionError('\n'.join(failures))
 print('PASS: actual source-copy guard accepts matches and rejects drift in normal/-O/inherited modes')
+
+# snapshot105: execute the real pre-generation and post-checker boundaries, not tools.
+snapshot105_tree = ast.parse((ROOT / 'scripts/build-workbook.py').read_text())
+snapshot105_main = next(node for node in snapshot105_tree.body
+                        if isinstance(node, ast.FunctionDef) and node.name == 'main')
+snapshot105_start = next(i for i, node in enumerate(snapshot105_main.body)
+                         if isinstance(node, ast.For) and ast.unparse(node.iter) == 'CASES')
+snapshot105_end = next(i for i, node in enumerate(snapshot105_main.body)
+                       if isinstance(node, ast.If) and 'Execution copy differs from source' in ast.unparse(node))
+snapshot105_boundaries = [compile(ast.fix_missing_locations(ast.Module(body=nodes, type_ignores=[])),
+                                  '<actual wrapper snapshot boundary>', 'exec', optimize=sys.flags.optimize)
+                         for nodes in (snapshot105_main.body[:snapshot105_start],
+                                       snapshot105_main.body[snapshot105_end:])]
+snapshot105_sources = (
+    'scripts/build-workbook.py', 'scripts/spreadsheet/build-policy-lab.mjs',
+    'scripts/spreadsheet/check-workbook.py', 'scripts/spreadsheet/generate-formula-inventory.mjs',
+    'scripts/tests/test-workbook-validation.mjs', 'game/tests/export_reference.gd',
+    'game/tests/export_policy_variants.gd', 'game/tests/export_late_checkpoint_reference.gd',
+    'scripts/tests/test-workbook-file.py', 'scripts/tests/upstream77-inventory.mjs',
+)
+snapshot105_models = ('economy.gd', 'parameters.json', 'scenarios.json',
+                      'exogenous_shocks.json', 'portfolio_reference.json')
+snapshot105_paths = (*snapshot105_sources, *('game/model/' + name for name in snapshot105_models))
+snapshot105_failures = []
+snapshot105_cases = [('unchanged', None), ('head', None), ('node-head', None)]
+snapshot105_cases += [(change, path) for change in ('change', 'delete', 'missing') for path in snapshot105_paths]
+snapshot105_cases += [('node-change', path) for path in ('game/model/economy.gd',
+                       'game/tests/export_reference.gd', 'scripts/tests/test-workbook-file.py')]
+for change, changed_path in snapshot105_cases:
+    with tempfile.TemporaryDirectory(prefix='fed-snapshot105-') as directory:
+        temporary = Path(directory)
+        checkout, output, modules = (temporary / name for name in ('checkout', 'output', 'modules'))
+        for name in snapshot105_paths:
+            path = checkout / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f'local dirty bytes: {name}\n')
+        portfolio_path = checkout / 'game/model/portfolio_reference.json'
+        portfolio_path.write_text(json.dumps({
+            'schema_version': 1, 'treasury_maturity_weights': [1] + [0] * 119,
+            'source_treasury_principal_usd': 1,
+            **{key: 1 for key in ('mbs_monthly_principal_billion_usd', 'mbs_stock_billion_usd',
+                                  'market_treasury_wam_years', 'treasury_duration_years', 'mbs_duration_years')},
+        }))
+        manifest = modules / '@oai/artifact-tool/package.json'
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text('{"name":"@oai/artifact-tool","version":"fixture"}')
+        head = ['a' * 40]
+        expected = {'git_head': head[0],
+                    'source_sha256': {name: hashlib.sha256((checkout / name).read_bytes()).hexdigest()
+                                      for name in snapshot105_sources},
+                    'model_sha256': {name: hashlib.sha256((checkout / 'game/model' / name).read_bytes()).hexdigest()
+                                     for name in snapshot105_models}}
+        finalizing = [False]
+
+        def snapshot105_change():
+            if changed_path:
+                path = checkout / changed_path
+                if change in ('delete', 'missing'):
+                    path.unlink()
+                else:
+                    path.write_bytes(path.read_bytes() + b'changed after simulated generation\n')
+            else:
+                head[0] = 'b' * 40
+
+        def snapshot105_tool(command, **kwargs):
+            if command == ['git', 'rev-parse', 'HEAD']:
+                if kwargs.get('cwd') != checkout:
+                    raise AssertionError('Snapshot HEAD read from the wrong checkout')
+                return head[0] + '\n'
+            if command != [str(Path(sys.executable).resolve()), '--version']:
+                raise AssertionError(f'Unexpected real tool invocation: {command}')
+            if finalizing[0]:
+                if change in ('node-change', 'node-head'):
+                    snapshot105_change()
+                return 'v22.0.0\n'
+            return '4.7.2.stable.fixture\n'
+
+        arguments = ['build-workbook.py', str(output), '--node', sys.executable,
+                     '--godot', sys.executable, '--modules', str(modules)]
+        scope = dict(vars(builder))
+        if change == 'missing':
+            snapshot105_change()
+        refused = False
+        with patch.object(builder, 'ROOT', checkout), patch.object(sys, 'argv', arguments), \
+                patch.object(builder.subprocess, 'check_output', side_effect=snapshot105_tool), \
+                patch.object(builder, 'run_tool', side_effect=AssertionError('Generation is simulated')):
+            scope.update(ROOT=checkout, run_tool=builder.run_tool)
+            try:
+                exec(snapshot105_boundaries[0], scope)
+                # Only the generation/checker middle is simulated; production identity/write code runs below.
+                references, evidence = scope['references'], scope['evidence']
+                (evidence / 'workbook-model-map.formulas.json').write_text('{}')
+                (output / 'Federal Reserve Policy Lab.xlsx').write_bytes(b'simulated workbook')
+                late = output / 'late-checkpoints'
+                late.mkdir()
+                (late / 'late_hold_216_240.xlsx').write_bytes(b'simulated checkpoint')
+                scope['parity'] = []
+                if change in ('change', 'delete', 'head'):
+                    snapshot105_change()
+                finalizing[0] = True
+                exec(snapshot105_boundaries[1], scope)
+            except (ValueError, OSError) as error:
+                refused = True
+                if change not in ('delete', 'missing') and not any(
+                        text in str(error) for text in ('source snapshot changed', 'Execution copy differs from source')):
+                    raise AssertionError(f'Wrong drift refusal: {error}') from error
+        receipt = output / 'evidence/build-provenance.json'
+        label = f'{change}: {changed_path or "HEAD"}'
+        if change == 'unchanged':
+            if refused or not receipt.is_file():
+                snapshot105_failures.append(f'{label}: unchanged local bytes refused')
+                continue
+            provenance = json.loads(receipt.read_text())
+            if {key: provenance[key] for key in expected} != expected or list(provenance) != [
+                    'git_head', 'portfolio_reference_sha256', 'godot_version', 'builder_sha256',
+                    'build_phases', 'managed_dependencies', 'node_version', 'source_sha256',
+                    'authored_formula_inventory_sha256', 'workbook_sha256', 'checkpoint_workbooks_sha256',
+                    'model_sha256', 'references_sha256', 'native_recalculation']:
+                snapshot105_failures.append(f'{label}: captured identity/schema changed')
+            if (list(provenance['source_sha256']) != list(snapshot105_sources)
+                    or list(provenance['model_sha256']) != list(snapshot105_models)
+                    or provenance['builder_sha256'] != expected['source_sha256']['scripts/spreadsheet/build-policy-lab.mjs']):
+                snapshot105_failures.append(f'{label}: source roles/order or builder binding changed')
+        elif not refused or receipt.exists() or (change == 'missing' and output.exists()):
+            snapshot105_failures.append(f'{label}: accepted drift/missing input or wrote provenance/reserved output')
+if snapshot105_failures:
+    raise AssertionError('snapshot105 provenance regression:\n' + '\n'.join(snapshot105_failures))
+print(f'PASS: snapshot105 {len(snapshot105_cases)} actual-wrapper boundary cases: 15 source/model roles, missing/deleted bytes, HEAD-only and final-query drift, unchanged dirty-source receipt (SIMULATED generation)')
+
 
 # input54: the actual typed-literal guard keeps blank, numeric and boolean inputs distinct.
 input54_tree = ast.parse((ROOT / 'scripts/spreadsheet/check-workbook.py').read_text())

@@ -37,6 +37,20 @@ const actual = vm.runInNewContext(text.slice(first, last) + '\n({policyOutputs, 
 assert.deepEqual(inventory.policy_output_fields, Array.from(actual.policyOutputs));
 assert.deepEqual(inventory.ending_stock_fields, Array.from(actual.endingStocks));
 assert.equal(inventory.policy_output_fields.length, 20); assert.equal(inventory.ending_stock_fields.length, 5);
+const paletteLine = text.split('\n').find(line => line.startsWith('const C = '));
+const palette = vm.runInNewContext(paletteLine + '\nC');
+assert.ok(inventory.display_styles.font_fill_pairs.some(([name, size, color, bold, fill]) =>
+  name === 'Arial' && size === 10 && color === '#FFFFFF' && bold && fill === palette.navy));
+assert.ok(inventory.display_styles.font_fill_pairs.some(([name, size, color, bold, fill]) =>
+  name === 'Arial' && size === 10 && color === palette.blue && !bold && fill === palette.amber));
+for (const [overlay, fixture] of checkpoints) {
+  for (const [field, value] of Object.entries(fixture.initial_state)) if (typeof value === 'boolean') {
+    assert.ok(overlay.boolean_literals.includes(`Economy!D${rows[field]}`), 'display105 actual checkpoint writer retains Boolean literals');
+  }
+}
+assert.ok(inventory.display_styles.boolean_literals.includes('Policy!E12'));
+const actualFormats = [...new Set(Array.from(text.matchAll(/\.setNumberFormat\('([^']+)'\)/g), match => match[1]))];
+assert.deepEqual(new Set(inventory.display_styles.number_formats), new Set(['General', ...actualFormats]));
 assert.equal(Object.values(inventory.data_validations).reduce((count, values) => count + Object.keys(values).length, 0), 5);
 // meta89 expectations execute the actual layout declarations, never a duplicate field/row list.
 const declaration = prefix => {
@@ -74,10 +88,14 @@ for (const [overlay, fixture] of checkpoints) for (let q = 0; q <= 48; q++) {
 const temporary = await fs.mkdtemp(path.join(path.dirname(process.argv[3]), 'upstream77-human-'));
 try {
   const changed = path.join(temporary, 'builder.mjs');
-  await fs.writeFile(changed, text.replace(humanLine, "const human = key => 'upstream77-' + key;"));
+  await fs.writeFile(changed, text.replace(humanLine, "const human = key => 'upstream77-' + key;").replace(paletteLine, paletteLine.replace(palette.ink, '#172635')));
   const observed = await authoredInventory(changed, references, rows);
+  assert.ok(observed.display_styles.font_fill_pairs.some(([, , color]) => color === '#172635'), 'display105 executes the actual palette and format writes');
+  assert.ok(!observed.display_styles.font_fill_pairs.some(([, , color]) => color === palette.ink));
   assert.equal(observed.literal_inputs.Assumptions.B6, 'upstream77-' + source.parameters[0].key,
     'The actual human declaration runs in the pure VM; neither a host stub nor copied transform may replace it');
 } finally { await fs.rm(temporary, { recursive: true }); }
 console.log('PASS: upstream77 actual pure inventory binds parameter metadata, cold/late decision headers, five rules and source-emitted output fields; actual human declaration is live');
 console.log('PASS: meta89 actual-source layout bridge, complete Lab literals and checkpoint cleared-suffix overlays');
+
+console.log('PASS: display105 source-emitted paint pairs and number formats; changed actual palette reaches the contract');

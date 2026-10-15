@@ -113,7 +113,7 @@ def worksheet_cells(part, path):
     return cells
 
 
-def validate_cell_visibility(part, cells, name):
+def validate_cell_visibility(part, cells, name, display_styles):
     message = ('required cell visibility', name)
     required = set(literal_inputs.get(name, {})) | set(formula_inventory['upstream_formulas'].get(name, {}))
     required.update(address for address, cell in cells.items() if len(cell))
@@ -170,6 +170,33 @@ def validate_cell_visibility(part, cells, name):
                     and (positive(node.get('width')) if node.get('width') is not None else default_width),
                     message + ('columns', first, last))
     require(not (cols - covered) or default_width, message + ('default column width',))
+
+    style_message = ('required cell display style', name)
+    require(all(len(node) == 0 and not node.attrib for node in part.findall('.//s:rPr', NS)),
+            style_message + ('rich text override',))
+    def style_index(value):
+        index = unsigned_integer(value, style_message)
+        require(index < len(display_styles), style_message + ('invalid style index',))
+        return index
+    row_styles = {}
+    for row in row_nodes:
+        if row.get('s') is not None:
+            require(row.get('customFormat') in ('1', 'true'), style_message + ('ambiguous row style',))
+            row_styles[int(row.get('r'))] = style_index(row.get('s'))
+    column_styles = {}
+    for node in column_nodes:
+        if node.get('style') is not None:
+            index = style_index(node.get('style'))
+            for identity in cols:
+                if int(node.get('min')) <= identity <= int(node.get('max')):
+                    column_styles[identity] = index
+    for address in required:
+        col, row = coordinates(address); cell = cells.get(address)
+        index = (style_index(cell.get('s')) if cell is not None and cell.get('s') is not None
+                 else row_styles.get(row, column_styles.get(col, 0)))
+        visible, checkbox = display_styles[index]
+        require(visible and (not checkbox or name + '!' + address in checkbox_cells),
+                style_message + (address,))
 
 
 def has_formula(cell, shared):
@@ -273,12 +300,14 @@ require(isinstance(formula_inventory.get('upstream_formulas'), dict)
 literal_inputs = formula_inventory.get('literal_inputs')
 require(isinstance(literal_inputs, dict) and set(literal_inputs) == {'Assumptions', 'Shocks', 'Policy', 'Policy Lab'}
         and all(isinstance(values, dict) and values for values in literal_inputs.values()), 'incomplete authored literal inventory')
+checkbox_cells = set(formula_inventory.get('display_styles', {}).get('boolean_literals', []))
 # Expectation overlays execute the builder's checkpoint writer, not a second economic model.
 if reference['initial_state']['quarter_index'] > 0:
     checkpoint_digest = hashlib.sha256(args.reference.read_bytes()).hexdigest()
     overlays = [item for item in formula_inventory.get('checkpoint_inputs', []) if item.get('reference_sha256') == checkpoint_digest]
     require(len(overlays) == 1, 'reference input binding: checkpoint fixture digest')
     literal_inputs = {name: dict(values, **overlays[0]['literals'][name]) for name, values in literal_inputs.items()}
+    checkbox_cells.update(overlays[0].get('boolean_literals', []))
 else:
     case_order = formula_inventory.get('case_order', [])
     require(set(case_order) == set(reference_cases) and len(case_order) == len(reference_cases), 'reference input binding: authored case order')
@@ -422,6 +451,18 @@ def validate_formulas(part, path):
     tags.add('{' + NS['c'] + '}f')
     tags.add('{http://schemas.microsoft.com/office/excel/2006/main}f')
     for node in part.iter():
+        local = node.tag.rsplit('}', 1)[-1]
+        if local == 'cfvo' and node.get('type') == 'formula':
+            require(not SAFE_FORMULA_TOKENS.sub('', node.get('val', '')),
+                    ('unsupported workbook formula', path, node.get('val')))
+    for node in part.iter():
+        local = node.tag.rsplit('}', 1)[-1]
+        # The authored workbook has no visual CF; retain only inert formula-only expression rules.
+        if local == 'cfRule':
+            require(node.get('type') == 'expression' and set(node.attrib) <= {'type', 'priority', 'id'}
+                    and all(child.tag in tags for child in node), ('unsupported conditional formatting', path))
+        if local in ('cfvo', 'dataBar', 'colorScale', 'iconSet'):
+            raise AssertionError(('unsupported conditional formatting', path))
         if node.tag == '{' + NS['s'] + '}f':
             require(node.get('t', 'normal') in ('normal', 'shared'), ('unsupported cell formula type', path, node.attrib))
         if node.tag in tags:
@@ -455,6 +496,7 @@ GRAPH_TYPES = {
     'drawing': 'application/vnd.openxmlformats-officedocument.drawing+xml',
     'chart': 'application/vnd.openxmlformats-officedocument.drawingml.chart+xml',
     'sharedStrings': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sharedstrings+xml',
+    'styles': 'application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml',
 }
 
 
@@ -481,6 +523,159 @@ def relationship_target(archive, parts, part_types, source, identifier, kind):
     return parts[target.translate(ASCII_LOWER)]
 
 
+def display_style_table(archive, parts, part_types):
+    message = 'required cell display style'
+    contract = formula_inventory.get('display_styles')
+    require(isinstance(contract, dict) and set(contract) == {'font_fill_pairs', 'number_formats', 'boolean_literals'}
+            and contract['font_fill_pairs'] and contract['number_formats'], message + ': missing source inventory')
+    # Fixed Artifact producer default, also retained in the zero-model selector export.
+    allowed = {(name or 'Carlito', size or 11, (color or '#000000').lstrip('#').upper(), bold,
+                fill.lstrip('#').upper() if fill else None)
+               for name, size, color, bold, fill in contract['font_fill_pairs']}
+    rels = package_relationships(archive, parts['xl/_rels/workbook.xml.rels'], part_types)
+    edges = [rel for rel in rels if rel.get('Type') == NS['r'] + '/styles']
+    require(len(edges) == 1, message + ': unique style relationship')
+    path = relationship_target(archive, parts, part_types, 'xl/workbook.xml', edges[0].get('Id'), 'styles')
+    root = ET.fromstring(archive.read(path))
+    tag = lambda name: '{' + NS['s'] + '}' + name
+    require(root.tag == tag('styleSheet') and all(node.tag in {tag(name) for name in
+            ('numFmts', 'fonts', 'fills', 'borders', 'cellStyleXfs', 'cellXfs', 'cellStyles')} for node in root), message)
+    def table(name, child, optional=False):
+        nodes = root.findall('s:' + name, NS)
+        require(len(nodes) == (0 if optional and not nodes else 1), (message, name))
+        if not nodes:
+            return []
+        node = nodes[0]
+        require(all(item.tag == tag(child) for item in node)
+                and (node.get('count') is None or unsigned_integer(node.get('count'), message) == len(node)), (message, name))
+        return list(node)
+    def boolean(value, default=False):
+        require(value is None or value in ('0', 'false', '1', 'true'), message)
+        return default if value is None else value in ('1', 'true')
+    def rgb(node):
+        require(len(node) == 0 and set(node.attrib) == {'rgb'}
+                and re.fullmatch(r'FF[0-9A-F]{6}', node.get('rgb', '').upper()) is not None, message)
+        return node.get('rgb')[2:].upper()
+    formats = {0: 'General', 2: '0.00'}
+    for node in table('numFmts', 'numFmt', True):
+        index = unsigned_integer(node.get('numFmtId'), message)
+        require(index >= 164 and index not in formats and len(node) == 0
+                and set(node.attrib) == {'numFmtId', 'formatCode'}, message)
+        formats[index] = node.get('formatCode')
+    fonts = []
+    for node in table('fonts', 'font'):
+        fields = {child.tag: child for child in node}
+        require(not node.attrib and len(fields) == len(node) and set(fields) <=
+                {tag(name) for name in ('name', 'sz', 'color', 'b')} and tag('name') in fields and tag('sz') in fields, message)
+        for child in node:
+            require(len(child) == 0 and set(child.attrib) <= ({'rgb', 'auto'} if child.tag == tag('color') else {'val'}), message)
+        color = fields.get(tag('color'))
+        if color is None:
+            paint = '000000'
+        elif set(color.attrib) == {'auto'} and boolean(color.get('auto')):
+            paint = '000000'
+        else:
+            paint = rgb(color)
+        size = fields[tag('sz')].get('val', '')
+        require(re.fullmatch(r'[0-9]+(?:\.[0-9]+)?', size) is not None, message)
+        fonts.append((fields[tag('name')].get('val'), float(size), paint,
+                      boolean(fields[tag('b')].get('val'), True) if tag('b') in fields else False))
+    fills = []
+    for node in table('fills', 'fill'):
+        require(not node.attrib and len(node) == 1 and node[0].tag == tag('patternFill'), message)
+        pattern = node[0]; kind = pattern.get('patternType', 'none')
+        require(set(pattern.attrib) <= {'patternType'}, message)
+        if kind in ('none', 'gray125'):
+            require(len(pattern) == 0, message)
+            fills.append(None if kind == 'none' else 'gray125')
+        else:
+            require(kind == 'solid' and len(pattern) == 1 and pattern[0].tag == tag('fgColor'), message)
+            fills.append(rgb(pattern[0]))
+    borders = table('borders', 'border')
+    def alignment(node):
+        if node is None:
+            return ('general', 'bottom', False)
+        require(len(node) == 0 and set(node.attrib) <= {'horizontal', 'vertical', 'wrapText', 'shrinkToFit',
+                'textRotation', 'indent', 'relativeIndent', 'justifyLastLine', 'readingOrder'}, message)
+        require(node.get('horizontal', 'general') in ('general', 'left', 'center', 'right')
+                and node.get('vertical', 'bottom') in ('bottom', 'center')
+                and not boolean(node.get('shrinkToFit')) and not boolean(node.get('justifyLastLine'))
+                and all(node.get(key, '0') == '0' for key in ('textRotation', 'indent', 'relativeIndent', 'readingOrder')), message)
+        return (node.get('horizontal', 'general'), node.get('vertical', 'bottom'), boolean(node.get('wrapText')))
+    def xf(node, parent=None):
+        attributes = {'numFmtId', 'fontId', 'fillId', 'borderId', 'xfId', 'quotePrefix', 'pivotButton'}
+        attributes.update('apply' + key for key in ('NumberFormat', 'Font', 'Fill', 'Border', 'Alignment', 'Protection'))
+        require((parent is not None or node.get('xfId') is None)
+                and set(node.attrib) <= attributes and not boolean(node.get('quotePrefix'))
+                and not boolean(node.get('pivotButton')), message)
+        require(all(child.tag in {tag('alignment'), tag('protection'), tag('extLst')} for child in node)
+                and all(len(node.findall('s:' + key, NS)) <= 1 for key in ('alignment', 'protection', 'extLst')), message)
+        extension = node.find('s:extLst', NS)
+        if extension is not None:
+            # The existing serializer's checkbox complement belongs only on source Boolean inputs.
+            require(parent is not None and not extension.attrib and len(extension) == 1 and extension[0].tag == tag('ext')
+                    and extension[0].attrib == {'uri': '{C7286773-470A-42A8-94C5-96B5CB345126}'}
+                    and len(extension[0]) == 1 and extension[0][0].tag ==
+                    '{http://schemas.microsoft.com/office/spreadsheetml/2022/featurepropertybag}xfComplement'
+                    and extension[0][0].attrib == {'i': '0'} and len(extension[0][0]) == 0, message)
+        protection = node.find('s:protection', NS)
+        require(protection is None or (len(protection) == 0 and set(protection.attrib) <= {'locked', 'hidden'}
+                and all(value in ('0', 'false', '1', 'true') for value in protection.attrib.values())), message)
+        values = {}
+        for key, values_table in [('Font', fonts), ('Fill', fills), ('Border', borders), ('NumberFormat', formats)]:
+            attribute = {'NumberFormat': 'numFmtId'}.get(key, key.lower() + 'Id')
+            index = unsigned_integer(node.get(attribute, '0'), message)
+            require(index in values_table if isinstance(values_table, dict) else index < len(values_table), message)
+            value = values_table[index]
+            applied = boolean(node.get('apply' + key), parent is None)
+            if parent is not None and not applied:
+                require(attribute not in node.attrib or value == parent[key], (message, 'ambiguous inheritance', key))
+                value = parent[key]
+            values[key] = value
+        values['Alignment'] = alignment(node.find('s:alignment', NS))
+        if parent is not None and not boolean(node.get('applyAlignment')):
+            require(node.find('s:alignment', NS) is None or values['Alignment'] == parent['Alignment'], message)
+            values['Alignment'] = parent['Alignment']
+        boolean(node.get('applyProtection'), parent is None)
+        return values
+    parents = [xf(node) for node in table('cellStyleXfs', 'xf')]
+    result = []
+    for node in table('cellXfs', 'xf'):
+        index = unsigned_integer(node.get('xfId', '0'), message)
+        require(index < len(parents), message)
+        value = xf(node, parents[index])
+        result.append(((*value['Font'], value['Fill']) in allowed
+                       and value['NumberFormat'] in contract['number_formats'], node.find('s:extLst', NS) is not None))
+    require(result, message)
+    if any(checkbox for _, checkbox in result):
+        feature = 'http://schemas.microsoft.com/office/spreadsheetml/2022/featurepropertybag'
+        edges = [rel for rel in rels if rel.get('Type') == 'http://schemas.microsoft.com/office/2022/11/relationships/FeaturePropertyBag']
+        require(len(edges) == 1, message)
+        target = edges[0].get('Target', '')
+        target = target.lstrip('/') if target.startswith('/') else posixpath.normpath('xl/' + target)
+        require(target.translate(ASCII_LOWER) in parts and part_types.get(target.translate(ASCII_LOWER))
+                == 'application/vnd.ms-excel.featurepropertybag+xml', message)
+        bags = ET.fromstring(archive.read(parts[target.translate(ASCII_LOWER)]))
+        require(bags.tag == '{' + feature + '}FeaturePropertyBags' and not bags.attrib and len(bags) == 4
+                and all(node.tag == '{' + feature + '}bag' for node in bags), message)
+        by_type = {node.get('type'): node for node in bags}
+        require(set(by_type) == {'Checkbox', 'XFControls', 'XFComplement', 'XFComplements'}, message)
+        for kind, key, destination in [('XFControls', 'CellControl', 'Checkbox'), ('XFComplement', 'XFControls', 'XFControls'),
+                                       ('XFComplements', None, 'XFComplement')]:
+            node = by_type[kind]
+            require(node.attrib == ({'type': kind, 'extRef': 'XFComplementsMapperExtRef'}
+                    if kind == 'XFComplements' else {'type': kind}) and len(node) == 1, message)
+            if kind == 'XFComplements':
+                node = node[0]
+                require(node.tag == '{' + feature + '}a' and node.attrib == {'k': 'MappedFeaturePropertyBags'} and len(node) == 1, message)
+            link = node[0]
+            require(link.tag == '{' + feature + '}bagId' and link.attrib == ({'k': key} if key else {}) and len(link) == 0, message)
+            index = unsigned_integer(link.text, message)
+            require(index < len(bags) and bags[index] is by_type[destination], message)
+        require(by_type['Checkbox'].attrib == {'type': 'Checkbox'} and len(by_type['Checkbox']) == 0, message)
+    return result
+
+
 def string_text(item, path):
     message = ('campaign string structure', path)
     text_tag = '{' + NS['s'] + '}t'
@@ -493,6 +688,8 @@ def string_text(item, path):
         texts = run.findall('s:t', NS)
         require(len(texts) == 1 and len(texts[0]) == 0 and len(run.findall('s:rPr', NS)) <= 1
                 and all(child.tag in {text_tag, '{' + NS['s'] + '}rPr'} for child in run), message)
+        require(all(len(properties) == 0 and not properties.attrib for properties in run.findall('s:rPr', NS)),
+                ('required cell display style', path, 'rich text override'))
         values.append(texts[0].text or '')
     return ''.join(values)
 
@@ -968,6 +1165,7 @@ for filename in args.workbooks:
                 error = abs(actual - float(value))
                 worst = max(worst, error)
                 require(math.isfinite(actual) and math.isfinite(float(value)) and error < 1e-7, ('full-state parity', filename, quarter, field, actual, value))
+        display_styles = display_style_table(archive, parts, part_types)
         errors = []
         drawing_refs = []
         sheet_data = {}
@@ -978,7 +1176,7 @@ for filename in args.workbooks:
             validate_formulas(part, path)
             sheet_data[name] = sheet_cells
             if name in ('Policy Lab', 'Policy', 'Assumptions', 'Economy', 'Shocks'):
-                validate_cell_visibility(part, sheet_cells, name)
+                validate_cell_visibility(part, sheet_cells, name, display_styles)
             drawing_refs.extend((path, node.get('{' + NS['r'] + '}id')) for node in part.findall('s:drawing', NS))
             if name != 'Economy':
                 sheet_shared = shared_formulas(sheet_cells)

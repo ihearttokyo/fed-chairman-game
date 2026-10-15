@@ -120,6 +120,10 @@ usability or human playability.
 Checkpoint summaries use only whole offsets within the available segment and
 show `n.a.` for invalid selectors, including pasted values.
 
+Before generation, the command captures HEAD and every provenance-bound source
+and model digest. It refuses final provenance if that snapshot changes. Endpoint
+checks cannot detect a transient edit-and-revert.
+
 Authoring runs in three mandatory, serial phases: the main workbook, three hold
 segments and three responsive segments. Each recreates the same formula chain;
 completion requires every phase and all saved-file checks.
@@ -171,6 +175,10 @@ The five source-authored validation rules must retain their ranges, types,
 bounds and blank-forbidding Stop alerts. Earlier exports without selector alerts
 are unsafe regressions under this stronger contract. Preserve them and validate
 source-bound metadata-upgraded copies separately.
+
+Required cells use the source-authored readable font/fill palette and number-format
+set. Unsupported themes, rich visual overrides and visual conditional formatting
+are rejected; style-table indices may change while the supported semantics remain.
 
 The checker reads the supplied workbook without editing it. It verifies all
 quarterly state values for the default supply case, authored formula bindings,

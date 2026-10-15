@@ -19,6 +19,7 @@ export async function authoredInventory(builder, references, rowMap) {
   const formulas = {}, literals = {}, upstream = { Assumptions: {}, Shocks: {}, Policy: {}, 'Policy Lab': {} };
   const typed = Object.fromEntries(Object.keys(upstream).map(name => [name, {}]));
   const validations = Object.fromEntries(Object.keys(upstream).map(name => [name, {}]));
+  const styles = new Map(), numberFormats = new Set(['General']);
   const write = (sheet, address, value, formula = false) => {
     if (sheet.name === 'Economy') {
       if (formula) { formulas[address] = value; delete literals[address]; }
@@ -46,6 +47,19 @@ export async function authoredInventory(builder, references, rowMap) {
   };
   const sheet = name => ({ name, freezePanes: { freezeRows() {}, freezeColumns() {} }, getRange(ref) {
     const targets = addresses(ref), target = this;
+    const format = properties => {
+      for (const address of targets.flat()) {
+        const key = `${name}!${address}`, before = styles.get(key) ?? {};
+        styles.set(key, { font: { ...before.font, ...properties.font }, fill: properties.fill ?? before.fill });
+        if (properties.fill === palette.amber && name !== 'Economy'
+            && !Object.hasOwn(typed[name], address) && !Object.hasOwn(upstream[name], address)) typed[name][address] = null;
+      }
+    };
+    const font = new Proxy({}, { set(_, key, value) { format({ font: { [key]: value } }); return true; } });
+    const formatting = new Proxy({}, {
+      get(_, key) { return key === 'font' ? font : undefined; },
+      set(_, key, value) { if (key === 'font' || key === 'fill') format({ [key]: value }); return true; },
+    });
     const record = (matrix, formula) => {
       // Values broadcast 1x1 in the installed public API; formulas require an exact matrix.
       const broadcast = !formula && matrix.length === 1 && matrix[0].length === 1;
@@ -55,20 +69,18 @@ export async function authoredInventory(builder, references, rowMap) {
         for (const [c, address] of row.entries()) write(target, address, matrix[broadcast ? 0 : r][broadcast ? 0 : c], formula);
       }
     };
-    return { format: {}, setNumberFormat() {}, set values(matrix) { record(matrix, false); },
+    return { get format() { return formatting; }, set format(value) { format(value); },
+      setNumberFormat(value) { numberFormats.add(value); }, set values(matrix) { record(matrix, false); },
       set formulas(matrix) { record(matrix, true); },
       set dataValidation(value) { validations[name][ref] = value; } };
   } });
   const economy = sheet('Economy'), assumptions = sheet('Assumptions'), shocks = sheet('Shocks'), policy = sheet('Policy'), lab = sheet('Policy Lab');
-  const input = (sheet, ref) => {
-    for (const address of addresses(ref).flat()) {
-      if (!Object.hasOwn(typed[sheet.name], address) && !Object.hasOwn(upstream[sheet.name], address)) typed[sheet.name][address] = null;
-    }
-  };
+  const palette = vm.runInNewContext(line('const C = ') + '\nC');
   // Execute the existing authoring sinks without Workbook construction, calculation or XLSX input.
   const program = [
     slice('const arrayShapes = ', 'const out = '),
     slice('const column = ', 'const cell = '), line('const human = '), line('const clamp = '),
+    line('const headers = '), line('const input = '),
     slice('for (const sheet of [lab, policy, assumptions, economy, shocks]) {', 'lab.tabColor = '),
     slice("cell(lab, 'B4', 'Case number');", '// Parameters have one editable value'), slice("assumptions.getRange('B5:F5').values", 'const p = '),
     slice('const p = ', 'const weightsRow = '), slice('const weightsRow = ', 'const initialParameter = '),
@@ -76,19 +88,20 @@ export async function authoredInventory(builder, references, rowMap) {
     slice('const shockKeys = ', 'const R = '),
     slice('const R = ', 'const sourceStart = '), slice('const sourceStart = ', 'const f = '),
     slice('const f = ', 'for (const [key, row] of Object.entries(R)) cell(economy,'),
-    slice('for (let q = 0; q <= 48; q++) {\n  const col = column(q + 4);\n  for (const [label, key]', "if (buildPhase === 'main') await fs.writeFile"),
+    slice('economy.getRange(`B100:AZ', "if (buildPhase === 'main') await fs.writeFile"),
     slice('// Player controls remain separate from the one calculation chain.', '// Compact output table and editable native charts'),
     slice('// Compact output table and editable native charts', 'const plotKeys = '),
     slice('const checkpointEdits = ', 'const human = '), line('const plotKeys = '),
     slice("lab.getRange('B57:K57').values", 'const chart = '), line("cell(lab, 'B54'"),
+    slice("lab.getRange('E1:P106').format", 'workbook.recalculate();'),
     slice('const policyRows = ', "if (buildPhase === 'main') {"),
     slice('const checkpointFixtureEdits = ', "if (buildPhase !== 'main') {"),
     '\n({ rows: R, stateFields: Object.keys(flattenState(source.initial_state)), policyOutputs, endingStocks: Array.from(endingStocks), upstreamCacheLayout: {parameter_rows:Object.fromEntries(parameterRow), initial_parameter:initialParameter, initial_rows:Object.fromEntries(initialRows), shock_rows:Object.fromEntries(shockRows), case_stride:caseStride, source_start:sourceStart, shock_defaults:Object.fromEntries(shockKeys.map(key=>[key,shockDefault(key)]))}, summaryFields: Object.fromEntries(metrics.map(([field], i) => [`C${12 + i}`, field])), checkpointFixtureEdits })',
   ].join('\n');
   const emitted = vm.runInNewContext(program, {
     assert, ids, cases, source: cases[0], portfolio: JSON.parse(cases[0].portfolio_reference_json),
-    portfolioHash: cases[0].portfolio_reference_sha256, economy, assumptions, shocks, policy, lab, input,
-    headers: () => {}, C: { pale: '', ink: '' }, cell: write,
+    portfolioHash: cases[0].portfolio_reference_sha256, economy, assumptions, shocks, policy, lab,
+    C: palette, cell: write,
   }, { timeout: 10000 });
   assert.deepEqual(JSON.parse(JSON.stringify(emitted.rows)), rowMap, 'Authored inventory row map differs from builder output');
   const required = { ...formulas, ...Object.fromEntries(Object.keys(literals).map(address => [address, null])) };
@@ -114,13 +127,19 @@ export async function authoredInventory(builder, references, rowMap) {
     const raw = await fs.readFile(new URL(`${fixture.name}.json`, references));
     assert.deepEqual(JSON.parse(raw), fixture, 'Checkpoint reference differs from builder fixture');
     const overlay = Object.fromEntries(Object.keys(literalInputs).map(name => [name, {}]));
-    for (const [sheet, address, value] of emitted.checkpointFixtureEdits(fixture)) {
+    const edits = emitted.checkpointFixtureEdits(fixture);
+    for (const [sheet, address, value] of edits) {
       if (Object.hasOwn(literalInputs[sheet.name] ?? {}, address) || Object.hasOwn(upstream[sheet.name] ?? {}, address)) overlay[sheet.name][address] = value;
     }
-    return { name: fixture.name, reference_sha256: hash(raw), literals: overlay };
+    return { name: fixture.name, reference_sha256: hash(raw), literals: overlay,
+      boolean_literals: edits.filter(([, , value]) => typeof value === 'boolean').map(([sheet, address]) => `${sheet.name}!${address}`) };
   }));
   assert.ok(Object.keys(upstream.Assumptions).length > 0 && Object.keys(upstream.Shocks).length > 0, 'Require authored upstream formula emissions');
-  return { schema_version: 3, benchmark_labels: Array.from(upstream['Policy Lab'].E6.matchAll(/"((?:[^"]|"")*)"/g), match => match[1].replaceAll('""', '"')), summary_fields: emitted.summaryFields, policy_output_fields: Array.from(emitted.policyOutputs), ending_stock_fields: Array.from(emitted.endingStocks), data_validations: validations, literal_inputs: literalInputs, checkpoint_inputs: checkpointInputs, case_order: Array.from(ids), upstream_formulas: upstream, policy_input_addresses: Array.from(policyReferences).sort(), builder_sha256: hash(bytes), generator_sha256: hash(await fs.readFile(new URL(import.meta.url))), row_map_sha256: hash(JSON.stringify(rowMap)),
+  const fontFillPairs = [...new Set([{}, ...styles.values()].map(({ font = {}, fill = null }) =>
+    JSON.stringify([font.name ?? null, font.size ?? null, font.color ?? null, font.bold ?? false, fill])))].map(value => JSON.parse(value));
+  return { display_styles: { font_fill_pairs: fontFillPairs, number_formats: [...numberFormats],
+    boolean_literals: Object.entries({ Economy: literals, ...literalInputs }).flatMap(([name, values]) =>
+      Object.entries(values).filter(([, value]) => typeof value === 'boolean').map(([address]) => `${name}!${address}`)) }, schema_version: 3, benchmark_labels: Array.from(upstream['Policy Lab'].E6.matchAll(/"((?:[^"]|"")*)"/g), match => match[1].replaceAll('""', '"')), summary_fields: emitted.summaryFields, policy_output_fields: Array.from(emitted.policyOutputs), ending_stock_fields: Array.from(emitted.endingStocks), data_validations: validations, literal_inputs: literalInputs, checkpoint_inputs: checkpointInputs, case_order: Array.from(ids), upstream_formulas: upstream, policy_input_addresses: Array.from(policyReferences).sort(), builder_sha256: hash(bytes), generator_sha256: hash(await fs.readFile(new URL(import.meta.url))), row_map_sha256: hash(JSON.stringify(rowMap)),
     reference_sha256: Object.fromEntries(Array.from(ids, (id, i) => [id, hash(referenceBytes[i])])),
     upstream_cache_layout: emitted.upstreamCacheLayout, state_fields: Array.from(emitted.stateFields), formulas: required };
 }

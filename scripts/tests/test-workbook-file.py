@@ -1032,7 +1032,196 @@ def cache89_mutations(source, defect, row_map):
     return changes
 
 
+DISPLAY105_CASES = {
+    **{f'cf105-{name}': 'unsupported workbook formula' for name in ('attribute-webservice', 'attribute-dde', 'x14-attribute')},
+    **{f'cf105-{name}': 'unsupported conditional formatting' for name in ('attribute-benign', 'attribute-quoted', 'dxf', 'x14-dxf', 'hide-values')},
+    **{f'style105-{name}': 'required cell display style' for name in (
+        'input-format', 'label-format', 'output-format', 'economy-format', 'constant-format', 'quoted-format',
+        'label-white-font', 'input-same-paint', 'font-tiny', 'font-symbols', 'gradient-fill',
+        'inherited-format', 'inherited-font', 'inherited-fill', 'row-hidden', 'column-hidden',
+        'bad-cell-index', 'bad-row-index', 'bad-column-index', 'bad-parent-index', 'bad-font-index',
+        'bad-fill-index', 'bad-format-index', 'builtin-collision', 'duplicate-format', 'duplicate-font-color',
+        'ambiguous-inheritance', 'shrink-text', 'rotated-text', 'inline-run-color', 'shared-run-color',
+        'checkbox-output', 'checkbox-bag', 'checkbox-parent')},
+    **{f'style105-{name}': None for name in (
+        'duplicate-xf', 'reindex-tables', 'builtin-equivalent', 'custom-format-reindex', 'lowercase-rgb',
+        'explicit-auto-font', 'inherited-equivalent', 'row-equivalent', 'column-equivalent', 'alignment-defaults', 'checkbox-bag-reindex')},
+}
+DISPLAY105_CASES.update({'style105-inactive-row-over-column': 'required cell display style',
+                         'style105-active-row-over-column': None})
+NEW_CASES.update(DISPLAY105_CASES)
+
+
+def display105_mutations(source, defect, row_map):
+    import copy
+    namespace = '{' + NS['s'] + '}'
+    if defect in ('style105-inactive-row-over-column', 'style105-active-row-over-column'):
+        changes = display105_mutations(source, 'style105-column-hidden', row_map)
+        path = 'xl/worksheets/sheet1.xml'; part = ET.fromstring(changes[path])
+        original = ET.fromstring(source.read(path)).find('s:sheetData/s:row/s:c[@r="C4"]', NS)
+        row = part.find('s:sheetData/s:row[@r="4"]', NS)
+        row.set('s', original.get('s', '0')); row.attrib.pop('customFormat', None)
+        if defect == 'style105-active-row-over-column': row.set('customFormat', '1')
+        changes[path] = ET.tostring(part, encoding='utf-8')
+        return changes
+    if defect.startswith('cf105-'):
+        path = 'xl/worksheets/sheet1.xml'; part = ET.fromstring(source.read(path))
+        extended = defect in ('cf105-x14-attribute', 'cf105-x14-dxf')
+        ns = '{http://schemas.microsoft.com/office/spreadsheetml/2009/9/main}' if extended else namespace
+        parent = part
+        if extended:
+            parent = ET.SubElement(ET.SubElement(ET.SubElement(part, namespace + 'extLst'), namespace + 'ext', uri='{105}'), ns + 'conditionalFormattings')
+        formatting = ET.SubElement(parent, ns + 'conditionalFormatting', sqref='C4')
+        if defect.endswith('dxf'):
+            rule = ET.SubElement(formatting, ns + 'cfRule', type='expression', priority='1', dxfId='0')
+            ET.SubElement(rule, '{http://schemas.microsoft.com/office/excel/2006/main}f' if extended else namespace + 'formula').text = 'ISNUMBER(C4)'
+        else:
+            rule = ET.SubElement(formatting, ns + 'cfRule', type='dataBar' if defect.endswith('hide-values') else 'colorScale', priority='1')
+            scale = ET.SubElement(rule, ns + ('dataBar' if defect.endswith('hide-values') else 'colorScale'))
+            if defect.endswith('hide-values'): scale.set('showValue', '0')
+            value = {'cf105-attribute-dde': "'server'|'topic'!A1", 'cf105-attribute-benign': 'IF(C4>0,1,0)',
+                     'cf105-attribute-quoted': 'IF("WEBSERVICE(""https://example.invalid/"")"="text",1,0)',
+                     'cf105-hide-values': 'C4'}.get(defect, 'WEBSERVICE("https://example.invalid/105")')
+            ET.SubElement(scale, ns + 'cfvo', type='formula', val=value)
+            ET.SubElement(scale, ns + 'cfvo', type='max')
+            ET.SubElement(scale, ns + 'color', rgb='FF000000'); ET.SubElement(scale, ns + 'color', rgb='FFFFFFFF')
+        return {path: ET.tostring(part, encoding='utf-8')}
+    if defect in ('style105-checkbox-bag', 'style105-checkbox-bag-reindex'):
+        path = 'xl/featurePropertyBag/featurePropertyBag.xml'; bags = ET.fromstring(source.read(path))
+        if defect == 'style105-checkbox-bag':
+            next(node for node in bags if node.get('type') == 'Checkbox').set('type', 'Button')
+        else:
+            before = list(bags); bags[:] = before[::-1]
+            for node in bags.iter():
+                if node.tag.endswith('}bagId'): node.text = str(len(before) - 1 - int(node.text))
+        return {path: ET.tostring(bags, encoding='utf-8')}
+    styles = ET.fromstring(source.read('xl/styles.xml'))
+    xfs = styles.find('s:cellXfs', NS); parents = styles.find('s:cellStyleXfs', NS)
+    fonts = styles.find('s:fonts', NS); fills = styles.find('s:fills', NS); formats = styles.find('s:numFmts', NS)
+    target = {'style105-label-format': (1, 'B4'), 'style105-label-white-font': (1, 'B4'),
+              'style105-output-format': (2, 'E20'), 'style105-economy-format': (4, 'E6')}.get(defect, (1, 'C4'))
+    if defect == 'style105-constant-format':
+        inputs = json.loads(row_map.with_suffix('.formulas.json').read_text())['upstream_cache_layout']['parameter_rows']
+        target = (3, 'C' + str(inputs['inflation_target_pct']))
+    path = f'xl/worksheets/sheet{target[0]}.xml'; part = ET.fromstring(source.read(path))
+    cell = part.find(f'.//s:c[@r="{target[1]}"]', NS); require(cell is not None, 'style105 requires an actual source cell')
+    if defect in ('style105-checkbox-output', 'style105-checkbox-parent'):
+        policy = ET.fromstring(source.read('xl/worksheets/sheet2.xml'))
+        checkbox = policy.find('.//s:c[@r="E12"]', NS).get('s')
+        if defect == 'style105-checkbox-output':
+            policy.find('.//s:c[@r="E20"]', NS).set('s', checkbox)
+            return {'xl/worksheets/sheet2.xml': ET.tostring(policy, encoding='utf-8')}
+        parent = copy.deepcopy(xfs[int(checkbox)]); parent.attrib.pop('xfId', None)
+        parents.append(parent); parents.set('count', str(len(parents)))
+        return {'xl/styles.xml': ET.tostring(styles, encoding='utf-8')}
+    original = xfs[int(cell.get('s', '0'))]; xf = copy.deepcopy(original)
+    def add(table, node):
+        index = len(table); table.append(node); table.set('count', str(len(table))); return str(index)
+    def hidden_format(code=';;;'):
+        index = max([164] + [int(node.get('numFmtId')) + 1 for node in formats])
+        ET.SubElement(formats, namespace + 'numFmt', numFmtId=str(index), formatCode=code)
+        formats.set('count', str(len(formats))); xf.set('numFmtId', str(index)); xf.set('applyNumberFormat', '1')
+    if defect in ('style105-inline-run-color', 'style105-shared-run-color'):
+        path = 'xl/worksheets/sheet1.xml'; part = ET.fromstring(source.read(path)); cell = part.find('.//s:c[@r="B4"]', NS)
+        text = cell.findtext('s:v', namespaces=NS); require(text == 'Case number', 'style105 saved label')
+        if defect == 'style105-shared-run-color':
+            changes = upstream77_mutations(source, 'upstream77-metadata-shared-rich', row_map)
+            table = ET.fromstring(changes['xl/sharedStrings.xml']); item = table[-1]
+            for node in list(item): item.remove(node)
+            cell.set('t', 's'); cell.find('s:v', NS).text = str(len(table) - 1)
+        else:
+            changes = {}; cell.set('t', 'inlineStr')
+            for node in list(cell): cell.remove(node)
+            item = ET.SubElement(cell, namespace + 'is')
+        run = ET.SubElement(item, namespace + 'r'); properties = ET.SubElement(run, namespace + 'rPr')
+        ET.SubElement(properties, namespace + 'color', rgb='FFFFFFFF'); ET.SubElement(run, namespace + 't').text = text
+        if defect == 'style105-shared-run-color':
+            changes.pop('xl/worksheets/sheet3.xml'); changes['xl/sharedStrings.xml'] = ET.tostring(table, encoding='utf-8')
+        changes[path] = ET.tostring(part, encoding='utf-8'); return changes
+    if defect == 'style105-reindex-tables':
+        for table, attribute in [(fonts, 'fontId'), (fills, 'fillId')]:
+            old = list(table); table[:] = old[::-1]
+            for record in list(xfs) + list(parents): record.set(attribute, str(len(old) - 1 - int(record.get(attribute, '0'))))
+        old = list(xfs); xfs[:] = old[::-1]; changes = {'xl/styles.xml': ET.tostring(styles, encoding='utf-8')}
+        for name in source.namelist():
+            if name.startswith('xl/worksheets/') and name.endswith('.xml'):
+                sheet = ET.fromstring(source.read(name))
+                for node in sheet.findall('.//s:c', NS): node.set('s', str(len(old) - 1 - int(node.get('s', '0'))))
+                for node in sheet.findall('s:sheetData/s:row', NS):
+                    if node.get('s') is not None: node.set('s', str(len(old) - 1 - int(node.get('s'))))
+                for node in sheet.findall('s:cols/s:col', NS):
+                    if node.get('style') is not None: node.set('style', str(len(old) - 1 - int(node.get('style'))))
+                changes[name] = ET.tostring(sheet, encoding='utf-8')
+        return changes
+    if defect == 'style105-builtin-equivalent':
+        ids = {node.get('numFmtId') for node in formats if node.get('formatCode') == '0.00'}
+        for record in list(xfs) + list(parents):
+            if record.get('numFmtId') in ids: record.set('numFmtId', '2')
+    elif defect == 'style105-custom-format-reindex':
+        mapping = {node.get('numFmtId'): str(450 + i) for i, node in enumerate(formats)}
+        for node in formats: node.set('numFmtId', mapping[node.get('numFmtId')])
+        for record in list(xfs) + list(parents):
+            if record.get('numFmtId') in mapping: record.set('numFmtId', mapping[record.get('numFmtId')])
+    elif defect == 'style105-lowercase-rgb':
+        for node in styles.iter():
+            if node.get('rgb'): node.set('rgb', node.get('rgb').lower())
+    elif defect == 'style105-explicit-auto-font':
+        ET.SubElement(fonts[0], namespace + 'color', auto='true')
+    else:
+        if defect.endswith('-format') and defect not in ('style105-inherited-format',):
+            hidden_format('"";"";"";""' if defect == 'style105-quoted-format' else ';;;')
+        elif defect in ('style105-label-white-font', 'style105-input-same-paint', 'style105-font-tiny', 'style105-font-symbols', 'style105-duplicate-font-color'):
+            font = copy.deepcopy(fonts[int(xf.get('fontId'))]); color = font.find('s:color', NS)
+            if color is None: color = ET.SubElement(font, namespace + 'color')
+            if defect == 'style105-label-white-font': color.set('rgb', 'FFFFFFFF')
+            elif defect == 'style105-input-same-paint': color.set('rgb', 'FFFFF2CC')
+            elif defect == 'style105-font-tiny': font.find('s:sz', NS).set('val', '0.01')
+            elif defect == 'style105-font-symbols': font.find('s:name', NS).set('val', 'Wingdings')
+            else: ET.SubElement(font, namespace + 'color', rgb='FFFFFFFF')
+            xf.set('fontId', add(fonts, font)); xf.set('applyFont', '1')
+        elif defect == 'style105-gradient-fill':
+            fill = ET.Element(namespace + 'fill'); ET.SubElement(fill, namespace + 'gradientFill')
+            xf.set('fillId', add(fills, fill)); xf.set('applyFill', '1')
+        elif defect.startswith('style105-inherited-'):
+            parent = copy.deepcopy(xf); parent.attrib.pop('xfId', None)
+            if defect == 'style105-inherited-format': hidden_format(); parent.set('numFmtId', xf.get('numFmtId'))
+            elif defect == 'style105-inherited-font':
+                font = copy.deepcopy(fonts[int(xf.get('fontId'))]); font.find('s:color', NS).set('rgb', 'FFFFFFFF'); parent.set('fontId', add(fonts, font))
+            elif defect == 'style105-inherited-fill':
+                fill = ET.Element(namespace + 'fill'); ET.SubElement(ET.SubElement(fill, namespace + 'patternFill', patternType='solid'), namespace + 'fgColor', rgb='FF2257A0'); parent.set('fillId', add(fills, fill))
+            xf.set('xfId', add(parents, parent))
+            for key, attribute in [('Font', 'fontId'), ('Fill', 'fillId'), ('NumberFormat', 'numFmtId'), ('Border', 'borderId')]:
+                xf.attrib.pop(attribute, None); xf.set('apply' + key, '0')
+            for node in list(xf): xf.remove(node)
+            xf.set('applyAlignment', '0')
+        elif defect in ('style105-row-hidden', 'style105-column-hidden'): hidden_format()
+        elif defect == 'style105-bad-parent-index': xf.set('xfId', str(len(parents)))
+        elif defect == 'style105-bad-font-index': xf.set('fontId', str(len(fonts)))
+        elif defect == 'style105-bad-fill-index': xf.set('fillId', str(len(fills)))
+        elif defect == 'style105-bad-format-index': xf.set('numFmtId', '98765')
+        elif defect == 'style105-builtin-collision': ET.SubElement(formats, namespace + 'numFmt', numFmtId='0', formatCode=';;;'); formats.set('count', str(len(formats)))
+        elif defect == 'style105-duplicate-format': formats.append(copy.deepcopy(formats[0])); formats.set('count', str(len(formats)))
+        elif defect == 'style105-ambiguous-inheritance': xf.set('applyFont', '0')
+        elif defect in ('style105-shrink-text', 'style105-rotated-text', 'style105-alignment-defaults'):
+            node = xf.find('s:alignment', NS)
+            if node is None: node = ET.SubElement(xf, namespace + 'alignment')
+            if defect == 'style105-shrink-text': node.set('shrinkToFit', '1')
+            elif defect == 'style105-rotated-text': node.set('textRotation', '255')
+            else: node.set('shrinkToFit', 'false'); node.set('textRotation', '0'); node.set('indent', '0'); node.set('wrapText', 'false')
+        index = add(xfs, xf); cell.set('s', index)
+        if defect in ('style105-row-hidden', 'style105-row-equivalent', 'style105-bad-row-index'):
+            cell.attrib.pop('s'); row = part.find('s:sheetData/s:row[@r="4"]', NS)
+            row.set('s', str(len(xfs)) if defect == 'style105-bad-row-index' else index); row.set('customFormat', '1')
+        elif defect in ('style105-column-hidden', 'style105-column-equivalent', 'style105-bad-column-index'):
+            cell.attrib.pop('s'); node = next(n for n in part.findall('s:cols/s:col', NS) if int(n.get('min')) <= 3 <= int(n.get('max')))
+            node.set('style', str(len(xfs)) if defect == 'style105-bad-column-index' else index)
+        elif defect == 'style105-bad-cell-index': cell.set('s', '-1')
+    return {path: ET.tostring(part, encoding='utf-8'), 'xl/styles.xml': ET.tostring(styles, encoding='utf-8')}
+
+
 def review_mutations(source, defect, row_map):
+    if defect in DISPLAY105_CASES:
+        return display105_mutations(source, defect, row_map)
     if defect in CACHE89_CASES:
         return cache89_mutations(source, defect, row_map)
     if defect in META89_CASES:
