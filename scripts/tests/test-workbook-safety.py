@@ -1,14 +1,18 @@
 """Exercise workbook output and process boundaries without authoring a workbook."""
 import importlib.util
+import ast
 import hashlib
 import json
 import math
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tempfile
+import xml.etree.ElementTree as ET
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location('build_workbook', ROOT / 'scripts/build-workbook.py')
@@ -24,6 +28,258 @@ def rejected_output(path, message):
         assert message in str(error), error
     else:
         raise AssertionError(f'Accepted unsafe output: {path}')
+
+
+# timeout141: run every actual caller expression with a timeout-checking tool double.
+timeout141_main = next(node for node in ast.parse((ROOT / 'scripts/build-workbook.py').read_text()).body
+                       if isinstance(node, ast.FunctionDef) and node.name == 'main')
+timeout141_calls = [node for node in ast.walk(timeout141_main) if isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name) and node.func.id == 'run_tool']
+with tempfile.TemporaryDirectory(prefix='fed-timeout141-') as directory:
+    temporary = Path(directory)
+    timeouts = []
+
+    def timeout141_tool(command, log_path, completion, *, timeout=900):
+        expected = 3600 if Path(command[1]).name == 'test-workbook-file.py' else 900
+        if timeout != expected:
+            raise AssertionError(f'timeout141 {log_path.name}: expected {expected}s, got {timeout}s')
+        timeouts.append(timeout)
+
+    scope = {'run_tool': timeout141_tool, 'ROOT': ROOT, 'sys': sys,
+             'args': builder.argparse.Namespace(node=Path('/fixture/node'), godot=Path('/fixture/godot')),
+             'output': temporary, 'references': temporary / 'references', 'evidence': temporary,
+             'execution_copy': temporary / 'build-policy-lab.mjs',
+             'case': 'base', 'phase': 'main', 'name': 'late_hold_120_168'}
+    for call in timeout141_calls:
+        eval(compile(ast.Expression(call), '<actual wrapper timed caller>', 'eval', optimize=sys.flags.optimize), scope)
+    if timeouts.count(3600) != 1 or not timeouts.count(900):
+        raise AssertionError('Only one saved-file matrix caller may have the longer timeout')
+
+    for index, (keywords, expected) in enumerate([({}, 900), ({'timeout': 3600}, 3600)]):
+        def timeout141_process(command, **kwargs):
+            kwargs['stdout'].write('PASS fixture\n')
+            return subprocess.CompletedProcess(command, 0)
+
+        with patch.object(builder.subprocess, 'run', side_effect=timeout141_process) as process:
+            builder.run_tool(['fixture'], temporary / f'forward-{index}.log', 'PASS fixture', **keywords)
+        if process.call_args.kwargs['timeout'] != expected:
+            raise AssertionError('run_tool did not forward the default/explicit timeout unchanged')
+        expired = subprocess.TimeoutExpired(['fixture'], expected)
+        with patch.object(builder.subprocess, 'run', side_effect=expired):
+            try:
+                builder.run_tool(['fixture'], temporary / f'expired-{index}.log', 'PASS fixture', **keywords)
+            except subprocess.TimeoutExpired as error:
+                if error is not expired:
+                    raise AssertionError('run_tool replaced TimeoutExpired') from error
+            else:
+                raise AssertionError('run_tool swallowed TimeoutExpired')
+print(f'PASS: timeout141 {len(timeouts)} actual caller sites: one 3600s matrix, others 900s; two forwarding and two TimeoutExpired checks (Python mocks)')
+
+
+# Managed package metadata identifies bundled/nested versions without loading Node.
+with tempfile.TemporaryDirectory(prefix='fed-workbook-dependencies-') as directory:
+    modules = Path(directory) / 'node_modules'
+    package_data = {
+        '@oai/artifact-tool/package.json': {
+            'name': '@oai/artifact-tool', 'version': '2.8.91',
+            'dependencies': {'skia-canvas': '^3.0.6', '@oai/walnut': '0.1.258'},
+            'bundledDependencies': ['@oai/walnut', 'skia-canvas'],
+        },
+        '@oai/artifact-tool/node_modules/@oai/walnut/package.json': {
+            'name': '@oai/walnut', 'version': '0.1.258',
+        },
+        '@oai/artifact-tool/node_modules/skia-canvas/package.json': {
+            'name': 'skia-canvas', 'version': '3.0.8',
+        },
+        'debug/package.json': {'name': 'debug', 'version': '4.4.3'},
+    }
+    for relative, data in package_data.items():
+        path = modules / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data))
+    lock = modules / '.pnpm/lock.yaml'
+    lock.parent.mkdir()
+    lock.write_text("lockfileVersion: '9.0'\n")
+    original = builder.dependency_provenance(modules)
+    artifact = modules / '@oai/artifact-tool/package.json'
+    assert original['artifact_tool'] == {
+        'name': '@oai/artifact-tool', 'version': '2.8.91',
+        'sha256': hashlib.sha256(artifact.read_bytes()).hexdigest(),
+    }
+    assert len(original['package_manifests']) == 4
+    assert original['lockfiles_sha256'] == {'.pnpm/lock.yaml': hashlib.sha256(lock.read_bytes()).hexdigest()}
+    identity_bytes = json.dumps({'package_manifests': original['package_manifests'],
+                                 'lockfiles_sha256': original['lockfiles_sha256']},
+                                sort_keys=True, separators=(',', ':')).encode()
+    assert original['dependency_set_sha256'] == hashlib.sha256(identity_bytes).hexdigest()
+    assert builder.dependency_provenance(modules) == original, 'Stable metadata has stable provenance'
+    changes = 0
+    for relative in package_data:
+        path = modules / relative
+        raw = path.read_bytes()
+        data = json.loads(raw)
+        data['version'] += '-changed'
+        path.write_text(json.dumps(data))
+        assert builder.dependency_provenance(modules)['dependency_set_sha256'] != original['dependency_set_sha256'], relative
+        path.write_bytes(raw)
+        changes += 1
+    raw = artifact.read_bytes()
+    artifact.write_bytes(raw + b'\n')
+    changed = builder.dependency_provenance(modules)
+    assert changed['artifact_tool']['version'] == original['artifact_tool']['version']
+    assert changed['artifact_tool']['sha256'] != original['artifact_tool']['sha256']
+    assert changed['dependency_set_sha256'] != original['dependency_set_sha256']
+    artifact.write_bytes(raw)
+    changes += 1
+    lock.write_text("lockfileVersion: '9.0'\n# changed installation\n")
+    assert builder.dependency_provenance(modules)['dependency_set_sha256'] != original['dependency_set_sha256']
+    lock.rename(lock.with_suffix('.absent'))
+    without_lock = builder.dependency_provenance(modules)
+    assert without_lock['lockfiles_sha256'] == {} and len(without_lock['package_manifests']) == 4
+    assert without_lock['dependency_set_sha256'] != original['dependency_set_sha256']
+    changes += 2
+    added = modules / 'added/package.json'
+    added.parent.mkdir()
+    added.write_text('{"name":"added","version":"1.0.0"}')
+    assert builder.dependency_provenance(modules)['dependency_set_sha256'] != without_lock['dependency_set_sha256']
+    changes += 1
+    invalid_metadata = [
+        (artifact, None), (artifact, b'{'), (artifact, b'[]'),
+        (artifact, b'{"version":"2.8.91"}'),
+        (artifact, b'{"name":"@oai/artifact-tool"}'),
+        (artifact, b'{"name":"@oai/artifact-tool","version":" "}'),
+        (artifact, b'{"name":"@oai/artifact-tool","version":2}'),
+        (artifact, b'{"name":"other","version":"2.8.91"}'),
+        (modules / '@oai/artifact-tool/node_modules/skia-canvas/package.json', b'{'),
+        (modules / '@oai/artifact-tool/node_modules/@oai/walnut/package.json', None),
+        (added, b'{"name":"added"}'),
+    ]
+    rejected = 0
+    for path, replacement in invalid_metadata:
+        raw = path.read_bytes()
+        if replacement is None:
+            path.rename(path.with_suffix('.absent'))
+        else:
+            path.write_bytes(replacement)
+        try:
+            builder.dependency_provenance(modules)
+        except ValueError as error:
+            assert 'manifest' in str(error), error
+            rejected += 1
+        else:
+            raise AssertionError(f'Accepted invalid managed metadata: {path}')
+        output = Path(directory) / 'must-not-be-created'
+        arguments = ['build-workbook.py', str(output), '--node', sys.executable,
+                     '--godot', sys.executable, '--modules', str(modules)]
+        with patch.object(sys, 'argv', arguments), patch.object(
+                builder.subprocess, 'check_output',
+                side_effect=AssertionError('Metadata refusal must precede tool invocation')):
+            try:
+                builder.main()
+            except ValueError as error:
+                assert 'manifest' in str(error), error
+            else:
+                raise AssertionError('CLI preflight accepted invalid dependency metadata')
+        assert not output.exists(), 'Invalid metadata must not reserve output'
+        if replacement is None:
+            path.with_suffix('.absent').rename(path)
+        else:
+            path.write_bytes(raw)
+    assert rejected == len(invalid_metadata)
+print(f'PASS: managed dependency provenance: 4 manifests, {changes} identity changes, {rejected} metadata refusals (Python fixtures)')
+
+
+# pnpm resolves hidden transitive packages through sibling links in its virtual store.
+with tempfile.TemporaryDirectory(prefix='fed-workbook-pnpm-') as directory:
+    modules = Path(directory) / 'node_modules'
+    store = modules / '.pnpm'
+    artifact = store / '@oai+artifact-tool@2.8.91/node_modules/@oai/artifact-tool'
+    hidden = store / '@scope+hidden@1.0.0/node_modules/@scope/hidden'
+    leaf = hidden / 'node_modules/@nested/leaf'
+    for package, name, version in ((artifact, '@oai/artifact-tool', '2.8.91'),
+                                   (hidden, '@scope/hidden', '1.0.0'),
+                                   (leaf, '@nested/leaf', '1.0.0')):
+        package.mkdir(parents=True)
+        (package / 'package.json').write_text(json.dumps({'name': name, 'version': version}))
+    (modules / '@oai').mkdir()
+    (modules / '@oai/artifact-tool').symlink_to(artifact, target_is_directory=True)
+    sibling = artifact.parent.parent / '@scope/hidden'
+    sibling.parent.mkdir()
+    sibling.symlink_to(hidden, target_is_directory=True)
+    hoisted = store / 'node_modules/@scope/hidden'
+    hoisted.parent.mkdir(parents=True)
+    hoisted.symlink_to(hidden, target_is_directory=True)
+    cycle = hidden / 'node_modules/@scope/hidden'
+    cycle.parent.mkdir()
+    cycle.symlink_to(hidden, target_is_directory=True)
+    lock = store / 'lock.yaml'
+    lock.write_text("lockfileVersion: '9.0'\n")
+    original = builder.dependency_provenance(modules)
+    manifest = hidden / 'package.json'
+    raw = manifest.read_bytes()
+    for replacement in (b'{"name":"@scope/hidden","version":"1.0.1"}', raw + b'\n'):
+        manifest.write_bytes(replacement)
+        changed = builder.dependency_provenance(modules)
+        assert changed['dependency_set_sha256'] != original['dependency_set_sha256'], 'pnpm transitive manifest change must alter identity even with unchanged lock'
+        assert changed['lockfiles_sha256'] == original['lockfiles_sha256']
+        assert changed['artifact_tool'] == original['artifact_tool']
+        manifest.write_bytes(raw)
+    paths = original['package_manifests']
+    assert str(manifest.relative_to(modules)) in paths, 'Include unexposed virtual-store package'
+    assert {'name': '@nested/leaf', 'version': '1.0.0', 'sha256': hashlib.sha256((leaf / 'package.json').read_bytes()).hexdigest()} in paths.values(), 'Retain exact nested scoped manifest even when cycle deduplication visits an alias first'
+    before = (leaf / 'package.json').read_bytes()
+    (leaf / 'package.json').write_bytes(before + b'\n')
+    nested_change = builder.dependency_provenance(modules)
+    assert nested_change['dependency_set_sha256'] != original['dependency_set_sha256'] and nested_change['lockfiles_sha256'] == original['lockfiles_sha256']
+    (leaf / 'package.json').write_bytes(before)
+    assert str((hoisted / 'package.json').relative_to(modules)) in paths, 'Include pnpm hoisted dependencies'
+    assert list(paths) == sorted(paths) and builder.dependency_provenance(modules) == original, 'Cycles terminate with deterministic metadata'
+    main = next(node for node in ast.parse((ROOT / 'scripts/build-workbook.py').read_text()).body
+                if isinstance(node, ast.FunctionDef) and node.name == 'main')
+    guard = next(node for node in main.body if isinstance(node, ast.If)
+                 and 'Managed dependency metadata changed during the build' in ast.unparse(node))
+    guard_code = compile(ast.fix_missing_locations(ast.Module(body=[guard], type_ignores=[])), '<actual dependency drift guard>', 'exec')
+    guard_values = {'dependency_provenance': builder.dependency_provenance,
+                    'args': builder.argparse.Namespace(modules=modules), 'dependencies': original}
+    exec(guard_code, guard_values)
+    manifest.write_bytes(raw + b'\n')
+    try:
+        exec(guard_code, guard_values)
+    except ValueError as error:
+        assert 'metadata changed' in str(error), error
+    else:
+        raise AssertionError('Production drift guard accepted changed pnpm transitive metadata')
+    manifest.write_bytes(raw)
+    rejected = 0
+    for path, replacement in ((manifest, None), (manifest, b'{'),
+                              (leaf / 'package.json', b'{"name":"@nested/leaf"}')):
+        before = path.read_bytes()
+        if replacement is None:
+            path.rename(path.with_suffix('.absent'))
+        else:
+            path.write_bytes(replacement)
+        try:
+            builder.dependency_provenance(modules)
+        except ValueError as error:
+            assert 'manifest' in str(error), error
+            rejected += 1
+        else:
+            raise AssertionError('Accepted missing/malformed virtual-store metadata')
+        if replacement is None:
+            path.with_suffix('.absent').rename(path)
+        else:
+            path.write_bytes(before)
+    broken = artifact.parent.parent / 'broken'
+    broken.symlink_to(store / 'missing-package', target_is_directory=True)
+    try:
+        builder.dependency_provenance(modules)
+    except ValueError as error:
+        assert 'Missing managed package manifest' in str(error), error
+        rejected += 1
+    else:
+        raise AssertionError('Accepted dangling pnpm sibling link')
+    assert rejected == 4
+print('PASS: pnpm virtual-store metadata: 3 unchanged-lock identity changes, nested/scoped/cyclic links, actual drift guard and 4 refusals (Python fixtures)')
 
 
 with tempfile.TemporaryDirectory(prefix='fed-workbook-safety-') as directory:
@@ -73,6 +329,286 @@ with tempfile.TemporaryDirectory(prefix='fed-workbook-safety-') as directory:
             failed = True
         assert failed == rejected, (text, status)
 print('PASS: existing/internal/symlink workbook outputs and runtime-error gates (synthetic CLI evidence)')
+
+# Execute the actual identity guard and digest on real matching/mismatching files.
+identity_code = r"""
+import ast, hashlib, sys
+from pathlib import Path
+source = ast.parse(Path(sys.argv[1]).read_text())
+main = next(node for node in source.body if isinstance(node, ast.FunctionDef) and node.name == 'main')
+selected = [node for node in source.body if isinstance(node, ast.FunctionDef) and node.name == 'digest']
+selected += [node for node in main.body if 'Execution copy differs from source' in ast.unparse(node)]
+if len(selected) != 2:
+    raise RuntimeError('Production source-copy identity guard missing')
+module = ast.fix_missing_locations(ast.Module(body=selected, type_ignores=[]))
+exec(compile(module, '<actual workbook identity guard>', 'exec', optimize=sys.flags.optimize),
+     {'hashlib': hashlib, 'builder': Path(sys.argv[2]), 'execution_copy': Path(sys.argv[3])})
+"""
+with tempfile.TemporaryDirectory(prefix='fed-source-copy-identity-') as directory:
+    original = Path(directory) / 'source.mjs'
+    copy = Path(directory) / 'execution.mjs'
+    original.write_text('same source')
+    modes = [([], dict(os.environ, PYTHONOPTIMIZE='')),
+             (['-O'], dict(os.environ, PYTHONOPTIMIZE='')),
+             ([], dict(os.environ, PYTHONOPTIMIZE='1'))]
+    failures = []
+    for flags, environment in modes:
+        for changed in (False, True):
+            copy.write_text('different source' if changed else 'same source')
+            result = subprocess.run([sys.executable, *flags, '-c', identity_code,
+                                     str(ROOT / 'scripts/build-workbook.py'), str(original), str(copy)],
+                                    capture_output=True, text=True, env=environment)
+            if changed:
+                if result.returncode == 0 or 'Execution copy differs from source' not in result.stderr:
+                    failures.append('Optimized source-copy mismatch accepted')
+            elif result.returncode != 0:
+                failures.append('Matching source copy rejected: ' + result.stderr)
+    if failures:
+        raise AssertionError('\n'.join(failures))
+print('PASS: actual source-copy guard accepts matches and rejects drift in normal/-O/inherited modes')
+
+# snapshot105: execute the real pre-generation and post-checker boundaries, not tools.
+snapshot105_tree = ast.parse((ROOT / 'scripts/build-workbook.py').read_text())
+snapshot105_main = next(node for node in snapshot105_tree.body
+                        if isinstance(node, ast.FunctionDef) and node.name == 'main')
+snapshot105_start = next(i for i, node in enumerate(snapshot105_main.body)
+                         if isinstance(node, ast.For) and ast.unparse(node.iter) == 'CASES')
+snapshot105_end = next(i for i, node in enumerate(snapshot105_main.body)
+                       if isinstance(node, ast.If) and 'Execution copy differs from source' in ast.unparse(node))
+snapshot105_boundaries = [compile(ast.fix_missing_locations(ast.Module(body=nodes, type_ignores=[])),
+                                  '<actual wrapper snapshot boundary>', 'exec', optimize=sys.flags.optimize)
+                         for nodes in (snapshot105_main.body[:snapshot105_start],
+                                       snapshot105_main.body[snapshot105_end:])]
+snapshot105_sources = (
+    'scripts/build-workbook.py', 'scripts/spreadsheet/build-policy-lab.mjs',
+    'scripts/spreadsheet/check-workbook.py', 'scripts/spreadsheet/generate-formula-inventory.mjs',
+    'scripts/tests/test-workbook-validation.mjs', 'game/tests/export_reference.gd',
+    'game/tests/export_policy_variants.gd', 'game/tests/export_late_checkpoint_reference.gd',
+    'scripts/tests/test-workbook-file.py', 'scripts/tests/upstream77-inventory.mjs',
+)
+snapshot105_models = ('economy.gd', 'parameters.json', 'scenarios.json',
+                      'exogenous_shocks.json', 'portfolio_reference.json')
+snapshot105_paths = (*snapshot105_sources, *('game/model/' + name for name in snapshot105_models))
+snapshot105_failures = []
+snapshot105_cases = [('unchanged', None), ('head', None), ('node-head', None)]
+snapshot105_cases += [(change, path) for change in ('change', 'delete', 'missing') for path in snapshot105_paths]
+snapshot105_cases += [('node-change', path) for path in ('game/model/economy.gd',
+                       'game/tests/export_reference.gd', 'scripts/tests/test-workbook-file.py')]
+for change, changed_path in snapshot105_cases:
+    with tempfile.TemporaryDirectory(prefix='fed-snapshot105-') as directory:
+        temporary = Path(directory)
+        checkout, output, modules = (temporary / name for name in ('checkout', 'output', 'modules'))
+        for name in snapshot105_paths:
+            path = checkout / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f'local dirty bytes: {name}\n')
+        portfolio_path = checkout / 'game/model/portfolio_reference.json'
+        portfolio_path.write_text(json.dumps({
+            'schema_version': 1, 'treasury_maturity_weights': [1] + [0] * 119,
+            'source_treasury_principal_usd': 1,
+            **{key: 1 for key in ('mbs_monthly_principal_billion_usd', 'mbs_stock_billion_usd',
+                                  'market_treasury_wam_years', 'treasury_duration_years', 'mbs_duration_years')},
+        }))
+        manifest = modules / '@oai/artifact-tool/package.json'
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text('{"name":"@oai/artifact-tool","version":"fixture"}')
+        head = ['a' * 40]
+        expected = {'git_head': head[0],
+                    'source_sha256': {name: hashlib.sha256((checkout / name).read_bytes()).hexdigest()
+                                      for name in snapshot105_sources},
+                    'model_sha256': {name: hashlib.sha256((checkout / 'game/model' / name).read_bytes()).hexdigest()
+                                     for name in snapshot105_models}}
+        finalizing = [False]
+
+        def snapshot105_change():
+            if changed_path:
+                path = checkout / changed_path
+                if change in ('delete', 'missing'):
+                    path.unlink()
+                else:
+                    path.write_bytes(path.read_bytes() + b'changed after simulated generation\n')
+            else:
+                head[0] = 'b' * 40
+
+        def snapshot105_tool(command, **kwargs):
+            if command == ['git', 'rev-parse', 'HEAD']:
+                if kwargs.get('cwd') != checkout:
+                    raise AssertionError('Snapshot HEAD read from the wrong checkout')
+                return head[0] + '\n'
+            if command != [str(Path(sys.executable).resolve()), '--version']:
+                raise AssertionError(f'Unexpected real tool invocation: {command}')
+            if finalizing[0]:
+                if change in ('node-change', 'node-head'):
+                    snapshot105_change()
+                return 'v22.0.0\n'
+            return '4.7.2.stable.fixture\n'
+
+        arguments = ['build-workbook.py', str(output), '--node', sys.executable,
+                     '--godot', sys.executable, '--modules', str(modules)]
+        scope = dict(vars(builder))
+        if change == 'missing':
+            snapshot105_change()
+        refused = False
+        with patch.object(builder, 'ROOT', checkout), patch.object(sys, 'argv', arguments), \
+                patch.object(builder.subprocess, 'check_output', side_effect=snapshot105_tool), \
+                patch.object(builder, 'run_tool', side_effect=AssertionError('Generation is simulated')):
+            scope.update(ROOT=checkout, run_tool=builder.run_tool)
+            try:
+                exec(snapshot105_boundaries[0], scope)
+                # Only the generation/checker middle is simulated; production identity/write code runs below.
+                references, evidence = scope['references'], scope['evidence']
+                (evidence / 'workbook-model-map.formulas.json').write_text('{}')
+                (output / 'Federal Reserve Policy Lab.xlsx').write_bytes(b'simulated workbook')
+                late = output / 'late-checkpoints'
+                late.mkdir()
+                (late / 'late_hold_216_240.xlsx').write_bytes(b'simulated checkpoint')
+                scope['parity'] = []
+                if change in ('change', 'delete', 'head'):
+                    snapshot105_change()
+                finalizing[0] = True
+                exec(snapshot105_boundaries[1], scope)
+            except (ValueError, OSError) as error:
+                refused = True
+                if change not in ('delete', 'missing') and not any(
+                        text in str(error) for text in ('source snapshot changed', 'Execution copy differs from source')):
+                    raise AssertionError(f'Wrong drift refusal: {error}') from error
+        receipt = output / 'evidence/build-provenance.json'
+        label = f'{change}: {changed_path or "HEAD"}'
+        if change == 'unchanged':
+            if refused or not receipt.is_file():
+                snapshot105_failures.append(f'{label}: unchanged local bytes refused')
+                continue
+            provenance = json.loads(receipt.read_text())
+            if {key: provenance[key] for key in expected} != expected or list(provenance) != [
+                    'git_head', 'portfolio_reference_sha256', 'godot_version', 'builder_sha256',
+                    'build_phases', 'managed_dependencies', 'node_version', 'source_sha256',
+                    'authored_formula_inventory_sha256', 'workbook_sha256', 'checkpoint_workbooks_sha256',
+                    'model_sha256', 'references_sha256', 'native_recalculation']:
+                snapshot105_failures.append(f'{label}: captured identity/schema changed')
+            if (list(provenance['source_sha256']) != list(snapshot105_sources)
+                    or list(provenance['model_sha256']) != list(snapshot105_models)
+                    or provenance['builder_sha256'] != expected['source_sha256']['scripts/spreadsheet/build-policy-lab.mjs']):
+                snapshot105_failures.append(f'{label}: source roles/order or builder binding changed')
+        elif not refused or receipt.exists() or (change == 'missing' and output.exists()):
+            snapshot105_failures.append(f'{label}: accepted drift/missing input or wrote provenance/reserved output')
+if snapshot105_failures:
+    raise AssertionError('snapshot105 provenance regression:\n' + '\n'.join(snapshot105_failures))
+print(f'PASS: snapshot105 {len(snapshot105_cases)} actual-wrapper boundary cases: 15 source/model roles, missing/deleted bytes, HEAD-only and final-query drift, unchanged dirty-source receipt (SIMULATED generation)')
+
+
+# input54: the actual typed-literal guard keeps blank, numeric and boolean inputs distinct.
+input54_tree = ast.parse((ROOT / 'scripts/spreadsheet/check-workbook.py').read_text())
+input54_nodes = [node for node in input54_tree.body if isinstance(node, ast.FunctionDef)
+                 and node.name in ('require', 'validate_authored_literals', 'saved_string', 'cached_string', 'string_text', 'unsigned_integer')]
+assert len(input54_nodes) == 6, 'Locate actual input54 guard and string decoders'
+input54_scope = {'NS': {'s': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}, 'math': math, 're': re}
+exec(compile(ast.Module(body=input54_nodes, type_ignores=[]), '<actual typed-input guard>', 'exec'), input54_scope)
+for expected, kind, raw in [(None, 'n', None), (0, 'n', '0'), (1e-15, 'n', '1e-15'), (True, 'b', '1'), (False, 'b', '0')]:
+    xml = '<c xmlns="' + input54_scope['NS']['s'] + '" r="A1" t="' + kind + '">' + ('' if raw is None else '<v>' + raw + '</v>') + '</c>'
+    input54_scope['validate_authored_literals']({'A1': ET.fromstring(xml)}, {'A1': expected}, 'Assumptions')
+for expected, children, kind in [(None, '<v>0</v>', 'n'), (0, '', 'n'), (True, '<v>1</v>', 'n'),
+                                  (1, '<v>1</v>', 'b'), (1, '<v>1</v>', 'str'), (1e-15, '<v>0</v>', 'n'),
+                                  (0.4, '<v>0.40000000000004</v>', 'n'),
+                                  (1, '<v>NaN</v>', 'n'), (1, '<f>0</f><v>1</v>', 'n')]:
+    cell = ET.fromstring('<c xmlns="' + input54_scope['NS']['s'] + '" r="A1" t="' + kind + '">' + children + '</c>')
+    try:
+        input54_scope['validate_authored_literals']({'A1': cell}, {'A1': expected}, 'Assumptions')
+    except AssertionError as error:
+        assert 'authored literal mismatch' in str(error)
+    else:
+        raise AssertionError('input54 accepted a wrong literal type/value/formula')
+for address, value in [('C4', 3), ('C5', 48), ('C6', 1)]:
+    cell = ET.fromstring('<c xmlns="' + input54_scope['NS']['s'] + '" r="' + address + '"><v>' + repr(value + 5e-13) + '</v></c>')
+    try:
+        input54_scope['validate_authored_literals']({address: cell}, {address: value}, 'Policy Lab')
+    except AssertionError as error:
+        assert 'authored literal mismatch' in str(error)
+    else:
+        raise AssertionError('label60 accepted a fractional discrete selector')
+print('PASS: input54 actual typed source input guard (simulated XML)')
+
+# upstream77 uses the actual literal-only string readers, including shared/rich forms.
+for kind, children, strings in [
+    ('str', '<v>Authored text</v>', []), ('s', '<v>0</v>', ['Authored text']),
+    ('inlineStr', '<is><t>Authored text</t></is>', []),
+    ('inlineStr', '<is><r><t>Authored </t></r><r><t>text</t></r></is>', []),
+]:
+    cell = ET.fromstring('<c xmlns="' + input54_scope['NS']['s'] + '" t="' + kind + '">' + children + '</c>')
+    input54_scope['validate_authored_literals']({'A1': cell}, {'A1': 'Authored text'}, 'Assumptions', strings)
+for kind, children in [('str', '<f>"Authored text"</f><v>Authored text</v>'),
+                       ('n', '<v>2</v>'), ('str', '<v>Changed text</v>'), ('s', '<v>1</v>')]:
+    cell = ET.fromstring('<c xmlns="' + input54_scope['NS']['s'] + '" t="' + kind + '">' + children + '</c>')
+    try:
+        input54_scope['validate_authored_literals']({'A1': cell}, {'A1': 'Authored text'}, 'Assumptions', ['Authored text'])
+    except AssertionError as error:
+        assert 'authored literal mismatch' in str(error)
+    else:
+        raise AssertionError('upstream77 accepted wrong authored text/type/formula')
+print('PASS: upstream77 actual string guard preserves scalar/shared/rich text and refuses formulas/impostors (simulated XML)')
+
+# Exact authored expressions need no token normalization; differing expressions still do.
+checker_tree = ast.parse((ROOT / 'scripts/spreadsheet/check-workbook.py').read_text())
+authored_nodes = [node for node in checker_tree.body if isinstance(node, ast.FunctionDef)
+                  and node.name in ('require', 'validate_authored_formulas')]
+assert len(authored_nodes) == 2, 'Locate actual authored-expression validator'
+normalizations = []
+authored_scope = {'NS': {'s': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'},
+                  'formula_inventory': {'state_fields': [], 'formulas': {'E6': '=D6+1'}},
+                  'reference': {'initial_state': {'quarter_index': 0}}, 'rows': {},
+                  'canonical_formula': lambda text: normalizations.append(text) or text.strip().removeprefix('=')}
+exec(compile(ast.Module(body=authored_nodes, type_ignores=[]), '<actual authored-expression guard>', 'exec'), authored_scope)
+for actual, expected_calls in [('D6+1', 0), ('0', 2)]:
+    cell = ET.fromstring('<c xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><f/></c>')
+    cell[0].text = actual
+    normalizations.clear()
+    rejected = False
+    try:
+        authored_scope['validate_authored_formulas']({'E6': cell}, {})
+    except AssertionError:
+        rejected = True
+    assert rejected == (actual == '0'), 'Exact matches pass; wrong expressions refuse'
+    assert len(normalizations) == expected_calls, 'Only differing expressions need normalization'
+print('PASS: actual authored-expression equality fast path and mismatch refusal (simulated XML cell)')
+
+# meta89: validation normalization preserves anchors; ordinary scalar normalization retains its existing contract.
+meta89_nodes = [node for node in checker_tree.body if isinstance(node, ast.FunctionDef) and node.name == 'canonical_formula']
+meta89_scope = {'re': re}
+meta89_tokens = next(node for node in checker_tree.body if isinstance(node, ast.Assign)
+                     and any(isinstance(target, ast.Name) and target.id == 'SAFE_FORMULA_TOKENS' for target in node.targets))
+exec(compile(ast.Module(body=[meta89_tokens, *meta89_nodes], type_ignores=[]), '<actual meta89 normalization>', 'exec'), meta89_scope)
+meta89_canonical = meta89_scope['canonical_formula']
+for anchored in ['E$6', '$E6', '$E$6']:
+    assert meta89_canonical('E6') == meta89_canonical(anchored), 'Existing scalar equivalence must remain valid'
+    assert meta89_canonical('E6', preserve_anchors=True) != meta89_canonical(anchored, preserve_anchors=True)
+for preserve in (False, True):
+    assert meta89_canonical(' = if ( E6 = "A$1, Mixed Case", \'Policy Lab\'!$C$5, 0)', preserve) == meta89_canonical(
+        'IF(E6="A$1, Mixed Case",\'Policy Lab\'!$C$5,0)', preserve)
+    assert '"A$1, Mixed Case"' in meta89_canonical('IF(E6="A$1, Mixed Case",1,0)', preserve)
+print('PASS: meta89 actual canonical tokenizer preserves validation anchors, quoted literals, whitespace/case and scalar anchor equivalence (simulated)')
+
+# Checkpoint identity includes the raw portfolio inputs consumed by authoring.
+input_nodes = [node for node in ast.walk(checker_tree) if isinstance(node, ast.FunctionDef)
+               and node.name in ('require', 'flatten_state', 'authored_inputs')]
+assert len(input_nodes) == 3, 'Locate actual checkpoint-input signature'
+input_scope = {'json': json}
+exec(compile(ast.Module(body=input_nodes, type_ignores=[]), '<actual checkpoint-input signature>', 'exec'), input_scope)
+portfolio_fixture = '{"example":1}'
+input_fixture = {'parameters': [], 'scenario': {'initial': {}},
+                 'initial_state': {'quarter_index': 120, 'price_history': [1] * 5,
+                                   'treasury_cohorts_pct_initial_gdp': [0] * 120,
+                                   'sterilized_treasury_cohorts_pct_initial_gdp': [0] * 120,
+                                   'bill_cohorts_pct_initial_gdp': [0] * 4},
+                 'portfolio_reference_json': portfolio_fixture,
+                 'portfolio_reference_sha256': hashlib.sha256(portfolio_fixture.encode()).hexdigest()}
+original_signature = input_scope['authored_inputs'](input_fixture)
+for changed_key in ('portfolio_reference_json', 'portfolio_reference_sha256'):
+    changed_fixture = {**input_fixture, changed_key: 'changed portfolio input'}
+    assert input_scope['authored_inputs'](changed_fixture) != original_signature, 'Checkpoint signature must bind ' + changed_key
+print('PASS: actual checkpoint-input signature binds portfolio JSON/hash (simulated typed reference)')
+
+if sys.argv[1:] == ['--python-only']:
+    print('NOT RUN: real engine integration (--python-only)')
+    raise SystemExit(0)
 
 # Real engine path: fixed variants must have complete, finite quarterly states.
 godot = shutil.which('godot')

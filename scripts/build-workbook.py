@@ -28,12 +28,12 @@ def new_output(value):
     return target
 
 
-def run_tool(command, log_path, completion):
+def run_tool(command, log_path, completion, *, timeout=900):
     if '--headless' in command:
         command = [command[0], '--log-file', str(log_path.with_suffix('.engine.log')), *command[1:]]
     with log_path.open('x') as log:
         result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT,
-                                text=True, timeout=900)
+                                text=True, timeout=timeout)
     text = log_path.read_text()
     if result.returncode or any(marker in text for marker in ('SCRIPT ERROR:', 'ERROR:', 'FAIL:')):
         raise ValueError(f'Tool failed; inspect {log_path}')
@@ -60,6 +60,72 @@ def validated_portfolio(path):
     return reference, hashlib.sha256(raw).hexdigest()
 
 
+def dependency_provenance(modules):
+    modules = modules.resolve()
+    pending, seen, manifests = [modules], set(), {}
+    while pending:
+        directory = pending.pop()
+        if directory.resolve() in seen:
+            continue
+        seen.add(directory.resolve())
+        packages = []
+        for entry in sorted(directory.iterdir()):
+            if entry.name == '.pnpm' and entry.is_dir():
+                pending.extend(sorted(path for path in entry.glob('*/node_modules') if path.is_dir()))
+                if (entry / 'node_modules').is_dir():
+                    pending.append(entry / 'node_modules')
+                continue
+            if entry.name.startswith('.'):
+                continue
+            if entry.name.startswith('@') and entry.is_dir():
+                packages.extend(sorted(entry.iterdir()))
+            else:
+                packages.append(entry)
+        for package in packages:
+            if not package.is_dir():
+                if package.is_symlink():
+                    raise ValueError(f'Missing managed package manifest: {package}')
+                continue
+            path = package / 'package.json'
+            relative = path.relative_to(modules).as_posix()
+            try:
+                raw = path.read_bytes()
+                document = json.loads(raw)
+                if not isinstance(document, dict) or any(
+                        not isinstance(document.get(key), str) or not document[key].strip()
+                        for key in ('name', 'version')):
+                    raise ValueError('name and version are required')
+            except (OSError, ValueError) as error:
+                raise ValueError(f'Invalid managed package manifest: {relative}') from error
+            manifests[relative] = {
+                'name': document['name'], 'version': document['version'],
+                'sha256': hashlib.sha256(raw).hexdigest(),
+            }
+            nested = package / 'node_modules'
+            if nested.is_dir():
+                pending.append(nested)
+    artifact = manifests.get('@oai/artifact-tool/package.json')
+    if not artifact or artifact['name'] != '@oai/artifact-tool':
+        raise ValueError('Missing or invalid @oai/artifact-tool manifest')
+    lock = modules / '.pnpm/lock.yaml'
+    identity = {
+        'package_manifests': dict(sorted(manifests.items())),
+        'lockfiles_sha256': {'.pnpm/lock.yaml': hashlib.sha256(lock.read_bytes()).hexdigest()}
+                           if lock.is_file() else {},
+    }
+    # shortcut: metadata identifies versions, not binary integrity; use signed artifacts for attestation.
+    return {
+        'modules_path': str(modules), 'artifact_tool': artifact, **identity,
+        'identity_scope': 'installed package manifests and available pnpm lock; excludes code/binary contents',
+        'dependency_set_sha256': hashlib.sha256(json.dumps(
+            identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
+    }
+
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('output', help='new absolute directory outside Git')
@@ -73,8 +139,11 @@ def main():
             raise ValueError('Supply executable Node and Godot paths')
     if not args.modules.is_dir():
         raise ValueError('Supply the managed node_modules directory')
+    args.modules = args.modules.resolve()
+    dependencies = dependency_provenance(args.modules)
     args.node = args.node.resolve()
     args.godot = args.godot.resolve()
+    sources = source_snapshot()
     version = subprocess.check_output([str(args.godot), '--version'], text=True).strip()
     if not version.startswith('4.7.2.stable'):
         raise ValueError('Workbook reference paths require Godot 4.7.2')
@@ -157,9 +226,16 @@ def main():
                 record['name'] for record in checkpoints if record['policy_kind'] == phase]:
             raise ValueError(f'Incomplete checkpoint phase: {phase}')
         parity.extend(phase_checks)
+    run_tool([str(args.node), str(ROOT / 'scripts/spreadsheet/generate-formula-inventory.mjs'),
+              str(references), str(evidence / 'workbook-model-map.json'),
+              str(evidence / 'workbook-model-map.formulas.json')],
+             evidence / 'authored-formula-inventory.log', 'PASS: authored formula inventory')
+    run_tool([str(args.node), str(ROOT / 'scripts/tests/upstream77-inventory.mjs'),
+              str(references), str(evidence / 'workbook-model-map.json')],
+             evidence / 'upstream77-authored-metadata.log', 'PASS: upstream77 actual pure inventory')
     run_tool([sys.executable, str(ROOT / 'scripts/spreadsheet/check-workbook.py'),
               str(output / 'Federal Reserve Policy Lab.xlsx'), '--reference',
-              str(references / 'supply_shock.json'), '--map',
+              str(references / 'supply_shock.json'), '--reference-set', str(references), '--map',
               str(evidence / 'workbook-model-map.json'), '--campaign-reference',
               str(references / 'mixed_crises.json'), '--portfolio-reference',
               str(references / 'portfolio-reference.json')],
@@ -167,40 +243,55 @@ def main():
     run_tool([sys.executable, str(ROOT / 'scripts/tests/test-workbook-file.py'),
               str(output / 'Federal Reserve Policy Lab.xlsx'),
               str(references / 'supply_shock.json'), str(evidence / 'workbook-model-map.json'),
-              str(references / 'mixed_crises.json')],
-             evidence / 'workbook-file-regression.log', 'PASS: real workbook accepted')
+              str(references / 'mixed_crises.json'), '--reference-set', str(references)],
+             evidence / 'workbook-file-regression.log', 'PASS: real workbook accepted', timeout=3600)
     for record in checkpoints:
         name = record['name']
         run_tool([sys.executable, str(ROOT / 'scripts/spreadsheet/check-workbook.py'),
                   str(output / 'late-checkpoints' / f'{name}.xlsx'), '--reference',
-                  str(references / f'{name}.json'), '--map',
+                  str(references / f'{name}.json'), '--reference-set', str(references), '--map',
                   str(evidence / 'workbook-model-map.json'), '--portfolio-reference',
                   str(references / 'portfolio-reference.json')],
                  evidence / f'checkpoint-{name}.log', 'PASS ')
-    digest = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
-    assert digest(builder) == digest(execution_copy), 'Execution copy differs from source'
+    if digest(builder) != digest(execution_copy):
+        raise ValueError('Execution copy differs from source')
+    if dependency_provenance(args.modules) != dependencies:
+        raise ValueError('Managed dependency metadata changed during the build')
     with (evidence / 'workbook-parity.json').open('x') as destination:
         json.dump(parity, destination, indent=2)
     provenance = {
-        'git_head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
+        'git_head': sources['git_head'],
         'portfolio_reference_sha256': portfolio_hash,
-        'godot_version': version, 'builder_sha256': digest(builder),
+        'godot_version': version, 'builder_sha256': sources['source_sha256'][builder.relative_to(ROOT).as_posix()],
         'build_phases': list(BUILD_PHASES),
+        'managed_dependencies': dependencies,
         'node_version': subprocess.check_output([str(args.node), '--version'], text=True).strip(),
-        'source_sha256': {name: digest(ROOT / name) for name in (
-            'scripts/build-workbook.py', 'scripts/spreadsheet/build-policy-lab.mjs',
-            'scripts/spreadsheet/check-workbook.py', 'scripts/tests/test-workbook-validation.mjs', 'game/tests/export_reference.gd',
-            'game/tests/export_policy_variants.gd', 'game/tests/export_late_checkpoint_reference.gd',
-            'scripts/tests/test-workbook-file.py')},
+        'source_sha256': sources['source_sha256'],
+        'authored_formula_inventory_sha256': digest(evidence / 'workbook-model-map.formulas.json'),
         'workbook_sha256': digest(output / 'Federal Reserve Policy Lab.xlsx'),
         'checkpoint_workbooks_sha256': {path.name: digest(path) for path in sorted((output / 'late-checkpoints').glob('*.xlsx'))},
-        'model_sha256': {name: digest(ROOT / 'game/model' / name)
-                         for name in ('economy.gd', 'parameters.json', 'scenarios.json', 'exogenous_shocks.json', 'portfolio_reference.json')},
+        'model_sha256': sources['model_sha256'],
         'references_sha256': {path.name: digest(path) for path in sorted(references.glob('*.json'))},
         'native_recalculation': 'not performed by this command',
     }
+    if source_snapshot() != sources:
+        raise ValueError('Build source snapshot changed during the build')
     (evidence / 'build-provenance.json').write_text(json.dumps(provenance, indent=2) + '\n')
     print(f'BUILT {output / "Federal Reserve Policy Lab.xlsx"}')
+
+
+def source_snapshot():
+    # shortcut: endpoint checks miss transient edits; use an immutable checkout for stronger attribution.
+    return {
+        'git_head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
+        'source_sha256': {name: digest(ROOT / name) for name in (
+            'scripts/build-workbook.py', 'scripts/spreadsheet/build-policy-lab.mjs',
+            'scripts/spreadsheet/check-workbook.py', 'scripts/spreadsheet/generate-formula-inventory.mjs', 'scripts/tests/test-workbook-validation.mjs', 'game/tests/export_reference.gd',
+            'game/tests/export_policy_variants.gd', 'game/tests/export_late_checkpoint_reference.gd',
+            'scripts/tests/test-workbook-file.py', 'scripts/tests/upstream77-inventory.mjs')},
+        'model_sha256': {name: digest(ROOT / 'game/model' / name)
+                         for name in ('economy.gd', 'parameters.json', 'scenarios.json', 'exogenous_shocks.json', 'portfolio_reference.json')},
+    }
 
 
 if __name__ == '__main__':

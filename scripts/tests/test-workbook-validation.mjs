@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
 import { createHash } from 'node:crypto';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const source = await fs.readFile(new URL('../spreadsheet/build-policy-lab.mjs', import.meta.url), 'utf8');
 const phaseStart = source.indexOf('const phaseCheckpoints = '), phaseEnd = source.indexOf('const buildPhase = ', phaseStart);
@@ -29,7 +30,7 @@ assert.match(driver, /f'workbook-build-\{phase\}\.log'/, 'Separate phase logs');
 assert.match(driver, /f'COMPLETED workbook phase \{phase\}'/, 'Separate phase completion markers');
 assert.match(driver, /timeout=900/, 'Keep the existing per-tool bound');
 const aggregateStart = driver.indexOf("with (evidence / 'workbook-parity.json').open('x')");
-const savedChecksEnd = driver.indexOf('    assert digest(builder) == digest(execution_copy)');
+const savedChecksEnd = driver.indexOf('    if digest(builder) != digest(execution_copy):');
 assert.ok(savedChecksEnd >= 0 && aggregateStart > savedChecksEnd, 'Final aggregate follows every saved-file check and source-copy assertion');
 const preflightStart = source.indexOf('for (const path of phaseOutputs(buildPhase))'), preflightEnd = source.indexOf('const workbook = ', preflightStart);
 assert.ok(preflightStart >= 0 && preflightEnd > preflightStart, 'Replacement preflight precedes authoring');
@@ -55,6 +56,41 @@ assert.ok(source.includes("else assert.deepEqual(JSON.parse(await fs.readFile(ne
 const mainRenderStart = source.indexOf("if (buildPhase === 'main') {\nconsole.log('PASS: four policy edits");
 assert.ok(mainRenderStart >= 0 && mainRenderStart < source.indexOf('await workbook.render('), 'Only main renders and writes the final cold workbook');
 assert.ok(source.endsWith('console.log(`COMPLETED workbook phase ${buildPhase}`);\n'), 'Completion follows every phase check and export');
+const inventorySource = await fs.readFile(new URL('../spreadsheet/generate-formula-inventory.mjs', import.meta.url), 'utf8');
+assert.match(driver, /generate-formula-inventory\.mjs/, 'Generate authored inventory before saved-file checks');
+assert.ok(driver.indexOf("'authored-formula-inventory.log'") < driver.indexOf("'workbook-export-check.log'"), 'Inventory qualifies every saved-file consumer');
+assert.ok(driver.includes("ROOT / 'scripts/tests/upstream77-inventory.mjs'")
+  && driver.indexOf("'authored-formula-inventory.log'") < driver.indexOf("'upstream77-authored-metadata.log'")
+  && driver.indexOf("'upstream77-authored-metadata.log'") < driver.indexOf("'workbook-export-check.log'"), 'upstream77 source-metadata regression runs before saved-file acceptance');
+assert.ok(inventorySource.includes('Authored inventory row map differs from builder output'), 'Fail closed on author/layout drift');
+assert.ok(inventorySource.includes("{ flag: 'wx' }"), 'Never replace an existing expected inventory');
+assert.ok(!inventorySource.includes('SpreadsheetFile') && !inventorySource.includes('readFile(workbook'), 'Authored inventory cannot derive expectations from candidate XLSX');
+assert.ok(inventorySource.includes('set formulas(matrix)') && inventorySource.includes('upstream_formulas: upstream'), 'Record upstream range emissions, not noStyle discards');
+assert.ok(inventorySource.includes("slice(\"assumptions.getRange('B5:F5').values\", 'const p = ')") && inventorySource.includes("slice('const sourceStart = ', 'const f = ')"), 'Include parameter headers/guards and source-ladder checks');
+assert.ok(inventorySource.includes('set values(matrix)') && inventorySource.includes('const broadcast = !formula'), 'input54 records actual values matrix/broadcast semantics');
+assert.ok(inventorySource.includes("slice('const checkpointFixtureEdits = '") && inventorySource.includes('checkpoint_inputs: checkpointInputs'), 'input54 checkpoint inputs use the actual authored writer');
+assert.ok(!inventorySource.includes('filter(([address]) => policyReferences.has(address))'), 'input54 retains every calculated Policy output');
+assert.ok(inventorySource.includes('literal_inputs: literalInputs') && inventorySource.includes('schema_version: 3'), 'input54 typed literals require schema 3');
+assert.ok(driver.includes("with (references / f'{name}.json').open('x')") && driver.indexOf("with (references / f'{name}.json').open('x')") < driver.indexOf('generate-formula-inventory.mjs'), 'input54 caller emits individual checkpoint exports before inventory');
+assert.equal((driver.match(/'--reference-set'/g) ?? []).length, 3, 'Every checker/file-regression driver caller binds the full reference set');
+const inventoryEntryStart = inventorySource.indexOf('  const [references, map, output] = ');
+const inventoryEntryEnd = inventorySource.indexOf('  await fs.writeFile(output,', inventoryEntryStart);
+assert.ok(inventoryEntryStart >= 0 && inventoryEntryEnd > inventoryEntryStart, 'Locate the actual inventory CLI path');
+const inventoryEntry = inventorySource.slice(inventoryEntryStart, inventoryEntryEnd)
+  .replaceAll('import.meta.url', JSON.stringify(new URL('../spreadsheet/generate-formula-inventory.mjs', import.meta.url).href));
+for (const references of ['/tmp/inventory#1/reference-v1', '/tmp/inventory%20/reference-v1', '/tmp/inventory space/reference-v1']) {
+  let reached = false;
+  await vm.runInNewContext(`(async () => {${inventoryEntry}})()`, {
+    URL, pathToFileURL, process: { argv: ['node', 'generator', references, 'map.json', 'output.json'] },
+    fs: { readFile: async () => '{}' },
+    authoredInventory: async (_, directory) => {
+      assert.equal(fileURLToPath(new URL('base.json', directory)), `${references}/base.json`, 'Preserve literal directory characters');
+      reached = true;
+    },
+  });
+  assert.ok(reached, 'Actual CLI reaches the authored generator');
+}
+console.log('PASS: actual inventory CLI preserves #, %, and space paths (VM caller; pure generator tested separately)');
 console.log('PASS: strict three-phase admission and complete nonoverlapping checkpoint partition (VM)');
 const start = source.indexOf('const cell = '), end = source.indexOf('const human = ', start);
 assert.ok(start >= 0 && end > start, 'Locate the actual workbook input helpers');
@@ -284,7 +320,7 @@ const selectorStart = source.indexOf('for (const [address, max] of '), selectorE
 assert.ok(selectorStart >= 0 && selectorEnd > selectorStart, 'Locate the actual selector validation emitter');
 const selectorRules = new Map();
 vm.runInNewContext(source.slice(selectorStart, selectorEnd), {
-  cases: Array(7), lab: { getRange(ref) { return { set dataValidation(value) { selectorRules.set(ref, value.rule); } }; } },
+  cases: Array(7), lab: { getRange(ref) { return { set dataValidation(value) { selectorRules.set(ref, value.rule); assert.equal(value.ignoreBlanks, false); assert.equal(value.errorAlert.show, true); assert.equal(value.errorAlert.style, 'stop'); } }; } },
 });
 const horizonFormula = 'COUNTA($B$58:$B$106)-1', quarterRule = selectorRules.get('C5');
 assert.equal(quarterRule.type, 'whole'); assert.equal(quarterRule.operator, 'between');

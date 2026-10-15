@@ -120,6 +120,10 @@ usability or human playability.
 Checkpoint summaries use only whole offsets within the available segment and
 show `n.a.` for invalid selectors, including pasted values.
 
+Before generation, the command captures HEAD and every provenance-bound source
+and model digest. It refuses final provenance if that snapshot changes. Endpoint
+checks cannot detect a transient edit-and-revert.
+
 Authoring runs in three mandatory, serial phases: the main workbook, three hold
 segments and three responsive segments. Each recreates the same formula chain;
 completion requires every phase and all saved-file checks.
@@ -129,12 +133,57 @@ For a separately recalculated disposable copy, run the same saved-file checker:
 ```sh
 python3 scripts/spreadsheet/check-workbook.py /absolute/recalculated.xlsx \
   --reference /absolute/new/workbook-directory/reference-v1/supply_shock.json \
+  --reference-set /absolute/new/workbook-directory/reference-v1 \
   --map /absolute/new/workbook-directory/evidence/workbook-model-map.json
 ```
 
+The checker requires `workbook-model-map.formulas.json` beside the row map.
+The build generates this trusted inventory from the authored equations and native
+references, not from the candidate workbook or its caches. For older outputs,
+generate the current schema in a new directory with a copied row map and the
+matching source/eight cold references and six checkpoint exports first. Existing sidecars are never overwritten:
+
+```sh
+/absolute/managed/node scripts/spreadsheet/generate-formula-inventory.mjs \
+  /absolute/new/workbook-directory/reference-v1 \
+  /absolute/new/workbook-directory/evidence/workbook-model-map.json \
+  /absolute/new/workbook-directory/evidence/workbook-model-map.formulas.json
+```
+
+Both the checker and file regression require `--reference-set`: the explicit
+trusted reference directory used for generation (eight cold cases,
+`late-checkpoints.json`, and its six individual named exports). Every cold source-file
+digest must match the sidecar, including nonactive scenarios. A positive-clock
+reference must match an exact authored checkpoint export and its cold case's
+ordered parameters, scenario inputs and state-key layout.
+Schema 3 contracts cover Economy, calculated Assumptions/Shocks, and every
+Policy output formula. Dashboard summaries need native-cache parity; case and
+benchmark labels must match their sources. Typed numeric/boolean/blank inputs and Policy
+selectors/overrides must match the selected native reference exactly after numeric
+parsing; equivalent numeric spelling is valid. Output-cache tolerance remains 1e-7. Checkpoint overlays
+come from the same authored checkpoint writer and bind the exact segment export. Reference/map/sidecar remain trusted expected inputs, not a producer
+authentication scheme.
+
+Authored literals also bind Assumptions labels, units, classifications,
+descriptions and sources, including blank provenance, and Policy/Shocks decision
+headers. Checkpoint labels and cleared suffix headers come from the actual writer.
+Policy Lab captions, scenario keys and metric/calendar labels also bind to the
+source writer, including checkpoint-cleared suffixes. Validation comparisons
+preserve reference anchors; scalar formula spelling keeps its existing equivalence.
+All five worksheet records, including the Economy audit sheet, must remain visible.
+The five source-authored validation rules must retain their ranges, types,
+bounds and blank-forbidding Stop alerts. Earlier exports without selector alerts
+are unsafe regressions under this stronger contract. Preserve them and validate
+source-bound metadata-upgraded copies separately.
+
+Required cells use the source-authored readable font/fill palette and number-format
+set. Unsupported themes, rich visual overrides and visual conditional formatting
+are rejected; style-table indices may change while the supported semantics remain.
+
 The checker reads the supplied workbook without editing it. It verifies all
-quarterly state values for the default supply case, formula errors, chart
-bindings and the absence of macros or external links. Native recalculation and
+quarterly state values for the default supply case, authored formula bindings,
+chart labels, caches, axes and placement, visible policy sheets, and the absence
+of macros or external links. Native recalculation and
 interactive GUI validation remain separate checks; the build does not launch
 or change a spreadsheet application's windows.
 
