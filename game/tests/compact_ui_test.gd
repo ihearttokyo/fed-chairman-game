@@ -57,6 +57,10 @@ func run() -> void:
 	check(game.career.encode() == preserved, "reading help does not mutate the career")
 	await check_responsive_resize(game)
 	game.free()
+	# Native audio releases stopped playbacks on its next mix, not a scene frame.
+	var audio_release_deadline := Time.get_ticks_msec() + 100
+	while Time.get_ticks_msec() < audio_release_deadline:
+		await process_frame
 	if failures == 0:
 		print("PASS: compact task-only cockpit, retained detail, production responsive resize and zero-delay tooltips")
 	quit(1 if failures else 0)
