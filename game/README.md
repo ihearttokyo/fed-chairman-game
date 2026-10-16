@@ -86,6 +86,8 @@ is reachable with Tab and toggles with Space or Return. It starts on for a new
 preference file, stops immediately when off and remembers the choice in
 `user://policy-lab-audio-v1.cfg`, separate from every career slot. A failed
 preference write is reported while the session's on/off choice still applies.
+Updates are staged and verified before replacing the previous preference file;
+a failed write retains that file.
 The complete native WAV loops at -12 dB; changing it does not stage or adopt policy.
 There is no live audio service or game-network dependency. The original M4A and
 its conversion manifest live in `art/audio/`; exports include only the runtime

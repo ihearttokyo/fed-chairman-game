@@ -39,6 +39,7 @@ for test in "${tests[@]}"; do
     "${godot[@]}" --headless --max-fps 60 --path game --log-file "$HOME/music-relaunch-engine.log" --script res://tests/music_test.gd --quit-after 1800 -- --relaunch-off 2>&1 | tee "$HOME/music-relaunch.log"
     if grep -Eq 'SCRIPT ERROR:|ERROR:|FAIL:' "$HOME/music-relaunch.log"; then exit 1; fi
     grep -q '^PASS: persisted music off survives process relaunch' "$HOME/music-relaunch.log"
+    python3 -B scripts/tests/test-music-atomic.py "${godot[@]}"
   fi
   if [[ "$test" == comparison_performance_test ]]; then
     grep -q '^PASS: comparison count, exact parity and paired timing fixture' "$log"

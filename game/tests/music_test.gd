@@ -231,6 +231,47 @@ func run() -> void:
 	check(FileAccess.set_unix_permissions(Music.SETTINGS_PATH, permissions) == OK, "restore fixture permissions after the denied write")
 	check(save_error != OK and not music.music_enabled and not music.playing, "failed save returns an error while immediately applying playback off")
 	check(FileAccess.get_file_as_bytes(Music.SETTINGS_PATH) == original, "failed save cannot claim persisted off or alter the prior preference")
+	var private_permissions := FileAccess.UNIX_READ_OWNER | FileAccess.UNIX_WRITE_OWNER
+	check(FileAccess.set_unix_permissions(Music.SETTINGS_PATH, private_permissions) == OK, "restrict the existing preference before testing atomic replacement")
+	check(music.set_enabled(false) == OK and not music.music_enabled and not music.playing, "a failed preference write can retry after permissions are restored")
+	var retried := ConfigFile.new()
+	check(retried.load(Music.SETTINGS_PATH) == OK and retried.get_value("audio", "music_enabled") == false and retried.get_value("other", "sentinel") == "retain this setting", "successful atomic replacement retains off and unrelated configuration")
+	check(FileAccess.get_unix_permissions(Music.SETTINGS_PATH) == private_permissions, "atomic replacement preserves the existing Unix permission bits")
+	var directory := DirAccess.open("user://")
+	var pending := Music.SETTINGS_PATH + ".pending-%d-%d" % [OS.get_process_id(), music.get_instance_id()]
+	for kind in ["file", "directory", "link"]:
+		var available := not FileAccess.file_exists(pending) and not DirAccess.dir_exists_absolute(pending) and not directory.is_link(pending.get_file())
+		check(available, "atomic collision fixture refuses an existing pending target")
+		if not available:
+			break
+		var sentinel := "unowned pending content".to_utf8_buffer()
+		var missing_target := ProjectSettings.globalize_path(pending + ".absent")
+		if kind == "file":
+			var collision := FileAccess.open(pending, FileAccess.WRITE)
+			check(collision != null, "create an isolated unknown pending-file fixture")
+			if collision == null:
+				break
+			collision.store_buffer(sentinel)
+			collision.close()
+		elif kind == "directory":
+			check(DirAccess.make_dir_absolute(pending) == OK, "create an isolated unknown pending-directory fixture")
+		else:
+			check(directory.create_link(missing_target, ProjectSettings.globalize_path(pending)) == OK, "create an isolated dangling pending-link fixture")
+		if failures:
+			break
+		original = FileAccess.get_file_as_bytes(Music.SETTINGS_PATH)
+		check(music.set_enabled(true) != OK and music.music_enabled and music.playing, "a pending collision refuses persistence while applying session on: " + kind)
+		check(FileAccess.get_file_as_bytes(Music.SETTINGS_PATH) == original, "a pending collision preserves every prior preference byte: " + kind)
+		if kind == "file":
+			check(FileAccess.get_file_as_bytes(pending) == sentinel, "an unknown pending file remains byte-identical")
+		elif kind == "directory":
+			check(DirAccess.dir_exists_absolute(pending), "an unknown pending directory remains in place")
+		else:
+			check(directory.is_link(pending.get_file()) and directory.read_link(pending.get_file()) == missing_target, "an unknown dangling pending link remains unchanged")
+		check(DirAccess.remove_absolute(pending) == OK, "remove only the test-owned collision fixture")
+		check(music.set_enabled(false) == OK and not music.music_enabled and not music.playing, "a preference transaction retries after its collision is removed")
+		check(not FileAccess.file_exists(pending) and not DirAccess.dir_exists_absolute(pending) and not directory.is_link(pending.get_file()), "a successful preference replacement leaves no pending transient")
+	check(FileAccess.set_unix_permissions(Music.SETTINGS_PATH, permissions) == OK, "restore the original preference permissions after atomic boundary checks")
 	music.free()
 
 	playback = null
