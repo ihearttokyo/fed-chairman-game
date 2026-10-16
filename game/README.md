@@ -237,7 +237,7 @@ windows: demand with eligible funding, supply pressure with credit impairment,
 and contraction with supply/funding pressure. These authored inputs are not
 unchanged catalogue profiles or historically calibrated crisis incidence.
 The baseline and one-off supply shock remain selectable practice laboratories.
-Advancing without editing holds the prior rate; it does not apply the staff rule.
+Advancing without editing holds the prior rate; it does not apply the model benchmark.
 
 The legacy weak-anchor opening regression retains 32 disclosed seeds through 96 quarters. A separate
 late regression first recovers through Q120, then branches the exact same state
@@ -307,7 +307,7 @@ their background shocks; it is not a forecast or the game's concealed future.
 
 Every twelve completed meetings, the review compares your decisions with two
 references from the same actual starting state and already realized shocks.
-Hold keeps the starting rate. Staff applies the existing simple feedback rate
+Hold keeps the starting rate. Model benchmark applies the full-information feedback rate
 rule with matching data-dependent guidance. Both request no purchases or loans,
 reinvest principal, maintain reserves and leave sterilization off. Neither is
 an optimal-policy recommendation or a forecast.
@@ -315,9 +315,9 @@ an optimal-policy recommendation or a forecast.
 The report shows separate average inflation distance from 2%, employment
 shortfall and uncovered funding, plus ending credibility and public support.
 Funding gaps use each meeting's nominal GDP; they are unmet need, not booked
-bank losses. A failed staff reference leaves the actual/hold comparison usable
+bank losses. A failed benchmark reference leaves the actual/hold comparison usable
 with its native error. No equations, scores, saved decisions or future inputs
-change, and following staff is not itself a winning criterion.
+change, and following the benchmark is not itself a winning criterion.
 
 ## Mandate achievement
 
@@ -613,10 +613,13 @@ rate, guidance, asset-flow and lending decision. The preview uses the known
 current shock, then assumes no new shocks and holds the rate and staged portfolio
 switches for eight quarters. One-time offers do not repeat. Principal, loan
 repayment and optional reserve maintenance still operate.
-It cannot read the realized future shock path. The staff rate rule is a disclosed
-benchmark rather than an optimal-play recommendation.
+It cannot read the realized future shock path. The model-benchmark action stages
+rate and matching guidance from the full current model state, including true
+neutral rate and short inflation expectations. Those two inputs are not shown in
+the ordinary indicators or journal. This is a model reference, not an operational
+forecast or proof of optimal policy.
 
-The staff rule rounds its requested rate and matching guidance to the 1bp quote
+The model benchmark rounds its requested rate and matching guidance to the 1bp quote
 grid. Workbook blank guidance follows the same benchmark. Later data changes
 the conditional implied promise, rounded to the same grid before delivery is
 evaluated. Nominal promises are not forgiven because financing transmission is
