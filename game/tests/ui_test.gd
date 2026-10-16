@@ -503,6 +503,7 @@ func check_custom_guidance(game: Control) -> void:
 	check(benchmark_buttons.size() == 1, "the action names a staged model benchmark rather than operational staff advice")
 	if benchmark_buttons.size() == 1:
 		check(benchmark_buttons[0].tooltip_text.contains("full-information") and benchmark_buttons[0].tooltip_text.contains("true neutral rate") and benchmark_buttons[0].tooltip_text.contains("short inflation expectations"), "benchmark tooltip exposes the exact hidden inputs without adding dashboard prose")
+		check(benchmark_buttons[0].accessibility_description == benchmark_buttons[0].tooltip_text, "native assistive help exposes the same benchmark assumptions as its tooltip")
 	check(game.status_label.text.contains("Full-information benchmark staged"), "keyboard and pointer staging feedback disclose the full-information assumption")
 	check(game.commitment.selected == 0 and game.assets.value == 1.25 and game.liquidity.value == 2.0, "staff selection restores its guidance rule without changing other tools")
 	game._start_career("base", 417)

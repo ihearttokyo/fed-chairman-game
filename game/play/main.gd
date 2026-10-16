@@ -604,6 +604,7 @@ func _build_policy(parent: Node, actions: Node) -> void:
 	_label(box, "Asset and loan units: % of current annual GDP", 11, MUTED)
 	var benchmark_button := _button(box, "Stage model benchmark", _staff_rule, KEY_R)
 	benchmark_button.tooltip_text = BENCHMARK_HELP
+	benchmark_button.accessibility_description = benchmark_button.tooltip_text
 	forecast_label = _label(box, "", 13, MINT)
 	forecast_label.custom_minimum_size.y = 114
 	forecast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

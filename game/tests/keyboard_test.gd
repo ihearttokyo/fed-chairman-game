@@ -567,6 +567,10 @@ func run() -> void:
 	await check_periodic_review_keys(game)
 	await check_actionable_report_enter(game)
 	game.free()
+	# Native audio releases stopped playbacks on its next mix, not a scene frame.
+	var audio_release_deadline := Time.get_ticks_msec() + 100
+	while Time.get_ticks_msec() < audio_release_deadline:
+		await process_frame
 	if failures == 0:
 		print("PASS: complete keyboard career, editing, focus, menus, charts, reports, save/replay and terminal guards")
 	quit(1 if failures else 0)
