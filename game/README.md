@@ -296,6 +296,12 @@ scare, followed by remaining credit impairment or loan repayment. The existing
 flows. These labels change no equations, scores, shocks or save fields. Public
 forgiveness follows the modeled hardship memory, not a new political rule.
 
+MARKETS shows a positive current credit-risk impulse in percentage points:
+borrowing-cost news, rather than a funding amount or booked capital loss.
+Values below 0.01 pp use a positive magnitude bound instead of printing zero.
+The clause follows the current meeting's news, not a prior priced spread or a
+future pulse.
+
 The same scenario and seed reproduce the path within the same engine and model.
 Saved careers retain the realized path. The 240-quarter neutral equilibrium assertion instead
 supplies explicit empty shocks; it does not promise a flat seeded career.

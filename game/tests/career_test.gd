@@ -417,6 +417,44 @@ func check_current_signals() -> void:
 	dispatch = career.situation_briefing()
 	check(not dispatch.contains("Refinancing pressure"), "raw refinancing request without maturing principal is not current refinancing pressure")
 	check(career.encode() == preserved and var_to_bytes(career.state) == state_bytes and var_to_bytes(career.history) == history_bytes, "zero-maturity readout preserves every career/state/history byte")
+	check(career.start("base", 17).ok, "current credit fixture uses the unchanged career entry point")
+	career.shocks[0] = {}
+	career.shocks[1] = {}
+	var quiet_credit := career.situation_briefing()
+	for sample in [
+		[{}, ""],
+		[{"credit_risk_innovation_pct":0.0}, ""],
+		[{"credit_risk_innovation_pct":0.0001}, " Credit-risk impulse up <0.01 pp (spread pricing)."],
+		[{"credit_risk_innovation_pct":0.005}, " Credit-risk impulse up <0.01 pp (spread pricing)."],
+		[{"credit_risk_innovation_pct":0.0099}, " Credit-risk impulse up <0.01 pp (spread pricing)."],
+		[{"credit_risk_innovation_pct":0.01}, " Credit-risk impulse +0.01 pp (spread pricing)."],
+		[{"credit_risk_innovation_pct":0.03}, " Credit-risk impulse +0.03 pp (spread pricing)."],
+		[{"credit_risk_innovation_pct":5.0}, " Credit-risk impulse +5.00 pp (spread pricing)."]
+	]:
+		career.shocks[0] = sample[0].duplicate(true)
+		check(career.model._validate_shocks(career.current_briefing()).ok, "credit display fixture remains within the unchanged shock domain")
+		var credit_live := forecast_live_bytes(career)
+		var credit_dispatch := career.situation_briefing()
+		var clause: String = sample[1]
+		check(credit_dispatch == quiet_credit if clause.is_empty() else credit_dispatch.contains(clause) and credit_dispatch.replace(clause, "") == quiet_credit, "current credit dispatch adds only its honest pp clause: " + str(sample[0]))
+		check(career.situation_briefing() == credit_dispatch and forecast_live_bytes(career) == credit_live, "repeated credit dispatch preserves all live/input/save bytes")
+		if sample[0].get("credit_risk_innovation_pct", 0.0) == 0.03:
+			var credit_choice: Dictionary = career.model.benchmark_policy(career.state, career.params)
+			var held_credit: Dictionary = career.forecast(credit_choice)
+			var promised_credit: Dictionary = career.forecast(credit_choice, true)
+			career.shocks[1] = {"credit_risk_innovation_pct":5.0}
+			career.shocks[200] = {"credit_risk_innovation_pct":5.0}
+			credit_live = forecast_live_bytes(career)
+			check(career.situation_briefing() == credit_dispatch and career.forecast(credit_choice) == held_credit and career.forecast(credit_choice, true) == promised_credit, "next and distant credit news cannot leak into current dispatch or either forecast")
+			check(forecast_live_bytes(career) == credit_live, "future-credit reads preserve the deliberately edited fixture bytes")
+			career.shocks[1] = {}
+	check(career.advance(career.model.benchmark_policy(career.state, career.params)).ok, "current credit is priced only through a real adoption")
+	check(career.state.credit_spread_pct > career.params.normal_credit_spread_pct and not career.situation_briefing().contains("Credit-risk impulse"), "prior priced credit does not masquerade as new current credit news")
+	var credit_replay := Career.new()
+	check(credit_replay.restore(bytes_to_var(career.encode())).ok and credit_replay.situation_briefing() == career.situation_briefing(), "credit dispatch reconstructs through unchanged lossless save replay")
+	check(career.start("base", 17).ok, "credit fixture restarts without slot migration")
+	career.shocks[0] = {}
+	check(not career.situation_briefing().contains("Credit-risk impulse"), "restarting clears old credit news")
 
 func check_recurring_crises() -> void:
 	var career := Career.new()

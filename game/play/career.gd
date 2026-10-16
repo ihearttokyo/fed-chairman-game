@@ -76,14 +76,18 @@ func situation_briefing() -> String:
 	if state.is_empty():
 		return ""
 	var previous: Dictionary = history[-2] if history.size() > 1 else state
+	var current: Dictionary = current_briefing()
 	var market := "Long expectations %.2f%%; credibility %.0f/100." % [state.expected_long_inflation_pct, 100 * state.credibility]
+	var credit: float = current.get("credit_risk_innovation_pct", 0.0)
+	if credit > 0.0:
+		var amount := "up <0.01 pp" if credit < 0.01 else "%+.2f pp" % credit
+		market += " Credit-risk impulse %s (spread pricing)." % amount
 	if previous.guidance_active:
 		market += " Last evaluated promise: %.1f/100 follow-through." % (100 * state.guidance_followthrough_score)
 	elif state.guidance_active:
 		market += " Your first announcement awaits its follow-through meeting."
 	var public := "Hardship memory is building." if state.public_hardship_memory > previous.public_hardship_memory else "Hardship memory is easing." if state.public_hardship_memory < previous.public_hardship_memory else "Hardship memory is steady."
 	public += " Support %.1f/100; remembered burden %.2f points." % [state.public_support, state.public_hardship_memory]
-	var current: Dictionary = current_briefing()
 	var refinancing_need := minf(current.get("refinancing_need_pct_initial_gdp", 0.0), state.outstanding_liquidity_pct_initial_gdp)
 	var funding := "No major new funding pressure."
 	if current.get("funding_need_pct_initial_gdp", 0.0) > 0.1:
