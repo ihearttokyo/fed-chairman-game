@@ -171,7 +171,7 @@ func run() -> void:
 	var source := Career.new()
 	print("PROTOCOL current-source-curated-v1 mode=%s model_digest=%s columns=%s" % ["pilot" if pilot else "full", source.model_digest(), JSON.stringify(COLUMNS)])
 	print("REPORT-METADATA records/aggregates displayed6decimals; statistics use unrounded native values; credibility/support are score points0–100; low trust/support versus high misses/gaps/ratios define diagnostic extrema, not welfare or optimal policy")
-	print("LIMITS severity=abs_pi_miss>5|abs_gap>10|u>12|support<20|solvency>5; endpoint=abs_pi_miss>1|abs_gap>1|u>structural+1.5; continuing-crisis endpoint bands are not equilibrium/optimality proof; HOLD uses actual benchmark guidance sensitivities")
+	print("LIMITS severity=abs_pi_miss>5|abs_gap>10|u>12|support<20|solvency>5; endpoint=abs_pi_miss>1|abs_gap>1|u>structural+1.5; continuing-crisis endpoint bands are not equilibrium/optimality proof; HOLD keeps the prior nominal rate with data-dependent guidance; changed conditions can lower follow-through")
 	for seed in range(feedback_n):
 		run_seed(seed, seed < paired_n, quarters)
 	check(attempted == feedback_n + paired_n and completed == attempted,

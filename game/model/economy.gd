@@ -773,7 +773,7 @@ func conditional_commitment(state: Dictionary, params: Dictionary) -> float:
 func benchmark_policy(state: Dictionary, params: Dictionary, kind: String = "feedback") -> Dictionary:
 	var target: float = state.policy_rate_pct
 	if kind == "neutral":
-		target = state.r_star_pct + params.inflation_target_pct
+		target = state.r_star_pct + state.expected_short_inflation_pct
 	elif kind == "feedback":
 		target = state.r_star_pct + state.expected_short_inflation_pct \
 			+ params.policy_inflation_response * (state.four_quarter_inflation_pct - params.inflation_target_pct) \

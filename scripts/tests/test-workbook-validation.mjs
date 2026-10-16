@@ -262,6 +262,8 @@ for (const [engine, logicalIsNumeric] of [['Excel', false], ['Calc', true]]) {
   assert.equal(defaults.guidance_output_gap_sensitivity, policyParameters.policy_output_gap_response);
   const hold = evaluatePolicy({}, logicalIsNumeric, policyParameters, 2);
   assert.equal(hold.policy_valid, true); assert.equal(hold.policy_rate_pct, -0.25); assert.equal(hold.guidance_rate_pct, -0.25);
+  assert.equal(hold.guidance_inflation_sensitivity, policyParameters.policy_inflation_response);
+  assert.equal(hold.guidance_output_gap_sensitivity, policyParameters.policy_output_gap_response);
   for (const [i, key] of numericControls.entries()) {
     for (const value of [true, false, '1', '', '#VALUE!', NaN, Infinity]) {
       const result = evaluatePolicy({ [6 + i]: value }, logicalIsNumeric);
@@ -382,6 +384,7 @@ vm.runInNewContext(source.slice(calendarStart, calendarEnd), {
 verifySummaryHorizon(Array.from({ length: 49 }, (_, q) => mainLabels.get(`B${q + 58}`)), 48);
 for (const [ref, value] of mainLabels) originals.set(ref, { value, formula: '' });
 console.log('PASS: actual selector/summary/calendar emitters reject invalid offsets (VM/simulated guards; not native recalculation)');
+assert.ok(source.includes('=CHOOSE(C6,"Feedback rule","Rate hold; conditional guidance")'), 'Workbook hold label discloses conditional guidance');
 
 if (process.argv.length > 2) {
   assert.equal(process.argv[2], '--checkpoint-reference');
@@ -424,7 +427,18 @@ if (process.argv.length > 2) {
       const offered = fixture.policy_kind === 'hold' ? 0 : (row.shock.funding_need_pct_initial_gdp ?? 0)
         + Math.min(row.shock.refinancing_need_pct_initial_gdp ?? 0, prior.outstanding_liquidity_pct_initial_gdp);
       assert.equal(row.policy.liquidity_request_pct_initial_gdp, offered, 'Lending uses only current shock and prior loan principal');
-      if (fixture.policy_kind === 'hold') assert.equal(row.policy.policy_rate_request_pct, prior.policy_rate_pct, 'Hold retains the prior nominal quote');
+      if (fixture.policy_kind === 'hold') {
+        assert.equal(row.policy.policy_rate_request_pct, prior.policy_rate_pct, 'Hold retains the prior nominal quote');
+        assert.equal(row.policy.guidance_rate_pct, prior.policy_rate_pct, 'Hold quotes its unchanged rate');
+        assert.equal(row.policy.guidance_inflation_sensitivity, policyParameters.policy_inflation_response);
+        assert.equal(row.policy.guidance_output_gap_sensitivity, policyParameters.policy_output_gap_response);
+        const implied = prior.guidance_rate_pct
+          + prior.guidance_inflation_sensitivity * (prior.four_quarter_inflation_pct - prior.guidance_reference_inflation_pct)
+          + prior.guidance_output_gap_sensitivity * (prior.output_gap_pct - prior.guidance_reference_output_gap_pct);
+        const due = Math.sign(implied) * Math.round(Math.abs(implied) / policyParameters.minimum_rate_increment_pct) * policyParameters.minimum_rate_increment_pct;
+        const expected = prior.guidance_active ? Math.exp(-Math.abs(prior.policy_rate_pct - due) / policyParameters.credibility_followthrough_tolerance_pct) : 1;
+        assert.ok(Math.abs(row.state.guidance_followthrough_score - expected) < 1e-12, 'Hold follow-through uses the prior conditional promise, not a firm-hold assumption');
+      }
       for (const key of originalBases) assert.equal(row.state[key], native[key], `Never rebase ${key}`);
       prior = row.state;
     }

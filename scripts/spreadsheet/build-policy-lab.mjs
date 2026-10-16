@@ -118,7 +118,7 @@ cell(lab, 'B4', 'Case number'); cell(lab, 'C4', 3);
 cell(lab, 'E4', `=CHOOSE(C4,${cases.map(x => `"${x.scenario.label}"`).join(',')})`, true);
 cell(lab, 'B5', 'Quarter shown'); cell(lab, 'C5', 48);
 cell(lab, 'B6', 'Benchmark policy'); cell(lab, 'C6', 1);
-cell(lab, 'E6', '=CHOOSE(C6,"Feedback rule","Hold previous rate")', true);
+cell(lab, 'E6', '=CHOOSE(C6,"Feedback rule","Rate hold; conditional guidance")', true);
 input(lab, 'C4:C6');
 for (const [address, max] of [['C4', cases.length], ['C5', 'COUNTA($B$58:$B$106)-1'], ['C6', 2]]) lab.getRange(address).dataValidation = {
   rule: { type: 'whole', operator: 'between', formula1: address === 'C5' ? 0 : 1, formula2: max }, ignoreBlanks: false,

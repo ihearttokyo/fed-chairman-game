@@ -81,6 +81,12 @@ func _test_transmission(params: Dictionary, state: Dictionary) -> void:
 		var midpoint: Dictionary = model.initial_state(params, {"r_star_pct":requested - params.inflation_target_pct}).state
 		var quoted: Dictionary = model.benchmark_policy(midpoint, params, "neutral")
 		close(quoted.policy_rate_request_pct, -3.51 if requested < 0.0 else 3.51, "benchmark half-step rounding is symmetric away from zero")
+		var off_target: Dictionary = model.initial_state(params, {"r_star_pct":requested - 4.8, "expected_short_inflation_pct":4.8}).state
+		var preserved := var_to_bytes([off_target, params])
+		var off_target_policy: Dictionary = model.benchmark_policy(off_target, params, "neutral")
+		close(off_target_policy.policy_rate_request_pct, -3.51 if requested < 0.0 else 3.51, "off-target expectations retain signed neutral half-step rounding")
+		close(off_target_policy.guidance_rate_pct, -3.51 if requested < 0.0 else 3.51, "off-target neutral guidance shares the rounded signed quote")
+		check(var_to_bytes([off_target, params]) == preserved, "off-target neutral quoting preserves state and parameters")
 
 func _test_current_credit(params: Dictionary) -> void:
 	var state: Dictionary = model.initial_state(params).state
