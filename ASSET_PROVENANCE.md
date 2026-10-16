@@ -16,6 +16,27 @@ The Godot game uses original project art, procedural UI and engine/runtime outpu
 - Godot panels, charts and controls: authored in `game/play/`. System fonts are
   requested at runtime and are not redistributed as project asset files.
 
+## Soundtrack
+
+JRB-1 is credited to Jared Bland personally, at his direction, and was generated
+with Suno. Suno lists the selected song at
+<https://suno.com/song/8436d628-5c56-4f0e-953c-da58786e26b9>, shared at
+<https://suno.com/s/lWA6lJD3HljjnaqV>. Its public page identifies Jay
+(@thelitinvestor); ownership attribution follows Jared's direct declaration,
+not a verification of account tier, provider terms or copyright protectability.
+The qualified project license in `LICENSE` applies to rights held by Jared;
+third-party rights remain separate.
+
+`art/audio/JRB-1.m4a` retains the AAC audio copied without re-encoding from that
+song's public MP4. The page's direct M4A was encoded and failed decoding; the
+retained file is a lossless remux from the public video, not that direct original.
+`game/assets/audio/jrb-1.wav` is its PCM16 stereo 48 kHz decode, without trimming,
+normalization or structural edits. Godot imports it uncompressed and loops the
+complete sample. The source and conversion hashes, bytes, duration and origin
+are recorded in `art/audio/manifest.json`. Both files passed full decoding;
+listening quality requires separate acceptance. The runtime plays the bundled
+file locally, with no Suno client, credentials, live generation or network calls.
+
 ## Refined city reference
 
 `art/references/policy-city-direction-20261002.png` was generated with the built-in
@@ -35,8 +56,7 @@ Current-source game pixels and usability require separate validation under
 `docs/AGENTIC_GUI_VALIDATION.md`.
 
 The original Swift UI assets are retired to Git history. No external textures,
-photographs, audio packs or copied game assets are bundled. The current game
-has no bundled audio files.
+photographs, audio packs or copied assets from another game are bundled.
 
 For changes, retain the authoring source and generated asset together, record
 provenance here, inspect the actual game rendering and preserve clean-room rules.

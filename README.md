@@ -21,7 +21,9 @@ Credibility affects guidance and long-term expectations. Public support remember
 hardship and recovers gradually. Policy lags, shocks and history carry through
 12-quarter reviews without resets or score-driven dismissal. Careers can continue
 for 240 quarters. Exact journal values accompany the charts; city animation is
-optional and off by default.
+optional and off by default. Looping music, JRB-1 by Jared Bland,
+starts on; the keyboard-accessible Music checkbox stops it and remembers your
+choice separately from career saves.
 
 The optional Recurring crises campaign draws from a no-repeat bag of 48
 independent concepts, with two conditional bank-finance follow-ups. The seed
@@ -66,6 +68,13 @@ or Gatekeeper acceptance. Never replace an installed app, weaken Gatekeeper or
 put credentials, generated bundles, caches or screenshots in Git.
 
 ## Sources and ownership
+
+Copyright (c) 2026 Jared Bland, personally, to the extent project rights subsist
+and are held by him. [LICENSE](LICENSE) permits personal, noncommercial play
+and free sharing of complete, unmodified official binary archives; source
+visibility is not an open-source license. Component licenses retain their own
+permissions. The full project license and component notices appear in Credits.
+
 
 - [Current Federal Reserve research](docs/FED_RESEARCH.md)
 - [Economic acceptance contract](docs/MODEL_CONTRACT.md)

@@ -79,6 +79,24 @@ untrusted paths or symlinks. The export contains parameters, starting state,
 realized shocks, decisions and full quarterly states. Retain the realized shock
 path when reproducing a run across engine versions.
 
+## Soundtrack and ownership
+
+Music loops JRB-1 by Jared Bland, generated with Suno. The native Music checkbox
+is reachable with Tab and toggles with Space or Return. It starts on for a new
+preference file, stops immediately when off and remembers the choice in
+`user://policy-lab-audio-v1.cfg`, separate from every career slot. A failed
+preference write is reported while the session's on/off choice still applies.
+Updates are staged and verified before replacing the previous preference file;
+a failed write retains that file.
+The complete native WAV loops at -12 dB; changing it does not stage or adopt policy.
+There is no live audio service or game-network dependency. The original M4A and
+its conversion manifest live in `art/audio/`; exports include only the runtime
+WAV. See [asset provenance](../ASSET_PROVENANCE.md) for its source and limits.
+
+The qualified personal noncommercial freeware license in [LICENSE](../LICENSE)
+is mirrored verbatim at `licenses/THE-CHAIR.txt` for exports and Credits. Retain
+both together; engine and third-party notices remain independent.
+
 ## Regenerate the formula workbook
 
 The repository owns the workbook builder, reference exporters and saved-file

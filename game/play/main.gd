@@ -3,6 +3,7 @@ extends Control
 const Career = preload("res://play/career.gd")
 const Chart = preload("res://play/history_chart.gd")
 const ReportDialog = preload("res://play/report_dialog.gd")
+const Music = preload("res://play/music.gd")
 const SAVE_PATH := "user://policy-career-v1.save"
 const GOLD := Color("e9b76e")
 const MINT := Color("75d4c0")
@@ -48,6 +49,9 @@ var policy_panel: PanelContainer
 var save_path := SAVE_PATH
 var clean_career: PackedByteArray
 var quit_dialog: AcceptDialog
+var music: Music
+var music_toggle: CheckBox
+var shutting_down := false
 
 const KEYBOARD_HELP := "Keyboard controls\nTab / Shift+Tab move forward / back through visible controls. Return or Space activates a focused button. In numeric fields, type a value and press Return to commit only that field; Up / Down use its advertised step. Arrow keys navigate open scenario or guidance menus; Return selects and Escape cancels.\n\nCharts: Left / Right inspect completed quarters; Home / End select the first / latest. Focused cockpit and reports: Page Up / Down scroll, Home / End reach the ends. Escape or modified Return closes an informational report and returns focus. Plain Return closes its text or OK button, otherwise activates the focused report control. Escape cancels replacement; Return still follows the focused confirmation control.\n\nOptional accelerators use Cmd on macOS or Ctrl elsewhere: N New, S Save, O Load, J journal, P Compare, R staff rule, modified Return adopt one quarter. F1 opens this guide. Every command also has a Tab-accessible control; plain typing never adopts a quarter.\n\n"
 
@@ -57,6 +61,14 @@ func _ready() -> void:
 	_fit_initial_window()
 	_resize_layout()
 	_apply_theme()
+	music = Music.new()
+	music.name = "Soundtrack"
+	music.stream = preload("res://assets/audio/jrb-1.wav")
+	music.stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	music.stream.loop_begin = 0
+	music.stream.loop_end = roundi(music.stream.get_length() * music.stream.mix_rate)
+	music.volume_db = -12.0
+	add_child(music)
 	var background := ColorRect.new()
 	background.color = Color("0c191f")
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -181,7 +193,8 @@ func _ready() -> void:
 	if not body_layout.vertical:
 		cockpit_scroll.set_deferred("scroll_vertical", 0)
 	if "--verify-build" in OS.get_cmdline_user_args():
-		get_tree().quit(load("res://play/build_check.gd").new().run(self))
+		Engine.max_fps = 60
+		_quit_app(load("res://play/build_check.gd").new().run(self))
 
 static func _responsive_canvas_size(physical: Vector2i, display_scale: float) -> Vector2i:
 	var logical := Vector2(physical).max(Vector2.ONE) / maxf(1.0, display_scale)
@@ -390,6 +403,23 @@ func _build_header(parent: Node) -> void:
 	_button(row, "Data & journal", _journal, KEY_J)
 	_button(row, "How to play", _help, KEY_F1, false)
 	_button(row, "Credits", _credits)
+	music_toggle = CheckBox.new()
+	music_toggle.name = "MusicToggle"
+	music_toggle.text = "Music"
+	music_toggle.focus_mode = Control.FOCUS_ALL
+	music_toggle.tooltip_text = "JRB-1 by Jared Bland. Looping soundtrack; off stops playback. This preference is saved separately from your career."
+	music_toggle.accessibility_description = music_toggle.tooltip_text
+	music_toggle.set_pressed_no_signal(music.music_enabled)
+	music_toggle.toggled.connect(_set_music_enabled)
+	row.add_child(music_toggle)
+	keyboard_controls.append(music_toggle)
+
+func _set_music_enabled(enabled: bool) -> void:
+	var error := music.set_enabled(enabled)
+	if error != OK:
+		status_label.text = "Music %s; preference not saved (%s)." % ["on" if enabled else "off", error_string(error)]
+	elif status_label.text.begins_with("Music "):
+		status_label.text = "Music %s." % ("on" if enabled else "off")
 
 static func _city_texture_size(area: Vector2, physical: Vector2i, logical: Vector2) -> Vector2i:
 	var density := 1.0
@@ -894,6 +924,8 @@ func _load() -> void:
 	_link_focus([cancel, dialog.get_ok_button()])
 
 func _request_quit() -> void:
+	if shutting_down:
+		return
 	if is_instance_valid(quit_dialog):
 		return
 	if career.encode() == clean_career:
@@ -918,8 +950,19 @@ func _request_quit() -> void:
 	if numeric_edit:
 		invoker.set_block_signals.call_deferred(was_blocking)
 
-func _quit_app() -> void:
-	get_tree().quit()
+func _quit_app(exit_code := 0) -> void:
+	if shutting_down:
+		return
+	shutting_down = true
+	get_tree().paused = true
+	music_toggle.disabled = true
+	if is_instance_valid(music):
+		music.free()
+	# The first scene delta includes synchronous startup; use real mixer time.
+	var deadline := Time.get_ticks_msec() + 100
+	while Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
+	get_tree().quit(exit_code)
 
 func _restore_keyboard_focus(invoker: WeakRef) -> void:
 	for child in get_children():
@@ -1123,7 +1166,7 @@ func _process(delta: float) -> void:
 		city.rotation.y += delta * 0.025
 
 func _credits() -> void:
-	var text := "THE CHAIR / FEDERAL RESERVE POLICY LAB\n\nOriginal game and procedural Blender city © 2026 Jared Bland.\nSystem fonts are supplied by the operating system and are not redistributed.\n\nGODOT ENGINE\n" + Engine.get_license_text()
+	var text := "THE CHAIR / FEDERAL RESERVE POLICY LAB\n\n" + FileAccess.get_file_as_string("res://licenses/THE-CHAIR.txt") + "\nSoundtrack: JRB-1 (Jared Bland), generated with Suno.\nSystem fonts are supplied by the operating system and are not redistributed.\n\nGODOT ENGINE\n" + Engine.get_license_text()
 	for component in Engine.get_copyright_info():
 		text += "\n\n" + component.name + "\n"
 		for part in component.parts:

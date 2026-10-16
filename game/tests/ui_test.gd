@@ -3,7 +3,7 @@ extends SceneTree
 class RecordingQuitMain:
 	extends "res://play/main.gd"
 	var exit_requests := 0
-	func _quit_app() -> void:
+	func _quit_app(_exit_code := 0) -> void:
 		exit_requests += 1
 
 class RecordingReleaseCheck:
@@ -1756,6 +1756,47 @@ func run() -> void:
 	# before an assistive action's deferred focus request completes.
 	call_deferred("check_cancel_window", cancel_dialog)
 	await process_frame
+	var soundtrack: Variant = game.get_node_or_null("Soundtrack")
+	var music_toggle: CheckBox = game.find_child("MusicToggle", true, false) as CheckBox
+	check(soundtrack is AudioStreamPlayer and music_toggle != null, "main cockpit exposes a native soundtrack player and Music checkbox")
+	if soundtrack is AudioStreamPlayer and music_toggle != null:
+		check(soundtrack.stream is AudioStreamWAV and soundtrack.stream.get_length() > 190.0 and soundtrack.stream.loop_mode == AudioStreamWAV.LOOP_FORWARD and soundtrack.stream.loop_begin == 0 and soundtrack.stream.loop_end == roundi(soundtrack.stream.get_length() * soundtrack.stream.mix_rate), "actual JRB-1 recording loops through its complete native WAV frame range")
+		check(music_toggle.focus_mode == Control.FOCUS_ALL and game.keyboard_controls.has(music_toggle) and music_toggle.button_pressed == soundtrack.music_enabled, "Music is registered in keyboard navigation and reflects loaded preference")
+		music_toggle.button_pressed = true
+		check(soundtrack.music_enabled and soundtrack.playing and music_toggle.button_pressed, "Music keyboard fixture begins on even after a saved-off prior test")
+		var music_career_before: PackedByteArray = game.career.encode()
+		music_toggle.grab_focus()
+		var music_key := InputEventKey.new()
+		music_key.keycode = KEY_SPACE
+		music_key.pressed = true
+		game.get_window().push_input(music_key)
+		music_key = InputEventKey.new()
+		music_key.keycode = KEY_SPACE
+		music_key.pressed = false
+		game.get_window().push_input(music_key)
+		await process_frame
+		check(not soundtrack.music_enabled and not soundtrack.playing and not music_toggle.button_pressed and game.career.encode() == music_career_before, "focused Space turns music off without adopting or changing the career")
+		music_key = InputEventKey.new()
+		music_key.keycode = KEY_ENTER
+		music_key.pressed = true
+		game.get_window().push_input(music_key)
+		music_key = InputEventKey.new()
+		music_key.keycode = KEY_ENTER
+		music_key.pressed = false
+		game.get_window().push_input(music_key)
+		await process_frame
+		check(soundtrack.music_enabled and soundtrack.playing and music_toggle.button_pressed and game.career.encode() == music_career_before, "focused Return turns music on without adopting or changing the career")
+		var music_settings_path: String = soundtrack.SETTINGS_PATH
+		var music_permissions := FileAccess.get_unix_permissions(music_settings_path)
+		check(FileAccess.set_unix_permissions(music_settings_path, FileAccess.UNIX_READ_OWNER) == OK, "Music recovery fixture denies only the private preference write")
+		music_toggle.button_pressed = false
+		check(not soundtrack.playing and game.status_label.text.contains("Music off; preference not saved"), "Music reports a failed preference write while stopping playback")
+		check(FileAccess.set_unix_permissions(music_settings_path, music_permissions) == OK, "Music recovery fixture restores its private preference permissions")
+		music_toggle.button_pressed = true
+		var music_saved := ConfigFile.new()
+		check(soundtrack.playing and game.status_label.text == "Music on." and music_saved.load(music_settings_path) == OK and music_saved.get_value("audio", "music_enabled", false) == true and game.career.encode() == music_career_before, "Music successful recovery clears the stale failure and persists current playback without career mutation")
+		music_toggle.button_pressed = false
+		check(not soundtrack.playing and game.status_label.text == "Music off." and music_saved.load(music_settings_path) == OK and music_saved.get_value("audio", "music_enabled", true) == false and game.career.encode() == music_career_before, "Music remains truthful on the next successful toggle after recovery")
 	game._help()
 	await process_frame
 	var help: AcceptDialog = game.get_child(game.get_child_count() - 1)
@@ -1775,6 +1816,12 @@ func run() -> void:
 	await process_frame
 	var credits: AcceptDialog = game.get_child(game.get_child_count() - 1)
 	var notices: TextEdit = credits.get_child(0)
+	var source_license_path := ProjectSettings.globalize_path("res://../LICENSE")
+	var source_license := FileAccess.get_file_as_string(source_license_path) if FileAccess.file_exists(source_license_path) else ""
+	var packaged_license := FileAccess.get_file_as_string("res://licenses/THE-CHAIR.txt") if FileAccess.file_exists("res://licenses/THE-CHAIR.txt") else ""
+	check(source_license.contains("Copyright (c) 2026 Jared Bland. All rights reserved.") and source_license.contains("to the") and source_license.contains("intellectual-property rights subsist") and source_license.contains("personal, noncommercial use"), "project license attributes personal qualified ownership and noncommercial binary play")
+	check(not source_license.is_empty() and packaged_license == source_license, "bundled original-project license matches the authoritative repository license")
+	check(not source_license.is_empty() and notices.text.contains(source_license), "Credits displays the full original-project license alongside component notices")
 	check(notices.text.contains(Engine.get_license_text()), "canonical Credits retains the complete engine license")
 	check(notices.text.contains(Engine.get_license_info()["FTL"]), "bundled component license is preserved verbatim")
 	credits.get_ok_button().pressed.emit()
@@ -1783,6 +1830,10 @@ func run() -> void:
 	await process_frame
 	await process_frame
 	await check_unsaved_app_quit()
+	# Native audio releases stopped playbacks on its next mix, not a scene frame.
+	var audio_release_deadline := Time.get_ticks_msec() + 100
+	while Time.get_ticks_msec() < audio_release_deadline:
+		await process_frame
 	if failures == 0:
 		print("PASS: exact rate display and UI adoption path")
 	quit(1 if failures else 0)

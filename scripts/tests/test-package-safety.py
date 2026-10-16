@@ -5,6 +5,8 @@ import subprocess
 import tempfile
 
 root = Path(__file__).resolve().parents[2]
+music = (root / 'game/play/music.gd').read_text()
+assert music.index('FileAccess.set_unix_permissions(pending, permissions)') < music.index('file.store_buffer(payload)'), 'Restrict staged preference permissions before copying private data'
 baseline_marker = 'PASS: 187 release-safe checks; eight 20-quarter careers, lossless replay, main scene and city'
 if f'print("{baseline_marker}")' not in (root / 'game/play/build_check.gd').read_text():
     raise ValueError('Release fixture marker differs from the actual build-check producer')
@@ -26,6 +28,8 @@ print('PASS: Godot packager refuses existing output before export or signing')
 failures = []
 guidance_marker = 'PASS: bundled guidance continuation and comparison'
 mandate_marker = 'PASS: bundled mandate assessment and realized feedback'
+music_marker = 'PASS: persisted music off survives process relaunch'
+atomic_music_marker = 'PASS: native size-limited preference update preserves the previous file and reports failure'
 incomplete_completions = (
     ('missing mandate', 'PASS: 187 release-safe checks; eight 20-quarter careers, lossless replay, main scene and city\n' + guidance_marker + '\n'),
     ('suffixed mandate', 'PASS: 187 release-safe checks; eight 20-quarter careers, lossless replay, main scene and city\n' + guidance_marker + '\n' + mandate_marker + '; incomplete\n'),
@@ -79,6 +83,8 @@ with tempfile.TemporaryDirectory(prefix='fed-runtime-error-guards-') as director
                        + 'PASS: 187 release-safe checks; eight 20-quarter careers, lossless replay, main scene and city\n'
                        + guidance_marker + '\n'
                        + mandate_marker + '\n'
+                       + music_marker + '\n'
+                       + atomic_music_marker + '\n'
                        + 'PASS: comparison count, exact parity and paired timing fixture; synthetic output only\n')
         log.write_text(log.read_text()
                        + 'COUNTS mode=pilot attempted=7 completed=7 transitions=168 paired=3 failures=0\n'
@@ -107,6 +113,18 @@ with tempfile.TemporaryDirectory(prefix='fed-runtime-error-guards-') as director
             assert player_log.read_text() == 'preserved player crash evidence', 'packager engine file logger touched player evidence'
             if result.returncode == 0 or trace.exists():
                 failures.append(f'packager continued past {marker} before thinning/signing')
+    # A generic PASS cannot certify the child-only native I/O fault check.
+    log.write_text(log.read_text().replace(atomic_music_marker + '\n', ''))
+    environment['FED_TEST_EXIT'] = '0'
+    incomplete_atomic = subprocess.run(['bash', str(root / 'scripts/test-game.sh'), 'music_test'],
+                                       env=environment, capture_output=True, text=True)
+    assert incomplete_atomic.returncode != 0, 'music wrapper must require its atomic I/O completion marker'
+    # A generic PASS cannot certify the fresh-process music preference check.
+    log.write_text(log.read_text().replace(music_marker + '\n', ''))
+    environment['FED_TEST_EXIT'] = '0'
+    incomplete_music = subprocess.run(['bash', str(root / 'scripts/test-game.sh'), 'music_test'],
+                                      env=environment, capture_output=True, text=True)
+    assert incomplete_music.returncode != 0, 'music wrapper must require its relaunch completion marker'
     # Earlier completion markers cannot certify the bundled mandate path.
     environment['FED_TEST_EXIT'] = '0'
     for label, completion in incomplete_completions:
@@ -117,6 +135,8 @@ with tempfile.TemporaryDirectory(prefix='fed-runtime-error-guards-') as director
             failures.append(f'CI verification accepts incomplete completion: {label}')
     # A generic PASS cannot certify completion of the additional comparison fixture.
     log.write_text('PASS: isolated Godot user storage verified before fixture writes; synthetic output only\n'
+                   + music_marker + '\n'
+                   + atomic_music_marker + '\n'
                    + 'PASS: 187 release-safe checks; eight 20-quarter careers, lossless replay, main scene and city\n')
     environment['FED_TEST_EXIT'] = '0'
     incomplete = subprocess.run(['bash', str(root / 'scripts/test-game.sh')],
