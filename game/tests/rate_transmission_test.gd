@@ -41,6 +41,7 @@ func _initialize() -> void:
 	if params.has("negative_rate_efficacy_scale_pct") and state.has("stance_adequacy_score"):
 		_test_transmission(params, state)
 		_test_stance(params)
+		_test_current_credit(params)
 		if model.has_method("conditional_commitment"):
 			var announcement: Dictionary = model.step(state, policy(3.5, 3.65), {"demand_shock_pct":1.2}, params)
 			var raw: float = announcement.state.guidance_rate_pct + announcement.state.guidance_inflation_sensitivity * (announcement.state.four_quarter_inflation_pct - announcement.state.guidance_reference_inflation_pct) + announcement.state.guidance_output_gap_sensitivity * (announcement.state.output_gap_pct - announcement.state.guidance_reference_output_gap_pct)
@@ -80,6 +81,29 @@ func _test_transmission(params: Dictionary, state: Dictionary) -> void:
 		var midpoint: Dictionary = model.initial_state(params, {"r_star_pct":requested - params.inflation_target_pct}).state
 		var quoted: Dictionary = model.benchmark_policy(midpoint, params, "neutral")
 		close(quoted.policy_rate_request_pct, -3.51 if requested < 0.0 else 3.51, "benchmark half-step rounding is symmetric away from zero")
+
+func _test_current_credit(params: Dictionary) -> void:
+	var state: Dictionary = model.initial_state(params).state
+	var benchmark: Dictionary = model.benchmark_policy(state, params)
+	close(benchmark.policy_rate_request_pct, 3.5, "opening benchmark does not directly adjust for the current credit innovation")
+	var alternate := benchmark.duplicate(true)
+	alternate.policy_rate_request_pct = 2.5
+	alternate.guidance_rate_pct = 2.5
+	var shocks := {"credit_risk_innovation_pct":1.0}
+	var preserved := var_to_bytes([state, benchmark, alternate, shocks, params])
+	var baseline: Dictionary = model.step(state, benchmark, shocks, params)
+	var compensated: Dictionary = model.step(state, alternate, shocks, params)
+	check(baseline.ok and compensated.ok, "both current-credit choices are valid with identical other controls")
+	check(var_to_bytes([state, benchmark, alternate, shocks, params]) == preserved, "current-credit comparison preserves state, policies, shocks and parameters")
+	if not baseline.ok or not compensated.ok:
+		return
+	close(baseline.state.spot_financial_gap_pct, 1.0, "benchmark leaves one point of current spot restraint")
+	close(compensated.state.spot_financial_gap_pct, 0.0, "lower equal rate and guidance offset current credit restraint")
+	var adequacy: float = exp(-1.0 / params.credibility_stance_scale_pct)
+	close(baseline.state.stance_adequacy_score, adequacy, "benchmark stance score includes the current spread")
+	close(compensated.state.stance_adequacy_score, 1.0, "compensated first-step stance is adequate")
+	var credibility_delta: float = params.credibility_adjustment * 0.4 * (1.0 - adequacy)
+	close(compensated.state.credibility - baseline.state.credibility, credibility_delta, "current stance changes first-step credibility without claiming whole-career superiority")
 
 func _test_stance(params: Dictionary) -> void:
 	var neutral: Dictionary = model.initial_state(params).state

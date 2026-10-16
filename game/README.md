@@ -619,6 +619,15 @@ neutral rate and short inflation expectations. Those two inputs are not shown in
 the ordinary indicators or journal. This is a model reference, not an operational
 forecast or proof of optimal policy.
 
+The rate formula does not directly adjust for credit spreads, term premiums or
+weaker negative-rate transmission. For example, from the default neutral state
+with a current 1pp credit-risk innovation, the benchmark quotes 3.5%. With other
+controls unchanged, setting rate and guidance to 2.5% reduces first-step spot
+restraint from 1pp to 0pp and gives higher immediate credibility. This one-step
+example establishes neither optimality nor better whole-career performance.
+These coefficients are disclosed game-design assumptions, not empirical Fed
+estimates.
+
 The model benchmark rounds its requested rate and matching guidance to the 1bp quote
 grid. Workbook blank guidance follows the same benchmark. Later data changes
 the conditional implied promise, rounded to the same grid before delivery is
