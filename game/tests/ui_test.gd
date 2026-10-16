@@ -1,5 +1,7 @@
 extends SceneTree
 
+const BENCHMARK_FINANCING_LIMIT := "The rate formula does not directly adjust for credit spreads, term premiums or weaker negative-rate transmission."
+
 class RecordingQuitMain:
 	extends "res://play/main.gd"
 	var exit_requests := 0
@@ -119,6 +121,7 @@ func check_text_reports(game: Control) -> void:
 		if method == "_help":
 			var help_text: TextEdit = dialog.get_child(0)
 			check(help_text.text.contains("R model benchmark") and help_text.text.contains("full-information") and help_text.text.contains("true neutral rate") and help_text.text.contains("short inflation expectations"), "help identifies the benchmark shortcut and its model-only information assumptions")
+			check(help_text.text.contains(BENCHMARK_FINANCING_LIMIT), "help discloses the benchmark financing limitation")
 			check(help_text.text.contains("inflation reacts with a lag"), "help retains the inflation transmission lag explanation")
 			check(help_text.text.contains("2% objective and portfolio reference observations are source-backed") and help_text.text.contains("behavioral coefficients, starting conditions and shock incidence are design assumptions") and not help_text.text.contains("Only the 2% objective"), "help distinguishes source-backed portfolio observations from assumed behavior")
 		dialog.get_ok_button().pressed.emit()
@@ -503,6 +506,8 @@ func check_custom_guidance(game: Control) -> void:
 	check(benchmark_buttons.size() == 1, "the action names a staged model benchmark rather than operational staff advice")
 	if benchmark_buttons.size() == 1:
 		check(benchmark_buttons[0].tooltip_text.contains("full-information") and benchmark_buttons[0].tooltip_text.contains("true neutral rate") and benchmark_buttons[0].tooltip_text.contains("short inflation expectations"), "benchmark tooltip exposes the exact hidden inputs without adding dashboard prose")
+		check(benchmark_buttons[0].tooltip_text.contains(BENCHMARK_FINANCING_LIMIT), "benchmark tooltip discloses the financing limitation")
+		check(benchmark_buttons[0].accessibility_description.contains(BENCHMARK_FINANCING_LIMIT), "native benchmark assistive help discloses the financing limitation")
 		check(benchmark_buttons[0].accessibility_description == benchmark_buttons[0].tooltip_text, "native assistive help exposes the same benchmark assumptions as its tooltip")
 	check(game.status_label.text.contains("Full-information benchmark staged"), "keyboard and pointer staging feedback disclose the full-information assumption")
 	check(game.commitment.selected == 0 and game.assets.value == 1.25 and game.liquidity.value == 2.0, "staff selection restores its guidance rule without changing other tools")
@@ -800,6 +805,7 @@ func check_review_staff_dialog(game: Control) -> void:
 			check(dialog.title == "Your %d-quarter policy review" % game.career.decisions.size() and body.text.contains("REALIZED PATHS / Q1–Q%d" % game.career.decisions.size()), "realized staff review labels the completed interval, not a future horizon")
 			check(body.text.contains("your actual Q0 state") and body.text.contains("already occurred"), "all realized references disclose their matched starting state and completed shocks")
 			check(body.text.contains("full-information") and body.text.contains("true neutral rate") and body.text.contains("short inflation expectations") and body.text.to_lower().contains("feedback") and body.text.contains("data dependence"), "benchmark reference discloses its hidden inputs, feedback rate and data-dependent guidance")
+			check(body.text.contains(BENCHMARK_FINANCING_LIMIT), "realized benchmark reference discloses the financing limitation")
 			check(body.text.contains("holds %.2f%%" % compared.hold_rate) and body.text.contains("no new asset flows or loans"), "hold and staff references disclose passive discretionary tools")
 			check(body.text.contains("Default reinvestment and reserve maintenance stay on; sterilization stays off") and body.text.contains("Principal and short-loan repayments still settle"), "realized references disclose default switches and settlement timing")
 			check(body.text.contains("not a forecast or proof of optimal policy"), "realized staff comparison makes no forecast or optimality claim")
