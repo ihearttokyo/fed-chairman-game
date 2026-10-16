@@ -388,12 +388,27 @@ func _test_conditional_guidance() -> void:
 	if not first.ok:
 		return
 	var changed: Dictionary = first.state
+	expect_true(changed.guidance_active and changed.output_gap_pct != state.output_gap_pct, "a valid first transition activates guidance and changes observed data")
 	var revised_rate: float = changed.guidance_rate_pct \
 		+ changed.guidance_inflation_sensitivity * (changed.four_quarter_inflation_pct - changed.guidance_reference_inflation_pct) \
 		+ changed.guidance_output_gap_sensitivity * (changed.output_gap_pct - changed.guidance_reference_output_gap_pct)
 	var revised_quote: float = roundf(revised_rate / params.minimum_rate_increment_pct) * params.minimum_rate_increment_pct
+	expect_true(revised_quote != changed.policy_rate_pct, "changed data makes the prior conditional quote differ from the held rate")
+	var preserved := var_to_bytes([changed, params])
+	var hold: Dictionary = model.benchmark_policy(changed, params, "hold")
+	expect_close(hold.policy_rate_request_pct, 3.5, "hold keeps the prior nominal rate rather than delivering the conditional quote")
+	expect_close(hold.guidance_rate_pct, 3.5, "hold re-quotes the unchanged nominal rate")
+	expect_close(hold.guidance_inflation_sensitivity, 1.5, "hold retains default inflation sensitivity")
+	expect_close(hold.guidance_output_gap_sensitivity, 0.5, "hold retains default output-gap sensitivity")
+	var held: Dictionary = step(changed, hold, {}, params)
+	expect_true(held.ok, "hold remains valid after data changes")
+	if held.ok:
+		expect_close(held.state.policy_rate_pct, 3.5, "hold applies the unchanged nominal rate")
+		expect_close(held.state.guidance_followthrough_score, exp(-abs(3.5 - revised_quote) / params.credibility_followthrough_tolerance_pct), "hold follow-through scores the independently rounded prior conditional quote")
+		expect_true(held.state.guidance_followthrough_score < 1.0, "an unchanged held rate can miss its prior conditional promise")
 	var follows: Dictionary = step(changed, policy_at(revised_quote, revised_quote), {}, params)
 	var breaks: Dictionary = step(changed, policy_at(changed.guidance_rate_pct, changed.guidance_rate_pct), {}, params)
+	expect_true(var_to_bytes([changed, params]) == preserved, "hold and matched guidance paths preserve their inputs")
 	expect_true(follows.ok and breaks.ok, "conditional guidance allows both data-dependent and broken paths")
 	if follows.ok and breaks.ok:
 		expect_close(follows.state.guidance_followthrough_score, 1.0, "disclosed data revision follows conditional commitment")
@@ -405,8 +420,18 @@ func _test_benchmark_guidance_attainability() -> void:
 	var cases: Dictionary = load_scenarios().scenarios
 	for case_id in ["base", "unanchored_inflation", "lower_bound_slump"]:
 		var state: Dictionary = initial_state(params, cases[case_id].initial).state
+		var preserved := var_to_bytes([state, params])
 		for kind in ["feedback", "neutral", "hold"]:
 			var policy: Dictionary = model.benchmark_policy(state, params, kind)
+			expect_true(var_to_bytes([state, params]) == preserved, "%s %s benchmark preserves state and parameters" % [case_id, kind])
+			expect_close(policy.guidance_inflation_sensitivity, 1.5, "%s %s benchmark retains default inflation sensitivity" % [case_id, kind])
+			expect_close(policy.guidance_output_gap_sensitivity, 0.5, "%s %s benchmark retains default output-gap sensitivity" % [case_id, kind])
+			expect_close(policy.asset_flow_request_pct_initial_gdp, 0.0, "%s %s benchmark offers no asset flow" % [case_id, kind])
+			expect_close(policy.liquidity_request_pct_initial_gdp, 0.0, "%s %s benchmark offers no liquidity" % [case_id, kind])
+			if kind == "neutral" and case_id in ["base", "unanchored_inflation"]:
+				var expected: float = 6.30 if case_id == "unanchored_inflation" else 3.50
+				expect_close(policy.policy_rate_request_pct, expected, "%s neutral request uses r-star plus short inflation expectations" % case_id)
+				expect_close(policy.guidance_rate_pct, expected, "%s neutral guidance uses r-star plus short inflation expectations" % case_id)
 			var result: Dictionary = step(state, policy, {}, params)
 			expect_true(result.ok, "%s %s benchmark is valid" % [case_id, kind])
 			if not result.ok:
@@ -670,6 +695,7 @@ func _test_shipped_scenarios_and_seeded_robustness() -> void:
 	if long_recovery.ok:
 		print("LONG unanchored/feedback seed417 q96: pi=%.2f gap=%.2f u=%.2f cred=%.3f support=%.1f recovered=%s" % [long_recovery.state.four_quarter_inflation_pct, long_recovery.state.output_gap_pct, long_recovery.state.unemployment_rate_pct, long_recovery.state.credibility, long_recovery.state.public_support, long_recovery.recovered])
 	var failures_by_model: Array[String] = []
+	print("STRATEGIES hold=prior nominal rate with data-dependent guidance; unchanged rates can miss the prior conditional promise. feedback=current full-information rule; neither is optimal policy.")
 	for id in ["demand_boom", "supply_shock", "funding_stress", "unanchored_inflation"]:
 		var scenario: Dictionary = scenarios[id]
 		var stats_by_policy := {}

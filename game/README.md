@@ -230,7 +230,9 @@ episode begins at meeting 5–9, with independent onsets 8–14 quarters apart.
 It uses the existing top-50 profiles and conditional bank normalization, not
 stronger coefficients. Cadence is fictional, not calibrated crisis incidence.
 Prior model files require their matching prior app. This model saves only to
-`policy-career-v1.save`; neither previous slot is copied, migrated or overwritten.
+`policy-career-v2.save`; `policy-career-v1.save`, `career-late-compound-v1.save`
+and `career-v1.save` remain untouched, without copying, migration or fallback.
+The payload remains version 1; the distinct slot protects prior-model careers.
 
 The separate Weakly anchored inflation case preserves its original three late
 windows: demand with eligible funding, supply pressure with credit impairment,
@@ -313,10 +315,16 @@ their background shocks; it is not a forecast or the game's concealed future.
 
 Every twelve completed meetings, the review compares your decisions with two
 references from the same actual starting state and already realized shocks.
-Hold keeps the starting rate. Model benchmark applies the full-information feedback rate
-rule with matching data-dependent guidance. Both request no purchases or loans,
-reinvest principal, maintain reserves and leave sterilization off. Neither is
-an optimal-policy recommendation or a forecast.
+Rate hold keeps the starting nominal rate but announces data-dependent guidance.
+An unchanged rate can miss its prior conditional promise when conditions change.
+Model benchmark applies the full-information feedback rule with data-dependent
+guidance. Both request no purchases or loans, reinvest principal, maintain
+reserves and leave sterilization off. Neither is an optimal-policy recommendation
+or a forecast.
+
+The separate neutral helper quotes r-star plus short inflation expectations: an
+expectations-adjusted nominal short-rate reference. Credit spreads, term premiums
+and negative-rate transmission can still produce an aggregate financing gap.
 
 The report shows separate average inflation distance from 2%, employment
 shortfall and uncovered funding, plus ending credibility and public support.
@@ -563,8 +571,9 @@ rate choices and stance accounting; balance-sheet constraints remain separate.
 The suite checks 240-quarter neutral equilibrium, output/price accounting,
 delayed rate effects, separate tool channels, conditional guidance, gradual
 credibility and support changes, invalid-input rejection and reproducibility.
-It also reports 1,000 seeds across four shock cases under two benchmark policies
-for 48 quarters each. The sweep asserts numerical validity; recovery and severe
+It also reports 1,000 seeds across four shock cases under rate hold with
+data-dependent guidance and the feedback rule for 48 quarters each. The sweep
+asserts numerical validity; recovery and severe
 outcome counts remain visible rather than being forced to pass.
 
 The unanchored-inflation case is a difficult benchmark. For that case, the suite reports 48-quarter recovery counts and separately

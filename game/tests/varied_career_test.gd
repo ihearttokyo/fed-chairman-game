@@ -51,11 +51,10 @@ func run() -> void:
 	root.add_child(game)
 	await process_frame
 	check(game.career.scenario_id == "policy_career", "fresh startup selects varied default")
-	check(game.SAVE_PATH != "user://career-late-compound-v1.save" and game.SAVE_PATH != "user://career-v1.save", "new model cannot overwrite either prior save slot")
+	check(game.SAVE_PATH != "user://policy-career-v1.save" and game.SAVE_PATH != "user://career-late-compound-v1.save" and game.SAVE_PATH != "user://career-v1.save", "new model cannot overwrite any of the three prior save slots")
 	var unchanged: PackedByteArray = game.career.encode()
 	game._new_dialog()
 	check(game.scenario.get_item_metadata(game.scenario.selected) == "policy_career" and game.career.encode() == unchanged, "New defaults to variety without replacing unsaved play")
-	game.free()
 	if failures == 0:
 		print("PASS: varied default, boundary seeds, cadence, episode isolation, exact replay and new save slot")
-	quit(1 if failures else 0)
+	await game._quit_app(1 if failures else 0)
