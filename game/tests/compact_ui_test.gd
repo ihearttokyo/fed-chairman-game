@@ -78,7 +78,7 @@ func resize_snapshot(game: Control) -> PackedByteArray:
 		semantics.append([control.get_instance_id(), control.get_parent().get_instance_id(), control.accessibility_name, control.accessibility_description, control.tooltip_text, control.get_theme_font_size("font_size")])
 	var saved := FileAccess.file_exists(game.save_path)
 	return var_to_bytes([game.career.encode(), game.clean_career, game._policy(), inputs, semantics,
-		game.forecast_label.text, game.quarter_label.text, game.consequence.text, game.mandate_label.text,
+		game.forecast_label.text, game.quarter_label.text, game.consequence.text, game.mandate_label.text, game.briefing.text,
 		game.status_label.text, game.custom_guidance.visible, game.reduced_motion, game.city.rotation if game.reduced_motion else null,
 		game.career.forecast_calls, game.find_children("*", "", true, false).size(), saved, FileAccess.get_file_as_bytes(game.save_path) if saved else null])
 
@@ -261,6 +261,10 @@ func check_responsive_resize(game: Control) -> void:
 			check(game._responsive_canvas_size(Vector2i(Vector2(800, 480) * factor), factor) == Vector2i(800, 480), "native-density sizing retains logical 800x480 at " + str(factor) + "x")
 			check(game._responsive_canvas_size(Vector2i(Vector2(960, 640) * factor), factor) == Vector2i(960, 640), "native-density sizing retains logical 960x640 at " + str(factor) + "x")
 	game._advance()
+	game.career.shocks[game.career.decisions.size()].credit_risk_innovation_pct = 0.03
+	game._refresh()
+	check(game.briefing.text.contains("Credit-risk impulse +0.03 pp (spread pricing)."), "compact resize fixture retains current credit units and magnitude")
+	check(game.briefing.text.contains("Credit-risk impulse +0.03 pp (spread pricing)."), "responsive matrix begins with current credit news, not a consumed pulse")
 	game._staff_rule()
 	game.commitment.select(2)
 	game.commitment.item_selected.emit(2)
