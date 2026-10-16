@@ -32,6 +32,7 @@ jobs:
         run: |
           godot --headless --log-file "$RUNNER_TEMP/game-import-engine.log" --editor --path game --import
           scripts/test-game.sh
+          scripts/test-game.sh music_test -- --retained-wav-only
           godot --headless --log-file "$RUNNER_TEMP/game-check-engine.log" --path game --quit-after 600 -- --verify-build 2>&1 | tee "$RUNNER_TEMP/game-check.log"
           if grep -Eq 'SCRIPT ERROR:|ERROR:|FAIL:' "$RUNNER_TEMP/game-check.log"; then exit 1; fi
           grep -q 'PASS: 187 release-safe checks' "$RUNNER_TEMP/game-check.log"

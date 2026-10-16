@@ -9,6 +9,13 @@ records and license texts obtained from the running engine through
 `Engine.get_license_info()`. These runtime records are authoritative for the
 exported engine build; do not substitute a claim that the app has no dependencies.
 
+The original project and selected soundtrack are attributed to Jared Bland
+personally under the qualified noncommercial freeware terms in `LICENSE`, also
+bundled as `game/licenses/THE-CHAIR.txt`. This notice does not relicense Godot
+or its components. JRB-1 was generated with Suno; its origin and conversion are
+recorded in `ASSET_PROVENANCE.md` and `art/audio/manifest.json`. Suno software
+and services are not bundled. FFmpeg is a development-only conversion tool.
+
 Blender is an authoring tool only. Neither Blender nor its Python runtime is
 bundled in the game. Apple's signing/export command-line tools and GitHub CI
 utilities are development-only. System fonts are supplied by the operating

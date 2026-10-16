@@ -1,7 +1,9 @@
 # Clean-room release rules
 
 The game uses original implementation, copy, procedural UI and Blender art.
-Godot and its bundled components retain their licenses and notices.
+Godot and its bundled components retain their licenses and notices. The
+user-selected Suno soundtrack has separate recorded provenance and qualified
+personal ownership under `LICENSE`; it is not extracted from another game.
 
 Do not add Federal Reserve seals, Reserve Bank logos, official-looking emblems,
 photographs, copied interface layouts, extracted game assets, audio or source
