@@ -48,6 +48,55 @@ func check_reserve_recovery(game: Control) -> void:
 	if corrected.ok:
 		check(game.career.state == corrected.states[0], "reserve recovery adopts the exact corrected preview")
 
+func check_small_funding_readouts(game: Control) -> void:
+	check(game.rate.step == 0.01 and game.guidance.step == 0.01, "funding precision preserves the 1bp rate and guidance grid")
+	check(game.liquidity.step == 0.0001 and game.liquidity.custom_arrow_step == 0.25, "small lending quotes are enterable without changing convenience arrows")
+	game._start_career("base", 17)
+	for q in range(4):
+		check(game.career.advance(game.career.model.benchmark_policy(game.career.state, game.career.params, "neutral")).ok, "small-funding fixture advances the actual economy")
+	var n: float = game.career.model.nominal_gdp_ratio(game.career.state)
+	check(abs(n - 1.0) > 0.001, "small-funding fixture uses nonunit current GDP")
+	var shock: Dictionary = game.career.shocks[4]
+	shock.refinancing_need_pct_initial_gdp = 0.0
+	shock.eligible_collateral_pct_initial_gdp = 0.004 * n
+	shock.collateral_haircut_pct = 0.0
+	shock.liquidity_eligibility_pct = 100.0
+	for pair in [[0.0, "0.00"], [0.00001, "<0.0001"], [0.0001, "0.0001"], [0.004, "0.0040"], [0.01, "0.01"], [0.0123, "0.01"]]:
+		shock.funding_need_pct_initial_gdp = pair[0] * n
+		game._refresh(true)
+		var before: PackedByteArray = game.career.encode()
+		game._preview()
+		check(game.briefing.text.contains("Funding need %s (new)" % pair[1]), "dispatch distinguishes small positive funding from zero: " + str(pair[0]))
+		check(game.forecast_label.text.contains("uncovered funding %s" % pair[1]), "preview distinguishes small uncovered funding from zero: " + str(pair[0]))
+		check(game._decision_briefing().contains("Uncovered funding %s vs %s" % [pair[1], pair[1]]), "comparison preserves small funding on both paths: " + str(pair[0]))
+		check(game.career.encode() == before, "small-funding displays and comparisons remain read-only")
+	shock.funding_need_pct_initial_gdp = 0.004 * n
+	game._refresh(true)
+	game.liquidity.get_line_edit().text = "0.004"
+	game._apply_policy_inputs()
+	check(is_equal_approx(game.liquidity.value, 0.004), "typed small lending quote does not snap to zero")
+	var policy: Dictionary = game._policy()
+	check(is_equal_approx(policy.liquidity_request_pct_initial_gdp, 0.004 * n), "small quote converts current GDP exactly once")
+	var before: PackedByteArray = game.career.encode()
+	var forecast: Dictionary = game.career.forecast(policy)
+	game._preview()
+	check(forecast.ok and game.career.encode() == before, "small lending preview is feasible and read-only")
+	check(game.forecast_label.text.contains("lending 0.0040") and game.forecast_label.text.contains("uncovered funding 0.00\n"), "preview shows the accepted small loan and actual zero residual")
+	var report: String = game._decision_briefing()
+	for fragment in ["Requested lending 0.0040", "Applied lending 0.0040", "Lending value 0.0040", "Eligible local demand 0.0040", "new local lending 0.0040"]:
+		check(report.contains(fragment), "comparison retains " + fragment)
+	if forecast.ok:
+		game._advance()
+		check(game.career.state == forecast.states[0] and game.career.decisions.size() == 5, "small quote adopts the exact preview once")
+		check(game.consequence.text.contains("lent 0.0040"), "outcome retains the small loan")
+		check(game.briefing.text.contains("Last decision: lending 0.0040"), "next briefing retains the small prior loan")
+		check(not game.case_detail.text.contains("Loans 0.00%"), "ending stock does not present a small positive loan as zero")
+		game._journal()
+		var dialog: AcceptDialog = game.get_child(game.get_child_count() - 1)
+		check(dialog.get_child(0).text.contains("loans 0.0040"), "journal retains the small loan at its decision GDP")
+		dialog.get_ok_button().pressed.emit()
+		await process_frame
+
 func run() -> void:
 	var game: Control = load("res://main.tscn").instantiate()
 	root.add_child(game)
@@ -64,8 +113,7 @@ func run() -> void:
 			check(false, "cockpit exposes " + field + " as a typed keyboard control")
 			ready = false
 	if not ready:
-		game.free()
-		quit(1)
+		await game._quit_app(1)
 		return
 	for control in [game.reinvestment, game.reserve_maintenance, game.sterilization]:
 		check(control is CheckBox and control.focus_mode == Control.FOCUS_ALL and game._keyboard_focus_order().has(control), "each portfolio mode participates in the actual keyboard focus cycle")
@@ -121,8 +169,8 @@ func run() -> void:
 	check(game.career.encode() == saved, "reading balance-sheet help leaves the unsaved career intact")
 	game._start_career("base", 17)
 	check(game.reinvestment.button_pressed and game.reserve_maintenance.button_pressed and not game.sterilization.button_pressed, "explicit new-career reset restores initial portfolio defaults")
+	await check_small_funding_readouts(game)
 	await check_reserve_recovery(game)
-	game.free()
 	if failures == 0:
 		print("PASS: unrestricted current-GDP offers, keyboard portfolio modes, exact adoption and concise explanations")
-	quit(1 if failures else 0)
+	await game._quit_app(1 if failures else 0)

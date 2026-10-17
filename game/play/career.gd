@@ -72,6 +72,11 @@ func current_shock_episode() -> Dictionary:
 		return episode.phase_briefings[phase].duplicate(true)
 	return {}
 
+static func funding_amount_text(amount: float) -> String:
+	if amount > 0.0 and amount < 0.0001:
+		return "<0.0001"
+	return ("%.4f" if amount > 0.0 and amount < 0.01 else "%.2f") % amount
+
 func situation_briefing() -> String:
 	if state.is_empty():
 		return ""
@@ -102,7 +107,7 @@ func situation_briefing() -> String:
 	elif state.outstanding_liquidity_pct_initial_gdp > 0.1:
 		funding = "Funding aftermath: prior short loans mature at the next settlement."
 	if not decisions.is_empty():
-		funding += " Last decision: lending %.2f; uncovered %.2f (%% meeting GDP)." % [state.liquidity_applied_pct_initial_gdp / state.decision_nominal_gdp_ratio, state.uncovered_funding_pct_initial_gdp / state.decision_nominal_gdp_ratio]
+		funding += " Last decision: lending %s; uncovered %s (%% meeting GDP)." % [funding_amount_text(state.liquidity_applied_pct_initial_gdp / state.decision_nominal_gdp_ratio), funding_amount_text(state.uncovered_funding_pct_initial_gdp / state.decision_nominal_gdp_ratio)]
 	var text := "MARKETS / %s\nPUBLIC / %s\nFUNDING / %s" % [market, public, funding]
 	var episode := current_shock_episode()
 	if not episode.is_empty():
