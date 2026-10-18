@@ -1128,6 +1128,7 @@ func check_rate_deliberation(game: Control) -> void:
 		check(not report.contains("disclosed current shock") and not report.contains("current market inputs are disclosed"), "comparison does not claim undisplayed current inputs have been enumerated")
 		check(not report.contains("Fictional viewpoints"), "numeric alternatives do not invent committee dialogue")
 		check(report.contains("weighted memory prolongs its effect on support"), "remembered hardship can depress support after current hardship ends")
+		check(not report.contains("pricing uses all current model inputs") and report.contains("current balance-sheet, credit and neutral-rate inputs"), "financing readout does not claim demand and supply innovations enter pricing directly")
 		check(not report.contains("no extra feasible rate move"), "former zero/15-percent boundaries do not invent nominal rate limits")
 		check(game.career.encode() == preserved and game._policy() == staged, "deliberation cannot adopt or replace staged tools")
 		var future: Dictionary = game.career.shocks[game.career.decisions.size() + 1].duplicate(true)
