@@ -1,9 +1,12 @@
 """Exercise the actual offline study CLI; no game, model or participant is run."""
 import hashlib
+import contextlib
+import io
 import importlib.util
 import json
 from pathlib import Path
 import subprocess
+import stat
 import sys
 import tempfile
 from unittest.mock import patch
@@ -148,4 +151,82 @@ with tempfile.TemporaryDirectory(prefix='fed-study-byte-binding-') as temporary:
         else:
             raise AssertionError('Rating must not authenticate a different parsed choice')
     checks += 1
+# Retained study data must never enter this or another Git checkout.
+with tempfile.TemporaryDirectory(prefix='.study-boundary-fixture-', dir=ROOT) as repository_fixture:
+    parent = Path(repository_fixture).resolve()
+    with tempfile.TemporaryDirectory(prefix='fed-study-outside-') as external:
+        outside = Path(external).resolve()
+        manifest = write(outside/'manifest.json', a)
+        snapshot = outside/'snapshot.txt'; snapshot.write_text('synthetic visible information')
+        checkpoint = outside/'checkpoint.bin'; checkpoint.write_bytes(b'synthetic checkpoint')
+        for target in (parent/'inside', outside/'alias'/'inside'):
+            if target.parent == outside/'alias':
+                target.parent.symlink_to(parent, target_is_directory=True)
+            result = run('prepare', target, '--manifest', manifest, '--snapshot', snapshot, '--checkpoint', checkpoint, ok=False)
+            assert 'repository' in result.stderr and not target.exists()
+            checks += 1
+# The actual writer must sync its file AND directory before reporting success.
+with tempfile.TemporaryDirectory(prefix='fed-study-sync-') as temporary:
+    d = Path(temporary).resolve()
+    calls = []
+    original_sync = module.os.fsync
+    def traced_sync(fd):
+        info = module.os.fstat(fd)
+        calls.append(('directory' if stat.S_ISDIR(info.st_mode) else 'file', info.st_ino))
+        return original_sync(fd)
+    with patch.object(module.os, 'fsync', side_effect=traced_sync):
+        module.store(d, 'prepared', {'fixture': True}, {})
+    assert [kind for kind, _ in calls] == ['file', 'directory'], 'Sync file then its directory entry'
+    checks += 1
+with tempfile.TemporaryDirectory(prefix='fed-study-parent-sync-') as temporary:
+    d = Path(temporary).resolve()
+    manifest = write(d/'manifest.json', a)
+    snapshot = d/'snapshot.txt'; snapshot.write_text('synthetic current information')
+    checkpoint = d/'checkpoint.bin'; checkpoint.write_bytes(b'synthetic checkpoint')
+    calls.clear()
+    with patch.object(module.os, 'fsync', side_effect=traced_sync):
+        module.prepare(Namespace(manifest=manifest, snapshot=snapshot, checkpoint=checkpoint, study=d/'study'))
+    assert [kind for kind, _ in calls] == ['file', 'directory', 'directory']
+    assert calls[-1][1] == d.stat().st_ino, 'New study directory entry must also be synced in its parent'
+    checks += 2
+# Other checkouts need the same guard, including Git's worktree-file marker.
+for marker in ('directory', 'worktree_file'):
+    with tempfile.TemporaryDirectory(prefix='fed-other-repository-') as temporary:
+        d = Path(temporary).resolve()
+        checkout = d/'checkout'; checkout.mkdir()
+        if marker == 'directory':
+            (checkout/'.git').mkdir()
+        else:
+            (checkout/'.git').write_text('gitdir: /synthetic/retained-worktree-metadata')
+        manifest = write(d/'manifest.json', a)
+        snapshot = d/'snapshot.txt'; snapshot.write_text('synthetic visible information')
+        checkpoint = d/'checkpoint.bin'; checkpoint.write_bytes(b'synthetic checkpoint')
+        result = run('prepare', checkout/'study', '--manifest', manifest, '--snapshot', snapshot, '--checkpoint', checkpoint, ok=False)
+        assert 'repository' in result.stderr and not (checkout/'study').exists()
+        checks += 1
+# A directory-sync fault must report failure and preserve the already written file.
+for fail_at in (1, 2, 3):
+    with tempfile.TemporaryDirectory(prefix='fed-study-sync-fault-') as temporary:
+        d = Path(temporary).resolve()
+        manifest = write(d/'manifest.json', a)
+        snapshot = d/'snapshot.txt'; snapshot.write_text('synthetic visible information')
+        checkpoint = d/'checkpoint.bin'; checkpoint.write_bytes(b'synthetic checkpoint')
+        calls.clear()
+        def failing_directory_sync(fd):
+            calls.append(fd)
+            if len(calls) == fail_at:
+                assert stat.S_ISDIR(module.os.fstat(fd).st_mode) == (fail_at > 1)
+                raise OSError('injected directory-sync failure')
+            return original_sync(fd)
+        argv = ['gameplay-study.py', 'prepare', str(d/'study'), '--manifest', str(manifest),
+                '--snapshot', str(snapshot), '--checkpoint', str(checkpoint)]
+        output, errors = io.StringIO(), io.StringIO()
+        with patch.object(module.sys, 'argv', argv), patch.object(module.os, 'fsync', side_effect=failing_directory_sync), contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+            code = module.main()
+        assert code == 1 and not output.getvalue() and 'injected directory-sync failure' in errors.getvalue()
+        retained = (d/'study/prepared.json').read_bytes()
+        assert retained
+        run('prepare', d/'study', '--manifest', manifest, '--snapshot', snapshot, '--checkpoint', checkpoint, ok=False)
+        assert (d/'study/prepared.json').read_bytes() == retained
+        checks += 3
 print(f'PASS: {checks} study checks (real CLI paths and deterministic inter-read fixtures); synthetic records only')

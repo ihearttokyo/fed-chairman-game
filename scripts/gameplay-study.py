@@ -11,6 +11,7 @@ import sys
 
 STAGES = ('prepared', 'choice', 'rating1', 'rating2', 'reveal', 'feedback')
 MAX_BYTES = 16 * 1024 * 1024
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def data(path):
@@ -67,6 +68,14 @@ def valid_record(stage, record):
     return False
 
 
+def sync_directory(path):
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
 def store(study, stage, record, previous):
     envelope = {'schema': 'fed-study-record-v1', 'stage': stage, 'record': record,
                 'previous': previous, 'utc': datetime.now(timezone.utc).isoformat()}
@@ -77,6 +86,7 @@ def store(study, stage, record, previous):
         stream.write(payload)
         stream.flush()
         os.fsync(stream.fileno())
+    sync_directory(study)
 
 
 def state(study):
@@ -128,6 +138,7 @@ def prepare(args):
               for key, path in (('manifest', args.manifest), ('snapshot', args.snapshot), ('checkpoint', args.checkpoint))}
     args.study.mkdir(mode=0o700, parents=False, exist_ok=False)
     store(args.study, 'prepared', {'manifest': manifest, 'inputs': inputs}, {})
+    sync_directory(args.study.parent)
 
 
 def main():
@@ -143,6 +154,9 @@ def main():
     try:
         if not args.study.is_absolute():
             raise ValueError('Use an absolute, new private study directory')
+        args.study = args.study.resolve()
+        if args.study.is_relative_to(ROOT) or any((parent / '.git').exists() for parent in (args.study, *args.study.parents)):
+            raise ValueError('Study data must stay outside every repository checkout')
         if args.action == 'prepare':
             if any(value is None for value in (args.manifest, args.snapshot, args.checkpoint)):
                 raise ValueError('Preparation needs manifest, snapshot and checkpoint')
