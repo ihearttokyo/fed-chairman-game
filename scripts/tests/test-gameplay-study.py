@@ -9,6 +9,8 @@ import subprocess
 import stat
 import sys
 import tempfile
+import uuid
+from types import SimpleNamespace
 from unittest.mock import patch
 from argparse import Namespace
 
@@ -152,19 +154,17 @@ with tempfile.TemporaryDirectory(prefix='fed-study-byte-binding-') as temporary:
             raise AssertionError('Rating must not authenticate a different parsed choice')
     checks += 1
 # Retained study data must never enter this or another Git checkout.
-with tempfile.TemporaryDirectory(prefix='.study-boundary-fixture-', dir=ROOT) as repository_fixture:
-    parent = Path(repository_fixture).resolve()
-    with tempfile.TemporaryDirectory(prefix='fed-study-outside-') as external:
-        outside = Path(external).resolve()
-        manifest = write(outside/'manifest.json', a)
-        snapshot = outside/'snapshot.txt'; snapshot.write_text('synthetic visible information')
-        checkpoint = outside/'checkpoint.bin'; checkpoint.write_bytes(b'synthetic checkpoint')
-        for target in (parent/'inside', outside/'alias'/'inside'):
-            if target.parent == outside/'alias':
-                target.parent.symlink_to(parent, target_is_directory=True)
-            result = run('prepare', target, '--manifest', manifest, '--snapshot', snapshot, '--checkpoint', checkpoint, ok=False)
-            assert 'repository' in result.stderr and not target.exists()
-            checks += 1
+with tempfile.TemporaryDirectory(prefix='fed-study-outside-') as external:
+    outside = Path(external).resolve()
+    manifest = write(outside/'manifest.json', a)
+    snapshot = outside/'snapshot.txt'; snapshot.write_text('synthetic visible information')
+    checkpoint = outside/'checkpoint.bin'; checkpoint.write_bytes(b'synthetic checkpoint')
+    alias = outside/'alias'; alias.symlink_to(ROOT, target_is_directory=True)
+    name = '.study-boundary-' + uuid.uuid4().hex
+    for target in (ROOT/name, alias/name):
+        result = run('prepare', target, '--manifest', manifest, '--snapshot', snapshot, '--checkpoint', checkpoint, ok=False)
+        assert 'repository' in result.stderr and not target.exists()
+        checks += 1
 # The actual writer must sync its file AND directory before reporting success.
 with tempfile.TemporaryDirectory(prefix='fed-study-sync-') as temporary:
     d = Path(temporary).resolve()
@@ -229,4 +229,52 @@ for fail_at in (1, 2, 3):
         run('prepare', d/'study', '--manifest', manifest, '--snapshot', snapshot, '--checkpoint', checkpoint, ok=False)
         assert (d/'study/prepared.json').read_bytes() == retained
         checks += 3
+# macOS needs its stronger drive flush after file and directory metadata sync.
+for preparing in (False, True):
+    with tempfile.TemporaryDirectory(prefix='fed-study-fullsync-') as temporary:
+        d = Path(temporary).resolve()
+        events = []
+        def ordered_sync(fd):
+            events.append('directory' if stat.S_ISDIR(module.os.fstat(fd).st_mode) else 'file')
+            return original_sync(fd)
+        def full_sync(fd, operation):
+            assert operation == 51 and stat.S_ISREG(module.os.fstat(fd).st_mode)
+            events.append('fullsync')
+            return 0
+        adapter = SimpleNamespace(F_FULLFSYNC=51, fcntl=full_sync)
+        with patch.object(module.sys, 'platform', 'darwin'), patch.dict(module.__dict__, {'fcntl': adapter}), patch.object(module.os, 'fsync', side_effect=ordered_sync):
+            if preparing:
+                manifest = write(d/'manifest.json', a)
+                snapshot = d/'snapshot.txt'; snapshot.write_text('synthetic visible information')
+                checkpoint = d/'checkpoint.bin'; checkpoint.write_bytes(b'synthetic checkpoint')
+                module.prepare(Namespace(manifest=manifest, snapshot=snapshot, checkpoint=checkpoint, study=d/'study'))
+            else:
+                module.store(d, 'prepared', {'fixture': True}, {})
+        assert events == ['file', 'directory'] + (['directory'] if preparing else []) + ['fullsync'], 'macOS full flush must follow all metadata syncs'
+        checks += 1
+with tempfile.TemporaryDirectory(prefix='fed-study-posix-sync-') as temporary:
+    d = Path(temporary).resolve()
+    def unexpected_fullsync(*_args):
+        raise AssertionError('Non-macOS host must not call the macOS-only primitive')
+    with patch.object(module.sys, 'platform', 'linux'), patch.dict(module.__dict__, {'fcntl': SimpleNamespace(F_FULLFSYNC=51, fcntl=unexpected_fullsync)}):
+        module.store(d, 'prepared', {'fixture': True}, {})
+    assert (d/'prepared.json').is_file()
+    checks += 1
+with tempfile.TemporaryDirectory(prefix='fed-study-fullsync-fault-') as temporary:
+    d = Path(temporary).resolve()
+    manifest = write(d/'manifest.json', a)
+    snapshot = d/'snapshot.txt'; snapshot.write_text('synthetic visible information')
+    checkpoint = d/'checkpoint.bin'; checkpoint.write_bytes(b'synthetic checkpoint')
+    def rejected_fullsync(*_args):
+        raise OSError('injected full-sync failure')
+    argv = ['gameplay-study.py', 'prepare', str(d/'study'), '--manifest', str(manifest),
+            '--snapshot', str(snapshot), '--checkpoint', str(checkpoint)]
+    output, errors = io.StringIO(), io.StringIO()
+    with patch.object(module.sys, 'platform', 'darwin'), patch.object(module.sys, 'argv', argv), patch.dict(module.__dict__, {'fcntl': SimpleNamespace(F_FULLFSYNC=51, fcntl=rejected_fullsync)}), contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+        code = module.main()
+    assert code == 1 and not output.getvalue() and 'injected full-sync failure' in errors.getvalue()
+    retained = (d/'study/prepared.json').read_bytes()
+    run('prepare', d/'study', '--manifest', manifest, '--snapshot', snapshot, '--checkpoint', checkpoint, ok=False)
+    assert (d/'study/prepared.json').read_bytes() == retained
+    checks += 2
 print(f'PASS: {checks} study checks (real CLI paths and deterministic inter-read fixtures); synthetic records only')
