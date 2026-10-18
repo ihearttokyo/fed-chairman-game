@@ -278,8 +278,8 @@ Current dispatch uses only the current entry in an accepted concept's
 `phase_briefings`: its phase-local title and policy dilemma. Each authored phase
 describes current or already observed signals, never a future pulse, remaining
 duration or next episode. Research titles, mechanisms and full dilemmas remain
-available for offline education, outside live dispatch. Previews use only the
-disclosed current shock.
+available for offline education, outside live dispatch. Previews use the full current shock dictionary, not just its dispatch summary,
+then no new shocks.
 Private bank/deposit normalization is relief relative to continuing stress, not
 an unconditional negative-risk impulse: old impairment and loan repayment remain.
 The catalogue is fingerprinted; incompatible saves and altered context reject
@@ -774,14 +774,13 @@ path, nearby tighter and gentler applied rates, and rate continuity while keepin
 all other staged tools and the new guidance quote unchanged. Nearby choices use
 the existing 0.25-point arrow convenience, without a nominal rate or ramp cap.
 Unavailable numerical paths remain explicit rather than being silently clipped.
-Each path uses the disclosed current shock, then no future shocks and its own
-applied-rate hold. The report shows actual Q+8 inflation, unemployment, credibility
+Each path uses all current model inputs; the dispatch is a summary. It then
+assumes no new shocks and holds its own applied rate. The report shows actual Q+8 inflation, unemployment, credibility
 and public support without choosing a winner or changing your staged decision.
 
-These are fictional viewpoints, not actual officials, votes or policy advice.
-The [Board's FOMC overview](https://www.federalreserve.gov/monetarypolicy/fomc.htm)
-describes committee assessment of economic conditions, policy options and risks;
-it supplies no calibrated disagreement or voting coefficients for this game.
+See the [Board's FOMC overview](https://www.federalreserve.gov/monetarypolicy/fomc.htm)
+for actual committee assessment; the game compares numerical alternatives
+without simulating votes.
 Quarterly turns aggregate time rather than reproduce the real eight regularly
 scheduled annual meetings. No AI, connector or network call runs during play.
 
