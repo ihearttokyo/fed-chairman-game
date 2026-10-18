@@ -421,4 +421,39 @@ with tempfile.TemporaryDirectory(prefix='fed-study-prepare-size-') as temporary:
             raise AssertionError('Valid compact manifest must not create an unreadable prepared envelope')
     assert (d/'study').is_dir() and list((d/'study').iterdir()) == []
     checks += 2
+# Stale concurrent state must not poison a successfully published winner.
+with tempfile.TemporaryDirectory(prefix='fed-study-stage-collision-') as temporary:
+    d = Path(temporary).resolve()
+    manifest = write(d/'manifest.json', a)
+    snapshot = d/'snapshot.txt'; snapshot.write_text('synthetic current information')
+    checkpoint = d/'checkpoint.bin'; checkpoint.write_bytes(b'synthetic checkpoint')
+    study = d/'study'
+    module.prepare(Namespace(manifest=manifest, snapshot=snapshot, checkpoint=checkpoint, study=study))
+    _, stale_previous = module.state(study)
+    selected = {'plan': 0, 'current_signal': 'winner', 'expected_effect': 'fixture', 'reversal_condition': 'fixture'}
+    module.store(study, 'choice', selected, stale_previous)
+    winner = (study/'choice.json').read_bytes()
+    try:
+        module.store(study, 'choice', dict(selected,plan=7), stale_previous)
+    except FileExistsError:
+        pass
+    else:
+        raise AssertionError('Concurrent stale writer must not replace the winner')
+    assert (study/'choice.json').read_bytes() == winner
+    assert not (study/'.incomplete').exists(), 'Losing exclusive publication must release only its own marker'
+    status = json.loads(run('status', study).stdout)
+    assert status['stages'] == ['prepared','choice']
+    rating = write(d/'rating.json', {'rater': 'next', 'signal': True, 'channel': True, 'reversal': True, 'reason': 'fixture'})
+    run('rate', study, '--slot', '1', '--record', rating)
+    _, previous = module.state(study)
+    (study/'.incomplete').write_bytes(b'another active writer')
+    try:
+        module.store(study, 'rating2', {}, previous)
+    except FileExistsError:
+        pass
+    else:
+        raise AssertionError('A marker owned by another writer must refuse entry')
+    assert (study/'.incomplete').read_bytes() == b'another active writer'
+    assert not (study/'rating2.json').exists()
+    checks += 5
 print(f'PASS: {checks} study checks (real CLI paths and deterministic inter-read fixtures); synthetic records only')

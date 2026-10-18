@@ -103,7 +103,12 @@ def store(study, stage, record, previous, *, sync_parent=False):
     with pending.open('xb') as marker:
         sync_record(marker, study, sync_parent=sync_parent)
     # Exclusive creation keeps retries from replacing a choice or partial write.
-    fd = os.open(study / (stage + '.json'), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o400)
+    try:
+        fd = os.open(study / (stage + '.json'), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o400)
+    except FileExistsError:
+        # Another completed writer won after our state read; preserve that trial.
+        pending.unlink()
+        raise
     with os.fdopen(fd, 'wb') as stream:
         stream.write(payload)
         sync_record(stream, study)

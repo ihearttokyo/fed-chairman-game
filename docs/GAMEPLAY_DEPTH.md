@@ -72,7 +72,9 @@ Run with `python3 -B scripts/gameplay-study.py ACTION /absolute/new-study`:
 | `status` | Inspect recorded stages, rater agreement and unverified evidence categories |
 
 Every stage binds all preceding records. New files use exclusive creation and
-read-only permissions; retries never replace a choice or a partial record.
+read-only permissions; retries never replace a choice or a partial record. A
+stale concurrent writer that loses exclusive stage creation releases its own
+marker without changing the winning record.
 Stage files and directory entries are synced before success is reported; a sync
 failure is reported without replacing the retained record. An `.incomplete` marker
 is synced, including its directory entry, before the stage is created. Failed or
