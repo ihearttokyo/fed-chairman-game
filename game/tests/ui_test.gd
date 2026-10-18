@@ -1569,13 +1569,28 @@ func run() -> void:
 	check_city_density(game)
 	if city_viewports.size() == 1:
 		check_city_framing(game, city_viewports[0])
+		var original_size := root.size
+		var density := maxf(1.0, DisplayServer.screen_get_scale(root.current_screen))
+		var body: Container = game.charts[0].get_parent().get_parent().get_parent()
+		var body_breakpoint := ceili(body.get_child(0).get_combined_minimum_size().x + body.get_child(1).get_combined_minimum_size().x + body.get_theme_constant("separation") + 48 + game.cockpit_scroll.get_v_scroll_bar().get_combined_minimum_size().x + game.overflow_scroll.get_v_scroll_bar().get_combined_minimum_size().x)
+		for logical in [Vector2i(1306, 903), Vector2i(800, 480), Vector2i(960, 640), Vector2i(body_breakpoint, 700)]:
+			root.size = Vector2i((Vector2(logical) * density).round())
+			for frame in range(6):
+				await process_frame
+			check_city_framing(game, city_viewports[0])
+		root.size = original_size
+		for frame in range(6):
+			await process_frame
 		await check_city_redraw(game, city_viewports[0])
 	if OS.get_cmdline_user_args().has("--city-only"):
 		if failures == 0:
 			print("PASS: bounded physical-density native miniature and redraw lifecycle")
 		game.free()
 		root.size_changed.emit()
-		await process_frame
+		# Match the full-suite teardown: stopped native audio releases on its next mix.
+		var audio_release_deadline := Time.get_ticks_msec() + 100
+		while Time.get_ticks_msec() < audio_release_deadline:
+			await process_frame
 		quit(1 if failures else 0)
 		return
 	if OS.get_cmdline_user_args().has("--feedback-only"):
