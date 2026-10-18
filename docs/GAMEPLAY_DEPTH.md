@@ -51,6 +51,75 @@ that custody must remain exploratory. The development results do not pass the
 proposed progression gate or justify adopting an information delay, borrower
 mechanism, standing contract or delegation feature.
 
+## Follow-up economic prototypes
+
+The commitment-transmission prototype C360 completed 192 registered paths across
+16 authored settings, with 30,848 attempted and confirmed native transitions.
+None crossed its registered 0.10 percentage-point inflation/employment screen or
+produced a qualifying preference reversal. Its stability and recovery checks
+passed, but the decision-value result remained null.
+
+The subsequent Pro specification, *Fed Chairman Next Mechanism After R0/C*, has
+source-file SHA-256
+`bd24c7af43c3e7dff182ff2225e5bf3c7c435f8d087c6c2dd548b75811e38453`.
+Its T412 prototype separates short-rate restraint from private interest payments.
+Four interest-only notes reset on a twelve-quarter calendar. Two books share the
+same total principal and opening payment but reverse the order of inherited
+coupons. The face amount, reset calendar, consumption propensities and other
+coefficients are authored assumptions, not estimates of Federal Reserve behavior.
+
+The comparison used an active-demand context and an unanchored-inflation context,
+each with both books. Three controllers selected policy: the unchanged feedback
+rule, a twelve-quarter planner prioritizing inflation, and the same planner
+prioritizing activity. Forecasts used current information and empty future
+innovations; the evaluator retained each context's registered future shocks.
+Additional tests compared later first actions, four-meeting rate/guidance splits
+and an eight-reset announcement tactic against the unchanged engine.
+
+All 120 jobs completed: 112 forty-eight-quarter paths and eight three-quarter
+extensions, each with exact native replay. The 66,096 transitions comprise 10,800
+actual-path advances and 55,296 conditional forecast advances. Complete-path
+readers checked every retained transition. Original-engine paths and policies
+were exactly invariant to the inert book labels.
+
+The activity screen required a 0.50 percentage-point-quarter reduction in the
+first eight quarters' absolute output gaps. A safe improvement also allowed at
+most 0.05 percentage point deterioration in each registered 24- and 48-quarter
+inflation/employment endpoint. Efficient tradeoffs retained both alternatives
+when one improved activity and the other improved an endpoint materially.
+Comparisons included the complete registered set from the same starting state.
+
+| Registered question | Result |
+|---|---|
+| Material choice in both macro contexts | Failed: unanchored inflation qualified; active demand did not |
+| Controller response changes with inherited coupons | Material pair-by-book interactions; original-engine interactions exactly zero |
+| Later choices with different first actions and their own 48-quarter tails | Qualified only in the unanchored-inflation context |
+| Separate rate/guidance composition choice | No qualifying opportunity or tradeoff |
+| Four-meeting and repeated-reset pricing tactics | Each changed activity loss by less than 0.09, below the 0.50 screen |
+
+T412 therefore demonstrates a limited timing effect, not the proposed broad
+increase in gameplay depth or a second kind of decision. The original engine
+already offered an opening inflation/activity tradeoff in the unanchored context;
+that existing result cannot be credited to the new debt mechanism.
+
+Correctness checks also passed neutral 240-quarter paths, four fixed recovery
+fixtures, permanent neutral-rate/growth changes, 384 disabled-wrapper parity
+transitions and 384 complete-envelope prefix replays. Those native state
+roundtrips do not validate production Career loading or save migration.
+Peak native memory across the study was 269,336,576 bytes. Every job finished
+within 49 seconds including its independent reader. These are offline study
+costs, not interactive latency measurements.
+
+The announcement tactics reduced early payments but did not meet the material
+activity screen. They do not establish an exploitable free benefit or prove that
+pricing is sound. A one-step yield proxy still sets a twelve-quarter coupon;
+coherent multi-period pricing remains unqualified. Fixed nominal principal also
+dilutes relative to a growing economy. These limits and the failed depth tests
+keep T412 outside the playable model. Further mechanisms require a new prospective
+specification rather than retuning this experiment after its results. Human
+recognition, sustained enjoyment, workbook parity and release checks remain
+separate unfinished work.
+
 ## Offline choice records
 
 `scripts/gameplay-study.py` implements the document's missing record-ordering
