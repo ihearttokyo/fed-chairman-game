@@ -3,6 +3,7 @@
 import argparse
 from datetime import datetime, timezone
 import hashlib
+import fcntl
 import json
 import math
 import os
@@ -76,7 +77,7 @@ def sync_directory(path):
         os.close(fd)
 
 
-def store(study, stage, record, previous):
+def store(study, stage, record, previous, *, sync_parent=False):
     envelope = {'schema': 'fed-study-record-v1', 'stage': stage, 'record': record,
                 'previous': previous, 'utc': datetime.now(timezone.utc).isoformat()}
     payload = (json.dumps(envelope, indent=2, allow_nan=False) + '\n').encode()
@@ -86,7 +87,11 @@ def store(study, stage, record, previous):
         stream.write(payload)
         stream.flush()
         os.fsync(stream.fileno())
-    sync_directory(study)
+        sync_directory(study)
+        if sync_parent:
+            sync_directory(study.parent)
+        if sys.platform == "darwin":
+            fcntl.fcntl(stream.fileno(), fcntl.F_FULLFSYNC)
 
 
 def state(study):
@@ -137,8 +142,7 @@ def prepare(args):
     inputs = {key: {'path': str(Path(path).resolve()), 'sha256': hashlib.sha256(manifest_bytes).hexdigest() if key == 'manifest' else digest(path)}
               for key, path in (('manifest', args.manifest), ('snapshot', args.snapshot), ('checkpoint', args.checkpoint))}
     args.study.mkdir(mode=0o700, parents=False, exist_ok=False)
-    store(args.study, 'prepared', {'manifest': manifest, 'inputs': inputs}, {})
-    sync_directory(args.study.parent)
+    store(args.study, 'prepared', {'manifest': manifest, 'inputs': inputs}, {}, sync_parent=True)
 
 
 def main():

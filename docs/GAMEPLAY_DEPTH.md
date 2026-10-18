@@ -74,7 +74,11 @@ Run with `python3 -B scripts/gameplay-study.py ACTION /absolute/new-study`:
 Every stage binds all preceding records. New files use exclusive creation and
 read-only permissions; retries never replace a choice or a partial record.
 Stage files and directory entries are synced before success is reported; a sync
-failure is reported without replacing the retained record.
+failure is reported without replacing the retained record. On macOS, the open
+record also receives `F_FULLFSYNC` after those metadata syncs, following
+[Apple's durability guidance](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/fsync.2.html).
+Other supported POSIX hosts retain file/directory `fsync`. This is a stronger
+flush request, not a qualification under actual power loss.
 Changed bound manifests, snapshots, checkpoints, earlier chained records or a
 revealed result stop the next operation. After an interrupted write, retain that
 directory for diagnosis and start a separately identified trial; do not repair
