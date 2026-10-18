@@ -228,7 +228,9 @@ for fail_at in (1, 2, 3):
         assert retained
         run('prepare', d/'study', '--manifest', manifest, '--snapshot', snapshot, '--checkpoint', checkpoint, ok=False)
         assert (d/'study/prepared.json').read_bytes() == retained
-        checks += 3
+        blocked = run('status', d/'study', ok=False)
+        assert 'incomplete' in blocked.stderr.lower(), 'A failed sync must quarantine the retained trial'
+        checks += 4
 # macOS needs its stronger drive flush after file and directory metadata sync.
 for preparing in (False, True):
     with tempfile.TemporaryDirectory(prefix='fed-study-fullsync-') as temporary:
@@ -276,5 +278,96 @@ with tempfile.TemporaryDirectory(prefix='fed-study-fullsync-fault-') as temporar
     retained = (d/'study/prepared.json').read_bytes()
     run('prepare', d/'study', '--manifest', manifest, '--snapshot', snapshot, '--checkpoint', checkpoint, ok=False)
     assert (d/'study/prepared.json').read_bytes() == retained
+    blocked = run('status', d/'study', ok=False)
+    assert 'incomplete' in blocked.stderr.lower()
+    checks += 3
+# Canonically equivalent names cannot fill the second independent-rater slot.
+with tempfile.TemporaryDirectory(prefix='fed-study-unicode-raters-') as temporary:
+    d = Path(temporary).resolve()
+    manifest = write(d/'manifest.json', a)
+    snapshot = d/'snapshot.txt'; snapshot.write_text('synthetic current information')
+    checkpoint = d/'checkpoint.bin'; checkpoint.write_bytes(b'synthetic checkpoint')
+    study = d/'study'
+    run('prepare', study, '--manifest', manifest, '--snapshot', snapshot, '--checkpoint', checkpoint)
+    choice = write(d/'choice.json', {'plan': 0, 'current_signal': 'fixture', 'expected_effect': 'fixture', 'reversal_condition': 'fixture'})
+    run('lock', study, '--record', choice)
+    rating_value = {'rater': 'Jos\u00e9', 'signal': True, 'channel': True, 'reversal': True, 'reason': 'fixture'}
+    rating = write(d/'rating.json', rating_value)
+    run('rate', study, '--slot', '1', '--record', rating)
+    rating_value['rater'] = ' JOSE\u0301 '
+    write(rating, rating_value)
+    rejected = run('rate', study, '--slot', '2', '--record', rating, ok=False)
+    assert 'distinct rater' in rejected.stderr and not (study/'rating2.json').exists()
+    _, previous = module.state(study)
+    module.store(study, 'rating2', rating_value, previous)
+    rejected = run('status', study, ok=False)
+    assert 'distinct rater' in rejected.stderr
     checks += 2
+# Every stage remains quarantined after a post-write sync failure; a next action must fail.
+for failing_stage in module.STAGES:
+    with tempfile.TemporaryDirectory(prefix='fed-study-stage-quarantine-') as temporary:
+        d = Path(temporary).resolve()
+        manifest = write(d/'manifest.json', a)
+        snapshot = d/'snapshot.txt'; snapshot.write_text('synthetic current information')
+        checkpoint = d/'checkpoint.bin'; checkpoint.write_bytes(b'synthetic checkpoint')
+        study = d/'study'
+        module.prepare(Namespace(manifest=manifest, snapshot=snapshot, checkpoint=checkpoint, study=study))
+        records = {'choice': {'plan': 0, 'current_signal': 'fixture', 'expected_effect': 'fixture', 'reversal_condition': 'fixture'},
+            'rating1': {'rater': 'first', 'signal': True, 'channel': True, 'reversal': True, 'reason': 'fixture'},
+            'rating2': {'rater': 'second', 'signal': True, 'channel': True, 'reversal': True, 'reason': 'fixture'},
+            'reveal': {'path': str(snapshot), 'sha256': module.digest(snapshot)},
+            'feedback': {'agency': 1, 'comprehensibility': 1, 'repetition': 1, 'confusion': 1, 'arithmetic_seconds': 0, 'continue_playing': False}}
+        if failing_stage == 'prepared':
+            # A marker alone models interruption before the first envelope is created.
+            (study/'.incomplete').touch()
+        else:
+            for stage in module.STAGES[1:]:
+                _, previous = module.state(study)
+                if stage == failing_stage:
+                    with patch.object(module.os, 'fsync', side_effect=OSError('stage-sync failure')):
+                        try:
+                            module.store(study, stage, records[stage], previous)
+                        except OSError:
+                            pass
+                        else:
+                            raise AssertionError('Injected sync failure must propagate')
+                    assert (study/(stage+'.json')).is_file()
+                    break
+                module.store(study, stage, records[stage], previous)
+        blocked = run('status', study, ok=False)
+        assert 'incomplete' in blocked.stderr.lower()
+        blocked = run('reveal', study, '--record', snapshot, ok=False)
+        assert 'incomplete' in blocked.stderr.lower() and (study/'.incomplete').exists()
+        checks += 2
+# Stored names are normalized too, even when no subsequent hash binding exists yet.
+assert module.rater_id('Jos\u00e9') == module.rater_id(' JOSE\u0301 ')
+checks += 1
+# A reader must not accept a concurrently published envelope whose sync failed.
+with tempfile.TemporaryDirectory(prefix='fed-study-concurrent-sync-') as temporary:
+    d = Path(temporary).resolve()
+    manifest = write(d/'manifest.json', a)
+    snapshot = d/'snapshot.txt'; snapshot.write_text('synthetic current information')
+    checkpoint = d/'checkpoint.bin'; checkpoint.write_bytes(b'synthetic checkpoint')
+    study = d/'study'
+    module.prepare(Namespace(manifest=manifest, snapshot=snapshot, checkpoint=checkpoint, study=study))
+    records['reveal'] = {'path': str(snapshot), 'sha256': module.digest(snapshot)}
+    for stage in module.STAGES[1:]:
+        _, previous = module.state(study)
+        module.store(study, stage, records[stage], previous)
+    original_data = module.data
+    def publish_failed_marker(path):
+        payload = original_data(path)
+        if Path(path) == study/'feedback.json':
+            (study/'.incomplete').touch(exist_ok=False)
+        return payload
+    with patch.object(module, 'data', side_effect=publish_failed_marker):
+        try:
+            module.state(study)
+        except ValueError as error:
+            assert 'incomplete' in str(error).lower()
+        else:
+            raise AssertionError('Concurrent failed write must invalidate this read')
+    checks += 1
+assert module.rater_id('\u03b1\u0345\u0301') == module.rater_id('\u03b1\u0301\u0345'), 'Normalize canonical order before casefold'
+checks += 1
 print(f'PASS: {checks} study checks (real CLI paths and deterministic inter-read fixtures); synthetic records only')

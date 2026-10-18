@@ -9,6 +9,7 @@ import math
 import os
 from pathlib import Path
 import sys
+import unicodedata
 
 STAGES = ('prepared', 'choice', 'rating1', 'rating2', 'reveal', 'feedback')
 MAX_BYTES = 16 * 1024 * 1024
@@ -43,6 +44,10 @@ def read_json(path):
 
 def text(value):
     return isinstance(value, str) and bool(value.strip()) and len(value) <= 4000
+
+
+def rater_id(value):
+    return unicodedata.normalize('NFC', unicodedata.normalize('NFC', value.strip()).casefold())
 
 
 def sha(value):
@@ -81,6 +86,10 @@ def store(study, stage, record, previous, *, sync_parent=False):
     envelope = {'schema': 'fed-study-record-v1', 'stage': stage, 'record': record,
                 'previous': previous, 'utc': datetime.now(timezone.utc).isoformat()}
     payload = (json.dumps(envelope, indent=2, allow_nan=False) + '\n').encode()
+    # Keep failed or interrupted writes quarantined, including fully written envelopes.
+    pending = study / '.incomplete'
+    with pending.open('xb'):
+        pass
     # Exclusive creation keeps retries from replacing a choice or partial write.
     fd = os.open(study / (stage + '.json'), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o400)
     with os.fdopen(fd, 'wb') as stream:
@@ -92,9 +101,12 @@ def store(study, stage, record, previous, *, sync_parent=False):
             sync_directory(study.parent)
         if sys.platform == "darwin":
             fcntl.fcntl(stream.fileno(), fcntl.F_FULLFSYNC)
+    pending.unlink()
 
 
 def state(study):
+    if (study / '.incomplete').exists():
+        raise ValueError('Incomplete study write; retain this trial and start a new one')
     records, previous = {}, {}
     gap = False
     for stage in STAGES:
@@ -123,8 +135,10 @@ def state(study):
         previous[stage + '.json'] = hashlib.sha256(payload).hexdigest()
     if not records:
         raise ValueError('Study is not prepared')
-    if 'rating2' in records and records['rating1']['rater'].strip().casefold() == records['rating2']['rater'].strip().casefold():
+    if 'rating2' in records and rater_id(records['rating1']['rater']) == rater_id(records['rating2']['rater']):
         raise ValueError('Two distinct rater identities are required')
+    if (study / '.incomplete').exists():
+        raise ValueError('Incomplete study write; retain this trial and start a new one')
     return records, previous
 
 
@@ -187,7 +201,7 @@ def main():
                 record = read_json(args.record)
                 if not valid_record(stage, record):
                     raise ValueError('Invalid ' + stage + ' record')
-                if stage == 'rating2' and record['rater'].strip().casefold() == records['rating1']['rater'].strip().casefold():
+                if stage == 'rating2' and rater_id(record['rater']) == rater_id(records['rating1']['rater']):
                     raise ValueError('Two distinct rater identities are required')
             store(args.study, stage, record, previous)
         print(json.dumps({'recorded': args.action, 'study': str(args.study)}))
