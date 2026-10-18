@@ -4,6 +4,8 @@ const Career = preload("res://play/career.gd")
 const Chart = preload("res://play/history_chart.gd")
 const ReportDialog = preload("res://play/report_dialog.gd")
 const Music = preload("res://play/music.gd")
+const RoutineFollowUp = preload("res://play/routine_follow_up.gd")
+const TransitionExplanation = preload("res://play/transition_explanation.gd")
 const SAVE_PATH := "user://policy-career-v2.save"
 const GOLD := Color("e9b76e")
 const MINT := Color("75d4c0")
@@ -52,6 +54,13 @@ var quit_dialog: AcceptDialog
 var music: Music
 var music_toggle: CheckBox
 var shutting_down := false
+var routine := RoutineFollowUp.new()
+var follow_up_toggle: CheckBox
+var stop_follow_up: Button
+var follow_up_note: Label
+var segment_start := -1
+var adopting := false
+var last_follow_up_reasons: Array[String] = []
 
 const KEYBOARD_HELP := "Keyboard controls\nTab / Shift+Tab move forward / back through visible controls. Return or Space activates a focused button. In numeric fields, type a value and press Return to commit only that field; Up / Down use its advertised step. Arrow keys navigate open scenario or guidance menus; Return selects and Escape cancels.\n\nCharts: Left / Right inspect completed quarters; Home / End select the first / latest. Focused cockpit and reports: Page Up / Down scroll, Home / End reach the ends. Escape or modified Return closes an informational report and returns focus. Plain Return closes its text or OK button, otherwise activates the focused report control. Escape cancels replacement; Return still follows the focused confirmation control.\n\nOptional accelerators use Cmd on macOS or Ctrl elsewhere: N New, S Save, O Load, J journal, P Compare, R model benchmark, modified Return adopt one quarter. F1 opens this guide. Every command also has a Tab-accessible control; plain typing never adopts a quarter.\n\n"
 const BENCHMARK_HELP := "The full-information benchmark uses the true neutral rate, short inflation expectations, inflation and output gap from the current model state. It does not know future shocks or identify an optimal policy. The rate formula does not directly adjust for credit spreads, term premiums or weaker negative-rate transmission."
@@ -609,8 +618,14 @@ func _build_policy(parent: Node, actions: Node) -> void:
 	forecast_label.custom_minimum_size.y = 114
 	forecast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_button(actions, "Compare policy paths", _compare, KEY_P)
-	decision_button = _button(actions, "Adopt decision  →  Next quarter", _advance, KEY_ENTER)
+	var decision_controls := _vbox(actions, 4)
+	decision_button = _button(decision_controls, "Adopt decision  →  Next quarter", _advance, KEY_ENTER)
 	decision_button.custom_minimum_size = Vector2(380, 48)
+	follow_up_toggle = _portfolio_switch(decision_controls, "Include routine follow-up (4 quarters total)", false, "Adopt this decision, then allow up to three benchmark rate/guidance updates. Portfolio switches persist; new asset and loan offers reset. Funding, current news or drift returns control. Escape stops follow-up.")
+	stop_follow_up = _button(decision_controls, "Stop routine follow-up", func(): _finish_follow_up("Stopped", false, true))
+	stop_follow_up.visible = false
+	follow_up_note = _label(decision_controls, "", 11, MUTED)
+	follow_up_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var explanation := _label(box, "Preview: this decision, then hold its rate for seven more quarters. No new future shocks. This is a conditional path, not a confidence interval.", 11, MUTED)
 	explanation.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
@@ -672,6 +687,7 @@ func _guidance_controls() -> void:
 	_preview()
 
 func _start_career(case_id: String, seed_number: int) -> void:
+	_finish_follow_up("New career", false)
 	var result: Dictionary = career.start(case_id, seed_number)
 	if not result.ok:
 		status_label.text = result.error
@@ -731,31 +747,37 @@ func _refresh(reset_controls := false) -> void:
 		briefing.text += "\n\n" + career.situation_briefing()
 	briefing.accessibility_description = briefing.tooltip_text
 	if reset_controls:
-		loading_controls = true
-		for input in [rate, guidance, assets, liquidity, inflation_response, activity_response]:
-			_apply_input(input)
-		rate.value = s.policy_rate_pct
-		guidance.value = s.policy_rate_pct
-		assets.value = 0
-		liquidity.value = 0
-		var prior: Dictionary = career.decisions[-1] if not career.decisions.is_empty() else {}
-		reinvestment.button_pressed = prior.get("reinvest_principal", true)
-		reserve_maintenance.button_pressed = prior.get("maintain_ample_reserves", true)
-		sterilization.button_pressed = prior.get("sterilize_purchases", false)
-		inflation_response.value = s.guidance_inflation_sensitivity if s.guidance_active else career.params.policy_inflation_response
-		activity_response.value = s.guidance_output_gap_sensitivity if s.guidance_active else career.params.policy_output_gap_response
-		commitment.select(0)
-		if s.guidance_active:
-			if inflation_response.value == 0.0 and activity_response.value == 0.0:
-				commitment.select(1)
-			elif inflation_response.value != career.params.policy_inflation_response or activity_response.value != career.params.policy_output_gap_response:
-				commitment.select(2)
-		_guidance_controls()
-		loading_controls = false
+		_reset_policy_controls()
 	decision_button.disabled = complete
 	decision_button.text = "Career complete" if complete else "Adopt decision  →  Next quarter"
+	if follow_up_toggle != null:
+		follow_up_toggle.disabled = complete
 	_link_focus(_keyboard_focus_order())
 	_preview()
+
+func _reset_policy_controls() -> void:
+	var s: Dictionary = career.state
+	loading_controls = true
+	for input in [rate, guidance, assets, liquidity, inflation_response, activity_response]:
+		_apply_input(input)
+	rate.value = s.policy_rate_pct
+	guidance.value = s.policy_rate_pct
+	assets.value = 0
+	liquidity.value = 0
+	var prior: Dictionary = career.decisions[-1] if not career.decisions.is_empty() else {}
+	reinvestment.button_pressed = prior.get("reinvest_principal", true)
+	reserve_maintenance.button_pressed = prior.get("maintain_ample_reserves", true)
+	sterilization.button_pressed = prior.get("sterilize_purchases", false)
+	inflation_response.value = s.guidance_inflation_sensitivity if s.guidance_active else career.params.policy_inflation_response
+	activity_response.value = s.guidance_output_gap_sensitivity if s.guidance_active else career.params.policy_output_gap_response
+	commitment.select(0)
+	if s.guidance_active:
+		if inflation_response.value == 0.0 and activity_response.value == 0.0:
+			commitment.select(1)
+		elif inflation_response.value != career.params.policy_inflation_response or activity_response.value != career.params.policy_output_gap_response:
+			commitment.select(2)
+	_guidance_controls()
+	loading_controls = false
 
 func _policy_error(error: String) -> String:
 	if error == "infeasible mandatory settlement after simultaneous principal netting":
@@ -765,6 +787,12 @@ func _policy_error(error: String) -> String:
 func _preview() -> void:
 	if loading_controls or forecast_label == null or career.state.is_empty():
 		return
+	if routine.active:
+		_finish_follow_up("Policy edited", false)
+		return
+	if follow_up_note != null:
+		follow_up_note.text = "Hold-rate preview; routine follow-up updates the benchmark each quarter." if follow_up_toggle.button_pressed else ""
+		follow_up_note.visible = follow_up_toggle.button_pressed
 	if career.decisions.size() >= Career.MAX_QUARTERS:
 		forecast_label.text = "CAREER COMPLETE\nFinal outcomes at Q240. Compare paths is diagnostic only; no further decisions."
 		return
@@ -863,6 +891,7 @@ func _decision_briefing() -> String:
 	return text
 
 func _staff_rule() -> void:
+	_finish_follow_up("Benchmark requested", false)
 	var policy: Dictionary = career.model.benchmark_policy(career.state, career.params, "feedback")
 	loading_controls = true
 	_apply_input(rate)
@@ -884,14 +913,44 @@ func _change_text(change: float, decimals := 1, unit := "points") -> String:
 	return ("%+." + str(decimals) + "f " + unit) % change
 
 func _advance() -> void:
+	if adopting or shutting_down:
+		return
+	if routine.active:
+		_finish_follow_up("Stopped", false, true)
+		return
 	_apply_policy_inputs()
 	var before: Dictionary = career.state.duplicate(true)
-	var result: Dictionary = career.advance(_policy())
+	var include_follow_up := follow_up_toggle.button_pressed
+	var first := career.decisions.size()
+	var result := _commit_policy(_policy())
 	if not result.ok:
+		follow_up_toggle.set_pressed_no_signal(false)
 		status_label.text = _policy_error(result.error) + " Last valid quarter retained."
 		_preview()
 		return
 	_refresh(true)
+	_show_outcome(before)
+	if include_follow_up:
+		segment_start = first
+		var armed: Dictionary = routine.arm(career.state, career.params, career.decisions[-1], Engine.get_process_frames())
+		if armed.ok:
+			stop_follow_up.visible = true
+			status_label.text = "Routine follow-up: Q%d completed. Escape or Stop returns control." % career.state.quarter_index
+			_link_focus(_keyboard_focus_order())
+		else:
+			_finish_follow_up("Routine follow-up unavailable; decision retained.", false)
+	elif int(career.state.quarter_index) % 12 == 0:
+		_review()
+
+func _commit_policy(policy: Dictionary) -> Dictionary:
+	if adopting:
+		return {"ok": false, "error": "A decision is already being adopted."}
+	adopting = true
+	var result: Dictionary = career.advance(policy)
+	adopting = false
+	return result
+
+func _show_outcome(before: Dictionary) -> void:
 	var s: Dictionary = career.state
 	consequence.text = "Q%d OUTCOME  ·  Inflation %s; unemployment %s.\nApplied rate %.2f%%. Public support %s; credibility %s." % [s.quarter_index, _change_text(s.four_quarter_inflation_pct - before.four_quarter_inflation_pct, 2, "pp"), _change_text(s.unemployment_rate_pct - before.unemployment_rate_pct, 2, "pp"), s.policy_rate_pct, _change_text(s.public_support - before.public_support), _change_text((s.credibility - before.credibility) * 100)]
 	if s.liquidity_applied_pct_initial_gdp > 0.0 or s.uncovered_funding_pct_initial_gdp > 0.0 or s.liquidity_repayment_pct_initial_gdp > 0.0:
@@ -900,16 +959,93 @@ func _advance() -> void:
 	if before.guidance_active:
 		consequence.text += "\nPrevious promise follow-through: %.1f / 100." % (100 * s.guidance_followthrough_score)
 	status_label.text = "Quarter %d completed. Unsaved changes · %s" % [s.quarter_index, career.cases[career.scenario_id].label]
-	if int(s.quarter_index) % 12 == 0:
-		_review()
+
+func _finish_follow_up(reason: String, reset_controls := true, focus_decision := false, reasons: Array[String] = []) -> void:
+	var was_active: bool = routine.active
+	var first := segment_start
+	segment_start = -1
+	routine.stop()
+	if follow_up_toggle != null:
+		follow_up_toggle.set_pressed_no_signal(false)
+	if stop_follow_up != null:
+		stop_follow_up.visible = false
+	if not was_active and first < 0:
+		return
+	last_follow_up_reasons.assign(reasons if not reasons.is_empty() else [reason])
+	_refresh(reset_controls)
+	_show_outcome(career.history[first])
+	var explanation := TransitionExplanation.segment(career.history, career.shocks, first, career.decisions.size(), career.params)
+	consequence.text += "\n" + (explanation.text if explanation.ok else explanation.error)
+	status_label.text = "Q%d: %s. Unsaved changes." % [career.state.quarter_index, reason]
+	if int(career.state.quarter_index) / 12 > first / 12:
+		status_label.text += " Review available in Data & journal."
+	if focus_decision:
+		rate.get_line_edit().grab_focus()
+
+func _follow_up_frame() -> void:
+	if not routine.active or adopting or shutting_down:
+		return
+	for input in [rate, guidance, assets, liquidity, inflation_response, activity_response]:
+		if input.get_line_edit().text != input.get_meta("numeric_text"):
+			_finish_follow_up("Policy draft edited", false)
+			return
+	var frame := Engine.get_process_frames()
+	var next: Dictionary = routine.proposal(career.state.duplicate(true), career.current_briefing(), career.current_shock_episode(), career.params, career.decisions.size(), career.history.size(), frame)
+	if next.get("waiting", false):
+		return
+	if not next.ok or not next.reasons.is_empty():
+		var reason := "Follow-up unavailable"
+		if not next.reasons.is_empty():
+			var names := {"QUOTA_EXHAUSTED": "Four-quarter check-in", "CURRENT_PHASE": "Current event needs attention", "CURRENT_NEWS": "New economic conditions", "FUNDING_NEED": "Current funding need", "REFINANCING_NEED": "Refinancing requested", "OUTSTANDING_LOANS": "Short loans mature", "RESERVE_SCARCITY": "Reserves are scarce", "UNCOVERED_FUNDING": "Uncovered funding", "CAREER_END": "Career complete", "MALFORMED_OBSERVER": "Current information is invalid"}
+			reason = names.get(next.reasons[0], next.reasons[0].replace("_", " ").capitalize())
+		_finish_follow_up(reason, true, true, next.reasons)
+		return
+	if not routine.active or next.token.generation != routine.generation:
+		return
+	var result := _commit_policy(next.policy)
+	if not result.ok:
+		_stage_native_policy(next.policy)
+		_finish_follow_up(_policy_error(result.error), false, true)
+		return
+	if not routine.committed(frame, next.token):
+		_finish_follow_up("Follow-up stopped after adoption; scheduling changed.", true, true)
+		return
+	_reset_policy_controls()
+	status_label.text = "Routine follow-up: Q%d completed. Escape or Stop returns control." % career.state.quarter_index
+
+func _stage_native_policy(policy: Dictionary) -> void:
+	loading_controls = true
+	var n: float = career.model.nominal_gdp_ratio(career.state)
+	rate.value = policy.policy_rate_request_pct
+	guidance.value = policy.guidance_rate_pct
+	assets.value = policy.asset_flow_request_pct_initial_gdp / n
+	liquidity.value = policy.liquidity_request_pct_initial_gdp / n
+	inflation_response.value = policy.guidance_inflation_sensitivity
+	activity_response.value = policy.guidance_output_gap_sensitivity
+	commitment.select(2)
+	for pair in [[reinvestment, "reinvest_principal"], [reserve_maintenance, "maintain_ample_reserves"], [sterilization, "sterilize_purchases"]]:
+		pair[0].set_pressed_no_signal(policy[pair[1]])
+	_guidance_controls()
+	loading_controls = false
+
+func _input(event: InputEvent) -> void:
+	if not routine.active or not event is InputEventKey or not event.pressed or event.echo or event.keycode in [KEY_SHIFT, KEY_CTRL, KEY_META, KEY_ALT]:
+		return
+	var focused_adopt := get_viewport().gui_get_focus_owner() in [decision_button, stop_follow_up]
+	var stop_only: bool = event.keycode == KEY_ESCAPE or (event.keycode in [KEY_ENTER, KEY_KP_ENTER] and (event.is_command_or_control_pressed() or focused_adopt)) or (event.keycode == KEY_SPACE and focused_adopt)
+	_finish_follow_up("Stopped for input", false, stop_only)
+	if stop_only:
+		get_viewport().set_input_as_handled()
 
 func _save() -> void:
+	_finish_follow_up("Save requested", false)
 	var result: Dictionary = career.save_to(save_path)
 	if result.ok:
 		clean_career = career.encode()
 	status_label.text = "Saved quarter %d. Policy-career slot updated; older saves untouched." % career.state.quarter_index if result.ok else result.error
 
 func _load() -> void:
+	_finish_follow_up("Load requested", false)
 	var dialog := AcceptDialog.new()
 	dialog.title = "Load saved career"
 	var cancel := dialog.add_button("Cancel", true)
@@ -927,6 +1063,7 @@ func _load() -> void:
 	_link_focus([cancel, dialog.get_ok_button()])
 
 func _request_quit() -> void:
+	_finish_follow_up("Quit requested", false)
 	if shutting_down:
 		return
 	if is_instance_valid(quit_dialog):
@@ -992,6 +1129,7 @@ func _fit_report(dialog: Window, desired_size := Vector2i(740, 540)) -> Vector2i
 	return fitted
 
 func _show_dialog(dialog: Window, desired_size := Vector2i(740, 540), initial: Control = null) -> void:
+	_finish_follow_up("Report opened", false)
 	var invoker: WeakRef = weakref(get_viewport().gui_get_focus_owner())
 	add_child(dialog)
 	dialog.tree_exited.connect(func(): _restore_keyboard_focus.call_deferred(invoker))
@@ -1166,6 +1304,7 @@ func _help() -> void:
 	_text_dialog("How to play", KEYBOARD_HELP + BENCHMARK_HELP + "\n\n" + _mandate_rules_text() + "\n\nYour role\nGuide a simplified FOMC policy decision. The target-rate midpoint is an abstraction; a real chair does not unilaterally set the market rate.\n\nEvery career includes seeded background disturbances. The default Varied policy career starts with weakly anchored inflation and adds recurring dilemmas after a short opening. The earlier Weakly anchored inflation challenge remains selectable. The baseline starts at equilibrium with no scheduled scenario events, but its playable path is not shock-free. The same scenario and seed reproduce the path within the same engine and model.\n\n1. Read the dispatch. It describes current conditions, not future shocks.\n2. Set the target rate. Higher real rates restrain demand gradually; inflation reacts with a lag. A supply shock can raise prices while weakening activity.\n3. Choose guidance. A firm promise is easier to understand but costly to break. Data dependence adjusts the prior promise when inflation and the output gap change.\n4. Set purchases or a runoff cap; choose reinvestment, reserve maintenance and sterilization. Offer secured liquidity for eligible funding, not insolvency.\n5. Inspect applied amounts and the eight-quarter preview, then adopt. The preview assumes no new future shocks and no later rate changes.\n\nRates and guidance\nNominal rates apply in full; quotes use 1bp increments and arrows move 25bp. Negative rates are a U.S. counterfactual. Their effective financing rate is s*tanh(i/s) below zero, unchanged above zero; the illustrative scale s=1 percentage point is not an estimated lower bound. Credibility prices the nominal guidance quote before this transmission. Deep cuts have diminishing benefits. Stance credibility compares effective restraint with an unsaturated real-gap objective: constrained best effort receives partial credit, not full adequacy. Conditional implied quotes round to the same 1bp grid before nominal promise follow-through.\n\nBalance sheet and funding\nAsset and lending offers are percent of current annual GDP, converted once at the meeting. Purchases have no invented ceiling; their duration-premium effect diminishes with scale. A negative offer caps runoff at actual maturing Treasury, MBS and bill principal; it is not a sale of unmatured holdings. With a zero or positive offer, reinvestment on rolls principal and off allows natural runoff. MBS paydown responds nonlinearly to lagged financing; Treasury timing uses a source-backed maturity ladder.\n\nMaintain ample reserves buys short bills after all other transactions to meet the disclosed reserve buffer. With maintenance off, currency growth, runoff or loan repayment can exhaust reserves. A rejected settlement preserves the last valid quarter; enable maintenance or adjust purchases/runoff. Bills are excluded from the long-duration channel but can ease funding scarcity; long runoff can coexist with unchanged total assets. Sterilized purchases retain securities and duration effects while replacing reserves with overnight reverse repo liabilities. Uptake, Treasury collateral and settlement can leave absorption incomplete. Tagged principal rolls without accumulating a new absorption target.\n\nThe liquidity offer is desired concurrent exposure, not accumulated quarterly turnover. Quotes use 0.0001% of current GDP; arrows move 0.25. Small funding amounts show four decimals; positive amounts below 0.0001 are labeled <0.0001. Prior representative overnight/short loans mature next quarter. New needs and requested refinancing are separate; eligible refinancing receives priority. Default zero refinancing assumes private repayment funds. Eligibility and haircut-adjusted collateral limit advances; excess offers do not become loans. Lending can relieve funding scarcity, not erase losses or create capital. Inspect applied amounts, RRP, reserve-maintenance purchases (RMP), and uncovered funding before adopting. Portfolio switches persist through the preview and subsequent meetings; one-time purchase and lending offers reset.\n\nRecovery channels\nDeferred demand tracks postponed durable/replacement purchases, not all lost consumption. Positive stock supports catch-up spending; negative stock means purchases were brought forward. Financing restraint delays release; growth changes the denominator, and obsolete plans decay. The stock uses percent of quarterly potential output. Short expectations gradually mix observed inflation with prior long expectations in proportion to credibility. Transitory neutral-rate deviations revert toward a structural reference; permanent structural shifts change it. These channels provide a recovery impulse, with no guaranteed return to 2% under persistent restraint.\n\nCredibility changes how markets price guidance and long-run inflation expectations. Public support remembers both inflation/deflation hardship and unemployment. It recovers gradually, without term resets or a game-over threshold.\n\nSave and Load use policy-career-v2.save only. Prior policy-career-v1.save and both original slots, career-late-compound-v1.save and career-v1.save, remain untouched. Older saves need their matching prior app/model; no copying, migration or fallback. New career and Load ask before replacing unsaved play. Tab navigates controls; charts also have exact values in Data & journal. Animation is off by default.\n\nModel limits\nEight hypothetical scenarios. Varied policy career and Recurring crises draw from 50 curated exogenous events: disasters, demand/supply changes, funding and credit losses, and favorable developments. Forty-eight independent profiles use a no-repeat bag; two private-bank normalization events require prior eligible stress. The current dispatch names an active event, never its future pulses. Private normalization cannot erase old losses or loans. The 2% objective and portfolio reference observations are source-backed; behavioral coefficients, starting conditions and shock incidence are design assumptions. This is a hypothetical economy, not an empirical forecast or financial advice. No Federal Reserve affiliation. See the repository's FED_RESEARCH and model README for primary sources and equations.")
 
 func _process(delta: float) -> void:
+	_follow_up_frame()
 	if city != null and not reduced_motion:
 		city.rotation.y += delta * 0.025
 

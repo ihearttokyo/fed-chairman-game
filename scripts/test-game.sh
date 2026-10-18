@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-tests=(music_test varied_career_test mandate_test mandate_ui_test challenge_test late_challenge_test compound_policy_test sustained_toolkit_test balance_sheet_test balance_career_test balance_ui_test recovery_test rate_transmission_test shock_catalogue_test campaign_save_slot_test career_test chart_test keyboard_test compact_ui_test ui_test comparison_performance_test music_shutdown_test)
+tests=(music_test varied_career_test mandate_test mandate_ui_test challenge_test late_challenge_test compound_policy_test sustained_toolkit_test balance_sheet_test balance_career_test balance_ui_test recovery_test rate_transmission_test shock_catalogue_test campaign_save_slot_test career_test chart_test keyboard_test compact_ui_test ui_test transition_explanation_test routine_follow_up_test routine_ui_test comparison_performance_test music_shutdown_test)
 if (( $# )); then
   case " ${tests[*]} " in
     *" $1 "*) tests=("$1"); shift ;;

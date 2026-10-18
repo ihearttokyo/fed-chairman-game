@@ -79,6 +79,22 @@ untrusted paths or symlinks. The export contains parameters, starting state,
 realized shocks, decisions and full quarterly states. Retain the realized shock
 path when reproducing a run across engine versions.
 
+## Routine follow-up candidate
+
+`Include routine follow-up (4 quarters total)` adopts the staged decision, then
+allows up to three current-state benchmark rate/guidance updates. Portfolio
+switches persist; new asset and loan offers do not. Funding, current events,
+material drift and scheduled check-in return control. Escape, Stop or an edit
+cancels follow-up. New, Load and reports never restore automatic permission.
+
+The returned gap explanation covers the completed interval, including inherited
+restraint and deferred demand. It is an equation decomposition, not an isolated
+effect of the latest rate. The existing preview holds a rate after its first
+decision; it does not forecast adaptive follow-up. Economic equations, the save
+payload and model digest are unchanged. See
+[the experiment record](../docs/GAMEPLAY_DEPTH.md) for tests and unmeasured
+learning/playability claims.
+
 ## Soundtrack and ownership
 
 Music loops JRB-1 by Jared Bland, generated with Suno. The native Music checkbox

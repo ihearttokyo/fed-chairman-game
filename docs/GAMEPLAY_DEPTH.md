@@ -120,6 +120,68 @@ specification rather than retuning this experiment after its results. Human
 recognition, sustained enjoyment, workbook parity and release checks remain
 separate unfinished work.
 
+## Optional routine follow-up candidate
+
+The completed Pro follow-up, *Fed Chairman: The Next Step After T412*, selects
+D474-A: test attendance and explanation on the unchanged original economy.
+This is not another economic-depth pass for R0, C or T.
+
+The optional control adopts the exact staged decision, then permits up to three
+benchmark follow-ups. Each uses current-state rate and matching guidance with
+default response slopes. Asset and loan offers reset to zero; all three committed
+portfolio switches persist. The controller receives detached current state,
+current shock and current phase text, never a career or future-tape accessor.
+
+Current funding, outstanding short loans, scarce reserves, named episodes,
+nonambient inputs, 0.25 pp anchor drift or a 0.25 pp promise gap return control.
+The allowance also ends after four total outcomes. Small ambient shocks alone
+do not force attendance. This deliberately offers little automation in the
+funding-stress career, whose small positive needs remain relevant.
+
+Stop, Escape, editing, reports and lifecycle commands cancel follow-up. Permission
+is transient, defaults off and is never saved. Automatic steps do not run previews
+or open periodic reviews. On return, the ordinary preview still holds a rate;
+it is not a forecast of adaptive benchmark follow-up.
+
+The completed-path explanation reconstructs changes in the output gap from
+inherited-gap decay, financial restraint, current demand, accumulated supply
+pressure and deferred-demand release. Its sums cover the same one-to-four-quarter
+interval as the displayed change. These are equation contributions, not isolated
+policy counterfactuals. Price accounting uses the prior gap and log changes;
+liquidity does not create commercial-bank equity.
+
+The first mechanical gate passed 18 native attempts: 16 confirmed transitions,
+two intentional off-grid rejections and zero unknowns. Matching ordinary and
+delegated paths agree in native state, history, policies and payload; a changed
+future shock/episode cannot affect the earlier path. Restore replays all four
+decisions. Separate pure checks cover thresholds, malformed observations,
+nonfinite computed promises, stale tokens, cancellation and hand explanations.
+
+Run the focused regressions through `scripts/test-game.sh` with
+`routine_follow_up_test`, `transition_explanation_test` or `routine_ui_test`.
+The interaction fixture disables forecasts and uses simulated input; it is not
+computer-use or accessibility evidence.
+
+The separate 32-quarter pilot completed all 480 native transitions: 384 paired
+actual outcomes and 96 restore transitions. All six ordinary/delegated pairs
+matched exactly, with no missed declared triggers. Together with Gate0, this
+registered matrix used 498 attempts, 496 confirmed transitions, two deliberate
+rejections and zero unknowns. This is not a count of all development work: UI,
+forecast, keyboard and release regressions ran separately.
+
+| Context | Routine attended / 32 | Alternative attended / 32 |
+|---|---:|---:|
+| Quiet ambient inputs | 8 | 9 |
+| Unanchored inflation | 11 | 11 |
+| Funding and impairment | 10 | 10 |
+
+Quiet routine attendance fell 75%, passing the registered 50% convenience
+threshold. The source-bound headless pilot took 3.74 seconds including process
+startup and peaked at 143,982,592 bytes RSS on the Apple Silicon host. These are
+offline test costs, not measured input latency or incremental whole-app memory.
+Human recognition and voluntary continuation remain unmeasured. No improvement
+in fun or new economic discretion is established.
+
 ## Offline choice records
 
 `scripts/gameplay-study.py` implements the document's missing record-ordering
