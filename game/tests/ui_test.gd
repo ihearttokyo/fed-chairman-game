@@ -1124,7 +1124,10 @@ func check_rate_deliberation(game: Control) -> void:
 			var path: Dictionary = selected if alternative[0] == "Selected" else game.career.forecast(other)
 			var last: Dictionary = path.states[-1]
 			check(report.contains("%s / applied %.2f%%\nQ+8 inflation %.3f%%; unemployment %.3f%%; credibility %.1f/100; support %.1f/100" % [alternative[0], path.states[0].policy_rate_pct, last.four_quarter_inflation_pct, last.unemployment_rate_pct, 100 * last.credibility, last.public_support]), "deliberation uses real unrestricted nominal forecasts with every other staged tool preserved")
-		check(report.contains("Fictional viewpoints, not votes or advice"), "deliberation labels fictional viewpoints")
+		check(report.contains("Forecasts use all current model inputs, not just the dispatch summary"), "comparison states that dispatch is a summary, not the complete forecast input set")
+		check(not report.contains("disclosed current shock") and not report.contains("current market inputs are disclosed"), "comparison does not claim undisplayed current inputs have been enumerated")
+		check(not report.contains("Fictional viewpoints"), "numeric alternatives do not invent committee dialogue")
+		check(report.contains("weighted memory prolongs its effect on support"), "remembered hardship can depress support after current hardship ends")
 		check(not report.contains("no extra feasible rate move"), "former zero/15-percent boundaries do not invent nominal rate limits")
 		check(game.career.encode() == preserved and game._policy() == staged, "deliberation cannot adopt or replace staged tools")
 		var future: Dictionary = game.career.shocks[game.career.decisions.size() + 1].duplicate(true)
