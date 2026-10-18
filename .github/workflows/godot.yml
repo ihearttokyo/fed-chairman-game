@@ -24,6 +24,7 @@ jobs:
       - name: Model and packaging safety tests
         run: |
           scripts/test-model.sh
+          python3 -B scripts/tests/test-gameplay-study.py
           python3 scripts/tests/test-package-safety.py
           python3 scripts/tests/test-workbook-safety.py
           node scripts/tests/test-workbook-validation.mjs
