@@ -66,7 +66,7 @@ Run with `python3 -B scripts/gameplay-study.py ACTION /absolute/new-study`:
 | `prepare` | `--manifest FILE --snapshot FILE --checkpoint FILE` |
 | `lock` | `--record FILE`: integer `plan` 0–7; nonempty `current_signal`, `expected_effect`, `reversal_condition` |
 | `rate --slot 1` | `--record FILE`: `rater`, Boolean `signal`, `channel`, `reversal`, and nonempty `reason` |
-| `rate --slot 2` | Same fields; a distinct identified rater |
+| `rate --slot 2` | Same fields; a distinct identified rater (Unicode-normalized name) |
 | `reveal` | `--record FILE`: the retained evaluator result, read only after choice and both ratings |
 | `feedback` | `--record FILE`: integer 1–7 `agency`, `comprehensibility`, `repetition`, `confusion`; nonnegative finite `arithmetic_seconds`; Boolean `continue_playing` |
 | `status` | Inspect recorded stages, rater agreement and unverified evidence categories |
@@ -74,7 +74,9 @@ Run with `python3 -B scripts/gameplay-study.py ACTION /absolute/new-study`:
 Every stage binds all preceding records. New files use exclusive creation and
 read-only permissions; retries never replace a choice or a partial record.
 Stage files and directory entries are synced before success is reported; a sync
-failure is reported without replacing the retained record. On macOS, the open
+failure is reported without replacing the retained record. An `.incomplete` marker
+quarantines every interrupted or failed write; later actions refuse that trial.
+The marker is removed only after all required syncs succeed. On macOS, the open
 record also receives `F_FULLFSYNC` after those metadata syncs, following
 [Apple's durability guidance](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/fsync.2.html).
 Other supported POSIX hosts retain file/directory `fsync`. This is a stronger
