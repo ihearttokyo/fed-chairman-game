@@ -611,7 +611,7 @@ func _build_policy(parent: Node, actions: Node) -> void:
 	_button(actions, "Compare policy paths", _compare, KEY_P)
 	decision_button = _button(actions, "Adopt decision  →  Next quarter", _advance, KEY_ENTER)
 	decision_button.custom_minimum_size = Vector2(380, 48)
-	var explanation := _label(box, "Preview: this decision, then hold the rate for eight quarters. No new future shocks. This is a conditional path, not a confidence interval.", 11, MUTED)
+	var explanation := _label(box, "Preview: this decision, then hold its rate for seven more quarters. No new future shocks. This is a conditional path, not a confidence interval.", 11, MUTED)
 	explanation.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
 func _policy() -> Dictionary:
@@ -778,7 +778,7 @@ func _preview() -> void:
 	if first.policy_rate_pct < 0.0:
 		rate_text += " (effective %.2f%%)" % first.effective_policy_rate_pct
 	var n: float = first.decision_nominal_gdp_ratio
-	forecast_label.text = "APPLIED NOW\n%s · assets %+.2f · lending %s\nRunoff %s · RMP %s · RRP %s\nUnsterilized %s · uncovered funding %s\n\nCONDITIONAL Q+8\nInflation %.2f%% · unemployment %.2f%% · output gap %+.2f%%" % [rate_text, first.asset_flow_applied_pct_initial_gdp / n, Career.funding_amount_text(first.liquidity_applied_pct_initial_gdp / n), Career.funding_amount_text(first.long_securities_runoff_pct_initial_gdp / n), Career.funding_amount_text(first.reserve_maintenance_purchase_pct_initial_gdp / n), Career.funding_amount_text(first.sterilization_applied_pct_initial_gdp / n), Career.funding_amount_text(first.sterilization_unfulfilled_pct_initial_gdp / n), Career.funding_amount_text(first.uncovered_funding_pct_initial_gdp / n), last.four_quarter_inflation_pct, last.unemployment_rate_pct, last.output_gap_pct]
+	forecast_label.text = "IF ADOPTED NOW\n%s · assets %+.2f · lending %s\nRunoff %s · RMP %s · RRP %s\nUnsterilized %s · uncovered funding %s\n\nCONDITIONAL Q+8\nInflation %.2f%% · unemployment %.2f%% · output gap %+.2f%%" % [rate_text, first.asset_flow_applied_pct_initial_gdp / n, Career.funding_amount_text(first.liquidity_applied_pct_initial_gdp / n), Career.funding_amount_text(first.long_securities_runoff_pct_initial_gdp / n), Career.funding_amount_text(first.reserve_maintenance_purchase_pct_initial_gdp / n), Career.funding_amount_text(first.sterilization_applied_pct_initial_gdp / n), Career.funding_amount_text(first.sterilization_unfulfilled_pct_initial_gdp / n), Career.funding_amount_text(first.uncovered_funding_pct_initial_gdp / n), last.four_quarter_inflation_pct, last.unemployment_rate_pct, last.output_gap_pct]
 
 func _decision_briefing() -> String:
 	var policy := _policy()
