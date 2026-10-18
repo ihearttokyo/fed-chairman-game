@@ -75,13 +75,17 @@ Every stage binds all preceding records. New files use exclusive creation and
 read-only permissions; retries never replace a choice or a partial record.
 Stage files and directory entries are synced before success is reported; a sync
 failure is reported without replacing the retained record. An `.incomplete` marker
-quarantines every interrupted or failed write; later actions refuse that trial.
-The marker is removed only after all required syncs succeed. On macOS, the open
+is synced, including its directory entry, before the stage is created. Failed or
+interrupted writes remain quarantined; later actions refuse that trial. The
+marker is removed only after all required syncs succeed. After power loss, its
+removal may be lost and a successful trial may be quarantined. Retain that
+evidence and start a new trial rather than infer that an ambiguous write passed. On macOS, the open
 record also receives `F_FULLFSYNC` after those metadata syncs, following
 [Apple's durability guidance](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/fsync.2.html).
 Other supported POSIX hosts retain file/directory `fsync`. This is a stronger
 flush request, not a qualification under actual power loss.
-Changed bound manifests, snapshots, checkpoints, earlier chained records or a
+Serialized records must fit the same size limit as inputs; oversized envelopes
+fail before publication. Changed bound manifests, snapshots, checkpoints, earlier chained records or a
 revealed result stop the next operation. After an interrupted write, retain that
 directory for diagnosis and start a separately identified trial; do not repair
 history by overwriting it.

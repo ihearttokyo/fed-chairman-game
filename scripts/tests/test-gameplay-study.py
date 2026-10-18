@@ -176,7 +176,7 @@ with tempfile.TemporaryDirectory(prefix='fed-study-sync-') as temporary:
         return original_sync(fd)
     with patch.object(module.os, 'fsync', side_effect=traced_sync):
         module.store(d, 'prepared', {'fixture': True}, {})
-    assert [kind for kind, _ in calls] == ['file', 'directory'], 'Sync file then its directory entry'
+    assert [kind for kind, _ in calls] == ['file', 'directory', 'file', 'directory'], 'Persist marker before syncing the stage and its directory entry'
     checks += 1
 with tempfile.TemporaryDirectory(prefix='fed-study-parent-sync-') as temporary:
     d = Path(temporary).resolve()
@@ -186,8 +186,8 @@ with tempfile.TemporaryDirectory(prefix='fed-study-parent-sync-') as temporary:
     calls.clear()
     with patch.object(module.os, 'fsync', side_effect=traced_sync):
         module.prepare(Namespace(manifest=manifest, snapshot=snapshot, checkpoint=checkpoint, study=d/'study'))
-    assert [kind for kind, _ in calls] == ['file', 'directory', 'directory']
-    assert calls[-1][1] == d.stat().st_ino, 'New study directory entry must also be synced in its parent'
+    assert [kind for kind, _ in calls] == ['file', 'directory', 'directory', 'file', 'directory']
+    assert calls[2][1] == d.stat().st_ino, 'New study directory entry must also be synced in its parent'
     checks += 2
 # Other checkouts need the same guard, including Git's worktree-file marker.
 for marker in ('directory', 'worktree_file'):
@@ -205,7 +205,7 @@ for marker in ('directory', 'worktree_file'):
         assert 'repository' in result.stderr and not (checkout/'study').exists()
         checks += 1
 # A directory-sync fault must report failure and preserve the already written file.
-for fail_at in (1, 2, 3):
+for fail_at in (1, 2, 3, 4, 5):
     with tempfile.TemporaryDirectory(prefix='fed-study-sync-fault-') as temporary:
         d = Path(temporary).resolve()
         manifest = write(d/'manifest.json', a)
@@ -215,7 +215,7 @@ for fail_at in (1, 2, 3):
         def failing_directory_sync(fd):
             calls.append(fd)
             if len(calls) == fail_at:
-                assert stat.S_ISDIR(module.os.fstat(fd).st_mode) == (fail_at > 1)
+                assert stat.S_ISDIR(module.os.fstat(fd).st_mode) == (fail_at in (2, 3, 5))
                 raise OSError('injected directory-sync failure')
             return original_sync(fd)
         argv = ['gameplay-study.py', 'prepare', str(d/'study'), '--manifest', str(manifest),
@@ -224,10 +224,11 @@ for fail_at in (1, 2, 3):
         with patch.object(module.sys, 'argv', argv), patch.object(module.os, 'fsync', side_effect=failing_directory_sync), contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
             code = module.main()
         assert code == 1 and not output.getvalue() and 'injected directory-sync failure' in errors.getvalue()
-        retained = (d/'study/prepared.json').read_bytes()
-        assert retained
+        stage_path = d/'study/prepared.json'
+        assert stage_path.exists() == (fail_at >= 4)
+        retained = stage_path.read_bytes() if stage_path.exists() else None
         run('prepare', d/'study', '--manifest', manifest, '--snapshot', snapshot, '--checkpoint', checkpoint, ok=False)
-        assert (d/'study/prepared.json').read_bytes() == retained
+        assert (stage_path.read_bytes() if stage_path.exists() else None) == retained
         blocked = run('status', d/'study', ok=False)
         assert 'incomplete' in blocked.stderr.lower(), 'A failed sync must quarantine the retained trial'
         checks += 4
@@ -252,7 +253,7 @@ for preparing in (False, True):
                 module.prepare(Namespace(manifest=manifest, snapshot=snapshot, checkpoint=checkpoint, study=d/'study'))
             else:
                 module.store(d, 'prepared', {'fixture': True}, {})
-        assert events == ['file', 'directory'] + (['directory'] if preparing else []) + ['fullsync'], 'macOS full flush must follow all metadata syncs'
+        assert events == ['file', 'directory'] + (['directory'] if preparing else []) + ['fullsync', 'file', 'directory', 'fullsync'], 'Persist marker before stage; full flush follows each metadata sync'
         checks += 1
 with tempfile.TemporaryDirectory(prefix='fed-study-posix-sync-') as temporary:
     d = Path(temporary).resolve()
@@ -262,25 +263,32 @@ with tempfile.TemporaryDirectory(prefix='fed-study-posix-sync-') as temporary:
         module.store(d, 'prepared', {'fixture': True}, {})
     assert (d/'prepared.json').is_file()
     checks += 1
-with tempfile.TemporaryDirectory(prefix='fed-study-fullsync-fault-') as temporary:
-    d = Path(temporary).resolve()
-    manifest = write(d/'manifest.json', a)
-    snapshot = d/'snapshot.txt'; snapshot.write_text('synthetic visible information')
-    checkpoint = d/'checkpoint.bin'; checkpoint.write_bytes(b'synthetic checkpoint')
-    def rejected_fullsync(*_args):
-        raise OSError('injected full-sync failure')
-    argv = ['gameplay-study.py', 'prepare', str(d/'study'), '--manifest', str(manifest),
-            '--snapshot', str(snapshot), '--checkpoint', str(checkpoint)]
-    output, errors = io.StringIO(), io.StringIO()
-    with patch.object(module.sys, 'platform', 'darwin'), patch.object(module.sys, 'argv', argv), patch.dict(module.__dict__, {'fcntl': SimpleNamespace(F_FULLFSYNC=51, fcntl=rejected_fullsync)}), contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
-        code = module.main()
-    assert code == 1 and not output.getvalue() and 'injected full-sync failure' in errors.getvalue()
-    retained = (d/'study/prepared.json').read_bytes()
-    run('prepare', d/'study', '--manifest', manifest, '--snapshot', snapshot, '--checkpoint', checkpoint, ok=False)
-    assert (d/'study/prepared.json').read_bytes() == retained
-    blocked = run('status', d/'study', ok=False)
-    assert 'incomplete' in blocked.stderr.lower()
-    checks += 3
+for failed_flush in (1, 2):
+    with tempfile.TemporaryDirectory(prefix='fed-study-fullsync-fault-') as temporary:
+        d = Path(temporary).resolve()
+        manifest = write(d/'manifest.json', a)
+        snapshot = d/'snapshot.txt'; snapshot.write_text('synthetic visible information')
+        checkpoint = d/'checkpoint.bin'; checkpoint.write_bytes(b'synthetic checkpoint')
+        flush_calls = []
+        def rejected_fullsync(*_args):
+            flush_calls.append(True)
+            if len(flush_calls) == failed_flush:
+                raise OSError('injected full-sync failure')
+            return 0
+        argv = ['gameplay-study.py', 'prepare', str(d/'study'), '--manifest', str(manifest),
+                '--snapshot', str(snapshot), '--checkpoint', str(checkpoint)]
+        output, errors = io.StringIO(), io.StringIO()
+        with patch.object(module.sys, 'platform', 'darwin'), patch.object(module.sys, 'argv', argv), patch.dict(module.__dict__, {'fcntl': SimpleNamespace(F_FULLFSYNC=51, fcntl=rejected_fullsync)}), contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+            code = module.main()
+        assert code == 1 and not output.getvalue() and 'injected full-sync failure' in errors.getvalue()
+        stage_path = d/'study/prepared.json'
+        assert stage_path.exists() == (failed_flush == 2)
+        retained = stage_path.read_bytes() if stage_path.exists() else None
+        run('prepare', d/'study', '--manifest', manifest, '--snapshot', snapshot, '--checkpoint', checkpoint, ok=False)
+        assert (stage_path.read_bytes() if stage_path.exists() else None) == retained
+        blocked = run('status', d/'study', ok=False)
+        assert 'incomplete' in blocked.stderr.lower()
+        checks += 3
 # Canonically equivalent names cannot fill the second independent-rater slot.
 with tempfile.TemporaryDirectory(prefix='fed-study-unicode-raters-') as temporary:
     d = Path(temporary).resolve()
@@ -324,7 +332,7 @@ for failing_stage in module.STAGES:
             for stage in module.STAGES[1:]:
                 _, previous = module.state(study)
                 if stage == failing_stage:
-                    with patch.object(module.os, 'fsync', side_effect=OSError('stage-sync failure')):
+                    with patch.object(module, 'sync_record', side_effect=[None, OSError('stage-sync failure')]):
                         try:
                             module.store(study, stage, records[stage], previous)
                         except OSError:
@@ -370,4 +378,47 @@ with tempfile.TemporaryDirectory(prefix='fed-study-concurrent-sync-') as tempora
     checks += 1
 assert module.rater_id('\u03b1\u0345\u0301') == module.rater_id('\u03b1\u0301\u0345'), 'Normalize canonical order before casefold'
 checks += 1
+# The marker and new study entry are durable before the payload is created.
+with tempfile.TemporaryDirectory(prefix='fed-study-publish-order-') as temporary:
+    d = Path(temporary).resolve()
+    study = d/'study'; study.mkdir()
+    events = []
+    original_open = module.os.open
+    def marker_sync(fd):
+        events.append('directory' if stat.S_ISDIR(module.os.fstat(fd).st_mode) else 'file')
+        return original_sync(fd)
+    def guarded_publish(path, flags, *args):
+        if Path(path) == study/'prepared.json' and flags & module.os.O_CREAT:
+            assert events == ['file', 'directory', 'directory'], 'Marker and parent must precede payload'
+        return original_open(path, flags, *args)
+    with patch.object(module.os, 'fsync', side_effect=marker_sync), patch.object(module.os, 'open', side_effect=guarded_publish):
+        module.store(study, 'prepared', {'fixture': True}, {}, sync_parent=True)
+    assert not (study/'.incomplete').exists()
+    checks += 2
+# A compact valid manifest can expand beyond the reader limit; it must not report success.
+with tempfile.TemporaryDirectory(prefix='fed-study-envelope-size-') as temporary:
+    d = Path(temporary).resolve()
+    with patch.object(module, 'MAX_BYTES', 100):
+        try:
+            module.store(d, 'choice', {'fixture': 'x'*80}, {})
+        except ValueError as error:
+            assert 'reader limit' in str(error)
+        else:
+            raise AssertionError('Oversized serialized envelope must fail before publication')
+    assert list(d.iterdir()) == []
+    checks += 2
+with tempfile.TemporaryDirectory(prefix='fed-study-prepare-size-') as temporary:
+    d = Path(temporary).resolve()
+    manifest = write(d/'manifest.json', a)
+    snapshot = d/'snapshot.txt'; snapshot.write_text('synthetic current information')
+    checkpoint = d/'checkpoint.bin'; checkpoint.write_bytes(b'synthetic checkpoint')
+    with patch.object(module, 'MAX_BYTES', manifest.stat().st_size + 32):
+        try:
+            module.prepare(Namespace(manifest=manifest, snapshot=snapshot, checkpoint=checkpoint, study=d/'study'))
+        except ValueError as error:
+            assert 'reader limit' in str(error)
+        else:
+            raise AssertionError('Valid compact manifest must not create an unreadable prepared envelope')
+    assert (d/'study').is_dir() and list((d/'study').iterdir()) == []
+    checks += 2
 print(f'PASS: {checks} study checks (real CLI paths and deterministic inter-read fixtures); synthetic records only')

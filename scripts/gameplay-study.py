@@ -82,25 +82,32 @@ def sync_directory(path):
         os.close(fd)
 
 
+def sync_record(stream, study, *, sync_parent=False):
+    stream.flush()
+    os.fsync(stream.fileno())
+    sync_directory(study)
+    if sync_parent:
+        sync_directory(study.parent)
+    if sys.platform == "darwin":
+        fcntl.fcntl(stream.fileno(), fcntl.F_FULLFSYNC)
+
+
 def store(study, stage, record, previous, *, sync_parent=False):
     envelope = {'schema': 'fed-study-record-v1', 'stage': stage, 'record': record,
                 'previous': previous, 'utc': datetime.now(timezone.utc).isoformat()}
     payload = (json.dumps(envelope, indent=2, allow_nan=False) + '\n').encode()
-    # Keep failed or interrupted writes quarantined, including fully written envelopes.
+    if len(payload) > MAX_BYTES:
+        raise ValueError('Serialized record exceeds reader limit')
+    # Persist quarantine before a stage can appear on disk.
     pending = study / '.incomplete'
-    with pending.open('xb'):
-        pass
+    with pending.open('xb') as marker:
+        sync_record(marker, study, sync_parent=sync_parent)
     # Exclusive creation keeps retries from replacing a choice or partial write.
     fd = os.open(study / (stage + '.json'), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o400)
     with os.fdopen(fd, 'wb') as stream:
         stream.write(payload)
-        stream.flush()
-        os.fsync(stream.fileno())
-        sync_directory(study)
-        if sync_parent:
-            sync_directory(study.parent)
-        if sys.platform == "darwin":
-            fcntl.fcntl(stream.fileno(), fcntl.F_FULLFSYNC)
+        sync_record(stream, study)
+    # A lost unlink after power failure conservatively quarantines durable evidence.
     pending.unlink()
 
 
