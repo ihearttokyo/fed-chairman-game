@@ -22,11 +22,34 @@ preference reversals in this finite menu. This is not a proof of optimal policy,
 a held-out result or evidence of enjoyable play. It does not justify making staff
 advice deliberately wrong or hiding information to manufacture difficulty.
 
-The later-career stratum, unused-seed confirmation, participant recognition and
-sustained enjoyment are unfinished. Later findings cannot rescue the opening
-result. A confirmatory executor must reuse each authenticated baseline rather
-than repeat the current per-case reconstruction: widening that runner to 624
-contexts would exceed the working document's proposed transition allowance.
+A separate known-seed-0 extension now covers all 39 registered checkpoints:
+the 32 opening checkpoints plus 32, 64, 96, 128, 160, 192 and 216. Its 936 forks
+completed with 44,928 attempted and confirmed transitions. Only checkpoint 0
+qualified, through P3/P4 inflation-employment tradeoffs: one opening episode,
+zero eligible preference reversals. All seven later checkpoints were null under
+the fixed instrument. Their result cannot rescue the opening result.
+
+The private executor now reuses one authenticated baseline per seed. Fresh
+baseline generation and exact replay cost 480 transitions; the 39 checkpoint
+forks and their exact replays cost 44,928. These are separate charges, totaling
+45,408 per seed or 726,528 for the proposed 16-seed block, before additional
+snapshot qualification. The block itself has not run. Retained-data checks
+verified all 936 native metric dictionaries and matched the 768 opening records
+to the earlier runner in native values and compressed bytes. Correctness and
+Ponytail reviews found no remaining findings in that analysis.
+
+A current-Main snapshot renderer also passed native checks at seed 0/checkpoint
+4 and seed 1/checkpoint 12, using separately authenticated producers. The first
+snapshot exactly matched the prior qualified renderer's participant output;
+both preserved the baseline and career fingerprints. These were headless text
+checks, not computer-use, accessibility or human recognition tests.
+
+Unused-seed confirmation, participant recognition and sustained enjoyment remain
+unfinished. A bounded audit of retained experiment metadata did not establish
+unused-seed custody; missing integers alone cannot do so. Any further run without
+that custody must remain exploratory. The development results do not pass the
+proposed progression gate or justify adopting an information delay, borrower
+mechanism, standing contract or delegation feature.
 
 ## Offline choice records
 
