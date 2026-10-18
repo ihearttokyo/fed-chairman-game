@@ -44,6 +44,7 @@ func run() -> void:
 			titles.append(label)
 		check(not label.text.contains("THE ECONOMY IS YOUR RESPONSIBILITY") and not label.text.contains("Original Blender miniature") and not label.text.contains("A research-informed strategy game"), "cockpit has no slogans, provenance or legal footer")
 	check(titles.size() == 1 and titles[0].get_parent() is HBoxContainer, "title and product description share one line")
+	check(game.case_detail.text.ends_with("Stocks: % of current annual GDP"), "stock units are explicit without repeating the metric names")
 	check(not game.case_detail.text.contains("Balance price stability") and game.case_detail.text.contains("Holdings") and game.case_detail.text.contains("Loans"), "current conditions retain stocks without introductory filler")
 	game._advance()
 	for pair in game.stats:
@@ -78,7 +79,7 @@ func resize_snapshot(game: Control) -> PackedByteArray:
 		semantics.append([control.get_instance_id(), control.get_parent().get_instance_id(), control.accessibility_name, control.accessibility_description, control.tooltip_text, control.get_theme_font_size("font_size")])
 	var saved := FileAccess.file_exists(game.save_path)
 	return var_to_bytes([game.career.encode(), game.clean_career, game._policy(), inputs, semantics,
-		game.forecast_label.text, game.quarter_label.text, game.consequence.text, game.mandate_label.text, game.briefing.text,
+		game.forecast_label.text, game.quarter_label.text, game.consequence.text, game.mandate_label.text, game.briefing.text, game.case_detail.text,
 		game.status_label.text, game.custom_guidance.visible, game.reduced_motion, game.city.rotation if game.reduced_motion else null,
 		game.career.forecast_calls, game.find_children("*", "", true, false).size(), saved, FileAccess.get_file_as_bytes(game.save_path) if saved else null])
 
@@ -277,7 +278,7 @@ func check_responsive_resize(game: Control) -> void:
 	var preserved := resize_snapshot(game)
 	var body: Container = game.charts[0].get_parent().get_parent().get_parent()
 	var layout_breakpoint := ceili(body.get_child(0).get_combined_minimum_size().x + body.get_child(1).get_combined_minimum_size().x + body.get_theme_constant("separation") + 48 + game.cockpit_scroll.get_v_scroll_bar().get_combined_minimum_size().x + game.overflow_scroll.get_v_scroll_bar().get_combined_minimum_size().x)
-	var sizes := [Vector2i(960, 640), Vector2i(1180, 700), Vector2i(1440, 960), Vector2i(1920, 640), Vector2i(960, 1200),
+	var sizes := [Vector2i(1306, 903), Vector2i(960, 640), Vector2i(1180, 700), Vector2i(1440, 960), Vector2i(1920, 640), Vector2i(960, 1200),
 		Vector2i(layout_breakpoint - 1, 700), Vector2i(layout_breakpoint, 700), Vector2i(layout_breakpoint + 1, 700), Vector2i(960, 640), Vector2i(1440, 960)]
 	for logical in sizes:
 		var physical := Vector2i((Vector2(logical) * density).round())
@@ -285,6 +286,9 @@ func check_responsive_resize(game: Control) -> void:
 		await settle_layout()
 		check(root.size == physical and root.position == original_position and root.mode == original_mode, "resize never resets requested geometry, position or mode")
 		check_resize_bounds(game, logical, density)
+		if logical == Vector2i(1306, 903):
+			var row: Control = game.case_title.get_parent().get_parent()
+			check(game.case_detail.size.x >= (row.size.x - row.get_theme_constant("separation")) * 0.5 - 0.5, "current stocks receive at least half the usable city row at 1306x903")
 		check(resize_snapshot(game) == preserved, "resize preserves career, numeric values/drafts/selection, semantics, fonts, preview, motion and nodes without forecasts")
 		check(root.gui_get_focus_owner() == edit, "numeric draft keeps focus through every layout_breakpoint crossing")
 		check(bool(body.get("vertical")) == (logical.x < layout_breakpoint), "body stacks only below its measured combined minimum")

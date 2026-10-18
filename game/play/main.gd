@@ -452,7 +452,6 @@ func _build_city(parent: Node) -> void:
 	var container := TextureRect.new()
 	container.custom_minimum_size = Vector2(0, 215)
 	container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	container.size_flags_stretch_ratio = 2.0
 	container.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	container.stretch_mode = TextureRect.STRETCH_SCALE
 	container.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -687,7 +686,7 @@ func _refresh(reset_controls := false) -> void:
 	var complete := career.decisions.size() >= Career.MAX_QUARTERS
 	case_title.text = career.cases[career.scenario_id].label
 	var n: float = career.model.nominal_gdp_ratio(s)
-	case_detail.text = "Holdings %.1f%% · Term premium %+.3f pp · Loans %s%% · Reserves %s%% · RRP %s%%\nUnits: current annual GDP (holdings, loans, reserves, RRP)" % [s.asset_stock_pct_initial_gdp / n, s.term_premium_pct, Career.funding_amount_text(s.outstanding_liquidity_pct_initial_gdp / n), Career.funding_amount_text(s.reserves_pct_initial_gdp / n), Career.funding_amount_text(s.reverse_repo_pct_initial_gdp / n)]
+	case_detail.text = "Holdings %.1f%% · Term premium %+.3f pp · Loans %s%% · Reserves %s%% · RRP %s%%\nStocks: %% of current annual GDP" % [s.asset_stock_pct_initial_gdp / n, s.term_premium_pct, Career.funding_amount_text(s.outstanding_liquidity_pct_initial_gdp / n), Career.funding_amount_text(s.reserves_pct_initial_gdp / n), Career.funding_amount_text(s.reverse_repo_pct_initial_gdp / n)]
 	quarter_label.text = "CAREER COMPLETE · %d MEETINGS" % Career.MAX_QUARTERS if complete else "YEAR %02d / Q%d   ·   MEETING %d" % [int(s.quarter_index / 4) + 1, int(s.quarter_index) % 4 + 1, s.quarter_index + 1]
 	var assessment := career.mandate_assessment()
 	mandate_label.text = _mandate_summary(assessment)
