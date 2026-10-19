@@ -969,6 +969,9 @@ func _finish_follow_up(reason: String, reset_controls := true, focus_decision :=
 		follow_up_toggle.set_pressed_no_signal(false)
 	if stop_follow_up != null:
 		stop_follow_up.visible = false
+	if follow_up_note != null:
+		follow_up_note.text = ""
+		follow_up_note.visible = false
 	if not was_active and first < 0:
 		return
 	last_follow_up_reasons.assign(reasons if not reasons.is_empty() else [reason])

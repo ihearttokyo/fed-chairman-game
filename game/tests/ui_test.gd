@@ -115,7 +115,10 @@ func check_text_reports(game: Control) -> void:
 	dialog.get_ok_button().pressed.emit()
 	await process_frame
 	for method in ["_help", "_credits", "_journal", "_review"]:
+		game.follow_up_toggle.button_pressed = true
+		check(game.follow_up_note.visible and not game.routine.active, "real preview explains selected, unstarted follow-up")
 		game.call(method)
+		check(not game.follow_up_toggle.button_pressed and not game.follow_up_note.visible and game.follow_up_note.text.is_empty(), "opening " + method + " clears both unstarted permission and its preview hint")
 		dialog = game.get_child(game.get_child_count() - 1)
 		await check_report_body(dialog, [])
 		if method == "_help":
