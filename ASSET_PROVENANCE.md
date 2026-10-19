@@ -27,9 +27,9 @@ not a verification of account tier, provider terms or copyright protectability.
 The qualified project license in `LICENSE` applies to rights held by Jared;
 third-party rights remain separate.
 
-`art/audio/JRB-1.m4a` retains the AAC audio copied without re-encoding from that
-song's public MP4. The page's direct M4A was encoded and failed decoding; the
-retained file is a lossless remux from the public video, not that direct original.
+`art/audio/JRB-1.m4a` is the original file downloaded through Suno's signed-in
+M4A download on 19 October 2026, retained byte-for-byte. It contains Opus audio
+in an MP4 container and replaces the earlier video-derived AAC remux.
 `game/assets/audio/jrb-1.wav` is its PCM16 stereo 48 kHz decode, without trimming,
 normalization or structural edits. Godot imports it uncompressed and loops the
 complete sample. The source and conversion hashes, bytes, duration and origin
