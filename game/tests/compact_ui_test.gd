@@ -135,7 +135,7 @@ func check_small_resize(game: Control, density: float, edit: LineEdit, preserved
 		await settle_layout()
 		check(grid.columns == (1 if delta < 0 else 2), "metrics cross their measured paired/single threshold exactly")
 		check(resize_snapshot(game) == preserved and edit.has_focus(), "metric threshold crossings preserve the unsubmitted selected draft")
-	for row in [game.charts[0].get_parent(), game.decision_button.get_parent(), game.reinvestment.get_parent()]:
+	for row in [game.charts[0].get_parent(), game.action_buttons, game.reinvestment.get_parent()]:
 		var minimum: float = row.get_child(0).get_combined_minimum_size().x + row.get_child(1).get_combined_minimum_size().x + row.get_theme_constant("separation") + reserve
 		if row == game.reinvestment.get_parent():
 			minimum += game.policy_panel.get_theme_stylebox("panel").get_minimum_size().x
@@ -147,7 +147,7 @@ func check_small_resize(game: Control, density: float, edit: LineEdit, preserved
 	await check_resize_history(game, density, edit, preserved, reserve)
 
 func check_resize_history(game: Control, density: float, edit: LineEdit, preserved: PackedByteArray, reserve: float) -> void:
-	var row: BoxContainer = game.decision_button.get_parent()
+	var row: BoxContainer = game.action_buttons
 	var width := ceili(game._row_minimum(row) + reserve)
 	root.size = Vector2i((Vector2(width, 700) * density).round())
 	await settle_layout()
@@ -228,7 +228,7 @@ func check_resize_bounds(game: Control, logical: Vector2i, density: float) -> vo
 		if control.is_visible_in_tree():
 			var rect: Rect2 = control.get_global_rect()
 			check(rect.position.x >= -0.5 and rect.end.x <= visible.end.x + 0.5, "no horizontal clipping: " + str(control.get_path()) + " at " + str(logical))
-	for control in [game.consequence, game.mandate_label, game.status_label, game.decision_button]:
+	for control in [game.consequence, game.mandate_label, game.status_label, game.decision_button, game.follow_up_toggle]:
 		check(visible.grow(0.5).encloses(control.get_global_rect()), "complete footer stays within the client: " + str(control.get_path()) + " at " + str(logical))
 	for control in game.keyboard_controls:
 		if control is Button and control.text == "Compare policy paths":
