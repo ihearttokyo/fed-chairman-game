@@ -64,8 +64,10 @@ paid service, credential setup or signing-identity change is included.
     Editable inputs update formulas and charts. Match reference outputs for all
     shipped cases and one-variable policy edits within `1e-7` where both engines
     use equivalent arithmetic. Scan all formulas for errors, test invalid inputs,
-    render every sheet and verify exported recalculation in a native spreadsheet
-    application. Label any unavailable check explicitly.
+    render every sheet, recalculate from editable inputs, and validate the saved
+    files against independent native model exports. Work directly on files;
+    Excel, its add-in and sign-in are not required. Do not infer native-app
+    behavior from file checks. Label unavailable engine checks explicitly.
 
 ## Evidence and interpretation
 
