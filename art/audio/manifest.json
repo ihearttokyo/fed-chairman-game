@@ -8,13 +8,13 @@
   "source_audio_bytes": 3391879,
   "source_audio_origin": "Original M4A downloaded through Suno's signed-in Download dialog on 2026-10-19; Opus audio in an MP4 container, retained byte-for-byte.",
   "runtime_path": "game/assets/audio/jrb-1.wav",
-  "runtime_sha256": "1782c1f5ac956b84fddbfe9d3f7a38c5597664f626da4e438f6e492e8a1392b6",
+  "runtime_sha256": "35a0df7080e57bc97399183a54f7513a3330cc6bf465ad504517d82407dc25ab",
   "runtime_bytes": 36787244,
   "duration_seconds": 191.6,
   "runtime_codec": "pcm_s16le",
   "sample_rate": 48000,
   "channels": 2,
-  "conversion": "Homebrew FFmpeg pcm_s16le decode of the original Opus stream, then Python wave retains exactly 9196800 frames from that decoded PCM. Matches the 191.6-second MP4 presentation timeline; excludes 648 decoded end-padding frames. No normalization or extra lossy encoding.",
+  "conversion": "Homebrew FFmpeg pcm_s16le decode, retaining exactly 9196800 frames from the original MP4 presentation. Apply a 480-frame (10 ms) half-cosine fade at each end: gain(i)=0.5-0.5*cos(pi*i/479), mirrored at the end, PCM16 rounded to nearest. Interior PCM remains unchanged; no normalization or extra lossy encoding.",
   "runtime_choice": "Native WAV avoids an unavailable libvorbis encoder and an extra lossy encode/dependency. One bounded stereo track; known runtime/memory cost recorded.",
   "full_source_and_runtime_decode": "PASS",
   "listening_acceptance": "unverified",
@@ -22,5 +22,7 @@
   "source_audio_codec": "opus",
   "source_container_duration_seconds": 191.6,
   "sample_frames": 9196800,
-  "presentation_timing": "MP4 stts: 9580 packets × 960 plus 312 samples; elst skips 312 pre-roll samples. Presentation: 9,196,800 stereo frames at 48 kHz."
+  "presentation_timing": "MP4 stts: 9580 packets × 960 plus 312 samples; elst skips 312 pre-roll samples. Presentation: 9,196,800 stereo frames at 48 kHz.",
+  "edge_fade_frames": 480,
+  "edge_fade_seconds": 0.01
 }
