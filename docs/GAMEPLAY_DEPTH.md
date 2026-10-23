@@ -287,6 +287,10 @@ completed: 7,680 paired advances and 3,840 replay advances, with no rejections,
 unknowns or hidden observer transitions. Current episodes and funding returns
 prevented automatic adoption. The seeded shocks and episode metadata were not
 replaced. An altered automatic guidance decision failed the policy-parity check.
+Every scenario must exercise automatic adoption after Q120, except funding stress:
+its two tapes are checked for positive need in every quarter and must remain
+fully attended. Suppressing late automatic steps in a non-baseline scenario fails
+the coverage assertion even when the attended fallback preserves numerical parity.
 
 This opt-in test leaves the frozen 480-transition pilot and default UI suite
 unchanged. It checks numerical integration, not Main's input pacing, assistive

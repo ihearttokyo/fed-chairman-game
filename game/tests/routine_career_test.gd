@@ -109,6 +109,11 @@ func run_pair(case_id: String, seed_number: int) -> bool:
 	var delegated := CountedCareer.new()
 	if not require(ordinary.start(case_id, seed_number).ok and delegated.start(case_id, seed_number).ok and ordinary.encode() == delegated.encode(), label + ": exact canonical seeded starts"):
 		return false
+	# Qualify the evaluator's exception; never pass this tape to the actor.
+	if case_id == "funding_stress":
+		for shock in delegated.shocks:
+			if not require(shock.get("funding_need_pct_initial_gdp", 0.0) > 0.0, label + ": zero-follow-up exception requires a positive need in every quarter"):
+				return false
 	var tape := var_to_bytes([delegated.shocks, delegated.episodes])
 	var helper := CountedFollowUp.new()
 	var automatic := 0
@@ -155,7 +160,8 @@ func run_pair(case_id: String, seed_number: int) -> bool:
 				return false
 		elif not require(helper.arm(delegated.state, delegated.params, chosen, q + 1).ok, label + ": attended adoption arms a new bounded segment"):
 			return false
-	if not require(case_id != "base" or automatic_late > 0, label + ": late-career baseline must exercise automatic adoption, not only attended fallback"):
+	var coverage: bool = automatic == 0 and attended == 240 if case_id == "funding_stress" else automatic_late > 0
+	if not require(coverage, label + ": each eligible scenario must exercise late automatic adoption; continuously funded runs must remain attended"):
 		return false
 	if not explain_segment(delegated, segment_first, 240):
 		return false
