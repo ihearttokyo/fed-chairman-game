@@ -261,3 +261,18 @@ python3 -B scripts/tests/test-gameplay-study.py
 
 The test uses synthetic records only. It is not a substitute for the native
 fork/replay checks, the fixed participant trials or sustained playtesting.
+
+### Follow-up input pacing
+
+Automatic follow-up waits at least two seconds between quarters. Each processed
+frame earns at most 0.1 seconds of that wait, so a stalled frame cannot consume
+the input opportunity or trigger a catch-up burst. Stop, Escape, edits and
+current-information return conditions remain immediate. Current metrics and the
+latest outcome refresh after each automatic adoption; the conditional preview
+pauses until control returns. Ordinary attended decisions have no added delay.
+
+This changes UI pacing, not the benchmark, model or permitted policy sequence.
+The actual-Main regression retains its thirteen confirmed adoptions and one
+known rejection, plus a separate one-transition Window/Escape timing fixture.
+Simulated frame-time checks do not prove human usability; rendered interaction
+and physical playtesting remain separate evidence.

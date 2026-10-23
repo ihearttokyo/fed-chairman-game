@@ -44,6 +44,7 @@ func run() -> void:
 	root.add_child(game)
 	game.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	await process_frame
+	game.set_process(false) # Drive production frame timing; do not bypass pacing.
 	check(game.get("follow_up_toggle") != null, "optional routine-follow-up control exists")
 	if game.get("follow_up_toggle") != null:
 		check(game.follow_up_toggle.get_parent() == game.decision_button.get_parent(), "routine follow-up is next to Adopt, not below the forecast fold")
@@ -71,8 +72,22 @@ func run() -> void:
 	var first: Dictionary = game._policy()
 	game._advance()
 	check(game.career.decisions.size() == 1 and game.career.decisions[0] == first, "first adoption preserves every staged field")
-	for _frame in range(6):
+	for _frame in range(3):
+		game._process(1.0 / 60.0)
 		await process_frame
+	check(game.career.decisions.size() == 1 and game.stop_follow_up.visible, "three ordinary frames leave a visible input opportunity before the first automatic quarter")
+	var before_stall: PackedByteArray = game.career.encode()
+	game._process(3600.0)
+	check(game.career.encode() == before_stall and game.career.decisions.size() == 1 and game.routine.active, "a stalled frame cannot consume the human input interval or catch up multiple quarters")
+	var saw_current_feedback := false
+	for _frame in range(90):
+		game._process(0.1)
+		await process_frame
+		if game.career.decisions.size() == 2:
+			saw_current_feedback = game.quarter_label.text.contains("MEETING 3") and game.consequence.text.contains("Q2 OUTCOME") and game.forecast_label.text.contains("paused")
+		if not game.routine.active:
+			break
+	check(saw_current_feedback, "paced automatic quarter refreshes current data and outcomes without leaving a stale conditional preview")
 	check(game.career.decisions.size() == 4 and not game.routine.active, "quiet follow-up stops after four total outcomes")
 	check(not game.follow_up_toggle.button_pressed and not game.stop_follow_up.visible, "return requires a fresh delegation choice")
 	check(game.last_follow_up_reasons == ["QUOTA_EXHAUSTED", "CURRENT_NEWS"], "scheduled return retains simultaneous current-news reasons")
@@ -92,7 +107,7 @@ func run() -> void:
 	var escape := InputEventKey.new()
 	escape.keycode = KEY_ESCAPE
 	escape.pressed = true
-	game._input(escape)
+	game.get_viewport().push_input(escape)
 	await process_frame
 	check(not game.routine.active and game.career.decisions.size() == adopted, "Escape stops before the next automatic quarter")
 	check(game.rate.get_line_edit().has_focus(), "Escape returns focus to the current decision")
@@ -179,7 +194,43 @@ func run() -> void:
 	game.music.free()
 	game.queue_free()
 	await process_frame
+	var timing_game = NoForecastMain.new()
+	root.add_child(timing_game)
+	timing_game.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	await process_frame
+	timing_game.set_process(false)
+	timing_game._start_career("base", 1)
+	var timing_model := CountedEconomy.new()
+	timing_game.career.model = timing_model
+	for index in range(8):
+		timing_game.career.shocks[index] = {"demand_shock_pct": 0.0, "supply_innovation_pct": 0.0, "r_star_change_pct": 0.0}
+	timing_game._refresh(true)
+	timing_game._staff_rule()
+	timing_game.assets.value = 0.01
+	timing_game.reinvestment.button_pressed = false
+	timing_game.follow_up_toggle.button_pressed = true
+	timing_game._advance()
+	var timing_before: PackedByteArray = timing_game.career.encode()
+	for _frame in range(5):
+		timing_game._process(0.1)
+		await process_frame
+	check(timing_game.routine.active and timing_game.career.decisions.size() == 1 and timing_game.stop_follow_up.visible, "quiet timing fixture stays interruptible halfway through its input interval")
+	var timed_escape := InputEventKey.new()
+	timed_escape.keycode = KEY_ESCAPE
+	timed_escape.pressed = true
+	timing_game.get_viewport().push_input(timed_escape)
+	check(not timing_game.routine.active and timing_game.career.encode() == timing_before and timing_game.rate.get_line_edit().has_focus(), "Window-dispatched Escape after a partial interval stops without another transition")
+	timed_escape.pressed = false
+	timing_game.get_viewport().push_input(timed_escape)
+	for _frame in range(25):
+		timing_game._process(0.1)
+		await process_frame
+	check(timing_game.career.encode() == timing_before and timing_model.attempts == 1 and timing_model.confirmed == 1, "cancelled pacing cannot resume later; separate timing fixture has exactly one confirmed native transition")
+	timing_game.music.free()
+	timing_game.queue_free()
+	await process_frame
 	await mixer_release()
+	print("TIMING_INPUT: simulated frame time, native Window Escape; attempts=%d confirmed=%d" % [timing_model.attempts, timing_model.confirmed])
 	print("%s: routine UI %d checks, %d failures; attempts=%d confirmed=%d known_rejects=%d unknown=%d; forecasts disabled" % ["PASS" if failures == 0 else "FAIL", checks, failures, model.attempts, model.confirmed, model.known_rejects, model.attempts - model.confirmed - model.known_rejects])
 	quit(0 if failures == 0 else 1)
 
