@@ -276,3 +276,19 @@ The actual-Main regression retains its thirteen confirmed adoptions and one
 known rejection, plus a separate one-transition Window/Escape timing fixture.
 Simulated frame-time checks do not prove human usability; rendered interaction
 and physical playtesting remain separate evidence.
+
+### Full-career integration coverage
+
+`scripts/test-game.sh routine_career_test` separately checks all eight shipped
+starting scenarios at development seeds 1 and 17, through 240 quarters each.
+The sixteen ordinary/follow-up pairs matched in every realized state, complete
+policy/history bytes and production Career restore. All 11,520 native transitions
+completed: 7,680 paired advances and 3,840 replay advances, with no rejections,
+unknowns or hidden observer transitions. Current episodes and funding returns
+prevented automatic adoption. The seeded shocks and episode metadata were not
+replaced. An altered automatic guidance decision failed the policy-parity check.
+
+This opt-in test leaves the frozen 480-transition pilot and default UI suite
+unchanged. It checks numerical integration, not Main's input pacing, assistive
+technology, unused-seed custody or human enjoyment. No economic mechanism or
+claim of greater decision value follows from this result.
