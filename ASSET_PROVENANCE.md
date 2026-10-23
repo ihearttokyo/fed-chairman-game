@@ -32,8 +32,10 @@ M4A download on 19 October 2026, retained byte-for-byte. It contains Opus audio
 in an MP4 container and replaces the earlier video-derived AAC remux.
 `game/assets/audio/jrb-1.wav` is its PCM16 stereo 48 kHz decode, limited to the
 container’s 191.6-second presentation timeline: 9,196,800 frames. The conversion
-excludes 648 decoded end-padding frames, with no normalization or extra lossy
-encoding. Godot imports it uncompressed and loops that complete presentation.
+excludes 648 decoded end-padding frames and applies 10 ms half-cosine fades at
+both ends to make the repeat boundary silent. The remaining PCM is unchanged;
+there is no normalization or extra lossy encoding. Godot imports it uncompressed
+and loops that complete presentation.
 The source and conversion hashes, bytes, duration and origin are recorded in `art/audio/manifest.json`. Both files passed full decoding;
 listening quality requires separate acceptance. The runtime plays the bundled
 file locally, with no Suno client, credentials, live generation or network calls.

@@ -102,6 +102,9 @@ func _retained_wav_probe() -> void:
 	var length := song.get_length()
 	var frames := roundi(length * song.mix_rate)
 	check(song.format == AudioStreamWAV.FORMAT_16_BITS and song.stereo and song.mix_rate == 48000 and frames == 9196800, "retained soundtrack preserves exactly the source presentation timeline as PCM16 stereo 48 kHz")
+	var pcm := song.data
+	var silent_stereo_frame := PackedByteArray([0, 0, 0, 0])
+	check(pcm.size() == frames * 4 and pcm.slice(0, 4) == silent_stereo_frame and pcm.slice(pcm.size() - 4) == silent_stereo_frame, "retained soundtrack has a continuous silent stereo loop boundary")
 	if failures:
 		quit(1)
 		return
