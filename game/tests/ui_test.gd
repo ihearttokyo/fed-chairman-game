@@ -324,7 +324,7 @@ func check_terminal_career(game: Control) -> void:
 	check(game.quarter_label.text == "YEAR 01 / Q1   ·   MEETING 1" and not game.decision_button.disabled and game.decision_button.text == "Adopt decision  →  Next quarter", "new career restores ordinary meeting and action labels")
 func check_terminal_cockpit(game: Control, context: String) -> void:
 	check(game.briefing.text.begins_with("Career complete at Q240.") and not game.briefing.text.contains("Demand impulse") and not game.briefing.text.contains("Funding need"), context + " replaces phantom meeting inputs with completed-career context")
-	check(game.forecast_label.text.begins_with("CAREER COMPLETE\n") and not game.forecast_label.text.contains("APPLIED NOW") and not game.forecast_label.text.contains("CONDITIONAL Q+8"), context + " suppresses the nonexistent playable forecast")
+	check(game.forecast_label.text.begins_with("CAREER COMPLETE\n") and not game.forecast_label.text.contains("APPLIED NOW") and not game.forecast_label.text.contains("IF ADOPTED NOW") and not game.forecast_label.text.contains("CONDITIONAL Q+8"), context + " suppresses the nonexistent playable forecast")
 
 func check_backaudit_readouts(game: Control) -> void:
 	var premiums: Array[float] = []
@@ -1481,11 +1481,16 @@ func run() -> void:
 		await check_unsaved_app_quit()
 		if failures == 0:
 			print("PASS: unsaved native root quit, keyboard cancellation/discard and clean Save/Load/New baselines")
-		quit(1 if failures else 0)
+		await _finish()
 		return
 	var game = load("res://main.tscn").instantiate()
 	root.add_child(game)
 	await process_frame
+	var preview_explanation: Label
+	for label in game.find_children("*", "Label", true, false):
+		if label.text == "Preview: this decision, then hold its rate for seven more quarters. No new future shocks. This is a conditional path, not a confidence interval.":
+			preview_explanation = label
+	check(preview_explanation != null, "preview explanation describes the current decision plus seven more quarters and preserves conditional-path limits")
 	if OS.get_cmdline_user_args().has("--backaudit-ui-only"):
 		await check_terminal_career(game)
 		check_backaudit_readouts(game)
@@ -1494,7 +1499,7 @@ func run() -> void:
 		if failures == 0:
 			print("PASS: four backaudit UI regressions, actual popup input and terminal replay/purity")
 		game.free()
-		quit(1 if failures else 0)
+		await _finish()
 		return
 	if OS.get_cmdline_user_args().is_empty() or OS.get_cmdline_user_args().has("--release-check-only"):
 		await check_release_comparison(game)
@@ -1502,7 +1507,7 @@ func run() -> void:
 		game.free()
 		if failures == 0:
 			print("PASS: bundled comparison checks reject headings-only and corrupt Q+2/Q+8/delta values")
-		quit(1 if failures else 0)
+		await _finish()
 		return
 	if OS.get_cmdline_user_args().has("--review-staff-only"):
 		await check_review_staff_dialog(game)
@@ -1510,14 +1515,14 @@ func run() -> void:
 		if failures == 0:
 			print("PASS: realized staff/funding review values, native accessibility, purity and modal lifecycle")
 		game.free()
-		quit(1 if failures else 0)
+		await _finish()
 		return
 	if OS.get_cmdline_user_args().has("--financing-readout-only"):
 		await check_financing_readout(game)
 		if failures == 0:
 			print("PASS: Q+1 immediate/retained financing readout, independent native arithmetic, boundaries and purity")
 		game.free()
-		quit(1 if failures else 0)
+		await _finish()
 		return
 	if OS.get_cmdline_user_args().has("--guidance-continuation-only"):
 		await check_guidance_continuation(game)
@@ -1525,14 +1530,14 @@ func run() -> void:
 		if failures == 0:
 			print("PASS: report-only guidance continuation, native navigation and explicit failures")
 		game.free()
-		quit(1 if failures else 0)
+		await _finish()
 		return
 	if OS.get_cmdline_user_args().has("--current-signals-only"):
 		check_current_signals_ui(game)
 		if failures == 0:
 			print("PASS: current-only refinancing/impairment UI, units, constraints and read-only previews")
 		game.free()
-		quit(1 if failures else 0)
+		await _finish()
 		return
 	check_initial_window_size(game, window_size_before, window_position_before)
 	if OS.get_cmdline_user_args().has("--window-size-only"):
@@ -1540,7 +1545,7 @@ func run() -> void:
 		if failures == 0:
 			print("PASS: DPI-aware startup sizing and explicit/headless preservation")
 		game.free()
-		quit(1 if failures else 0)
+		await _finish()
 		return
 	check_funding_outcome(game)
 	check_score_feedback(game)
@@ -1549,14 +1554,14 @@ func run() -> void:
 		if failures == 0:
 			print("PASS: meaningful outcome and comparison change direction and units")
 		game.free()
-		quit(1 if failures else 0)
+		await _finish()
 		return
 	if OS.get_cmdline_user_args().has("--text-reports-only"):
 		await check_text_reports(game)
 		if failures == 0:
 			print("PASS: complete selectable keyboard text reports")
 		game.free()
-		quit(1 if failures else 0)
+		await _finish()
 		return
 	if OS.get_cmdline_user_args().has("--inputs-only"):
 		await check_pending_policy(game)
@@ -1565,7 +1570,7 @@ func run() -> void:
 		if failures == 0:
 			print("PASS: focused, accessible and programmatic native input submission")
 		game.free()
-		quit(1 if failures else 0)
+		await _finish()
 		return
 	check_unrestricted_rate_controls(game)
 	var city_viewports: Array = game.find_children("*", "SubViewport", true, false)
@@ -1591,25 +1596,21 @@ func run() -> void:
 			print("PASS: bounded physical-density native miniature and redraw lifecycle")
 		game.free()
 		root.size_changed.emit()
-		# Match the full-suite teardown: stopped native audio releases on its next mix.
-		var audio_release_deadline := Time.get_ticks_msec() + 100
-		while Time.get_ticks_msec() < audio_release_deadline:
-			await process_frame
-		quit(1 if failures else 0)
+		await _finish()
 		return
 	if OS.get_cmdline_user_args().has("--feedback-only"):
 		await check_persistent_actions(game)
 		if failures == 0:
 			print("PASS: persistent policy actions and outcome feedback")
 		game.free()
-		quit(1 if failures else 0)
+		await _finish()
 		return
 	check_rate_deliberation(game)
 	if OS.get_cmdline_user_args().has("--deliberation-only"):
 		if failures == 0:
 			print("PASS: offline feasible rate deliberation")
 		game.free()
-		quit(1 if failures else 0)
+		await _finish()
 		return
 	check_situation_ui(game)
 	check_current_signals_ui(game)
@@ -1617,7 +1618,7 @@ func run() -> void:
 		if failures == 0:
 			print("PASS: situation briefing in shared cockpit")
 		game.free()
-		quit(1 if failures else 0)
+		await _finish()
 		return
 	check_backaudit_readouts(game)
 	await check_terminal_career(game)
@@ -1625,7 +1626,7 @@ func run() -> void:
 		if failures == 0:
 			print("PASS: terminal career and restart labels")
 		game.free()
-		quit(1 if failures else 0)
+		await _finish()
 		return
 	var unemployment_heading: Label = game.stats[1][0].get_parent().get_child(0)
 	check(unemployment_heading.text == "UNEMPLOYMENT", "cockpit card names the unemployment rate it displays")
@@ -1865,10 +1866,13 @@ func run() -> void:
 	await process_frame
 	await process_frame
 	await check_unsaved_app_quit()
+	if failures == 0:
+		print("PASS: exact rate display and UI adoption path")
+	await _finish()
+
+func _finish() -> void:
 	# Native audio releases stopped playbacks on its next mix, not a scene frame.
 	var audio_release_deadline := Time.get_ticks_msec() + 100
 	while Time.get_ticks_msec() < audio_release_deadline:
 		await process_frame
-	if failures == 0:
-		print("PASS: exact rate display and UI adoption path")
 	quit(1 if failures else 0)
