@@ -6,6 +6,8 @@ const ReportDialog = preload("res://play/report_dialog.gd")
 const Music = preload("res://play/music.gd")
 const RoutineFollowUp = preload("res://play/routine_follow_up.gd")
 const TransitionExplanation = preload("res://play/transition_explanation.gd")
+const FOLLOW_UP_INTERVAL_SECONDS := 2.0
+const FOLLOW_UP_MAX_FRAME_CREDIT_SECONDS := 0.1
 const SAVE_PATH := "user://policy-career-v2.save"
 const GOLD := Color("e9b76e")
 const MINT := Color("75d4c0")
@@ -58,6 +60,7 @@ var routine := RoutineFollowUp.new()
 var follow_up_toggle: CheckBox
 var stop_follow_up: Button
 var follow_up_note: Label
+var follow_up_wait_seconds := 0.0
 var segment_start := -1
 var adopting := false
 var last_follow_up_reasons: Array[String] = []
@@ -621,7 +624,7 @@ func _build_policy(parent: Node, actions: Node) -> void:
 	var decision_controls := _vbox(actions, 4)
 	decision_button = _button(decision_controls, "Adopt decision  →  Next quarter", _advance, KEY_ENTER)
 	decision_button.custom_minimum_size = Vector2(380, 48)
-	follow_up_toggle = _portfolio_switch(decision_controls, "Include routine follow-up (4 quarters total)", false, "Adopt this decision, then allow up to three benchmark rate/guidance updates. Portfolio switches persist; new asset and loan offers reset. Funding, current news or drift returns control. Escape stops follow-up.")
+	follow_up_toggle = _portfolio_switch(decision_controls, "Include routine follow-up (4 quarters total)", false, "Adopt this decision, then allow up to three benchmark rate/guidance updates. Portfolio switches persist; new asset and loan offers reset. Funding, current news or drift returns control. Updates wait at least two seconds; Escape or Stop cancels follow-up.")
 	stop_follow_up = _button(decision_controls, "Stop routine follow-up", func(): _finish_follow_up("Stopped", false, true))
 	stop_follow_up.visible = false
 	follow_up_note = _label(decision_controls, "", 11, MUTED)
@@ -697,7 +700,7 @@ func _start_career(case_id: String, seed_number: int) -> void:
 	consequence.text = "Review current conditions, stage policy, then adopt."
 	status_label.text = "New unsaved career · %s · seed %d" % [career.cases[case_id].label, seed_number]
 
-func _refresh(reset_controls := false) -> void:
+func _refresh(reset_controls := false, update_preview := true) -> void:
 	var s: Dictionary = career.state
 	var complete := career.decisions.size() >= Career.MAX_QUARTERS
 	case_title.text = career.cases[career.scenario_id].label
@@ -753,7 +756,8 @@ func _refresh(reset_controls := false) -> void:
 	if follow_up_toggle != null:
 		follow_up_toggle.disabled = complete
 	_link_focus(_keyboard_focus_order())
-	_preview()
+	if update_preview:
+		_preview()
 
 func _reset_policy_controls() -> void:
 	var s: Dictionary = career.state
@@ -934,8 +938,10 @@ func _advance() -> void:
 		segment_start = first
 		var armed: Dictionary = routine.arm(career.state, career.params, career.decisions[-1], Engine.get_process_frames())
 		if armed.ok:
+			follow_up_wait_seconds = FOLLOW_UP_INTERVAL_SECONDS
+			forecast_label.text = "Preview paused during routine follow-up."
 			stop_follow_up.visible = true
-			status_label.text = "Routine follow-up: Q%d completed. Escape or Stop returns control." % career.state.quarter_index
+			status_label.text = "Routine follow-up: Q%d completed. Updates wait 2 s; Escape or Stop returns control." % career.state.quarter_index
 			_link_focus(_keyboard_focus_order())
 		else:
 			_finish_follow_up("Routine follow-up unavailable; decision retained.", false)
@@ -964,6 +970,7 @@ func _finish_follow_up(reason: String, reset_controls := true, focus_decision :=
 	var was_active: bool = routine.active
 	var first := segment_start
 	segment_start = -1
+	follow_up_wait_seconds = 0.0
 	routine.stop()
 	if follow_up_toggle != null:
 		follow_up_toggle.set_pressed_no_signal(false)
@@ -985,7 +992,7 @@ func _finish_follow_up(reason: String, reset_controls := true, focus_decision :=
 	if focus_decision:
 		rate.get_line_edit().grab_focus()
 
-func _follow_up_frame() -> void:
+func _follow_up_frame(delta: float = 0.0) -> void:
 	if not routine.active or adopting or shutting_down:
 		return
 	for input in [rate, guidance, assets, liquidity, inflation_response, activity_response]:
@@ -1005,6 +1012,11 @@ func _follow_up_frame() -> void:
 		return
 	if not routine.active or next.token.generation != routine.generation:
 		return
+	# A stalled frame earns no catch-up burst; input and current-state returns stay immediate.
+	follow_up_wait_seconds = maxf(0.0, follow_up_wait_seconds - clampf(delta, 0.0, FOLLOW_UP_MAX_FRAME_CREDIT_SECONDS))
+	if follow_up_wait_seconds > 0.0:
+		return
+	var before: Dictionary = career.state.duplicate(true)
 	var result := _commit_policy(next.policy)
 	if not result.ok:
 		_stage_native_policy(next.policy)
@@ -1013,8 +1025,11 @@ func _follow_up_frame() -> void:
 	if not routine.committed(frame, next.token):
 		_finish_follow_up("Follow-up stopped after adoption; scheduling changed.", true, true)
 		return
-	_reset_policy_controls()
-	status_label.text = "Routine follow-up: Q%d completed. Escape or Stop returns control." % career.state.quarter_index
+	follow_up_wait_seconds = FOLLOW_UP_INTERVAL_SECONDS
+	# Refresh completed data without requesting the policy preview that cancels permission.
+	_refresh(true, false)
+	_show_outcome(before)
+	status_label.text = "Routine follow-up: Q%d completed. Updates wait 2 s; Escape or Stop returns control." % career.state.quarter_index
 
 func _stage_native_policy(policy: Dictionary) -> void:
 	loading_controls = true
@@ -1307,7 +1322,7 @@ func _help() -> void:
 	_text_dialog("How to play", KEYBOARD_HELP + BENCHMARK_HELP + "\n\n" + _mandate_rules_text() + "\n\nYour role\nGuide a simplified FOMC policy decision. The target-rate midpoint is an abstraction; a real chair does not unilaterally set the market rate.\n\nEvery career includes seeded background disturbances. The default Varied policy career starts with weakly anchored inflation and adds recurring dilemmas after a short opening. The earlier Weakly anchored inflation challenge remains selectable. The baseline starts at equilibrium with no scheduled scenario events, but its playable path is not shock-free. The same scenario and seed reproduce the path within the same engine and model.\n\n1. Read the dispatch. It describes current conditions, not future shocks.\n2. Set the target rate. Higher real rates restrain demand gradually; inflation reacts with a lag. A supply shock can raise prices while weakening activity.\n3. Choose guidance. A firm promise is easier to understand but costly to break. Data dependence adjusts the prior promise when inflation and the output gap change.\n4. Set purchases or a runoff cap; choose reinvestment, reserve maintenance and sterilization. Offer secured liquidity for eligible funding, not insolvency.\n5. Inspect applied amounts and the eight-quarter preview, then adopt. The preview assumes no new future shocks and no later rate changes.\n\nRates and guidance\nNominal rates apply in full; quotes use 1bp increments and arrows move 25bp. Negative rates are a U.S. counterfactual. Their effective financing rate is s*tanh(i/s) below zero, unchanged above zero; the illustrative scale s=1 percentage point is not an estimated lower bound. Credibility prices the nominal guidance quote before this transmission. Deep cuts have diminishing benefits. Stance credibility compares effective restraint with an unsaturated real-gap objective: constrained best effort receives partial credit, not full adequacy. Conditional implied quotes round to the same 1bp grid before nominal promise follow-through.\n\nBalance sheet and funding\nAsset and lending offers are percent of current annual GDP, converted once at the meeting. Purchases have no invented ceiling; their duration-premium effect diminishes with scale. A negative offer caps runoff at actual maturing Treasury, MBS and bill principal; it is not a sale of unmatured holdings. With a zero or positive offer, reinvestment on rolls principal and off allows natural runoff. MBS paydown responds nonlinearly to lagged financing; Treasury timing uses a source-backed maturity ladder.\n\nMaintain ample reserves buys short bills after all other transactions to meet the disclosed reserve buffer. With maintenance off, currency growth, runoff or loan repayment can exhaust reserves. A rejected settlement preserves the last valid quarter; enable maintenance or adjust purchases/runoff. Bills are excluded from the long-duration channel but can ease funding scarcity; long runoff can coexist with unchanged total assets. Sterilized purchases retain securities and duration effects while replacing reserves with overnight reverse repo liabilities. Uptake, Treasury collateral and settlement can leave absorption incomplete. Tagged principal rolls without accumulating a new absorption target.\n\nThe liquidity offer is desired concurrent exposure, not accumulated quarterly turnover. Quotes use 0.0001% of current GDP; arrows move 0.25. Small funding amounts show four decimals; positive amounts below 0.0001 are labeled <0.0001. Prior representative overnight/short loans mature next quarter. New needs and requested refinancing are separate; eligible refinancing receives priority. Default zero refinancing assumes private repayment funds. Eligibility and haircut-adjusted collateral limit advances; excess offers do not become loans. Lending can relieve funding scarcity, not erase losses or create capital. Inspect applied amounts, RRP, reserve-maintenance purchases (RMP), and uncovered funding before adopting. Portfolio switches persist through the preview and subsequent meetings; one-time purchase and lending offers reset.\n\nRecovery channels\nDeferred demand tracks postponed durable/replacement purchases, not all lost consumption. Positive stock supports catch-up spending; negative stock means purchases were brought forward. Financing restraint delays release; growth changes the denominator, and obsolete plans decay. The stock uses percent of quarterly potential output. Short expectations gradually mix observed inflation with prior long expectations in proportion to credibility. Transitory neutral-rate deviations revert toward a structural reference; permanent structural shifts change it. These channels provide a recovery impulse, with no guaranteed return to 2% under persistent restraint.\n\nCredibility changes how markets price guidance and long-run inflation expectations. Public support remembers both inflation/deflation hardship and unemployment. It recovers gradually, without term resets or a game-over threshold.\n\nSave and Load use policy-career-v2.save only. Prior policy-career-v1.save and both original slots, career-late-compound-v1.save and career-v1.save, remain untouched. Older saves need their matching prior app/model; no copying, migration or fallback. New career and Load ask before replacing unsaved play. Tab navigates controls; charts also have exact values in Data & journal. Animation is off by default.\n\nModel limits\nEight hypothetical scenarios. Varied policy career and Recurring crises draw from 50 curated exogenous events: disasters, demand/supply changes, funding and credit losses, and favorable developments. Forty-eight independent profiles use a no-repeat bag; two private-bank normalization events require prior eligible stress. The current dispatch names an active event, never its future pulses. Private normalization cannot erase old losses or loans. The 2% objective and portfolio reference observations are source-backed; behavioral coefficients, starting conditions and shock incidence are design assumptions. This is a hypothetical economy, not an empirical forecast or financial advice. No Federal Reserve affiliation. See the repository's FED_RESEARCH and model README for primary sources and equations.")
 
 func _process(delta: float) -> void:
-	_follow_up_frame()
+	_follow_up_frame(delta)
 	if city != null and not reduced_motion:
 		city.rotation.y += delta * 0.025
 
