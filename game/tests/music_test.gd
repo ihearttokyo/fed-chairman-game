@@ -101,7 +101,7 @@ func _retained_wav_probe() -> void:
 		return
 	var length := song.get_length()
 	var frames := roundi(length * song.mix_rate)
-	check(song.format == AudioStreamWAV.FORMAT_16_BITS and song.stereo and song.mix_rate == 48000 and frames == 9197448, "retained soundtrack preserves the complete official PCM16 stereo 48 kHz source")
+	check(song.format == AudioStreamWAV.FORMAT_16_BITS and song.stereo and song.mix_rate == 48000 and frames == 9196800, "retained soundtrack preserves exactly the source presentation timeline as PCM16 stereo 48 kHz")
 	if failures:
 		quit(1)
 		return
