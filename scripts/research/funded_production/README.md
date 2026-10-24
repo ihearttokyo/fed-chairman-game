@@ -154,6 +154,23 @@ network, Godot process, Excel session or installed game. It does not write saves
   Macro/private forecasts still refuse enabled books: their public-income bridge,
   recovery and gameplay qualification remain unfinished. Accounting hand cases
   are not evidence of a better game or an adopted native/workbook model.
+- The research-only `public_forecast` current-quarter bridge accepts an explicit
+  `PublicStep`: administered IORB, funded fiscal instructions and facility limits.
+  There is no inferred policy-to-IORB identity. Preparation quotes the canonical
+  public prefix without executing a quarter, then uses post-public household
+  wallets and signed disposable-income intentions for hiring. Mortgage cash is
+  not added twice; expected dividends remain expectations, not spending money.
+  Public bank earnings inform conditional capital room, but reach households
+  only through actual constrained distributions. Execution revalidates the
+  preparation and public command, attempts one existing ledger transition and
+  closes GDP/employment from paid production. A known current funding shortfall
+  is a refusal, not missing future coverage. Shared quotation helpers preserve
+  the old price equations and coupled baseline; legacy entry-point guards stay.
+  Actual resulting states use existing checkpoints, but public commands and
+  prepared records have no qualified decision-replay format. Future scenario
+  coverage, fair NOW/WAIT/NEVER forecasts and endogenous investment selection
+  remain unimplemented; this is not a qualified runtime/private planner. QE,
+  currency conversion, new RRP and implicit CB contracts are unsupported here.
 - A pure partial-equilibrium prospectus quotes four declared forecast cells,
   three actions and 19 dates: 228 scalar rows and zero ledger transitions.
   Sold services are limited by demand, dated capital and focal labor. The
