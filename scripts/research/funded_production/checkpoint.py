@@ -19,7 +19,7 @@ from . import episodes as e
 m = e.m
 
 _PACKAGE_DIR = Path(__file__).resolve().parent
-_MODULE_NAMES = ('__init__', 'source_data', 'numerics', 'households', 'pricing',
+_MODULE_NAMES = ('__init__', 'source_data', 'numerics', 'households', 'pricing', 'public_income',
                  'ledger', 'macro', 'episodes', 'cashflows', 'choice', 'checkpoint',
                  'prospectus', 'coupled', 'investment')
 _SOURCE_PATHS = {name: _PACKAGE_DIR / (name + '.py') for name in _MODULE_NAMES}
@@ -73,12 +73,45 @@ def _paid_economy(economy):
         'focal_dividend': (('F', 'HB'),),
         'bank_dividend': (('BankA', 'HA'), ('BankB', 'HB')),
     }
+    public_routes={
+        'treasury_coupon':(('Treasury','CB'),('Treasury','BankA'),('Treasury','BankB')),
+        'iorb_coupon':(('CB','BankA'),('CB','BankB')),
+        'rrp_coupon':(('CB','BankA'),('CB','BankB')),
+        'cb_loan_coupon':(('BankA','CB'),('BankB','CB')),
+        'mortgage_coupon':(('HA','MortgagePool'),('HB','MortgagePool')),
+        'mbs_coupon':(('MortgagePool','CB'),),
+        'cb_remittance':(('CB','Treasury'),),
+    }
+    mortgage={};mbs={}
     paid = dict.fromkeys(routes, F(0))
     for payment in r.payments:
+        if payment.kind in public_routes:
+            if not isinstance(s.public_book,m.ledger.PublicIncomeBook):
+                raise ValueError('Public-income receipt requires its declared program.')
+            allowed=public_routes[payment.kind]
+            pair=(payment.payer,payment.payee)
+            if pair not in allowed and (payment.kind=='cb_remittance' or pair[::-1] not in allowed):
+                raise ValueError('Unidentified public-income payment route.')
+            if payment.kind in ('mortgage_coupon','mbs_coupon'):
+                target=mortgage if payment.kind=='mortgage_coupon' else mbs
+                if payment.claim_id not in ('mortgage:HA','mortgage:HB'):
+                    raise ValueError('Missing matched mortgage/pass-through identity.')
+                if payment.kind=='mortgage_coupon':
+                    owner=payment.claim_id.split(':')[1]
+                    if owner not in pair:
+                        raise ValueError('Mortgage income attributed to another owner.')
+                    signed=payment.amount*(1 if payment.payer==owner else -1)
+                else:signed=payment.amount*(1 if payment.payee=='CB' else -1)
+                target[payment.claim_id]=target.get(payment.claim_id,F(0))+signed
         if payment.kind in paid:
             if (payment.payer, payment.payee) not in routes[payment.kind]:
                 raise ValueError('Unidentified production/payment counterparty.')
             paid[payment.kind] += payment.amount
+    if mortgage!=mbs:
+        raise ValueError('Mortgage payments and MBS pass-through differ.')
+    if isinstance(s.public_book,m.ledger.PublicIncomeBook):
+        m.ledger.public_income.validate_payments(r.payments,s.public_book.observations,
+                                               s.public_book.opening_deferred_asset)
     if (paid['services'], paid['residual_consumption'], paid['investment'],
             paid['residual_payroll'], paid['focal_payroll']) != (
             r.services * unit, r.residual_consumption * unit, r.investment * unit,
@@ -174,7 +207,7 @@ _TYPES = MappingProxyType({
     **{cls.__name__: cls for cls in (m.Macro, m.Envelope, m.Policy, m.News)},
     **{name: getattr(m.ledger, name) for name in (
         'SectorState', 'Bank', 'Loan', 'CBLoan', 'Collateral', 'Vintage',
-        'PublicBook', 'RRPClaim', 'Report', 'Payment', 'Trace', 'Controls',
+        'PublicBook', 'PublicIncomeBook', 'PublicIncomeTerms', 'CouponLine', 'PublicIncomeControls', 'RRPClaim', 'Report', 'Payment', 'Trace', 'Controls',
         'LoanOffer', 'Renewal', 'PublicInstructions', 'ClosingCreditForecast',
         'OperatingLoanOffer', 'OperatingLoan', 'ProjectCommitment', 'ProjectLoan')},
     'CandidateState': CandidateState,

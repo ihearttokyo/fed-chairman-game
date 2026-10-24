@@ -2,8 +2,9 @@
 
 Authored par public claims, 80% collateral value, 10% private capital covenant,
 fixed-price technology and household preferences are hand cases, not estimates.
-The public ledger is PRINCIPAL ONLY: no public coupons, CB interest, IOR or
-complete Core policy/quantity bridge. PublicBook identifies currency/TGA/MBS
+The legacy public ledger is PRINCIPAL ONLY. Opt-in PublicIncomeBook adds a
+stationary contractual income program, NOT the complete policy/quantity bridge.
+PublicBook identifies currency/TGA/MBS
 and funded Treasury calendars, QE and bank-owned RRP claims. Signed PRIVATE coupons are
 contractual cashflows; negative-coupon experiments are not a Fed-policy/NIM model.
 Only active claims, physical vintages and the current ordered trace are retained.
@@ -16,6 +17,8 @@ import math
 from . import numerics as precision
 from . import households as household
 from . import source_data
+from . import public_income
+from .public_income import PublicIncomeTerms, CouponLine
 
 ZERO = F(0)
 QUANTUM = F(1, 1000000)
@@ -280,6 +283,37 @@ class PublicBook:
             raise ValueError('Pass-through pool assets must back the exact Fed MBS face.')
 
 
+@dataclass(frozen=True,kw_only=True)
+class PublicIncomeBook(PublicBook):
+    """Opt-in stationary coupon program; legacy book fields are untouched."""
+    terms: PublicIncomeTerms
+    deferred_asset: F=ZERO
+    income_paid_through: int=0
+    observations: tuple=()
+    opening_deferred_asset: F=ZERO
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.private_treasuries is None:
+            raise ValueError('Public income requires identified holder pools.')
+        if type(self.terms) is not PublicIncomeTerms:
+            raise TypeError('Require explicit public coupon terms.')
+        object.__setattr__(self,'deferred_asset',_number(self.deferred_asset))
+        object.__setattr__(self,'opening_deferred_asset',_number(self.opening_deferred_asset))
+        _integer(self.income_paid_through,'Public income paid-through',0)
+        if type(self.observations) is not tuple:
+            raise TypeError('Require immutable public coupon observations.')
+        if not self.income_paid_through:
+            if self.observations or self.deferred_asset or self.opening_deferred_asset:
+                raise ValueError('Fresh public-income books cannot invent prior earnings/losses.')
+        elif len(self.observations)!=11 or any(type(z) is not CouponLine for z in self.observations):
+            raise ValueError('Missing current public coupon obligation observations.')
+        faces=(self.treasuries,*self.private_treasuries)
+        if any(not face and mass for row,masses in zip(faces,self.terms.annual_treasury)
+               for face,mass in zip(row,masses)):
+            raise ValueError('Public coupon mass requires actual owned Treasury face.')
+
+
 @dataclass(frozen=True)
 class PublicInstructions:
     currency_to_deposits: tuple = (ZERO,ZERO)
@@ -387,6 +421,16 @@ class Controls:
                 raise TypeError('Require an immutable ProjectCommitment, not a callback.')
             if self.household_mode != 'cash_stock_close_v1':
                 raise ValueError('Project commitments require the explicit closing-budget mode.')
+
+
+@dataclass(frozen=True,kw_only=True)
+class PublicIncomeControls(Controls):
+    """Explicit current administered rate; never reprice fixed security coupons."""
+    iorb_rate_pct: F
+
+    def __post_init__(self):
+        super().__post_init__()
+        object.__setattr__(self,'iorb_rate_pct',_number(self.iorb_rate_pct,signed=True))
 
 
 def _dividend_capital_floor(controls, bank, risk):
@@ -602,6 +646,17 @@ class Report:
         return sum((p.amount for p in self.payments
                     if p.kind == 'bank_dividend' and p.payee == owner), ZERO)
 
+    def public_income_to(self, owner):
+        if owner not in ('HA','HB'):raise ValueError('Unknown household owner.')
+        return sum((p.amount*((p.payee==owner)-(p.payer==owner))
+                    for p in self.payments if p.kind=='mortgage_coupon'),ZERO)
+
+    def disposable_income(self, owner):
+        if owner not in ('HA','HB'):raise ValueError('Unknown household owner.')
+        return ((self.payroll_residual+self.dividend_residual if owner=='HA' else
+                 self.payroll_focal+self.dividend_focal)+self.bank_dividend_to(owner)
+                +self.public_income_to(owner))
+
 
 @dataclass(frozen=True)
 class SectorState:
@@ -659,7 +714,14 @@ class SectorState:
         public_liabilities=sum(book.currency)+book.tga+book.capital_other+sum(c.face for c in book.rrp_claims) if book else ZERO
         if self.gov_debt_face != self.public_securities-mbs + sum(b.securities for b in self.banks):
             raise ValueError('Existing public face must reconcile with its issuer.')
-        if self.public_securities + sum(l.face for l in self.cb_loans) != sum(b.reserves for b in self.banks)+public_liabilities:
+        deferred=book.deferred_asset if isinstance(book,PublicIncomeBook) else ZERO
+        if isinstance(book,PublicIncomeBook) and book.income_paid_through!=self.quarter:
+            raise ValueError('Public income clock must match the current ledger quarter.')
+        if isinstance(book,PublicIncomeBook) and self.quarter:
+            public_income.validate_observations(book.terms,book.observations,
+                treasuries=(book.treasuries,*book.private_treasuries),mortgages=book.mortgages,
+                scale=self.scale,opening_deferred=book.opening_deferred_asset,deferred=book.deferred_asset)
+        if self.public_securities + sum(l.face for l in self.cb_loans)+deferred != sum(b.reserves for b in self.banks)+public_liabilities:
             raise ValueError('CB assets must match actual reserve liabilities.')
         for bank in BANKS:
             pool = _pledges(self, bank, self.cb_debt(bank))
@@ -808,6 +870,38 @@ def initial_depth_reference(scale=1):
                    wip_basis=basis)
 
 
+def public_income_terms(state, *, treasury_rates_pct=(0,0,0),
+                        mortgage_rates_pct=(0,0),iorb_rate_pct=0,
+                        cb_rates_pct=(None,None),rrp_rates_pct=(None,None)):
+    """Author an opening contract; holder rates are not estimated coupon data."""
+    _state(state)
+    book=state.public_book
+    if book is None:raise ValueError('Require explicit public positions.')
+    if type(treasury_rates_pct) is not tuple or len(treasury_rates_pct)!=3:
+        raise TypeError('Require explicit CB/A/B Treasury rates.')
+    rates=tuple(_number(x,signed=True) for x in treasury_rates_pct)
+    annual=tuple(tuple(face*rate/100 for face in row) for row,rate in
+                 zip((book.treasuries,*book.private_treasuries),rates))
+    return PublicIncomeTerms(annual,tuple(mortgage_rates_pct),iorb_rate_pct,
+                             tuple(cb_rates_pct),tuple(rrp_rates_pct))
+
+
+def enable_public_income(state,terms):
+    """Fresh research books only; never migrate an existing career or report."""
+    _state(state)
+    if state.quarter or state.last is not None or type(state.public_book) is not PublicBook:
+        raise ValueError('Public-income activation requires a fresh legacy reference book.')
+    book=state.public_book
+    values={name:getattr(book,name) for name in PublicBook.__dataclass_fields__}
+    enabled=PublicIncomeBook(**values,terms=terms)
+    # Coverage is checked even before the first transaction is attempted.
+    public_income.quote(terms,treasuries=(book.treasuries,*book.private_treasuries),
+        mortgages=book.mortgages,reserves=tuple(b.reserves for b in state.banks),
+        cb_faces=tuple(state.cb_debt(b) for b in BANKS),
+        rrp_faces=tuple(state.rrp_face(b) for b in BANKS),scale=state.scale)
+    return replace(state,public_book=enabled)
+
+
 def depth_orders():
     """Orders matching the new authored depth reference, not the old C19 book."""
     return ProductionOrders(capital_resource_cost=F(37, 20),
@@ -856,6 +950,11 @@ class _Transaction:
         self.next_id = state.next_private_id
         self.public = state.public_securities
         self.public_book = state.public_book
+        if isinstance(controls,PublicIncomeControls):
+            if not isinstance(self.public_book,PublicIncomeBook):
+                raise ValueError('Public administered-rate command requires its enabled book.')
+            self.public_book=replace(self.public_book,
+                terms=replace(self.public_book.terms,iorb_rate_pct=controls.iorb_rate_pct))
         self.treasuries = ({'CB': list(state.public_book.treasuries),
                             **{b: list(c) for b, c in zip(BANKS, state.public_book.private_treasuries)}}
                            if state.public_book else None)
@@ -934,6 +1033,8 @@ class _Transaction:
     def _draw(self, bank, value, refinance=False):
         if not value:
             return
+        if isinstance(self.public_book,PublicIncomeBook) and self.public_book.terms.cb_rates_pct[_bank(bank)] is None:
+            raise _Failure('unsupported_public_income','New CB credit lacks explicit coupon terms.')
         if self.equity(bank) <= 0:
             raise _Failure('funding_failure',f'Bank {bank} is not solvent for CB funding.')
         if value > self.limits[bank]-self.used[bank] or self.debt(bank)+value > self.capacity(bank):
@@ -1124,6 +1225,84 @@ class _Transaction:
         self.prepay_uncovered_cb(bank)
         self.refresh_cb(bank)
 
+    def settle_public_income(self):
+        """One optional atomic income phase; no borrowing to pay these coupons.
+
+        Snapshot opening bases, return due RRP principal, pay Treasury coupons,
+        then CB-origin payments and private obligations, and remit last. This
+        fixed research order does not establish universal intraday solvency.
+        """
+        book=self.public_book
+        if not isinstance(book,PublicIncomeBook):
+            raise _Failure('unsupported_public_income','Require explicit public-income books.')
+        if book.income_paid_through!=self.quarter-1 or self.quarter!=self.original.quarter+1:
+            raise _Failure('unsupported_public_income','Duplicate or stale public-income phase.')
+        opening=self.original
+        try:
+            lines=public_income.quote(book.terms,
+                treasuries=(opening.public_book.treasuries,*opening.public_book.private_treasuries),
+                mortgages=opening.public_book.mortgages,
+                reserves=tuple(b.reserves for b in opening.banks),
+                cb_faces=tuple(opening.cb_debt(b) for b in BANKS),
+                rrp_faces=tuple(opening.rrp_face(b) for b in BANKS),scale=self.scale)
+        except ValueError as error:
+            raise _Failure('unsupported_public_income',str(error)) from error
+        self.close_rrp()
+        profit=ZERO;tga=book.tga
+        def record(payer,payee,value,kind,claim):
+            if value<0:payer,payee,value=payee,payer,-value
+            self.record(payer,payee,value,kind,claim)
+        def bank_cash(bank,value):
+            if self.r[bank]+value<0:
+                raise _Failure('funding_failure','Public coupon exceeds bank-owned reserves.')
+            self.r[bank]+=value
+        for line in lines:
+            if line.kind!='treasury':continue
+            value=line.settled
+            if tga-value<0:
+                raise _Failure('funding_failure','Treasury coupon exceeds actual TGA funding.')
+            tga-=value
+            if line.owner=='CB':profit+=value;payee='CB'
+            else:
+                bank_cash(line.owner,value);self.earnings[line.owner]+=value
+                payee='Bank'+line.owner
+            record('Treasury',payee,value,'treasury_coupon','Treasury:'+line.owner)
+        # Pay CB-origin obligations first. A later private debit can use only
+        # reserves/deposits actually received, never an anticipated remittance.
+        other=[z for z in lines if z.kind!='treasury']
+        def cb_outflow(z):
+            return ((z.kind in ('iorb','rrp') and z.settled>0) or
+                    (z.kind in ('cb_loan','mortgage') and z.settled<0))
+        ordered=[z for z in other if cb_outflow(z)]+[z for z in other if not cb_outflow(z)]
+        for line in ordered:
+            value=line.settled;owner=line.owner;claim=line.kind+':'+owner
+            if line.kind in ('iorb','rrp'):
+                bank_cash(owner,value);self.earnings[owner]+=value;profit-=value
+                record('CB','Bank'+owner,value,line.kind+'_coupon',claim)
+            elif line.kind=='cb_loan':
+                bank_cash(owner,-value);self.earnings[owner]-=value;profit+=value
+                record('Bank'+owner,'CB',value,'cb_loan_coupon',claim)
+            else:
+                bank=HOME[owner]
+                if self.d[owner]-value<0:
+                    raise _Failure('funding_failure','Mortgage coupon exceeds owned borrower deposits.')
+                bank_cash(bank,-value);self.d[owner]-=value;profit+=value
+                record(owner,'MortgagePool',value,'mortgage_coupon',claim)
+                record('MortgagePool','CB',value,'mbs_coupon',claim)
+        deferred,remit=public_income.earnings_close(book.deferred_asset,profit)
+        tga+=remit
+        self.record('CB','Treasury',remit,'cb_remittance')
+        # The deferred asset is explicit and cannot fund purchases/collateral.
+        self.public_book=replace(book,tga=tga,deferred_asset=deferred,
+                                 income_paid_through=self.quarter,observations=lines,
+                                 opening_deferred_asset=book.deferred_asset)
+        if any(z.settled or z.contractual for z in lines) or book.deferred_asset:
+            for z in lines:
+                self.note('public_coupon_observed',z.owner,z.kind,z.settled,
+                    basis=z.basis,contractual=z.contractual,rounding=z.settled-z.contractual)
+            self.note('cb_earnings_closed','CB','Treasury',profit,
+                      opening_deferred=book.deferred_asset,deferred=deferred,remittance=remit)
+
     def sync_public(self):
         if self.public_book is not None:
             self.public_book = replace(
@@ -1135,6 +1314,8 @@ class _Transaction:
         """Transfer actual dated par face; bank CB pledges use a fungible pool."""
         if self.treasuries is None:
             return  # Qualified legacy scalar-only private fixture.
+        if face and isinstance(self.public_book,PublicIncomeBook):
+            raise _Failure('unsupported_public_income','Treasury coupon transfer is not implemented.')
         left = face
         for index, available in enumerate(self.treasuries[seller]):
             take = min(left, available)
@@ -1210,6 +1391,16 @@ class _Transaction:
         book = self.public_book
         if book is None:
             raise ValueError('Public instructions require identified opening public accounts.')
+        income=isinstance(book,PublicIncomeBook)
+        old_masses=book.terms.annual_treasury if income else None
+        if income:
+            due=tuple(self.treasuries[o][0] for o in ('CB',*BANKS))
+            if (any(instructions.currency_to_deposits) or any(instructions.mortgage_repayments)
+                    or any(instructions.treasury_subscriptions) or instructions.treasury_redemption
+                    or instructions.rrp_request or any(instructions.rrp_offers)
+                    or (calendar and instructions.treasury_rolls!=due)
+                    or (not calendar and any(instructions.treasury_rolls))):
+                raise _Failure('unsupported_public_income','Income program requires stationary same-face Treasury rolls and no new quantity operations.')
         if calendar:
             if instructions.treasury_redemption:
                 raise ValueError('Quarter steps automatically settle full due principal; use explicit rolls.')
@@ -1278,8 +1469,28 @@ class _Transaction:
                         abs(net), 'treasury_net_cash')
         self.public_book = replace(book, mbs=sum(mortgages), mortgages=tuple(mortgages),
                                    currency=tuple(currency), tga=closing_tga)
+        if income and calendar:
+            rows=[]
+            for masses,due,roll in zip(old_masses,dues,rolls):
+                row=list(masses[1:])+[ZERO]
+                # Use exactly the same principal rounding/allocation as add_treasury.
+                maturity=instructions.replacement_maturity;lower=int(maturity)
+                upper=maturity-lower
+                low,high=(_distribute(roll,(1-upper,upper),self.money_quantum)
+                          if upper else (roll,ZERO))
+                if due:
+                    row[lower-1]+=masses[0]*low/due
+                    if high:row[lower]+=masses[0]*high/due
+                rows.append(tuple(row))
+            self.public_book=replace(self.public_book,
+                treasuries=tuple(self.treasuries['CB']),
+                private_treasuries=tuple(tuple(self.treasuries[b]) for b in BANKS),
+                rrp_claims=tuple(self.rrp),
+                terms=replace(book.terms,annual_treasury=tuple(rows)))
 
     def qe(self, request, offers):
+        if isinstance(self.public_book,PublicIncomeBook) and (request or any(offers)):
+            raise _Failure('unsupported_public_income','QE coupon transfer is not implemented.')
         left = request
         for bank, offer in zip(BANKS,offers):
             value = _floor(min(left,offer,self.free_securities(bank)),self.money_quantum)
@@ -1525,8 +1736,10 @@ def _closing_household_plans(tx, orders, controls, wage, lr, lf):
                      last.dividend_focal + last.bank_dividend_to('HB'))
         source = 'last_paid_dividends'
     previous = ((20 * tx.scale, F(63, 20) * tx.scale) if last is None else
-                (last.payroll_residual + last.dividend_residual + last.bank_dividend_to('HA'),
-                 last.payroll_focal + last.dividend_focal + last.bank_dividend_to('HB')))
+                tuple(last.disposable_income(owner) for owner in ('HA','HB'))
+                if isinstance(tx.public_book,PublicIncomeBook) else
+                (last.payroll_residual+last.dividend_residual+last.bank_dividend_to('HA'),
+                 last.payroll_focal+last.dividend_focal+last.bank_dividend_to('HB')))
     unit = tx.scale * orders.price_factor
     previous_quotes = _previous_credit_quotes(last)
     plans = []
@@ -1534,9 +1747,14 @@ def _closing_household_plans(tx, orders, controls, wage, lr, lf):
             ('HA', 'HB'), (orders.preferences_a, orders.preferences_b),
             (lr * wage, lf * wage), previous, forecasts, (F(3, 20), F(1, 21))):
         opening = tx.d[owner] - wages  # Actual pre-payroll wallet, not a forecast.
-        quote = household.cash_stock_budget(
+        income_enabled=isinstance(tx.public_book,PublicIncomeBook)
+        current_public=(sum((p.amount*((p.payee==owner)-(p.payer==owner))
+                            for p in tx.payments if p.kind=='mortgage_coupon'),ZERO)
+                        if income_enabled else ZERO)
+        budget=(household.net_cash_stock_budget if income_enabled else household.cash_stock_budget)
+        quote = budget(
             opening_cash=opening, paid_wages=wages, previous_income=prior,
-            forecast_income=wages + forecast, cash_ratio=ratio,
+            forecast_income=wages + forecast+current_public, cash_ratio=ratio,
             demand_multiplier=orders.demand_multiplier)
         goods = prefs.residual + prefs.services
         plans.append((quote.funded * prefs.residual / goods / unit,
@@ -1544,7 +1762,7 @@ def _closing_household_plans(tx, orders, controls, wage, lr, lf):
                      if goods else (ZERO, ZERO))
         tx.note('household_budget', owner, 'goods', quote.wallet,
                 mode='cash_stock_close_v1', opening_cash=opening, paid_wages=wages,
-                income_previous=prior, income_forecast=wages + forecast,
+                income_previous=prior, income_forecast=wages + forecast+current_public,
                 forecast=forecast, forecast_source=source, cash_ratio=ratio,
                 adjustment=F(1, 4), desired=quote.desired, funded=quote.funded,
                 **({'demand_multiplier':orders.demand_multiplier}
@@ -1951,6 +2169,11 @@ def _clear_market(tx, orders, controls, vintages, capital, depreciation, lr, lf,
 def advance_given_orders(state, orders, controls=Controls()):
     """Execute one atomic quarter using supplied orders; no endogenous planner."""
     _state(state)
+    if isinstance(state.public_book,PublicIncomeBook) and state.quarter:
+        if state.last is None:
+            raise ValueError('Public-income full-quarter continuation requires its actual paid report.')
+        public_income.validate_payments(state.last.payments,state.public_book.observations,
+                                       state.public_book.opening_deferred_asset)
     if not isinstance(controls,Controls):
         raise TypeError('Step requires explicit Controls.')
     if type(orders) is not ProductionOrders:
@@ -1991,7 +2214,10 @@ def advance_given_orders(state, orders, controls=Controls()):
     try:
         if tx.public_book is not None:
             instructions = controls.public_instructions or PublicInstructions()
-            tx.close_rrp()
+            if isinstance(tx.public_book,PublicIncomeBook):
+                tx.settle_public_income()
+            else:
+                tx.close_rrp()
             tx.settle_public(instructions, calendar=True)
             tx.cb_maturities()
             tx.qe(controls.asset_purchase_request, controls.asset_offers)
@@ -2152,6 +2378,9 @@ def advance_given_orders(state, orders, controls=Controls()):
         report = Report(q,output,services,investment,cr,lr,lf,lr*wage,lf*wage,depreciation,
                         interest,dr,df,bank_div,tx.cb_borrowed,tx.cb_repaid,tx.qe_applied,
                         controls.asset_purchase_request-tx.qe_applied,tuple(tx.payments),tuple(tx.trace))
+        if isinstance(tx.public_book,PublicIncomeBook):
+            public_income.validate_payments(report.payments,tx.public_book.observations,
+                                           tx.public_book.opening_deferred_asset)
         result = tx.finish(vintages=vintages,wip_units=physical_i,wip_basis=investment*unit,last=report)
         return Outcome(True,'ok',result)
     except _Failure as error:
