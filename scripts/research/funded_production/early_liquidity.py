@@ -141,3 +141,99 @@ def validate_plan(value):
         return cls,item
     if signature(value)!=signature(expected):
         raise ValueError('Stale or altered conditional early-credit plan.')
+
+
+@dataclass(frozen=True, kw_only=True)
+class HouseholdLiquidityPlan:
+    """Asserted CURRENT post-payroll conditions, never forecast owned money."""
+    scale: F
+    reserves: tuple
+    household_deposits: tuple
+    cb_faces: tuple
+    equities: tuple
+    capacities: tuple
+    facility_limits: tuple
+    gross_used: tuple
+    cb_rates_pct: tuple
+    observations: tuple
+    advances: tuple
+    gross_after: tuple
+    credit_faces: tuple
+    credit_reserves: tuple
+    coupon_reserves: tuple
+    coupon_deposits: tuple
+
+
+HOUSEHOLD_RECORD_TYPES = (HouseholdLiquidityPlan, income.CouponLine)
+
+
+def household_plan(*, scale, reserves, household_deposits, cb_faces, equities,
+                   capacities, facility_limits, gross_used, cb_rates_pct, observations):
+    """Minimum reserve-only advances immediately before original HH coupons.
+
+    The caller asserts actual current equity/collateral/gross usage; the sole
+    journal must recheck them. Neither expected wages nor future cash enters.
+    A household deposit shortfall is NOT cured by a bank reserve advance.
+    """
+    funding.validate_records((scale, reserves, household_deposits, cb_faces, equities,
+        capacities, facility_limits, gross_used, cb_rates_pct, observations), HOUSEHOLD_RECORD_TYPES)
+    scale = funding._number(scale)
+    if not scale: raise ValueError('Require a positive nominal scale.')
+    quantum = scale*QUANTUM
+    reserves = funding._vector(reserves, 2, 'Current bank reserves')
+    household_deposits = funding._vector(household_deposits, 2, 'Actual household deposits')
+    cb_faces = funding._vector(cb_faces, 2, 'Current CB cohort face')
+    equities = funding._vector(equities, 2, 'Current bank equity', signed=True)
+    capacities = funding._vector(capacities, 2, 'Current owned collateral capacity')
+    facility_limits = funding._vector(facility_limits, 2, 'One gross facility offer')
+    gross_used = funding._vector(gross_used, 2, 'Already used gross facility offer')
+    cb_rates_pct = funding._vector(cb_rates_pct, 2, 'Explicit CB rates', signed=True, optional=True)
+    if any(value % quantum for value in (*facility_limits, *gross_used)):
+        raise ValueError('Facility limits and actual gross usage require whole money quanta.')
+    if (type(observations) is not tuple or len(observations) != 11
+            or any(type(z) is not income.CouponLine for z in observations)
+            or tuple((z.kind, z.owner) for z in observations) != _IDENTITIES):
+        raise ValueError('Require eleven exact ORIGINAL coupon observations.')
+    for z in observations: replace(z)
+    coupons = tuple(z.settled for z in observations[3:5])
+    deposits = tuple(cash-coupon for cash, coupon in zip(household_deposits, coupons))
+    if any(cash < 0 for cash in deposits):
+        raise PlanFailure('funding_failure', 'Original household coupon exceeds actual owned deposits after payroll.')
+    needs = tuple(max(ZERO, coupon-reserve) for coupon, reserve in zip(coupons, reserves))
+    advances = tuple(-(-need//quantum)*quantum for need in needs)
+    gross = tuple(used+advance for used, advance in zip(gross_used, advances))
+    faces = tuple(face+advance for face, advance in zip(cb_faces, advances))
+    for advance, used, face, equity, capacity, limit, rate in zip(
+            advances, gross, faces, equities, capacities, facility_limits, cb_rates_pct):
+        if advance and rate is None:
+            raise PlanFailure('unsupported_public_income', 'Household reserve credit lacks explicit CB coupon terms.')
+        if used > limit or (advance and (equity <= 0 or face > capacity)):
+            raise PlanFailure('funding_failure', 'Household reserve credit lacks actual equity, collateral or remaining gross room.')
+    credit = tuple(reserve+advance for reserve, advance in zip(reserves, advances))
+    return HouseholdLiquidityPlan(scale=scale, reserves=reserves,
+        household_deposits=household_deposits, cb_faces=cb_faces, equities=equities,
+        capacities=capacities, facility_limits=facility_limits, gross_used=gross_used,
+        cb_rates_pct=cb_rates_pct, observations=observations, advances=advances,
+        gross_after=gross, credit_faces=faces, credit_reserves=credit,
+        coupon_reserves=tuple(reserve-coupon for reserve, coupon in zip(credit, coupons)),
+        coupon_deposits=deposits)
+
+
+def validate_household_plan(value):
+    """Closed recomputation, including typed outputs; consistency, not custody."""
+    funding.validate_records(value, HOUSEHOLD_RECORD_TYPES)
+    if type(value) is not HouseholdLiquidityPlan:
+        raise TypeError('Require the exact immutable HouseholdLiquidityPlan.')
+    expected = household_plan(**{name:object.__getattribute__(value, name) for name in (
+        'scale', 'reserves', 'household_deposits', 'cb_faces', 'equities', 'capacities',
+        'facility_limits', 'gross_used', 'cb_rates_pct', 'observations')})
+    def signature(item):
+        cls = type(item)
+        if cls is tuple: return cls, tuple(signature(x) for x in item)
+        if cls is F: return cls, item.numerator, item.denominator
+        if cls is HouseholdLiquidityPlan or cls is income.CouponLine:
+            return cls, tuple((field.name, signature(object.__getattribute__(item, field.name)))
+                              for field in fields(cls))
+        return cls, item
+    if signature(value) != signature(expected):
+        raise ValueError('Stale or altered conditional household-liquidity plan.')

@@ -113,24 +113,27 @@ def _coverage(sector):
                 raise scenarios.MissingCoverage('Missing contractual ' + kind + ' coupon terms for ' + owner)
 
 
-def _quote_prefix_inputs(opening, step, *, early=False):
+def _quote_prefix_inputs(opening, step, *, early=False, household=False):
     """Shared original bases and principal, BEFORE either coupon calendar.
 
     Prior actual payments AND trace validate before quoting new IORB. The
     read-only PaydateSnapshot retains all four actual wallets and prior income
     history; only its current terms receive the new administered-rate quote.
-    The exact internal Boolean selects ONLY two code-owned book identities;
+    Exact internal Booleans select ONLY three code-owned book identities;
     no caller-supplied class, callback or schema selects validation/settlement.
     """
     checkpoint._check_sources()
-    if type(early) is not bool:
+    if type(early) is not bool or type(household) is not bool or (household and not early):
         raise TypeError('Require an exact internal paydate convention selection.')
     if type(opening) is not m.Envelope or type(step) is not p.PublicStep:
         raise TypeError('Require an exact Envelope and explicit PublicStep.')
     _canonical_value((opening, step))
     replace(opening)  # Exact components/version/clock, after structural admission.
     sector = opening.sector
-    if early:
+    if household:
+        if type(sector.public_book) is not l.HouseholdLiquidityBook:
+            raise NotImplementedError('Current household bridge requires the exact HouseholdLiquidityBook.')
+    elif early:
         if type(sector.public_book) is not l.EarlyPaydateBook:
             raise NotImplementedError('Current early-paydate bridge requires the exact EarlyPaydateBook.')
     elif type(sector.public_book) is not l.PaydatePublicBook:

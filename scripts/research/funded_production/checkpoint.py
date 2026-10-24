@@ -25,7 +25,7 @@ _MODULE_NAMES = ('__init__', 'source_data', 'numerics', 'households', 'pricing',
                  'ledger', 'macro', 'episodes', 'cashflows', 'choice', 'checkpoint',
                  'prospectus', 'coupled', 'investment', 'public_forecast',
                  'public_scenarios', 'public_branches', 'public_market', 'paydate_households',
-                 'public_paydate', 'paydate_scenarios', 'public_paydate_branches', 'public_recurring_branches', 'early_liquidity', 'public_early_paydate')
+                 'public_paydate', 'paydate_scenarios', 'public_paydate_branches', 'public_recurring_branches', 'early_liquidity', 'public_early_paydate', 'public_household_paydate')
 _SOURCE_PATHS = {name: _PACKAGE_DIR / (name + '.py') for name in _MODULE_NAMES}
 _SOURCE_PATHS.update({'model.' + name: source_data.MODEL_DIR / name
                       for name in source_data.SOURCE_DIGESTS})
@@ -58,7 +58,7 @@ def _paid_economy(economy):
     # valid Macro and Sector components alone do not validate their envelope.
     replace(economy)
     a, s = economy.macro, economy.sector
-    if type(s.public_book) is m.ledger.EarlyPaydateBook:
+    if type(s.public_book) in (m.ledger.EarlyPaydateBook, m.ledger.HouseholdLiquidityBook):
         # New convention: reject forged/unnormalized components before Q0's
         # early return too. These are code-owned constructors after tree admission.
         components = (a, *s.banks, *s.loans, *s.cb_loans, *s.vintages,
@@ -135,7 +135,7 @@ def _paid_economy(economy):
     if type(s.public_book) is m.ledger.PaydatePublicBook:
         m.ledger.validate_paydate_public(s.public_book,s.scale,s.quarter,r.payments,r.trace)
     elif (isinstance(s.public_book,m.ledger.FundedPublicBook)
-          and type(s.public_book) is not m.ledger.EarlyPaydateBook):
+          and type(s.public_book) not in (m.ledger.EarlyPaydateBook, m.ledger.HouseholdLiquidityBook)):
         m.ledger.validate_funded_public(s.public_book,s.scale,s.quarter,r.payments)
     if (paid['services'], paid['residual_consumption'], paid['investment'],
             paid['residual_payroll'], paid['focal_payroll']) != (
@@ -236,11 +236,13 @@ _TYPES = MappingProxyType({
         'FundedPublicBook', 'FundedPublicInstructions',
         'PaydatePublicBook', 'PaydateSnapshot', 'PaydatePhase',
         'EarlyPaydateBook', 'EarlyPhase', 'EarlyCreditWitness', 'LaterCreditWitness',
+        'HouseholdLiquidityBook', 'HouseholdLiquidityPhase', 'HouseholdLiquidityWitness',
         'LoanOffer', 'Renewal', 'PublicInstructions', 'ClosingCreditForecast',
         'OperatingLoanOffer', 'OperatingLoan', 'ProjectCommitment', 'ProjectLoan')},
     **{name: getattr(public_funding, name) for name in (
         'FundingOpening', 'FundingBatch', 'TreasuryTransfer')},
     'EarlyPlan': early_liquidity.EarlyPlan,
+    'HouseholdLiquidityPlan': early_liquidity.HouseholdLiquidityPlan,
     'CandidateState': CandidateState,
     'DecisionEvent': DecisionEvent,
 })

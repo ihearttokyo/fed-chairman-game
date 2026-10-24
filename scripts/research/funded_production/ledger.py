@@ -497,12 +497,81 @@ class EarlyPaydateBook(FundedPublicBook):
             raise TypeError('Require immutable closing CB claims.')
 
 
+HOUSEHOLD_LIQUIDITY_PHASES = ('opening', 'principal', 'early_credit', 'early_income',
+    'funded_payroll', 'household_credit', 'household_income', 'income_close', 'trading_close')
+
+
+@dataclass(frozen=True)
+class HouseholdLiquidityPhase:
+    """New exact nine-phase schema, never an old EarlyPhase/PaydatePhase."""
+    name: str
+    payment_end: int
+    trace_end: int
+    snapshot: PaydateSnapshot
+
+    def __post_init__(self):
+        if type(self.name) is not str or self.name not in HOUSEHOLD_LIQUIDITY_PHASES:
+            raise ValueError('Unknown fixed household-liquidity phase.')
+        _integer(self.payment_end, 'Household phase payment boundary')
+        _integer(self.trace_end, 'Household phase trace boundary', 1)
+        if type(self.snapshot) is not PaydateSnapshot:
+            raise TypeError('Require an exact read-only PaydateSnapshot.')
+
+
+@dataclass(frozen=True)
+class HouseholdLiquidityWitness:
+    """Current post-payroll conditions; private inventory binds to real flows."""
+    plan: early_liquidity.HouseholdLiquidityPlan
+    private_loans: tuple
+
+    def __post_init__(self):
+        if type(self.plan) is not early_liquidity.HouseholdLiquidityPlan:
+            raise TypeError('Require the exact HouseholdLiquidityPlan.')
+        if type(self.private_loans) is not tuple:
+            raise TypeError('Require immutable current private claim observations.')
+
+
+@dataclass(frozen=True, kw_only=True)
+class HouseholdLiquidityBook(FundedPublicBook):
+    """Fresh opt-in actual-payroll liquidity; no paid-book/schema migration."""
+    phases: tuple = ()
+    paid_wages: tuple = (ZERO, ZERO)
+    household_income: tuple = (ZERO, ZERO)
+    early_credit: EarlyCreditWitness | None = None
+    closing_cb_loans: tuple = ()
+    closing_private_loans: tuple = ()
+    later_credit: tuple = ()
+    household_credit: HouseholdLiquidityWitness | None = None
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.phases) is not tuple or any(type(p) is not HouseholdLiquidityPhase for p in self.phases):
+            raise TypeError('Require exact immutable HouseholdLiquidityPhase witnesses.')
+        object.__setattr__(self, 'paid_wages', public_funding._vector(self.paid_wages, 2, 'Paid wages'))
+        object.__setattr__(self, 'household_income', public_funding._vector(
+            self.household_income, 2, 'Signed settled household income', signed=True))
+        if self.early_credit is not None and type(self.early_credit) is not EarlyCreditWitness:
+            raise TypeError('Require the exact early-credit witness.')
+        if self.household_credit is not None and type(self.household_credit) is not HouseholdLiquidityWitness:
+            raise TypeError('Require the exact household-liquidity witness.')
+        if type(self.later_credit) is not tuple or any(type(w) is not LaterCreditWitness for w in self.later_credit):
+            raise TypeError('Require exact immutable actual draw witnesses.')
+        if type(self.closing_cb_loans) is not tuple or type(self.closing_private_loans) is not tuple:
+            raise TypeError('Require immutable closing actual claims.')
+
+
+def _is_early_paydate(book):
+    return type(book) is EarlyPaydateBook or type(book) is HouseholdLiquidityBook
+
+
 def _is_paydate(book):
-    return type(book) is PaydatePublicBook or type(book) is EarlyPaydateBook
+    return type(book) is PaydatePublicBook or _is_early_paydate(book)
 
 
 def _validate_paydate_book(book, scale, quarter, payments=None, trace=None):
     # Code-owned exact selector; callers/data cannot supply a validator/schema.
+    if type(book) is HouseholdLiquidityBook:
+        return validate_household_liquidity_public(book, scale, quarter, payments, trace)
     if type(book) is EarlyPaydateBook:
         return validate_early_paydate_public(book, scale, quarter, payments, trace)
     if type(book) is PaydatePublicBook:
@@ -1038,6 +1107,282 @@ def _validate_early_gross_usage(book, trace):
             raise ValueError('Original CB liabilities plus actual gross credit minus actual retirement do not reconcile.')
 
 
+def _household_private_origin(loan):
+    """Fixed full claim signature; never select a class/callback from data."""
+    if type(loan) is Loan:
+        kind = 'loan'
+    elif type(loan) is OperatingLoan:
+        kind = 'operating'
+    elif type(loan) is ProjectLoan:
+        kind = 'project'
+    else:
+        raise TypeError('Require an exact legal private claim.')
+    replace(loan)
+    if any(type(value) is not F for value in (loan.face, loan.rate_pct, loan.allowance)):
+        raise TypeError('Private history requires canonical actual claim amounts/rates.')
+    return Trace('household_private_origin', loan.lender, loan.borrower, loan.face, loan.id,
+        (('claim_type', kind), ('rate_pct', loan.rate_pct), ('maturity', loan.maturity),
+         ('start', loan.start), ('last_coupon_paid', loan.last_coupon_paid),
+         ('allowance', loan.allowance), ('performing', loan.performing)))
+
+
+def _household_private_pending(loan, old_id=None):
+    signature = _household_private_origin(loan)
+    return replace(signature, kind='household_private_pending',
+                   details=(('old_id', old_id), *signature.details))
+
+
+def _validate_household_private_history(book, scale, quarter, payments, trace):
+    """Reconcile each draw's inventory/transit at its ACTUAL trace prefix.
+
+    Full scalar pending signatures precede fund(): a real undelivered loan is
+    already an asset AND a lender transit liability. Following legal delivery,
+    payment and terms receipts must complete it. Future signatures cannot move
+    backward. This validates internal history, not underwriting or custody.
+    No record class, schema or callback is selected by journal data.
+    """
+    loans = [_household_private_origin(z) for z in book.early_credit.private_loans]
+    seen = {z.claim_id for z in loans}
+    transit = [ZERO, ZERO]
+    pending = None
+    origins = {}
+    cash_used, reserves_used, zero_renewals = set(), set(), set()
+    draw_at = {}
+    for w in book.later_credit:
+        _integer(w.trace_start, 'Actual private-history draw position')
+        if w.trace_start in draw_at:
+            raise ValueError('Duplicated actual private-history draw position.')
+        draw_at[w.trace_start] = w
+    keys = ('claim_type', 'rate_pct', 'maturity', 'start', 'last_coupon_paid', 'allowance', 'performing')
+
+    def same(actual, expected):
+        return (actual == expected and type(actual.amount) is F
+                and tuple(type(v) for _,v in actual.details) == tuple(type(v) for _,v in expected.details))
+
+    def signature_tuple(values):
+        return tuple(_household_private_origin(z) for z in values)
+
+    def find(claim):
+        matches = [z for z in loans if z.claim_id == claim]
+        if len(matches) != 1:
+            raise ValueError('Private settlement lacks its unique chronologically owned claim.')
+        return matches[0]
+
+    def changed(loan, *, face=None, **updates):
+        data = dict(loan.details); data.update(updates)
+        return replace(loan, amount=loan.amount if face is None else face,
+                       details=tuple((k, data[k]) for k in keys))
+
+    def reserve(index, source, target, amount, claim, purpose):
+        if amount and source != target:
+            expected = Trace('reserve_settlement', source, target, amount, claim, (('purpose', purpose),))
+            if index < 0 or not same(trace[index], expected) or index in reserves_used:
+                raise ValueError('Private delivery/settlement lacks its actual chronological reserve leg.')
+            reserves_used.add(index)
+
+    def cash(receipt, posted):
+        if not receipt.amount:
+            return
+        if not 0 <= posted < len(trace) or trace[posted].kind != 'paydate_payment':
+            raise ValueError('Private claim transition lacks its actual cash receipt.')
+        position = dict(trace[posted].details)['position']
+        if payments[position] != receipt or posted in cash_used:
+            raise ValueError('Private claim transition changed or reused an actual cash receipt.')
+        cash_used.add(posted)
+
+    for index, note in enumerate(trace):
+        if index in draw_at:
+            # fund() may run ONLY between recorded deposit creation and its
+            # actual delivery. A delivery marker cannot erase transit while
+            # the matching wallet/cash receipt is still unposted.
+            if pending is not None and (pending['delta'] <= 0 or not pending['created'] or pending['delivered']):
+                raise ValueError('Draw cannot interrupt atomic private creation/delivery settlement.')
+            w = draw_at[index]
+            if signature_tuple(w.private_loans) != tuple(loans) or w.transit_deposits != tuple(transit):
+                raise ValueError('Draw private claims/transit differ from actual chronological creation and settlement.')
+        if note.kind == 'paydate_phase':
+            if pending is not None or any(transit):
+                raise ValueError('Unfinished private creation cannot cross an actual phase boundary.')
+            if note.counterparty == 'funded_payroll':
+                if (type(book.household_credit) is not HouseholdLiquidityWitness
+                        or signature_tuple(book.household_credit.private_loans) != tuple(loans)):
+                    raise ValueError('Household private inventory differs from actual delivered history.')
+        if note.kind == 'household_private_pending':
+            data = dict(note.details)
+            if (tuple(data) != ('old_id', *keys) or len(data) != len(note.details)
+                    or note.actor not in BANKS or note.counterparty not in ('R', 'F')
+                    or type(note.amount) is not F or not note.amount or not note.claim_id
+                    or note.claim_id in seen or pending is not None
+                    or data['claim_type'] not in ('loan', 'operating', 'project')
+                    or type(data['rate_pct']) is not F or type(data['allowance']) is not F
+                    or type(data['performing']) is not bool):
+                raise ValueError('Private pending creation requires its fixed canonical full fields.')
+            for key in ('maturity', 'start', 'last_coupon_paid'):
+                _integer(data[key], 'Pending private '+key)
+            _money(note.amount, scale)
+            old_id = data['old_id']
+            if old_id is not None and type(old_id) is not str:
+                raise TypeError('Pending renewal requires a plain original claim identity.')
+            signature = replace(note, kind='household_private_origin', details=note.details[1:])
+            if old_id is None:
+                stage = 'funded_payroll' if book.phases[3].trace_end <= index < book.phases[4].trace_end else 'trading'
+                if (not (book.phases[3].trace_end <= index < book.phases[4].trace_end
+                         or book.phases[7].trace_end <= index < book.phases[8].trace_end)
+                        or data['allowance'] or not data['performing']
+                        or data['start'] not in ((quarter-1,) if stage == 'funded_payroll' else (quarter-1, quarter))
+                        or data['last_coupon_paid'] != data['start'] or data['maturity'] <= data['start']
+                        or (data['claim_type'] == 'operating' and data['maturity'] != data['start']+2)
+                        or (data['claim_type'] == 'project' and (stage != 'trading' or note.counterparty != 'F'
+                            or data['start'] != quarter-1 or not 2 <= data['maturity']-data['start'] <= 17))):
+                    raise ValueError('Private creation differs from its actual fixed-calendar legal terms.')
+                old, delta = None, note.amount
+            else:
+                old = find(old_id); prior = dict(old.details)
+                delta = note.amount-old.amount
+                if (index < book.phases[7].trace_end or prior['claim_type'] == 'project'
+                        or prior['maturity'] != quarter or prior['last_coupon_paid'] != quarter
+                        or (note.actor, note.counterparty, data['claim_type'], data['performing']) !=
+                           (old.actor, old.counterparty, prior['claim_type'], prior['performing'])
+                        or data['start'] != quarter or data['last_coupon_paid'] != quarter
+                        or data['maturity'] <= quarter or data['allowance'] != min(prior['allowance'], note.amount)
+                        or (data['claim_type'] == 'operating' and data['maturity'] != quarter+2)):
+                    raise ValueError('Renewal did not retire its actual due, coupon-paid legal claim.')
+                if delta < 0:
+                    reserve(index-1, HOME[old.counterparty], old.actor, -delta, old.claim_id, 'renewal_principal')
+                loans.remove(old)
+            loans.append(signature); seen.add(note.claim_id)
+            pending = dict(signature=signature, old=old, delta=delta, created=False, delivered=False)
+            if delta > 0:
+                transit[BANKS.index(note.actor)] += delta
+        elif note.kind == 'loan_deposit_created':
+            if pending is None or pending['delta'] <= 0 or pending['created']:
+                raise ValueError('Private transit creation lacks its preceding actual pending claim.')
+            loan = pending['signature']
+            if (not same(note, Trace('loan_deposit_created', loan.actor, loan.counterparty, pending['delta'], loan.claim_id))
+                    or trace[index-1].kind != 'household_private_pending'):
+                raise ValueError('Private transit creation differs from its actual pending claim.')
+            pending['created'] = True
+        elif note.kind == 'loan_deposit_delivered':
+            if pending is None or not pending['created'] or pending['delivered']:
+                raise ValueError('Private deposit delivery lacks its actual undelivered liability.')
+            loan, old, delta = pending['signature'], pending['old'], pending['delta']
+            if not same(note, Trace('loan_deposit_delivered', loan.actor, loan.counterparty, delta, loan.claim_id)):
+                raise ValueError('Private deposit delivery changed its actual lender/owner/amount.')
+            reserve(index-1, loan.actor, HOME[loan.counterparty], delta,
+                    loan.claim_id if old is None else old.claim_id,
+                    'loan_origination' if old is None else 'renewal_advance')
+            transit[BANKS.index(loan.actor)] -= delta
+            pending['delivered'] = True
+        elif note.kind == 'matching_loan_created':
+            if pending is None or pending['old'] is not None or not pending['delivered']:
+                raise ValueError('Private origination lacks completed actual creation/delivery.')
+            loan = pending['signature']; data = dict(loan.details)
+            if not same(note, Trace('matching_loan_created', loan.actor, loan.counterparty, loan.amount, loan.claim_id,
+                    (('maturity', data['maturity']), ('start', data['start']), ('rate_pct', data['rate_pct'])))):
+                raise ValueError('Delivered private terms differ from the preceding pending creation.')
+            cash(Payment('Bank'+loan.actor, loan.counterparty, loan.amount, 'loan_origination', loan.claim_id), index-1)
+            origins[index+1] = loan
+            pending = None
+        elif note.kind == 'household_private_origin':
+            expected = origins.pop(index, None)
+            if expected is None or not same(note, expected):
+                raise ValueError('Private full delivery terms lack their chronological matching origination.')
+        elif note.kind == 'coupon_paid':
+            loan = find(note.claim_id); data = dict(loan.details)
+            contractual, paid = precision.coupon(loan.amount, data['rate_pct'], scale, QUANTUM)
+            if (index < book.phases[7].trace_end or data['start'] == quarter
+                    or data['last_coupon_paid'] != quarter-1
+                    or not same(note, Trace('coupon_paid', loan.actor, loan.counterparty, paid, loan.claim_id,
+                        (('contractual', contractual), ('paid_quarter', quarter))))):
+                raise ValueError('Private coupon changed its actual outstanding contract or settlement clock.')
+            payer, payee = ((loan.counterparty, 'Bank'+loan.actor) if paid >= 0 else
+                            ('Bank'+loan.actor, loan.counterparty))
+            cash(Payment(payer, payee, abs(paid), 'private_coupon', loan.claim_id), index-1)
+            reserve(index-3, HOME[loan.counterparty] if paid >= 0 else loan.actor,
+                    loan.actor if paid >= 0 else HOME[loan.counterparty], abs(paid), loan.claim_id, 'private_coupon')
+            loans[loans.index(loan)] = changed(loan, last_coupon_paid=quarter)
+        elif note.kind == 'matching_principal_retired':
+            loan = find(note.claim_id); data = dict(loan.details)
+            remaining = loan.amount-note.amount
+            released = max(ZERO, data['allowance']-remaining)
+            if (index < book.phases[7].trace_end or note.amount <= 0 or remaining < 0
+                    or not same(note, Trace('matching_principal_retired', loan.counterparty, loan.actor, note.amount,
+                                     loan.claim_id, (('allowance_recovery', released),)))):
+                raise ValueError('Private principal retirement changed the actual outstanding claim.')
+            cash(Payment(loan.counterparty, 'Bank'+loan.actor, note.amount, 'private_principal', loan.claim_id), index-1)
+            reserve(index-3, HOME[loan.counterparty], loan.actor, note.amount, loan.claim_id, 'private_principal')
+            loans.remove(loan)
+            if remaining:
+                loans.append(changed(loan, face=remaining, allowance=data['allowance']-released))
+        elif note.kind == 'renewal_old_retired':
+            if pending is None or pending['old'] is None or (pending['delta'] > 0 and not pending['delivered']):
+                raise ValueError('Renewal lacks its actual signed replacement/delivery.')
+            old = pending['old']; new = pending['signature']
+            released = dict(old.details)['allowance']-dict(new.details)['allowance']
+            if not same(note, Trace('renewal_old_retired', old.actor, old.counterparty, old.amount, old.claim_id,
+                             (('allowance_released', released),))):
+                raise ValueError('Renewal changed its actual retired identity/allowance.')
+            pending['retired_at'] = index
+        elif note.kind == 'renewal_new_created':
+            if pending is None or pending.get('retired_at') != index-1:
+                raise ValueError('Renewal lacks its immediately preceding actual old retirement.')
+            old, new, delta = pending['old'], pending['signature'], pending['delta']; data = dict(new.details)
+            if not same(note, Trace('renewal_new_created', new.actor, new.counterparty, new.amount, new.claim_id,
+                    (('old_id', old.claim_id), ('maturity', data['maturity']), ('rate_pct', data['rate_pct'])))):
+                raise ValueError('Renewal changed its signed replacement terms.')
+            if delta:
+                cash(Payment('Bank'+new.actor if delta > 0 else new.counterparty,
+                    new.counterparty if delta > 0 else 'Bank'+new.actor, abs(delta), 'renewal_net_cash', new.claim_id), index+2)
+            else:
+                expected = Trace('renewal_net_cash', new.actor, new.counterparty, ZERO, new.claim_id)
+                if index+1 >= len(trace) or not same(trace[index+1], expected):
+                    raise ValueError('Same-face renewal lacks its actual zero cash observation.')
+                zero_renewals.add(index+1)
+            pending = None
+    debt_cash = {i for i,n in enumerate(trace) if n.kind == 'paydate_payment'
+                 and dict(n.details)['payment_kind'] in ('loan_origination', 'private_coupon', 'private_principal', 'renewal_net_cash')}
+    private_reserves = {i for i,n in enumerate(trace) if n.kind == 'reserve_settlement'
+                        and dict(n.details).get('purpose') in ('loan_origination', 'private_coupon', 'private_principal',
+                                                              'renewal_advance', 'renewal_principal')}
+    if (pending is not None or any(transit) or origins or cash_used != debt_cash or reserves_used != private_reserves
+            or any(n.kind == 'renewal_net_cash' and not n.amount and i not in zero_renewals for i,n in enumerate(trace))
+            or signature_tuple(book.closing_private_loans) != tuple(loans)):
+        raise ValueError('Closing private claims/transit differ from the complete actual ordered settlement history.')
+
+
+
+def _validate_household_credit(book, scale, quarter, current, payments, trace):
+    witness = book.household_credit
+    if type(witness) is not HouseholdLiquidityWitness:
+        raise ValueError('Missing exact actual household-liquidity witness.')
+    replace(witness)
+    early_liquidity.validate_household_plan(witness.plan)
+    loans = witness.private_loans
+    _, equities, capacities = _early_conditions(current, loans)
+    begin, end = book.phases[4], book.phases[5]
+    gross = tuple(sum((n.amount for n in trace[:begin.trace_end]
+        if n.kind == 'facility_applied' and n.actor == bank), ZERO) for bank in BANKS)
+    expected = early_liquidity.household_plan(scale=scale, reserves=current.reserves,
+        household_deposits=current.wallets[2:], cb_faces=current.cb_faces,
+        equities=equities, capacities=capacities, facility_limits=book.early_credit.plan.facility_limits,
+        gross_used=gross, cb_rates_pct=current.terms.cb_rates_pct, observations=book.observations)
+    if witness.plan != expected:
+        raise ValueError('Household reserve plan differs from actual post-payroll conditions.')
+    receipts = payments[begin.payment_end:end.payment_end]
+    expected_receipts = tuple(Payment('CB', bank, amount, 'cb_draw',
+        _early_cb_id(quarter, bank, book.early_credit.old_loans))
+        for bank, amount in zip(BANKS, expected.advances) if amount)
+    if receipts != expected_receipts:
+        raise ValueError('Household phase must contain only the minimum actual ordered bank advances.')
+    for position, receipt in enumerate(receipts, begin.payment_end):
+        matches = tuple(w for w in book.later_credit if w.payment_position == position)
+        if len(matches) != 1 or matches[0].private_loans != loans or any(matches[0].transit_deposits):
+            raise ValueError('Household draw collateral differs from actually delivered private claims.')
+        _validate_later_credit(book, scale, quarter, current, receipt, position, trace)
+        current, transfer = _paydate_private_snapshot(current, receipt, (), 0, scale)
+    return current
+
+
 def validate_paydate_public(book, scale, quarter, payments=None, trace=None):
     if type(book) is not PaydatePublicBook:
         raise TypeError('Require the exact original PaydatePublicBook.')
@@ -1050,7 +1395,13 @@ def validate_early_paydate_public(book, scale, quarter, payments=None, trace=Non
     return _validate_paydate_public(book, scale, quarter, payments, trace, early=True)
 
 
-def _validate_paydate_public(book, scale, quarter, payments, trace, *, early):
+def validate_household_liquidity_public(book, scale, quarter, payments=None, trace=None):
+    if type(book) is not HouseholdLiquidityBook:
+        raise TypeError('Require the exact HouseholdLiquidityBook.')
+    return _validate_paydate_public(book, scale, quarter, payments, trace, early=True, household_credit=True)
+
+
+def _validate_paydate_public(book, scale, quarter, payments, trace, *, early, household_credit=False):
     """Semantically bind one actual ordered paid journal; never run a quarter.
 
     The old funded validator intentionally keeps its exact-type and projection
@@ -1059,9 +1410,14 @@ def _validate_paydate_public(book, scale, quarter, payments, trace, *, early):
     """
     # FIRST: instance metadata, scalar proxies and malformed record trees must
     # never reach equality, dict conversion or dataclass reconstruction below.
+    if type(early) is not bool or type(household_credit) is not bool or (household_credit and not early):
+        raise TypeError('Require an exact code-owned paydate validator selection.')
     records = ((EarlyPaydateBook, EarlyPhase, EarlyCreditWitness, LaterCreditWitness, early_liquidity.EarlyPlan,
                 CBLoan, Collateral, Loan, OperatingLoan, ProjectLoan) if early else
                (PaydatePublicBook, PaydatePhase))
+    if household_credit:
+        records = (*records, HouseholdLiquidityBook, HouseholdLiquidityPhase,
+                   HouseholdLiquidityWitness, early_liquidity.HouseholdLiquidityPlan)
     public_funding.validate_records((book, payments, trace), (
         *records, PaydateSnapshot, FundingOpening, FundingBatch, TreasuryTransfer,
         PublicIncomeTerms, CouponLine, Payment, Trace, RRPClaim))
@@ -1069,6 +1425,9 @@ def _validate_paydate_public(book, scale, quarter, payments, trace, *, early):
     phase_type = EarlyPhase if early else PaydatePhase
     phase_names = EARLY_PAYDATE_PHASES if early else PAYDATE_PHASES
     offset = 1 if early else 0
+    tail = 1 if household_credit else 0
+    if household_credit:
+        expected_book, phase_type, phase_names = HouseholdLiquidityBook, HouseholdLiquidityPhase, HOUSEHOLD_LIQUIDITY_PHASES
     if type(book) is not expected_book:
         raise TypeError('Require the exact selected paydate book subtype.')
     if early:
@@ -1086,6 +1445,8 @@ def _validate_paydate_public(book, scale, quarter, payments, trace, *, early):
             raise ValueError('Fresh paydate books cannot invent paid history.')
         if early and (book.early_credit is not None or book.closing_cb_loans or book.closing_private_loans or book.later_credit):
             raise ValueError('Fresh early books cannot invent credit history.')
+        if household_credit and book.household_credit is not None:
+            raise ValueError('Fresh household-liquidity books cannot invent credit history.')
         if payments or trace:
             raise ValueError('Fresh paydate books cannot invent a paid journal.')
         return
@@ -1177,6 +1538,8 @@ def _validate_paydate_public(book, scale, quarter, payments, trace, *, early):
     if offset:
         current = _validate_early_credit(book, scale, quarter, current, receipts, trace)
         boundary(2, current)
+    if household_credit:
+        _validate_household_private_history(book, scale, quarter, payments, trace)
     early_lines = _paydate_ordered_lines(lines)
     if span(2 + offset) != _paydate_coupon_receipts(early_lines):
         raise ValueError('Paydate early coupons differ from their original ordered obligations.')
@@ -1201,19 +1564,22 @@ def _validate_paydate_public(book, scale, quarter, payments, trace, *, early):
     if payroll_order != sorted(set(payroll_order)) or tuple(wages) != book.paid_wages:
         raise ValueError('Duplicated, reordered or tampered actual funded payroll receipts.')
     boundary(3 + offset, current)
+    if household_credit:
+        current = _validate_household_credit(book, scale, quarter, current, payments, trace)
+        boundary(5, current)
     delayed = _paydate_ordered_lines(lines, household_phase=True)
-    if span(4 + offset) != _paydate_coupon_receipts(delayed):
+    if span(4 + offset + tail) != _paydate_coupon_receipts(delayed):
         raise ValueError('Paydate household coupon/pass-through receipts differ from actual signed obligations.')
     income = tuple(-z.settled for z in lines if z.kind == 'mortgage')
     if book.household_income != income:
         raise ValueError('Paydate signed household income differs from its actual matched coupons.')
     current = _paydate_income_snapshot(current, delayed)
-    boundary(4 + offset, current)
+    boundary(4 + offset + tail, current)
     deferred, remit = public_income.earnings_close(opening.deferred, public_income.cb_profit(lines))
-    if span(5 + offset) != ((('CB', 'Treasury', remit, 'cb_remittance', None),) if remit else ()):
+    if span(5 + offset + tail) != ((('CB', 'Treasury', remit, 'cb_remittance', None),) if remit else ()):
         raise ValueError('Paydate remittance was dropped, duplicated or moved before all coupons.')
     current = replace(current, tga=current.tga + remit, deferred=deferred)
-    boundary(5 + offset, current)
+    boundary(5 + offset + tail, current)
     # Intentions must identify the actual wallet decomposition, not a negative
     # pseudo-opening cash amount or a forecast promoted to spendable cash.
     from .paydate_households import cash_stock_budget
@@ -1221,9 +1587,9 @@ def _validate_paydate_public(book, scale, quarter, payments, trace, *, early):
     if tuple(n.actor for _, n in budgets) != ('HA', 'HB'):
         raise ValueError('Missing, duplicated or reordered actual paydate household budgets.')
     orders_position, orders = _paydate_recorded_orders(trace)
-    if not phases[5 + offset].trace_end < orders_position < budgets[0][0]:
+    if not phases[5 + offset + tail].trace_end < orders_position < budgets[0][0]:
         raise ValueError('Recorded paydate production orders must precede both frozen household budgets.')
-    if any(phases[5 + offset].trace_end < position < budgets[-1][0] for position, _ in posted):
+    if any(phases[5 + offset + tail].trace_end < position < budgets[-1][0] for position, _ in posted):
         raise ValueError('Actual trading cash cannot move before both paydate budgets freeze.')
     if orders.expected_dividends_nominal is not None:
         forecasts, source = orders.expected_dividends_nominal, 'explicit_forecast'
@@ -1238,7 +1604,7 @@ def _validate_paydate_public(book, scale, quarter, payments, trace, *, early):
                     'forecast', 'forecast_source')
         if (len(data) != len(note.details) or any(k not in data for k in required)
                 or data.get('mode') != 'cash_stock_close_v1' or note.counterparty != 'goods'
-                or not phases[5 + offset].trace_end < trace_position < phases[6 + offset].trace_end
+                or not phases[5 + offset + tail].trace_end < trace_position < phases[6 + offset + tail].trace_end
                 or any(i < trace_position for i, n in posted if dict(n.details)['payment_kind']
                        in ('services', 'investment', 'residual_consumption'))):
             raise ValueError('Paydate household budgets must freeze once before discretionary purchases.')
@@ -1279,14 +1645,14 @@ def _validate_paydate_public(book, scale, quarter, payments, trace, *, early):
         if (residual + services > quote.funded or residual > residual_limit
                 or services > service_limit):
             raise ValueError('Actual household goods spending exceeds its frozen funded budget/basket.')
-    for position, p in enumerate(payments[phases[5 + offset].payment_end:phases[6 + offset].payment_end],
-                                 phases[5 + offset].payment_end):
+    for position, p in enumerate(payments[phases[5 + offset + tail].payment_end:phases[6 + offset + tail].payment_end],
+                                 phases[5 + offset + tail].payment_end):
         if p.kind in ('residual_payroll', 'focal_payroll'):
             raise ValueError('Payroll cannot occur after the mandatory household coupon date.')
         if offset and p.kind == 'cb_draw':
             _validate_later_credit(book, scale, quarter, current, p, position, trace)
         current, transfer_index = _paydate_private_snapshot(current, p, book.transfers, transfer_index, scale)
-    boundary(6 + offset, current)
+    boundary(6 + offset + tail, current)
     if transfer_index != len(book.transfers):
         raise ValueError('Dropped, duplicated or reordered actual Treasury transfer receipts.')
     if (current.treasuries != (book.treasuries, *book.private_treasuries)
@@ -1757,7 +2123,7 @@ class SectorState:
                             or closing.wallets != tuple(self.deposit(a) for a in ACTORS)
                             or closing.cb_faces != tuple(self.cb_debt(b) for b in BANKS)):
                         raise ValueError('Actual closing state differs from its paydate journal witness.')
-                    if type(book) is EarlyPaydateBook:
+                    if _is_early_paydate(book):
                         if book.closing_cb_loans != self.cb_loans or book.closing_private_loans != self.loans:
                             raise ValueError('Closing actual claims differ from early journal identities/pledges.')
                         gross = sum((n.amount for n in self.last.trace if n.kind == 'facility_applied'), ZERO)
@@ -2015,6 +2381,24 @@ def enable_early_paydate_public(state, terms):
     return replace(state, public_book=enabled)
 
 
+def enable_household_liquidity_public(state, terms):
+    """Fresh exact legacy Q0 ONLY; never reinterpret a paid/enabled book."""
+    _admit_early_state(state, terms)
+    _state(state)
+    if state.quarter or state.last is not None or type(state.public_book) is not PublicBook:
+        raise ValueError('Household liquidity requires a fresh exact legacy reference book.')
+    book = state.public_book
+    enabled = HouseholdLiquidityBook(**{name:getattr(book, name)
+        for name in PublicBook.__dataclass_fields__}, terms=terms)
+    FundingOpening(quarter=1, scale=state.scale, terms=terms,
+        treasuries=(book.treasuries, *book.private_treasuries), mortgages=book.mortgages,
+        reserves=tuple(b.reserves for b in state.banks),
+        household_deposits=tuple(state.deposit(h) for h in ('HA', 'HB')),
+        cb_faces=tuple(state.cb_debt(b) for b in BANKS),
+        rrp_faces=tuple(state.rrp_face(b) for b in BANKS), tga=book.tga)
+    return replace(state, public_book=enabled)
+
+
 def depth_orders():
     """Orders matching the new authored depth reference, not the old C19 book."""
     return ProductionOrders(capital_resource_cost=F(37, 20),
@@ -2178,10 +2562,12 @@ class _Transaction:
             raise _Failure('funding_failure',f'Bank {bank} lacks an offered collateral-backed facility.')
         observed = None
         identity = f'CB{self.quarter}:{bank}'
-        if type(self.public_book) is EarlyPaydateBook:
+        if _is_early_paydate(self.public_book):
             identity = _early_cb_id(self.quarter, bank, self.original.cb_loans)
             old = self.cb.get(bank)
-            if (refinance or self.paydate_stage not in ('funded_payroll', 'trading')
+            stages = (('funded_payroll', 'household_credit', 'trading')
+                      if type(self.public_book) is HouseholdLiquidityBook else ('funded_payroll', 'trading'))
+            if (refinance or self.paydate_stage not in stages
                     or (old is not None and (old.id != identity or old.start != self.quarter
                                             or old.maturity != self.quarter+1))):
                 raise _Failure('unsupported_public_income', 'Later credit cannot overwrite an unretired CB cohort.')
@@ -2294,6 +2680,8 @@ class _Transaction:
         self.next_id += 1
         self.loans.append(loan)
         self.transit_deposits[bank] += offer.face
+        if type(self.public_book) is HouseholdLiquidityBook:
+            self.trace.append(_household_private_pending(loan))
         self.note('loan_deposit_created',bank,borrower,offer.face,loan.id)
         self.reserve_transfer(bank,HOME[borrower],offer.face,'loan_origination',loan.id)
         self.transit_deposits[bank] -= offer.face
@@ -2301,6 +2689,8 @@ class _Transaction:
         self.note('loan_deposit_delivered',bank,borrower,offer.face,loan.id)
         self.record('Bank'+bank,borrower,offer.face,'loan_origination',loan.id)
         self.note('matching_loan_created',bank,borrower,offer.face,loan.id,maturity=loan.maturity,start=loan.start,rate_pct=loan.rate_pct)
+        if type(self.public_book) is HouseholdLiquidityBook:
+            self.trace.append(_household_private_origin(loan))
         return loan.id
 
     def principal(self, loan, value):
@@ -2358,6 +2748,8 @@ class _Transaction:
         # Only the additional face creates a new borrower-owned lender liability.
         self.loans.remove(loan)
         self.loans.append(new)
+        if type(self.public_book) is HouseholdLiquidityBook:
+            self.trace.append(_household_private_pending(new, loan.id))
         if delta > 0:
             self.transit_deposits[bank] += delta
             self.note('loan_deposit_created',bank,borrower,delta,new.id)
@@ -2399,8 +2791,10 @@ class _Transaction:
         """Observe the current sole journal; do not copy it into spendable cash."""
         if not _is_paydate(self.public_book):
             raise ValueError('Paydate boundary requires its explicit book.')
-        phase_names = EARLY_PAYDATE_PHASES if type(self.public_book) is EarlyPaydateBook else PAYDATE_PHASES
-        phase_type = EarlyPhase if type(self.public_book) is EarlyPaydateBook else PaydatePhase
+        phase_names = EARLY_PAYDATE_PHASES if _is_early_paydate(self.public_book) else PAYDATE_PHASES
+        phase_type = EarlyPhase if _is_early_paydate(self.public_book) else PaydatePhase
+        if type(self.public_book) is HouseholdLiquidityBook:
+            phase_names, phase_type = HOUSEHOLD_LIQUIDITY_PHASES, HouseholdLiquidityPhase
         if len(self.paydate_phases) >= len(phase_names) or name != phase_names[len(self.paydate_phases)]:
             raise ValueError('Duplicate, missing or reordered fixed paydate phase.')
         snapshot = self._paydate_snapshot()
@@ -2409,7 +2803,7 @@ class _Transaction:
         if name == 'trading_close':
             extra = ({'closing_cb_loans': tuple(self.cb[b] for b in BANKS if b in self.cb),
                        'closing_private_loans': tuple(self.loans), 'later_credit': tuple(self.later_credit)}
-                     if type(self.public_book) is EarlyPaydateBook else {})
+                     if _is_early_paydate(self.public_book) else {})
             self.public_book = replace(self.public_book, phases=tuple(self.paydate_phases), **extra)
             self.paydate_stage = 'trading_close'
 
@@ -2458,7 +2852,7 @@ class _Transaction:
         Old pledges are released by novation, not shared with overlapping debt.
         Current equity is measured BEFORE removing old debt/cash repayment.
         """
-        if type(self.public_book) is not EarlyPaydateBook or self.paydate_stage != 'principal':
+        if not _is_early_paydate(self.public_book) or self.paydate_stage != 'principal':
             raise _Failure('unsupported_public_income', 'Early credit requires its explicit principal boundary.')
         if any(self.used.values()):
             raise ValueError('Early public credit must precede every current facility use.')
@@ -2518,6 +2912,11 @@ class _Transaction:
             raise _Failure('unsupported_public_income', 'Require the exact early-paydate convention.')
         return self._settle_paydate_public(instructions)
 
+    def settle_household_liquidity_public(self, instructions):
+        if type(self.public_book) is not HouseholdLiquidityBook:
+            raise _Failure('unsupported_public_income', 'Require the exact household-liquidity convention.')
+        return self._settle_paydate_public(instructions)
+
     def _settle_paydate_public(self, instructions):
         """Original bases, actual principal and nonhousehold coupons ONLY.
 
@@ -2569,7 +2968,7 @@ class _Transaction:
         self.close_rrp()
         self.settle_public(instructions, calendar=True)
         self.paydate_boundary('principal')
-        if type(self.public_book) is EarlyPaydateBook:
+        if _is_early_paydate(self.public_book):
             self.settle_early_credit()
         self.paydate_stage = 'early_income'
         self._post_paydate_coupons(_paydate_ordered_lines(lines))
@@ -2586,12 +2985,46 @@ class _Transaction:
             raise _Failure('unsupported_public_income', 'Require the exact early household calendar.')
         return self._settle_paydate_households(paid_wages)
 
+    def settle_household_liquidity_households(self, paid_wages):
+        if type(self.public_book) is not HouseholdLiquidityBook:
+            raise _Failure('unsupported_public_income', 'Require the exact household-liquidity convention.')
+        return self._settle_paydate_households(paid_wages)
+
+    def settle_household_credit(self):
+        """Reserve-only draw at ACTUAL funded payroll, inside this one journal."""
+        if type(self.public_book) is not HouseholdLiquidityBook or self.paydate_stage != 'funded_payroll':
+            raise _Failure('unsupported_public_income', 'Household liquidity requires actual funded payroll.')
+        if any(self.transit_deposits.values()):
+            raise ValueError('Undelivered private deposits cannot supply household collateral or wages.')
+        try:
+            plan = early_liquidity.household_plan(scale=self.scale,
+                reserves=tuple(self.r[b] for b in BANKS),
+                household_deposits=tuple(self.d[h] for h in ('HA', 'HB')),
+                cb_faces=tuple(self.debt(b) for b in BANKS),
+                equities=tuple(self.equity(b) for b in BANKS),
+                capacities=tuple(self.capacity(b) for b in BANKS),
+                facility_limits=tuple(self.limits[b] for b in BANKS),
+                gross_used=tuple(self.used[b] for b in BANKS),
+                cb_rates_pct=self.public_book.terms.cb_rates_pct, observations=self.paydate_lines)
+        except early_liquidity.PlanFailure as error:
+            raise _Failure(error.status, str(error)) from error
+        self.public_book = replace(self.public_book,
+            household_credit=HouseholdLiquidityWitness(plan, tuple(self.loans)))
+        self.paydate_stage = 'household_credit'
+        for bank, amount in zip(BANKS, plan.advances):
+            # _draw rechecks live equity/capacity/remaining gross and creates
+            # matching current-cohort debt. NO fund(), security sale or HH gift.
+            self._draw(bank, amount)
+        self.paydate_boundary('household_credit')
+
     def _settle_paydate_households(self, paid_wages):
         """Post signed mandatory coupons after REAL payroll, then close income."""
         if not _is_paydate(self.public_book) or self.paydate_stage != 'funded_payroll':
             raise _Failure('unsupported_public_income', 'Paydate household coupons require their actual funded-payroll phase.')
         paid_wages = public_funding._vector(paid_wages, 2, 'Actual paid wages')
         self.paydate_boundary('funded_payroll')
+        if type(self.public_book) is HouseholdLiquidityBook:
+            self.settle_household_credit()
         self.paydate_stage = 'household_income'
         self._post_paydate_coupons(_paydate_ordered_lines(self.paydate_lines, household_phase=True))
         self.paydate_boundary('household_income')
@@ -3039,7 +3472,7 @@ class _Transaction:
             old = self.cb.get(bank)
             if old is None:
                 continue
-            if (type(self.public_book) is EarlyPaydateBook
+            if (_is_early_paydate(self.public_book)
                     and old.start == self.quarter and old.maturity == self.quarter + 1):
                 continue  # Original maturity was atomically retired in early_credit.
             if old.maturity != self.quarter:
@@ -3123,7 +3556,9 @@ def _admit_early_state(state, *inputs):
     records = (SectorState, Bank, Loan, OperatingLoan, ProjectLoan, CBLoan, Collateral,
         Vintage, PublicBook, PublicIncomeBook, FundedPublicBook, PaydatePublicBook,
         PaydatePhase, EarlyPaydateBook, EarlyPhase, EarlyCreditWitness, LaterCreditWitness,
-        early_liquidity.EarlyPlan, PaydateSnapshot, PublicIncomeTerms, CouponLine,
+        HouseholdLiquidityBook, HouseholdLiquidityPhase, HouseholdLiquidityWitness,
+        early_liquidity.EarlyPlan, early_liquidity.HouseholdLiquidityPlan,
+        PaydateSnapshot, PublicIncomeTerms, CouponLine,
         FundingOpening, FundingBatch, TreasuryTransfer, RRPClaim, Report, Payment, Trace,
         Controls, PublicIncomeControls, PublicInstructions, FundedPublicInstructions,
         ProductionOrders, household.Preferences, LoanOffer, OperatingLoanOffer,
@@ -3334,7 +3769,7 @@ def _closing_household_plans(tx, orders, controls, wage, lr, lf):
             from .paydate_households import cash_stock_budget as budget
             # Principal repayments are already settled. Keep this actual
             # pre-payroll cash distinct from D+I, which may be negative.
-            opening = tx.paydate_phases[3 if type(tx.public_book) is EarlyPaydateBook else 2].snapshot.wallets[ACTORS.index(owner)]
+            opening = tx.paydate_phases[3 if _is_early_paydate(tx.public_book) else 2].snapshot.wallets[ACTORS.index(owner)]
             extra = dict(settled_income=current_public)
         else:
             budget=(household.net_cash_stock_budget if income_enabled else household.cash_stock_budget)
@@ -3758,7 +4193,7 @@ def _clear_market(tx, orders, controls, vintages, capital, depreciation, lr, lf,
 def advance_given_orders(state, orders, controls=Controls()):
     """Execute one atomic quarter using supplied orders; no endogenous planner."""
     _state(state)
-    if type(state.public_book) is EarlyPaydateBook:
+    if _is_early_paydate(state.public_book):
         _admit_early_state(state, orders, controls)
         replace(state)  # Includes prior actual witness before any current IORB.
     if isinstance(state.public_book,PublicIncomeBook) and state.quarter:
@@ -3816,7 +4251,9 @@ def advance_given_orders(state, orders, controls=Controls()):
     try:
         if tx.public_book is not None:
             instructions = controls.public_instructions or PublicInstructions()
-            if type(tx.public_book) is EarlyPaydateBook:
+            if type(tx.public_book) is HouseholdLiquidityBook:
+                tx.settle_household_liquidity_public(instructions)
+            elif type(tx.public_book) is EarlyPaydateBook:
                 tx.settle_early_paydate_public(instructions)
             elif type(tx.public_book) is PaydatePublicBook:
                 tx.settle_paydate_public(instructions)
@@ -3856,7 +4293,9 @@ def advance_given_orders(state, orders, controls=Controls()):
                                  quantum=QUANTUM)
         tx.pay('R','HA',lr*wage,'residual_payroll')
         tx.pay('F','HB',lf*wage,'focal_payroll')
-        if type(tx.public_book) is EarlyPaydateBook:
+        if type(tx.public_book) is HouseholdLiquidityBook:
+            tx.settle_household_liquidity_households((lr*wage, lf*wage))
+        elif type(tx.public_book) is EarlyPaydateBook:
             tx.settle_early_paydate_households((lr*wage, lf*wage))
         elif type(tx.public_book) is PaydatePublicBook:
             tx.settle_paydate_households((lr*wage, lf*wage))
