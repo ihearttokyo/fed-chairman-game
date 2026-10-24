@@ -113,20 +113,27 @@ def _coverage(sector):
                 raise scenarios.MissingCoverage('Missing contractual ' + kind + ' coupon terms for ' + owner)
 
 
-def quote_prefix(opening, step):
-    """Zero transactions: original eleven bases, principal, non-HH coupons.
+def _quote_prefix_inputs(opening, step, *, early=False):
+    """Shared original bases and principal, BEFORE either coupon calendar.
 
     Prior actual payments AND trace validate before quoting new IORB. The
     read-only PaydateSnapshot retains all four actual wallets and prior income
     history; only its current terms receive the new administered-rate quote.
+    The exact internal Boolean selects ONLY two code-owned book identities;
+    no caller-supplied class, callback or schema selects validation/settlement.
     """
     checkpoint._check_sources()
+    if type(early) is not bool:
+        raise TypeError('Require an exact internal paydate convention selection.')
     if type(opening) is not m.Envelope or type(step) is not p.PublicStep:
         raise TypeError('Require an exact Envelope and explicit PublicStep.')
     _canonical_value((opening, step))
     replace(opening)  # Exact components/version/clock, after structural admission.
     sector = opening.sector
-    if type(sector.public_book) is not l.PaydatePublicBook:
+    if early:
+        if type(sector.public_book) is not l.EarlyPaydateBook:
+            raise NotImplementedError('Current early-paydate bridge requires the exact EarlyPaydateBook.')
+    elif type(sector.public_book) is not l.PaydatePublicBook:
         raise NotImplementedError('Current paydate bridge requires the exact PaydatePublicBook.')
     # Recheck individual legal balances/contracts too: aggregate SectorState
     # identities alone do not prove each firm's or household's wallet is valid.
@@ -199,12 +206,30 @@ def quote_prefix(opening, step):
             mortgages=principal.mortgages, rrp_faces=(F(0), F(0)), currency=book.currency,
             capital_other=book.capital_other, tga=principal.tga, deferred=snapshot.deferred,
             previous_income=previous, previous_dividends=dividends)
-        early = l._paydate_ordered_lines(observations)
-        pure = l._paydate_income_snapshot(pure, early)
     except ValueError as error:
         raise p.FundingFailure(str(error)) from error
+    return snapshot, batch, principal, pure, observations
+
+
+def _early_bank_earnings(observations):
+    """Conditional capital earnings, never reserves or household paid cash."""
+    early = l._paydate_ordered_lines(observations)
     earnings = tuple(sum((z.settled * (-1 if z.kind == 'cb_loan' else 1)
                           for z in early if z.owner == bank), F(0)) for bank in l.BANKS)
+    return earnings
+
+
+def quote_prefix(opening, step):
+    """Exact STRICT calendar: principal then original nonhousehold coupons.
+
+    No early-credit plan or new-book admission is implied by shared helpers.
+    """
+    snapshot, batch, principal, pure, observations = _quote_prefix_inputs(opening, step)
+    try:
+        pure = l._paydate_income_snapshot(pure, l._paydate_ordered_lines(observations))
+    except ValueError as error:
+        raise p.FundingFailure(str(error)) from error
+    earnings = _early_bank_earnings(observations)
     return PublicPrefix(snapshot, batch, principal, pure, observations, earnings)
 
 
@@ -255,8 +280,8 @@ def _quote_orders(opening, source, units, prefix):
     return orders, cr, services, payroll, quotes, previous, forecast
 
 
-def prepare(opening, policy, step, news=m.News(), *, project_units=0):
-    """Pure current command and conditional intentions; zero paid quarters."""
+def _prepare_inputs(opening, policy, step, news):
+    """Common closed input admission, with no supplied type/validator hooks."""
     checkpoint._check_sources()
     if (type(opening) is not m.Envelope or type(policy) is not m.Policy
             or type(step) is not p.PublicStep or type(news) is not m.News):
@@ -266,7 +291,14 @@ def prepare(opening, policy, step, news=m.News(), *, project_units=0):
     if (_canonical_value(replace(policy)) != _canonical_value(policy)
             or _canonical_value(replace(news)) != _canonical_value(news)):
         raise ValueError('Inconsistent current policy or news.')
-    prefix = quote_prefix(opening, step)
+
+
+def _quote_prepared(opening, policy, step, news, project_units, prefix):
+    """Identical adaptive hiring/price quote for the two explicit wrappers.
+
+    Each wrapper owns its exact prefix and Prepared schemas and validates its
+    convention before entering this arithmetic-only helper.
+    """
     if opening.macro.consumption_state_pct or opening.macro.deferred_consumption_units:
         raise ValueError('Legacy demand/backlog migration is not implemented; do not delete stocks.')
     units = funding._number(project_units)
@@ -279,6 +311,15 @@ def prepare(opening, policy, step, news=m.News(), *, project_units=0):
     # Consistency binding only, NOT authentication or custody. No adopted command
     # codec or serializable career is supplied for this Prepared quote.
     digest = hashlib.sha256(repr((opening, policy, step, news, units)).encode()).hexdigest()
+    return source, orders, cr, services, payroll, budgets, previous, forecast, units, digest
+
+
+def prepare(opening, policy, step, news=m.News(), *, project_units=0):
+    """Pure current command and conditional intentions; zero paid quarters."""
+    _prepare_inputs(opening, policy, step, news)
+    prefix = quote_prefix(opening, step)
+    source, orders, cr, services, payroll, budgets, previous, forecast, units, digest = _quote_prepared(
+        opening, policy, step, news, project_units, prefix)
     return Prepared(opening, policy, step, news, source, orders,
         prefix.projected_opening, prefix.batch, prefix.principal_prefix,
         prefix.income_prefix, prefix.observations, prefix.early_bank_earnings,
@@ -302,10 +343,16 @@ def _validated(prepared):
 def controls(prepared):
     """Conditional private quotes; actual underwriting/collateral still decide."""
     _validated(prepared)
-    offers, renewals, commitment = c._quote_finance(prepared.opening.sector,
-        prepared.source, prepared.orders, equity_earnings=prepared.early_bank_earnings)
-    return l.PublicIncomeControls(iorb_rate_pct=prepared.step.iorb_rate_pct,
-        public_instructions=prepared.step.fiscal, facility_limits=prepared.step.facility_limits,
+    return _quote_controls(prepared.opening, prepared.source, prepared.orders,
+                           prepared.step, prepared.early_bank_earnings)
+
+
+def _quote_controls(opening, source, orders, step, early_bank_earnings):
+    """Shared conditional finance after each wrapper's exact revalidation."""
+    offers, renewals, commitment = c._quote_finance(opening.sector,
+        source, orders, equity_earnings=early_bank_earnings)
+    return l.PublicIncomeControls(iorb_rate_pct=step.iorb_rate_pct,
+        public_instructions=step.fiscal, facility_limits=step.facility_limits,
         household_mode='cash_stock_close_v1', new_loans=offers, renewals=renewals,
         project_commitment=commitment)
 
@@ -317,6 +364,15 @@ def execute(prepared, finance):
     invented zero term or a known funding failure. Refusal keeps the predecessor.
     """
     _validated(prepared)
+    return _execute_current(prepared.opening, prepared.source, prepared.orders, prepared.step, finance)
+
+
+def _execute_current(opening, source, orders, step, finance):
+    """One sole journal, after the selected wrapper validates its preparation.
+
+    All inputs have the same fixed common types; no executable/class hook is
+    supplied by a record or used to choose a calendar or monetary transition.
+    """
     if type(finance) is not l.PublicIncomeControls:
         raise ValueError('Current paydate closure requires explicit PublicIncomeControls.')
     _canonical_value(finance)
@@ -325,17 +381,17 @@ def execute(prepared, finance):
     fiscal = p._fiscal(finance.public_instructions)
     rate = funding._number(finance.iorb_rate_pct, signed=True)
     limits = funding._vector(finance.facility_limits, 2, 'Facility limits')
-    if (fiscal != prepared.step.fiscal or rate != prepared.step.iorb_rate_pct
-            or limits != prepared.step.facility_limits):
+    if (fiscal != step.fiscal or rate != step.iorb_rate_pct
+            or limits != step.facility_limits):
         raise ValueError('Submitted public command, IORB or facility limits differ from preparation.')
     request = funding._number(finance.asset_purchase_request)
     offers = funding._vector(finance.asset_offers, 2, 'Asset offers')
     if request or any(offers) or finance.security_bids is not None:
         raise NotImplementedError('Current paydate bridge does not support QE or explicit security bids.')
-    out = l.advance_given_orders(prepared.opening.sector, prepared.orders, finance)
+    out = l.advance_given_orders(opening.sector, orders, finance)
     if not out.ok:
-        return m.Transition(False, prepared.opening, out.status, out.reason)
+        return m.Transition(False, opening, out.status, out.reason)
     if out.state.last.real_output <= 0:
-        return m.Transition(False, prepared.opening, 'terminal_crisis',
+        return m.Transition(False, opening, 'terminal_crisis',
                             'Zero paid GDP; economic crisis successor remains required.')
-    return m._close_paid(prepared.source, out.state, closing_households=True)
+    return m._close_paid(source, out.state, closing_households=True)
