@@ -15,7 +15,7 @@ Use `game/README.md` for the current development and release entry points.
    instance does not authorize replacing the installed app.
 2. Bind the exact test app/window through Computer Use. Keep hidden, minimized
    and background windows in that state; never raise, resize, move or activate
-   them without Jared's request. If background interaction is blocked, report
+   them without the creator's request. If background interaction is blocked, report
    the limitation rather than changing the desktop.
 3. Inspect the current-size screenshot for hierarchy, legibility, clipping,
    affordances and access to the main action. For read-only pixels, prefer native

@@ -18,13 +18,13 @@ The Godot game uses original project art, procedural UI and engine/runtime outpu
 
 ## Soundtrack
 
-JRB-1 is credited to Jared Bland personally, at his direction, and was generated
+JRB-1 is credited to ihearttokyo personally, at his direction, and was generated
 with Suno. Suno lists the selected song at
 <https://suno.com/song/8436d628-5c56-4f0e-953c-da58786e26b9>, shared at
 <https://suno.com/s/lWA6lJD3HljjnaqV>. Its public page identifies Jay
-(@thelitinvestor); ownership attribution follows Jared's direct declaration,
+(@thelitinvestor); ownership attribution follows the creator's direct declaration,
 not a verification of account tier, provider terms or copyright protectability.
-The qualified project license in `LICENSE` applies to rights held by Jared;
+The qualified project license in `LICENSE` applies to rights held by ihearttokyo;
 third-party rights remain separate.
 
 `art/audio/JRB-1.m4a` is the original file downloaded through Suno's signed-in

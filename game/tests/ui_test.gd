@@ -1864,7 +1864,7 @@ func run() -> void:
 	var source_license_path := ProjectSettings.globalize_path("res://../LICENSE")
 	var source_license := FileAccess.get_file_as_string(source_license_path) if FileAccess.file_exists(source_license_path) else ""
 	var packaged_license := FileAccess.get_file_as_string("res://licenses/THE-CHAIR.txt") if FileAccess.file_exists("res://licenses/THE-CHAIR.txt") else ""
-	check(source_license.contains("Copyright (c) 2026 Jared Bland. All rights reserved.") and source_license.contains("to the") and source_license.contains("intellectual-property rights subsist") and source_license.contains("personal, noncommercial use"), "project license attributes personal qualified ownership and noncommercial binary play")
+	check(source_license.contains("Copyright (c) 2026 ihearttokyo. All rights reserved.") and source_license.contains("to the") and source_license.contains("intellectual-property rights subsist") and source_license.contains("personal, noncommercial use"), "project license attributes personal qualified ownership and noncommercial binary play")
 	check(not source_license.is_empty() and packaged_license == source_license, "bundled original-project license matches the authoritative repository license")
 	check(not source_license.is_empty() and notices.text.contains(source_license), "Credits displays the full original-project license alongside component notices")
 	check(notices.text.contains(Engine.get_license_text()), "canonical Credits retains the complete engine license")

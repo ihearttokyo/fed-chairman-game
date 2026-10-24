@@ -105,7 +105,7 @@ workbook parity and usability, then game integration and visual playtesting.
 Production exports and signing are later release gates. The initial canary is
 an isolated local workbook/game build, never the user's installed Swift career.
 
-Rollback a failed change by reverting its isolated PR. Jared authorized complete
+Rollback a failed change by reverting its isolated PR. The creator authorized complete
 legacy frontend retirement: Godot is the sole maintained implementation and
 retired Swift source remains recoverable from Git history. Preserve the installed
 Swift app and all user saves; no migration or silent conversion is authorized.

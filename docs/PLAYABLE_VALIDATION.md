@@ -413,7 +413,7 @@ accessibility lookup; that is not a passing native release gate. The native
 workflow remains intact. Godot checks have their own all-PR workflow so stacked
 game changes can be validated without repeating unchanged legacy UI automation.
 
-The September 30 Apple Silicon candidate is ARM64-only and signed with Jared's
+The September 30 Apple Silicon candidate is ARM64-only and signed with the creator's
 Developer ID Application identity, team 4QUZHBXSVT. Strict signature verification,
 hardened runtime, secure timestamp and all 141 release checks passed. The same
 architecture assertion first rejected the earlier universal candidate.
@@ -450,7 +450,7 @@ adopting advanced to quarter 18 with the capped rate and visible outcome
 feedback. No engine errors appeared. Source hashes were captured before the
 default-size GUI check; the existing save was not overwritten.
 
-This briefing was tested in the source build, not the earlier signed ZIP. Jared
+This briefing was tested in the source build, not the earlier signed ZIP. The creator
 deferred Apple account recovery and notarization; development continues without
 retrying authentication. Existing release and workbook validation gaps above
 remain open. Rollback of this addition is a revert of its isolated UI commit.
