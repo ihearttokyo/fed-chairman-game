@@ -26,6 +26,12 @@ network, Godot process, Excel session or installed game. It does not write saves
 - Optional bank payout targets retain only earned profits, reduce owner cash
   distributions and never grant equity/reserves or waive loan covenants. Disabled
   targets preserve baseline transitions; they are not an implemented bank planner.
+- A pure `households.cash_stock_budget` quotation deducts desired cash-target
+  growth from planned spending and caps funding at opening cash plus paid wages.
+  Forecast dividends cannot fund purchases. Its income/wealth adjustment is an
+  authored behavioral convention. It is **not connected to a ledger mode**;
+  closing dividend execution, actual purchases, contractual cash sweeps, project
+  commitments/draws and an endogenous reference still need qualification.
 - Typed checkpoints and exact command replay. Project restrictions survive restore;
   principal paid cannot silently become a refinanced claim.
 
