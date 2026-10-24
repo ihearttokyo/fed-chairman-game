@@ -34,6 +34,24 @@ def _floor(value, quantum):
     return (value // quantum) * quantum
 
 
+def distribute(face, weights, quantum):
+    """Internal pool allocation for validated nonnegative face/weights.
+
+    Preserve the existing largest-remainder convention and exact inherited
+    off-grid dust. Unlike ration(), this does not floor away owned principal.
+    Callers supply a nonempty positive-total weight pool and positive quantum.
+    """
+    total = sum(weights)
+    raw = tuple(face * w / total for w in weights)
+    result = [_floor(x, quantum) for x in raw]
+    missing = int((face - sum(result)) / quantum)
+    order = sorted(range(len(weights)), key=lambda i: (-(raw[i]-result[i]), i))
+    for i in order[:missing]:
+        result[i] += quantum
+    result[order[0]] += face - sum(result)
+    return tuple(result)
+
+
 def ration(capacity, *orders, quantum=Fraction(1, 1000000)):
     """Largest-remainder allocation of funded, floored physical order units.
 
