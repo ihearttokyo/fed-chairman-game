@@ -189,8 +189,25 @@ network, Godot process, Excel session or installed game. It does not write saves
   affect intentions only. Insufficient deposits/reserves still fail atomically.
   Existing books, modes and their timing remain unchanged. This new research
   subtype has explicit checkpoint tags; there is no paid-career migration.
-  The older current/future public adapters still refuse it. Journal hand cases
+  The older current/future entry points still refuse it. Journal hand cases
   and checkpoint consistency do not establish recovery or native adoption.
+- The explicit `public_paydate` current bridge quotes only principal and early
+  non-household coupons before hiring. Its signed conditional household wallet
+  uses observed-job wage intentions; a shortfall yields zero spending intention,
+  not a declaration of actual insolvency or invented wages. Actual execution
+  still funds wages and mandatory coupons through one journal. Conditional
+  bank earnings inform credit quotations, not approval. Current public commands,
+  IORB and facilities are bound before execution; legacy demand-stock migration,
+  QE, new RRP and currency routes remain unsupported by this adapter.
+  `paydate_scenarios` requires explicit bounded market-funding declarations at
+  every covered date. `public_paydate_branches` shares the finite reducer,
+  operating cashflow accounting and protected project-principal checks with
+  the original route, selecting only the code-owned new adapter/scenario pair.
+  All current public declarations, including unused bid/issue limits, must agree
+  across cells before any forecast attempt. WAIT observes only current public
+  and own-firm facts. Failed baselines and missing coverage cannot recommend
+  investment. A full quotation can execute 228 simulated quarters; it is an
+  offline research computation, not a qualified game-turn runtime or controller.
 - The separate pure `public_market.resolve_date` quotes a bounded Treasury
   funding command. Explicit roll consent, additional issue authorization, bank
   bids, coupon rates, maturity and allocation priority are required. Subscriptions

@@ -10,6 +10,18 @@ from .households import CashStockBudget
 from .public_funding import _number
 
 
+def _desired(cash, income, prior, forecast, ratio, speed, impulse):
+    """One intention formula; callers first validate all seven pure scalars.
+
+    The forecast already includes signed public income. A signed adjustment
+    base is not an owned wallet, and this calculation grants no funding.
+    """
+    old_target = max(F(0), ratio * prior)
+    new_target = max(F(0), ratio * forecast)
+    return impulse * max(F(0), forecast - (new_target - old_target)
+                         + speed * (cash + income - old_target))
+
+
 def cash_stock_budget(*, opening_cash, paid_wages, settled_income, previous_income,
                       forecast_income, cash_ratio, adjustment=F(1, 4),
                       demand_multiplier=1):
@@ -31,10 +43,6 @@ def cash_stock_budget(*, opening_cash, paid_wages, settled_income, previous_inco
     wallet = cash + wages + income
     if wallet < 0:
         raise ValueError('Mandatory settled income exceeds actual owned cash and paid wages.')
-    old_target = max(F(0), ratio * prior)
-    new_target = max(F(0), ratio * forecast)
-    # cash + income is a signed wealth-adjustment base, NOT owned opening cash.
-    desired = impulse * max(F(0), forecast - (new_target - old_target)
-                            + speed * (cash + income - old_target))
+    desired = _desired(cash, income, prior, forecast, ratio, speed, impulse)
     funded = min(wallet, desired)
     return CashStockBudget(desired, wallet, funded, wallet - funded)

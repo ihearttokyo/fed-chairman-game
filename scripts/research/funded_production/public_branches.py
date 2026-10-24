@@ -260,7 +260,24 @@ def _digest(opening):
     return hashlib.sha256(repr(p._canonical_value(opening)).encode()).hexdigest()
 
 
-def _run_path(opening, cell, action, units, discounts, weight, scenarios):
+def _pair(paydate):
+    """Select ONLY the two code-owned adapter/scenario/book conventions.
+
+    No module, callback, class name or caller-authored schema selects execution.
+    Lazy imports keep the new current adapter and scenario entry independent of
+    this shared quotation-record/reducer module's import order.
+    """
+    if type(paydate) is not bool:
+        raise TypeError('Require an exact internal public-calendar selection.')
+    if paydate:
+        from . import public_paydate, paydate_scenarios
+        return public_paydate, paydate_scenarios, l.PaydatePublicBook
+    from . import public_scenarios
+    return p, public_scenarios, l.FundedPublicBook
+
+
+def _run_path(opening, cell, action, units, discounts, weight, *, paydate):
+    adapter, scenarios, _ = _pair(paydate)
     state = opening
     build = {'NOW': 0, 'WAIT': 1, 'NEVER': None}[action] if units else None
     rows = []
@@ -276,19 +293,19 @@ def _run_path(opening, cell, action, units, discounts, weight, scenarios):
                 observation = scenarios.wait_observation(state, current)
                 _observation(observation)
             requested = units if date == build else F(0)
-            prepared = p.prepare(state, current.policy, current.step,
-                                 current.news, project_units=requested)
-            finance = p.controls(prepared)
+            prepared = adapter.prepare(state, current.policy, current.step,
+                                       current.news, project_units=requested)
+            finance = adapter.controls(prepared)
         except scenarios.MissingCoverage as error:
             status = 'unknown'; reason = str(error); unknown += 1
             break
         except p.FundingFailure as error:
             status = 'failed'; reason = 'funding_failure: ' + str(error); prefixes += 1
             break
-        # One p.execute attempt means one raw ledger attempt, not necessarily a
-        # successful macro close. Unexpected errors deliberately propagate.
+        # One adapter.execute attempt means one raw ledger attempt, not
+        # necessarily a successful macro close. Unexpected errors propagate.
         calls += 1
-        outcome = p.execute(prepared, finance)
+        outcome = adapter.execute(prepared, finance)
         if not outcome.ok:
             refusals += 1
             if outcome.envelope is not state:
@@ -418,18 +435,53 @@ def evaluate(opening, cells, *, units, forward_gross, tolerance=1e-6) -> Quotati
     Missing/failed positive-weight baselines stay visible; missing positive-
     weight admission coverage never becomes an investment recommendation.
     """
-    from . import public_scenarios as scenarios
+    return _evaluate(opening, cells, units=units, forward_gross=forward_gross,
+                     tolerance=tolerance, paydate=False)
+
+
+def _current_paydate_signature(opening, descriptor):
+    """Bind today's whole published bounded program, not merely filled bids.
+
+    Unused authorization, bid ceilings, new coupon rates and allocation priority
+    remain observable current declarations even when their actual filled cash
+    is zero. Future descriptors and hidden scenario labels never enter this
+    signature or the separate conservative WAIT observation.
+    """
+    from . import episodes as e, public_scenarios
+
+    policy = descriptor.policy
+    if type(policy) is e.PolicyRule:
+        if policy.kind == 'promise' and not opening.macro.guidance_active:
+            raise public_scenarios.MissingCoverage('No active prior conditional promise covers this date.')
+        policy = e.PolicyRule.resolve(policy, opening)
+    rate = (m.rational(policy.rate_pct)
+            if type(descriptor.iorb_rate_pct) is public_scenarios.PolicyIORB
+            else descriptor.iorb_rate_pct)
+    return p._canonical_value((policy, descriptor.news, rate, descriptor.facility_limits,
+        descriptor.full_roll, descriptor.new_issue_authorization,
+        descriptor.subscription_limits, descriptor.subscription_rates_pct,
+        descriptor.replacement_maturity, descriptor.allocation_priority))
+
+
+def _evaluate(opening, cells, *, units, forward_gross, tolerance=1e-6, paydate) -> Quotation:
+    """Common finite engine; its exact internal Boolean selects a closed pair."""
+    _, scenarios, book_type = _pair(paydate)
 
     checkpoint._check_sources()
     if type(opening) is not m.Envelope:
         raise TypeError('Require the exact canonical reference Envelope.')
     p._canonical_value(opening)  # Strict nested scalars BEFORE equality/fields.
-    if type(opening.sector.public_book) is not l.FundedPublicBook:
-        raise TypeError('Require the exact funded public book.')
+    if type(opening.sector.public_book) is not book_type:
+        raise TypeError('Require the exact paydate public book.' if paydate
+                        else 'Require the exact funded public book.')
     checkpoint._paid_economy(opening)
-    l.validate_funded_public(opening.sector.public_book, opening.sector.scale,
-                            opening.sector.quarter,
-                            None if opening.sector.last is None else opening.sector.last.payments)
+    sector = opening.sector
+    payments = None if sector.last is None else sector.last.payments
+    if paydate:
+        l.validate_paydate_public(sector.public_book, sector.scale, sector.quarter,
+                                 payments, None if sector.last is None else sector.last.trace)
+    else:
+        l.validate_funded_public(sector.public_book, sector.scale, sector.quarter, payments)
     # Recheck coherent current clocks, macro bounds and ledger balance sheets.
     replace(opening.macro); replace(opening.sector)
     before = _digest(opening)
@@ -445,11 +497,19 @@ def evaluate(opening, cells, *, units, forward_gross, tolerance=1e-6) -> Quotati
     # Equivalent rules are allowed; hidden differences in today's news are not.
     for cell in checked:
         try:
-            current = scenarios.resolve_date(opening, cell.dates[0])
+            if paydate:
+                if cell.dates[0] is None:
+                    raise scenarios.MissingCoverage('No authored public program covers this date.')
+                # Unlike the old full-roll resolver, bounded market resolution
+                # can have a KNOWN Treasury funding failure. It belongs to each
+                # path's failed baseline, not a top-level exception or unknown.
+                signature = _current_paydate_signature(opening, cell.dates[0])
+            else:
+                current = scenarios.resolve_date(opening, cell.dates[0])
+                signature = p._canonical_value((current.policy, current.news, current.step))
         except scenarios.MissingCoverage:
             pass
         else:
-            signature = p._canonical_value((current.policy, current.news, current.step))
             if current_signature is not None and signature != current_signature:
                 raise ValueError('Current date-zero information differs between scenario cells.')
             current_signature = signature
@@ -460,6 +520,10 @@ def evaluate(opening, cells, *, units, forward_gross, tolerance=1e-6) -> Quotati
                 # facility limit must not spend a valid partial forecast first.
                 for limit in descriptor.facility_limits:
                     l._money(limit, opening.sector.scale)
+                if paydate:
+                    for limit in (descriptor.new_issue_authorization,
+                                  *descriptor.subscription_limits):
+                        l._money(limit, opening.sector.scale)
         for descriptor in cell.dates:
             if descriptor is None:
                 break  # The cumulative path beyond a missing date is unknown.
@@ -472,7 +536,8 @@ def evaluate(opening, cells, *, units, forward_gross, tolerance=1e-6) -> Quotati
         for cell in sorted(checked, key=lambda cell: (cell.demand_sign, cell.fulfilled)):
             weight = (credibility if cell.fulfilled else 1 - credibility) / 2
             for action in ('NEVER', 'NOW', 'WAIT'):
-                paths.append(_run_path(opening, cell, action, units, discounts, weight, scenarios))
+                paths.append(_run_path(opening, cell, action, units, discounts, weight,
+                                       paydate=paydate))
         paths = _incrementals(tuple(paths))
         status, action, expected, wait, admissible, choices = _select(paths, tolerance)
         counts = tuple(sum(getattr(path, name) for path in paths) for name in

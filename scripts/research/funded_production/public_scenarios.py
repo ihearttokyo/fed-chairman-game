@@ -149,7 +149,9 @@ class ResolvedDate:
         object.__setattr__(self, 'step', _step(self.step))
 
 
-def _opening(value):
+def _opening(value, book_type=l.FundedPublicBook):
+    if book_type is not l.FundedPublicBook and book_type is not l.PaydatePublicBook:
+        raise TypeError('Require an explicitly supported public-book convention.')
     if type(value) is not m.Envelope:
         raise TypeError('Require the exact current branch Envelope.')
     p._canonical_value(value)
@@ -157,8 +159,8 @@ def _opening(value):
     if type(value.macro) is not m.Macro or type(value.sector) is not l.SectorState:
         raise TypeError('Require exact macro and sector records.')
     sector = value.sector
-    if type(sector.public_book) is not l.FundedPublicBook:
-        raise NotImplementedError('Require the exact funded public book.')
+    if type(sector.public_book) is not book_type:
+        raise NotImplementedError('Require the exact selected public-book convention.')
     scale = funding._number(sector.scale)
     if not scale:
         raise ValueError('Current branch nominal scale must be positive.')
@@ -215,6 +217,16 @@ _LOAN_KINDS = {l.Loan: 'loan', l.OperatingLoan: 'operating', l.ProjectLoan: 'pro
 
 
 def wait_observation(opening, resolved) -> tuple:
+    """Original funded-book observation route; the paydate route is explicit."""
+    return _wait_observation(opening, resolved, l.FundedPublicBook)
+
+
+def wait_paydate_observation(opening, resolved) -> tuple:
+    """The same conservative public/own-firm information for paydate books."""
+    return _wait_observation(opening, resolved, l.PaydatePublicBook)
+
+
+def _wait_observation(opening, resolved, book_type) -> tuple:
     """Return a typed, immutable, hashable COARSE pre-date-1 observation.
 
     V1 includes only the listed already-realized public macro indicators; F's
@@ -230,7 +242,7 @@ def wait_observation(opening, resolved) -> tuple:
     conservative grouping is not perfect-information optimality and its typed
     content binding is not empirical proof of public observability.
     """
-    opening = _opening(opening)
+    opening = _opening(opening, book_type)
     if type(resolved) is not ResolvedDate:
         raise TypeError('Require an exact current ResolvedDate.')
     resolved = ResolvedDate(resolved.policy, resolved.news, resolved.step)
