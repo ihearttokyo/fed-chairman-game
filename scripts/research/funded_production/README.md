@@ -319,6 +319,23 @@ heterogeneous CB contract pricing, a qualified current-policy/forecast adapter,
 long-run solvency, workbook parity or native adoption. Nothing here is enabled
 in the shipping game.
 
+## Experimental current early-paydate bridge
+
+`public_early_paydate` exposes explicit `quote_prefix`, `prepare`, `controls`
+and `execute` entry points for the exact `EarlyPaydateBook`. Its pure prefix
+uses original coupon bases, public principal settlement, conditional secured
+credit and non-household coupons in that order. Projected reserves and wages
+are quotations, not owned funds. Execution uses the same atomic journal once;
+only positive actual paid output can close the macro state. A refusal preserves
+the predecessor. Fiscal instructions, IORB and gross facility limits remain
+bound to the preparation.
+
+The old current bridge still requires the exact old book. Preparations have
+closed source-bound schemas but are not serialized adopted commands. This new
+route does not provide future branch programs, migrate paid careers, establish
+recovery or endogenous investment, or change the shipping game. Long-run
+checkpoint size and runtime remain separate qualification work.
+
 ## Limits before adoption
 
 **The current candidate has not demonstrated recovery or gameplay depth.**
