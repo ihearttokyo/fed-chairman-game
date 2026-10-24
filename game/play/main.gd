@@ -420,7 +420,7 @@ func _build_header(parent: Node) -> void:
 	music_toggle.name = "MusicToggle"
 	music_toggle.text = "Music"
 	music_toggle.focus_mode = Control.FOCUS_ALL
-	music_toggle.tooltip_text = "JRB-1 by Jared Bland. Looping soundtrack; off stops playback. This preference is saved separately from your career."
+	music_toggle.tooltip_text = "JRB-1 by ihearttokyo. Looping soundtrack; off stops playback. This preference is saved separately from your career."
 	music_toggle.accessibility_description = music_toggle.tooltip_text
 	music_toggle.set_pressed_no_signal(music.music_enabled)
 	music_toggle.toggled.connect(_set_music_enabled)
@@ -1327,7 +1327,7 @@ func _process(delta: float) -> void:
 		city.rotation.y += delta * 0.025
 
 func _credits() -> void:
-	var text := "THE CHAIR / FEDERAL RESERVE POLICY LAB\n\n" + FileAccess.get_file_as_string("res://licenses/THE-CHAIR.txt") + "\nSoundtrack: JRB-1 (Jared Bland), generated with Suno.\nSystem fonts are supplied by the operating system and are not redistributed.\n\nGODOT ENGINE\n" + Engine.get_license_text()
+	var text := "THE CHAIR / FEDERAL RESERVE POLICY LAB\n\n" + FileAccess.get_file_as_string("res://licenses/THE-CHAIR.txt") + "\nSoundtrack: JRB-1 (ihearttokyo), generated with Suno.\nSystem fonts are supplied by the operating system and are not redistributed.\n\nGODOT ENGINE\n" + Engine.get_license_text()
 	for component in Engine.get_copyright_info():
 		text += "\n\n" + component.name + "\n"
 		for part in component.parts:

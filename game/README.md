@@ -97,7 +97,7 @@ learning/playability claims.
 
 ## Soundtrack and ownership
 
-Music loops JRB-1 by Jared Bland, generated with Suno. The native Music checkbox
+Music loops JRB-1 by ihearttokyo, generated with Suno. The native Music checkbox
 is reachable with Tab and toggles with Space or Return. It starts on for a new
 preference file, stops immediately when off and remembers the choice in
 `user://policy-lab-audio-v1.cfg`, separate from every career slot. A failed

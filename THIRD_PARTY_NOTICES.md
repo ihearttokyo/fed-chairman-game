@@ -9,7 +9,7 @@ records and license texts obtained from the running engine through
 `Engine.get_license_info()`. These runtime records are authoritative for the
 exported engine build; do not substitute a claim that the app has no dependencies.
 
-The original project and selected soundtrack are attributed to Jared Bland
+The original project and selected soundtrack are attributed to ihearttokyo
 personally under the qualified noncommercial freeware terms in `LICENSE`, also
 bundled as `game/licenses/THE-CHAIR.txt`. This notice does not relicense Godot
 or its components. JRB-1 was generated with Suno; its origin and conversion are
