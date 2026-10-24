@@ -22,7 +22,7 @@ m = e.m
 _PACKAGE_DIR = Path(__file__).resolve().parent
 _MODULE_NAMES = ('__init__', 'source_data', 'numerics', 'households', 'pricing', 'public_income', 'public_funding',
                  'ledger', 'macro', 'episodes', 'cashflows', 'choice', 'checkpoint',
-                 'prospectus', 'coupled', 'investment')
+                 'prospectus', 'coupled', 'investment', 'public_forecast')
 _SOURCE_PATHS = {name: _PACKAGE_DIR / (name + '.py') for name in _MODULE_NAMES}
 _SOURCE_PATHS.update({'model.' + name: source_data.MODEL_DIR / name
                       for name in source_data.SOURCE_DIGESTS})

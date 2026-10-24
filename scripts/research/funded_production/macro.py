@@ -168,13 +168,16 @@ class Prepared:
     release_units: float
 
 
-def prepare(envelope,policy,news=News(),investment_units=F(1),*,_quotes_only=False):
-    if type(envelope) is not Envelope or type(policy) is not Policy or type(news) is not News: raise TypeError('Require immutable current-information inputs.')
-    if isinstance(envelope.sector.public_book,ledger.PublicIncomeBook):
-        raise NotImplementedError('Public-income macro preparation remains unqualified.')
-    if type(_quotes_only) is not bool:raise TypeError('Quote-only selection must be Boolean.')
-    investment_units=ledger._number(investment_units)
-    a=envelope.macro; s=envelope.sector; cred=a.credibility
+def _quote_source(envelope,policy,news=News()):
+    """Pure source price/policy/credibility quotes, never demand or finance.
+
+    Public adapters must validate their own actual books/programs first. This
+    helper neither strips public books nor grants legacy preparation authority.
+    The zero demand fields are unused placeholders, not cancelled held stocks.
+    """
+    if type(envelope) is not Envelope or type(policy) is not Policy or type(news) is not News:
+        raise TypeError('Require immutable current-information inputs.')
+    a=envelope.macro; cred=a.credibility
     supply=P['supply_pressure_persistence']*a.supply_pressure_pct+news.supply_innovation_pct
     reference=a.r_star_reference_pct+news.r_star_reference_change_pct
     rstar=reference+P['r_star_reversion_persistence']*(a.r_star_pct-a.r_star_reference_pct)+news.r_star_change_pct
@@ -184,8 +187,8 @@ def prepare(envelope,policy,news=News(),investment_units=F(1),*,_quotes_only=Fal
     e=effective(policy.rate_pct); eg=effective(policy.rate_pct+cred*(policy.guidance_pct-policy.rate_pct))
     cw=P['long_yield_current_rate_weight']; sw=P['real_rate_short_weight']; premium=P['initial_term_premium_pct']
     long=cw*e+(1-cw)*eg+premium
-    # Stationary public program only. Local access/solvency wedges are NOT
-    # duplicated here; they act through actual sector credit and paid activity.
+    # Local access/solvency wedges are NOT duplicated here; they act through
+    # actual sector credit and paid activity, not this source quotation.
     spot=sw*(e-a.expected_short_inflation_pct)+(1-sw)*(long-premium-a.expected_long_inflation_pct)-rstar
     restraint=P['real_rate_gap_persistence']*a.financial_restraint_pct+(1-P['real_rate_gap_persistence'])*spot
     target=P['policy_inflation_response']*(a.four_quarter_inflation_pct-P['inflation_target_pct'])+P['policy_output_gap_response']*a.output_gap_pct
@@ -202,11 +205,26 @@ def prepare(envelope,policy,news=News(),investment_units=F(1),*,_quotes_only=Fal
     follow=math.exp(-abs(policy.rate_pct-commitment)/P['credibility_followthrough_tolerance_pct']) if a.guidance_active else 1
     base=P['inflation_persistence']*(1+a.annualized_quarterly_inflation_pct/100)+(1-P['inflation_persistence'])*(1+a.expected_short_inflation_pct/100)
     price=a.price_index*(base*math.exp((P['inflation_output_gap_sensitivity']*a.output_gap_pct+P['inflation_supply_sensitivity']*supply)/(100+P['inflation_target_pct'])))**.25
+    return Prepared(envelope,policy,news,ledger.depth_orders(),price,supply,rstar,
+                    reference,trend,u,e,long,restraint,adequacy,follow,0,0,0,0)
+
+
+def prepare(envelope,policy,news=News(),investment_units=F(1),*,_quotes_only=False):
+    if type(envelope) is not Envelope or type(policy) is not Policy or type(news) is not News: raise TypeError('Require immutable current-information inputs.')
+    if isinstance(envelope.sector.public_book,ledger.PublicIncomeBook):
+        raise NotImplementedError('Public-income macro preparation remains unqualified.')
+    if type(_quotes_only) is not bool:raise TypeError('Quote-only selection must be Boolean.')
+    investment_units=ledger._number(investment_units)
+    source=_quote_source(envelope,policy,news)
     if _quotes_only:
         # Private source quote extraction, not a legacy executable preparation.
-        # Avoid even evaluating the discarded IS/employment/backlog machinery.
-        return Prepared(envelope,policy,news,ledger.depth_orders(),price,supply,rstar,
-                        reference,trend,u,e,long,restraint,adequacy,follow,0,0,0,0)
+        return source
+    a=envelope.macro; s=envelope.sector
+    price=source.price_index; supply=source.supply_pressure; rstar=source.r_star
+    reference=source.r_star_reference; trend=source.trend; u=source.structural_u
+    e=source.effective_rate_pct; long=source.long_yield_pct
+    restraint=source.financial_restraint; adequacy=source.stance_adequacy
+    follow=source.followthrough
     # Authored consumption sensitivity, distinct from identified aggregate IS.
     x=P['output_gap_persistence']*a.consumption_state_pct-.12*restraint+news.demand_shock_pct-P['supply_output_gap_sensitivity']*supply
     reference_c=18.15*trend; underlying=reference_c*math.exp(x/100)
