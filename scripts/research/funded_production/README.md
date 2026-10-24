@@ -359,6 +359,26 @@ not serialized adopted commands. Old books, entry points and paid reference
 checkpoints are not migrated. This authored convention still needs recovery,
 long-run codec/runtime, future-program, native and workbook qualification.
 
+## Experimental household policy futures
+
+`public_household_branches` provides explicit single-tranche and recurring
+NOW/WAIT/NEVER quotations for the exact household-liquidity book. Its authored
+four-cell, nineteen-date programs call the same current adapter and monetary
+journal at every forecast date. Old funded/paydate routes remain separate.
+Recurring construction uses background plus extra units as one actual invoice
+and debt cohort; its matched NEVER path has the same background. Operating DCF
+excludes financing flows, while actual financing still constrains feasibility.
+Decision-date principal must retire; later background debt is right-censored.
+
+WAIT groups use only the declared realized public and own-firm facts plus current
+published policy/news/IORB. Hidden labels, future declarations, bank books and
+claim IDs cannot separate indistinguishable groups. Incomplete positive-weight
+baselines prevent a recommendation, rather than becoming zero-valued success.
+Outputs contain scalar receipts, not adopted future economies or commands.
+A selected current decision must be rebuilt against its actual opening state.
+Scenario weights, construction schedules and discount factors are authored;
+qualification of policy incentives, heldouts, recovery and runtime is unfinished.
+
 ## Limits before adoption
 
 **The current candidate has not demonstrated recovery or gameplay depth.**

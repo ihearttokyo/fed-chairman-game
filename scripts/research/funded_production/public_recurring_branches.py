@@ -461,11 +461,13 @@ def _unchanged(opening, digest, label):
         raise ValueError('Recurring forecast mutated its ' + label + '.')
 
 
-def _run_path(opening, cell, action, units, background_units, discounts, weight):
+def _run_path(opening, cell, action, units, background_units, discounts, weight, *, household=False):
     """Private exact paydate runner; caller admits the full table before use."""
-    from . import public_paydate as adapter, paydate_scenarios as scenarios
+    adapter, scenarios, book_type = core._pair(True, household=household)
 
     core.checkpoint._check_sources()
+    if household:
+        scenarios._admit((opening, cell))
     before = core._digest(opening)
     core._text(action)
     if action not in ('NEVER', 'NOW', 'WAIT'): raise ValueError('Unknown recurring action.')
@@ -479,7 +481,7 @@ def _run_path(opening, cell, action, units, background_units, discounts, weight)
         core._fraction(value)
         if not value: raise ValueError('Discount factors must be positive.')
     if discounts[0] != 1: raise ValueError('Date zero must be undiscounted.')
-    if type(opening.sector.public_book) is not core.l.PaydatePublicBook:
+    if type(opening.sector.public_book) is not book_type:
         raise TypeError('Require the exact paydate public convention.')
     # The full public admission already checked scale grids and current common
     # disclosures. Still reject a forged private cell schema before iteration.
@@ -542,8 +544,10 @@ def _run_path(opening, cell, action, units, background_units, discounts, weight)
                     status = failure; reason = detail; unknown += int(status == 'unknown')
                     break
             finally:
-                _unchanged(predecessor, predecessor_digest, 'actual predecessor')
-                core.checkpoint._check_sources()
+                try:
+                    _unchanged(predecessor, predecessor_digest, 'actual predecessor')
+                finally:
+                    core.checkpoint._check_sources()
         if status == 'completed' and _totals(claims, 'decision_date_joint')[2]:
             raise AssertionError('Decision-date joint principal survived its full quoted life.')
         prefix = sum((row.pv for row in rows), F(0))
@@ -551,8 +555,10 @@ def _run_path(opening, cell, action, units, background_units, discounts, weight)
             tuple(rows), prefix, prefix if status == 'completed' else None, None,
             observation, units, background_units, claims, calls, closes, refusals, prefixes, unknown)
     finally:
-        _unchanged(opening, before, 'actual opening root')
-        core.checkpoint._check_sources()
+        try:
+            _unchanged(opening, before, 'actual opening root')
+        finally:
+            core.checkpoint._check_sources()
 
 
 def evaluate(opening, cells, *, units, background_units, forward_gross, tolerance=1e-6) -> Quotation:
@@ -562,12 +568,20 @@ def evaluate(opening, cells, *, units, background_units, forward_gross, toleranc
     delivery shortfalls remain observed intentions; unknown terms stop coverage.
     A joint decision-date shortfall cannot be split into candidate delivery.
     """
+    return _evaluate(opening, cells, units=units, background_units=background_units,
+                     forward_gross=forward_gross, tolerance=tolerance, household=False)
+
+
+def _evaluate(opening, cells, *, units, background_units, forward_gross, tolerance=1e-6, household=False) -> Quotation:
+    _, scenarios, _ = core._pair(True, household=household)  # Exact selection before traversal.
     core.checkpoint._check_sources()
+    if household:
+        scenarios._admit((opening, cells))
     before = core._digest(opening)
     try:
         checked, units, tolerance, forwards, discounts, admitted = core._validated_inputs(
             opening, cells, units=units, forward_gross=forward_gross,
-            tolerance=tolerance, paydate=True)
+            tolerance=tolerance, paydate=True, household=household)
         if admitted != before: raise ValueError('Admission changed the actual opening root.')
         background = _physical(background_units)
         credibility = core.m.rational(opening.macro.credibility)
@@ -575,12 +589,14 @@ def evaluate(opening, cells, *, units, background_units, forward_gross, toleranc
         for cell in sorted(checked, key=lambda cell: (cell.demand_sign, cell.fulfilled)):
             weight = (credibility if cell.fulfilled else 1 - credibility) / 2
             for action in ('NEVER', 'NOW', 'WAIT'):
-                paths.append(_run_path(opening, cell, action, units, background, discounts, weight))
+                paths.append(_run_path(opening, cell, action, units, background, discounts, weight, household=household))
         paths = core._incrementals(tuple(paths))
         status, action, expected, wait, admissible, choices = _select(paths, tolerance)
         counts = tuple(sum(getattr(path, name) for path in paths) for name in _COUNTS)
         return Quotation(status, action, expected, wait, admissible, choices, paths,
                          units, background, forwards, tolerance, before, *counts)
     finally:
-        _unchanged(opening, before, 'actual opening root')
-        core.checkpoint._check_sources()
+        try:
+            _unchanged(opening, before, 'actual opening root')
+        finally:
+            core.checkpoint._check_sources()

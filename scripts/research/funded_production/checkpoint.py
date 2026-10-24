@@ -25,7 +25,7 @@ _MODULE_NAMES = ('__init__', 'source_data', 'numerics', 'households', 'pricing',
                  'ledger', 'macro', 'episodes', 'cashflows', 'choice', 'checkpoint',
                  'prospectus', 'coupled', 'investment', 'public_forecast',
                  'public_scenarios', 'public_branches', 'public_market', 'paydate_households',
-                 'public_paydate', 'paydate_scenarios', 'public_paydate_branches', 'public_recurring_branches', 'early_liquidity', 'public_early_paydate', 'public_household_paydate')
+                 'public_paydate', 'paydate_scenarios', 'public_paydate_branches', 'public_recurring_branches', 'early_liquidity', 'public_early_paydate', 'public_household_paydate', 'public_household_branches')
 _SOURCE_PATHS = {name: _PACKAGE_DIR / (name + '.py') for name in _MODULE_NAMES}
 _SOURCE_PATHS.update({'model.' + name: source_data.MODEL_DIR / name
                       for name in source_data.SOURCE_DIGESTS})

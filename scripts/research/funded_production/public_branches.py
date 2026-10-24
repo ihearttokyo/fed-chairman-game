@@ -260,15 +260,18 @@ def _digest(opening):
     return hashlib.sha256(repr(p._canonical_value(opening)).encode()).hexdigest()
 
 
-def _pair(paydate):
-    """Select ONLY the two code-owned adapter/scenario/book conventions.
+def _pair(paydate, *, household=False):
+    """Select ONLY the three code-owned adapter/scenario/book conventions.
 
     No module, callback, class name or caller-authored schema selects execution.
     Lazy imports keep the new current adapter and scenario entry independent of
     this shared quotation-record/reducer module's import order.
     """
-    if type(paydate) is not bool:
+    if type(paydate) is not bool or type(household) is not bool or (household and not paydate):
         raise TypeError('Require an exact internal public-calendar selection.')
+    if household:
+        from . import public_household_paydate, public_household_branches
+        return public_household_paydate, public_household_branches, l.HouseholdLiquidityBook
     if paydate:
         from . import public_paydate, paydate_scenarios
         return public_paydate, paydate_scenarios, l.PaydatePublicBook
@@ -276,105 +279,138 @@ def _pair(paydate):
     return p, public_scenarios, l.FundedPublicBook
 
 
-def _run_path(opening, cell, action, units, discounts, weight, *, paydate):
-    adapter, scenarios, _ = _pair(paydate)
-    state = opening
-    build = {'NOW': 0, 'WAIT': 1, 'NEVER': None}[action] if units else None
-    rows = []
-    status = 'completed'; reason = ''; canceled = ''; observation = None
-    calls = closes = refusals = prefixes = unknown = 0
-    paid_units = F(0); paid_quarter = None
-    origin = retired = outstanding = F(0)
-    ids = (); terms = {}
-    for date, descriptor in enumerate(cell.dates):
-        try:
-            current = scenarios.resolve_date(state, descriptor)
-            if action == 'WAIT' and date == 1:
-                observation = scenarios.wait_observation(state, current)
-                _observation(observation)
-            requested = units if date == build else F(0)
-            prepared = adapter.prepare(state, current.policy, current.step,
-                                       current.news, project_units=requested)
-            finance = adapter.controls(prepared)
-        except scenarios.MissingCoverage as error:
-            status = 'unknown'; reason = str(error); unknown += 1
-            break
-        except p.FundingFailure as error:
-            status = 'failed'; reason = 'funding_failure: ' + str(error); prefixes += 1
-            break
-        # One adapter.execute attempt means one raw ledger attempt, not
-        # necessarily a successful macro close. Unexpected errors propagate.
-        calls += 1
-        outcome = adapter.execute(prepared, finance)
-        if not outcome.ok:
-            refusals += 1
-            if outcome.envelope is not state:
-                raise AssertionError('Refused forecast changed its predecessor.')
-            status = 'unknown' if outcome.status == 'unsupported_public_income' else 'failed'
-            if status == 'unknown':
-                unknown += 1
-            reason = outcome.status + ': ' + outcome.reason
-            break
-        closes += 1
-        next_state = outcome.envelope
-        report = next_state.sector.last
-        # Only NEW actual protected project claims belong to this candidate;
-        # opening debt and operating offers are never relabeled as investment.
-        old_ids = {loan.id for loan in state.sector.loans}
-        new = tuple(loan for loan in next_state.sector.loans
-                    if type(loan) is l.ProjectLoan and loan.id not in old_ids)
-        if new and date != build:
-            raise AssertionError('A future project order/claim was invented.')
-        new_face = sum((loan.face for loan in new), F(0))
-        for loan in new:
-            if loan.id in terms:
-                raise AssertionError('Candidate project claim identity was reused.')
-            terms[loan.id] = (loan.lender, loan.borrower, loan.start, loan.maturity, loan.rate_pct)
-        ids += tuple(loan.id for loan in new)
-        origin += new_face
-        paid_principal = F(0)
-        for receipt in report.payments:
-            if receipt.claim_id in terms and receipt.kind == 'private_principal':
-                if (receipt.payer, receipt.payee) != ('F', 'Bank' + terms[receipt.claim_id][0]):
-                    raise AssertionError('Candidate principal receipt has the wrong owner.')
-                paid_principal += receipt.amount
-        retired += paid_principal
-        remaining = tuple(loan for loan in next_state.sector.loans if loan.id in terms)
-        for loan in remaining:
-            if type(loan) is not l.ProjectLoan or terms[loan.id] != (
-                    loan.lender, loan.borrower, loan.start, loan.maturity, loan.rate_pct):
-                raise AssertionError('Protected candidate project debt was refinanced.')
-        outstanding = sum((loan.face for loan in remaining), F(0))
-        if origin != retired + outstanding:
-            raise AssertionError('Actual candidate principal receipts do not reconcile.')
-        actual_units = report.investment / prepared.orders.capital_resource_cost
-        rows.append(_cash_row(date, report, state.sector.scale, prepared.orders.price_factor,
-                              requested, actual_units, new_face, paid_principal, outstanding,
-                              discount=discounts[date]))
-        state = next_state
-        if actual_units:
-            if date != build:
-                raise AssertionError('Forecast invested outside its single legal construction date.')
-            paid_units += actual_units
-            paid_quarter = report.quarter
-        if requested and actual_units != requested:
-            canceled = next((dict(item.details)['reason'] for item in report.trace
-                             if item.kind == 'project_cancelled'), 'tranche_not_fully_paid')
-            # A staged optional draw can fail for undeclared CB terms without
-            # refusing the otherwise fundable quarter. It is missing coverage,
-            # not a proven economic rejection of the candidate investment.
-            status = 'unknown' if canceled == 'unsupported_public_income' else 'failed'
-            unknown += int(status == 'unknown')
-            reason = 'project_cancelled: ' + canceled
-            break
-    if status == 'completed' and outstanding:
-        raise AssertionError('Candidate project principal survived its entire quoted life.')
-    prefix = sum((row.pv for row in rows), F(0))
-    return Path(cell.demand_sign, cell.fulfilled, weight, action, status, reason,
-                tuple(rows), prefix, prefix if status == 'completed' else None, None,
-                observation, units if build is not None else F(0), paid_units,
-                paid_quarter, canceled, ids, origin, retired, outstanding,
-                calls, closes, refusals, prefixes, unknown)
+def _path_unchanged(opening, before, label):
+    if _digest(opening) != before:
+        raise ValueError('Forecast mutated its ' + label + '.')
+
+
+def _run_path(opening, cell, action, units, discounts, weight, *, paydate, household=False):
+    adapter, scenarios, book_type = _pair(paydate, household=household)
+    if household:
+        checkpoint._check_sources()
+        scenarios._admit((opening, cell))
+        if type(opening) is not m.Envelope or type(opening.sector.public_book) is not book_type:
+            raise TypeError('Require the exact household public convention.')
+        if type(cell) is not scenarios.ScenarioCell:
+            raise TypeError('Require an exact prevalidated household cell.')
+        scenarios.ScenarioCell(cell.demand_sign, cell.fulfilled, cell.dates)
+    before = _digest(opening) if household else None
+    try:
+        state = opening
+        build = {'NOW': 0, 'WAIT': 1, 'NEVER': None}[action] if units else None
+        rows = []
+        status = 'completed'; reason = ''; canceled = ''; observation = None
+        calls = closes = refusals = prefixes = unknown = 0
+        paid_units = F(0); paid_quarter = None
+        origin = retired = outstanding = F(0)
+        ids = (); terms = {}
+        for date, descriptor in enumerate(cell.dates):
+            predecessor = state
+            preceding = _digest(predecessor) if household else None
+            try:
+                try:
+                    current = scenarios.resolve_date(state, descriptor)
+                    if action == 'WAIT' and date == 1:
+                        observation = scenarios.wait_observation(state, current)
+                        _observation(observation)
+                    requested = units if date == build else F(0)
+                    prepared = adapter.prepare(state, current.policy, current.step,
+                                               current.news, project_units=requested)
+                    finance = adapter.controls(prepared)
+                except scenarios.MissingCoverage as error:
+                    status = 'unknown'; reason = str(error); unknown += 1
+                    break
+                except p.FundingFailure as error:
+                    status = 'failed'; reason = 'funding_failure: ' + str(error); prefixes += 1
+                    break
+                # One adapter.execute attempt means one raw ledger attempt, not
+                # necessarily a successful macro close. Unexpected errors propagate.
+                calls += 1
+                outcome = adapter.execute(prepared, finance)
+                if not outcome.ok:
+                    refusals += 1
+                    if outcome.envelope is not state:
+                        raise AssertionError('Refused forecast changed its predecessor.')
+                    status = 'unknown' if outcome.status == 'unsupported_public_income' else 'failed'
+                    if status == 'unknown':
+                        unknown += 1
+                    reason = outcome.status + ': ' + outcome.reason
+                    break
+                closes += 1
+                next_state = outcome.envelope
+                if household:
+                    p._canonical_value(next_state)
+                report = next_state.sector.last
+                # Only NEW actual protected project claims belong to this candidate;
+                # opening debt and operating offers are never relabeled as investment.
+                old_ids = {loan.id for loan in state.sector.loans}
+                new = tuple(loan for loan in next_state.sector.loans
+                            if type(loan) is l.ProjectLoan and loan.id not in old_ids)
+                if new and date != build:
+                    raise AssertionError('A future project order/claim was invented.')
+                new_face = sum((loan.face for loan in new), F(0))
+                for loan in new:
+                    if loan.id in terms:
+                        raise AssertionError('Candidate project claim identity was reused.')
+                    terms[loan.id] = (loan.lender, loan.borrower, loan.start, loan.maturity, loan.rate_pct)
+                ids += tuple(loan.id for loan in new)
+                origin += new_face
+                paid_principal = F(0)
+                for receipt in report.payments:
+                    if receipt.claim_id in terms and receipt.kind == 'private_principal':
+                        if (receipt.payer, receipt.payee) != ('F', 'Bank' + terms[receipt.claim_id][0]):
+                            raise AssertionError('Candidate principal receipt has the wrong owner.')
+                        paid_principal += receipt.amount
+                retired += paid_principal
+                remaining = tuple(loan for loan in next_state.sector.loans if loan.id in terms)
+                for loan in remaining:
+                    if type(loan) is not l.ProjectLoan or terms[loan.id] != (
+                            loan.lender, loan.borrower, loan.start, loan.maturity, loan.rate_pct):
+                        raise AssertionError('Protected candidate project debt was refinanced.')
+                outstanding = sum((loan.face for loan in remaining), F(0))
+                if origin != retired + outstanding:
+                    raise AssertionError('Actual candidate principal receipts do not reconcile.')
+                actual_units = report.investment / prepared.orders.capital_resource_cost
+                rows.append(_cash_row(date, report, state.sector.scale, prepared.orders.price_factor,
+                                      requested, actual_units, new_face, paid_principal, outstanding,
+                                      discount=discounts[date]))
+                state = next_state
+                if actual_units:
+                    if date != build:
+                        raise AssertionError('Forecast invested outside its single legal construction date.')
+                    paid_units += actual_units
+                    paid_quarter = report.quarter
+                if requested and actual_units != requested:
+                    canceled = next((dict(item.details)['reason'] for item in report.trace
+                                     if item.kind == 'project_cancelled'), 'tranche_not_fully_paid')
+                    # A staged optional draw can fail for undeclared CB terms without
+                    # refusing the otherwise fundable quarter. It is missing coverage,
+                    # not a proven economic rejection of the candidate investment.
+                    status = 'unknown' if canceled == 'unsupported_public_income' else 'failed'
+                    unknown += int(status == 'unknown')
+                    reason = 'project_cancelled: ' + canceled
+                    break
+            finally:
+                if household:
+                    try:
+                        _path_unchanged(predecessor, preceding, 'actual predecessor')
+                    finally:
+                        checkpoint._check_sources()
+        if status == 'completed' and outstanding:
+            raise AssertionError('Candidate project principal survived its entire quoted life.')
+        prefix = sum((row.pv for row in rows), F(0))
+        return Path(cell.demand_sign, cell.fulfilled, weight, action, status, reason,
+                    tuple(rows), prefix, prefix if status == 'completed' else None, None,
+                    observation, units if build is not None else F(0), paid_units,
+                    paid_quarter, canceled, ids, origin, retired, outstanding,
+                    calls, closes, refusals, prefixes, unknown)
+
+    finally:
+        if household:
+            try:
+                _path_unchanged(opening, before, 'actual opening root')
+            finally:
+                checkpoint._check_sources()
 
 
 def _incrementals(paths):
@@ -463,11 +499,13 @@ def _current_paydate_signature(opening, descriptor):
         descriptor.replacement_maturity, descriptor.allocation_priority))
 
 
-def _validated_inputs(opening, cells, *, units, forward_gross, tolerance=1e-6, paydate):
+def _validated_inputs(opening, cells, *, units, forward_gross, tolerance=1e-6, paydate, household=False):
     """Shared pure admission; exact Boolean selects only code-owned calendars."""
-    _, scenarios, book_type = _pair(paydate)
+    _, scenarios, book_type = _pair(paydate, household=household)
 
     checkpoint._check_sources()
+    if household:
+        scenarios._admit((opening, cells))
     if type(opening) is not m.Envelope:
         raise TypeError('Require the exact canonical reference Envelope.')
     p._canonical_value(opening)  # Strict nested scalars BEFORE equality/fields.
@@ -477,7 +515,10 @@ def _validated_inputs(opening, cells, *, units, forward_gross, tolerance=1e-6, p
     checkpoint._paid_economy(opening)
     sector = opening.sector
     payments = None if sector.last is None else sector.last.payments
-    if paydate:
+    if household:
+        l.validate_household_liquidity_public(sector.public_book, sector.scale, sector.quarter,
+            payments, None if sector.last is None else sector.last.trace)
+    elif paydate:
         l.validate_paydate_public(sector.public_book, sector.scale, sector.quarter,
                                  payments, None if sector.last is None else sector.last.trace)
     else:
@@ -533,19 +574,28 @@ def _validated_inputs(opening, cells, *, units, forward_gross, tolerance=1e-6, p
     return checked, units, tolerance, forwards, discounts, before
 
 
-def _evaluate(opening, cells, *, units, forward_gross, tolerance=1e-6, paydate) -> Quotation:
+def _evaluate(opening, cells, *, units, forward_gross, tolerance=1e-6, paydate, household=False) -> Quotation:
     """Original finite engine; no recurring construction is added here."""
-    checked, units, tolerance, forwards, discounts, before = _validated_inputs(
-        opening, cells, units=units, forward_gross=forward_gross,
-        tolerance=tolerance, paydate=paydate)
-    credibility = m.rational(opening.macro.credibility)
-    paths = []
+    _, scenarios, _ = _pair(paydate, household=household)  # Closed selection before traversal.
+    checkpoint._check_sources()
+    if household:
+        scenarios._admit((opening, cells))
+    if type(opening) is not m.Envelope:
+        raise TypeError('Require the exact canonical reference Envelope.')
+    before = _digest(opening)
     try:
+        checked, units, tolerance, forwards, discounts, admitted = _validated_inputs(
+            opening, cells, units=units, forward_gross=forward_gross,
+            tolerance=tolerance, paydate=paydate, household=household)
+        if admitted != before:
+            raise ValueError('Admission mutated its actual opening root.')
+        credibility = m.rational(opening.macro.credibility)
+        paths = []
         for cell in sorted(checked, key=lambda cell: (cell.demand_sign, cell.fulfilled)):
             weight = (credibility if cell.fulfilled else 1 - credibility) / 2
             for action in ('NEVER', 'NOW', 'WAIT'):
                 paths.append(_run_path(opening, cell, action, units, discounts, weight,
-                                       paydate=paydate))
+                                       paydate=paydate, household=household))
         paths = _incrementals(tuple(paths))
         status, action, expected, wait, admissible, choices = _select(paths, tolerance)
         counts = tuple(sum(getattr(path, name) for path in paths) for name in
@@ -553,6 +603,8 @@ def _evaluate(opening, cells, *, units, forward_gross, tolerance=1e-6, paydate) 
         return Quotation(status, action, expected, wait, admissible, choices, paths,
                          units, forwards, tolerance, before, *counts)
     finally:
-        if _digest(opening) != before:
-            raise ValueError('Forecast mutated its actual opening root.')
-        checkpoint._check_sources()
+        try:
+            if _digest(opening) != before:
+                raise ValueError('Forecast mutated its actual opening root.')
+        finally:
+            checkpoint._check_sources()
