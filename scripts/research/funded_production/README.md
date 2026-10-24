@@ -29,9 +29,17 @@ network, Godot process, Excel session or installed game. It does not write saves
 - A pure `households.cash_stock_budget` quotation deducts desired cash-target
   growth from planned spending and caps funding at opening cash plus paid wages.
   Forecast dividends cannot fund purchases. Its income/wealth adjustment is an
-  authored behavioral convention. It is **not connected to a ledger mode**;
-  closing dividend execution, actual purchases, contractual cash sweeps, project
-  commitments/draws and an endogenous reference still need qualification.
+  authored behavioral convention, used by the explicitly selected research
+  `Controls(household_mode='cash_stock_close_v1')` with `market_clearing=True`.
+  This mode freezes funded baskets after paid payroll and distributes firm/bank
+  dividends only after trading and mandatory debt settlement. Income history
+  comes from the last paid report; q0 income seeds are 20/3.15 times nominal
+  scale, not new deposits. Cash ratios 3/20 and 1/21 and adjustment 1/4 are fixed
+  version-1 conventions. Dividend forecasts use explicit order inputs or the
+  initial/last paid reference; they do not assume a solved growth path.
+  Legacy modes are unchanged. The macro adapter still explicitly refuses this
+  new mode: endogenous hiring/investment, contractual cash sweeps, project
+  commitments/draws and a coupled reference remain unqualified.
 - Typed checkpoints and exact command replay. Project restrictions survive restore;
   principal paid cannot silently become a refinanced claim.
 

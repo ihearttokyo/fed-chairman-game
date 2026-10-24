@@ -12,6 +12,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Funded-production research reference
+        run: python3 -B -m unittest discover -s scripts/research/funded_production/tests -v
       - name: Install checksum-pinned Godot 4.7.2
         run: |
           curl --fail --location --retry 2 https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip -o "$RUNNER_TEMP/godot.zip"

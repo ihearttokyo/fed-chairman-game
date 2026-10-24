@@ -333,7 +333,7 @@ class Controls:
             raise ValueError('Duplicate renewal quotes are invalid.')
         if type(self.household_mode) is not str:
             raise TypeError('Household mode must be immutable built-in text.')
-        if self.household_mode not in ('fixed', 'wallet', 'liquidity'):
+        if self.household_mode not in ('fixed', 'wallet', 'liquidity', 'cash_stock_close_v1'):
             raise ValueError('Unknown household mode.')
 
 
@@ -1376,6 +1376,49 @@ def step(state, controls=Controls(), orders=None):
     return advance_given_orders(state, _DEFAULT_ORDERS if orders is None else orders, controls)
 
 
+def _closing_household_plans(tx, orders, wage, lr, lf):
+    """Version-1 research behavior: freeze owned budgets after actual payroll.
+
+    Income seeds and target ratios are authored reference conventions, not cash
+    grants or inferred history. Later income comes from the last paid report.
+    This does not implement endogenous hiring, investment or a macro adapter.
+    """
+    last = tx.original.last
+    if orders.expected_dividends_nominal is not None:
+        forecasts = orders.expected_dividends_nominal
+        source = 'explicit_forecast'
+    elif last is None:
+        forecasts = tuple(x * tx.scale for x in orders.initial_dividends_real)
+        source = 'initial_reference'
+    else:
+        forecasts = (last.dividend_residual + last.bank_dividend_to('HA'),
+                     last.dividend_focal + last.bank_dividend_to('HB'))
+        source = 'last_paid_dividends'
+    previous = ((20 * tx.scale, F(63, 20) * tx.scale) if last is None else
+                (last.payroll_residual + last.dividend_residual + last.bank_dividend_to('HA'),
+                 last.payroll_focal + last.dividend_focal + last.bank_dividend_to('HB')))
+    unit = tx.scale * orders.price_factor
+    plans = []
+    for owner, prefs, wages, prior, forecast, ratio in zip(
+            ('HA', 'HB'), (orders.preferences_a, orders.preferences_b),
+            (lr * wage, lf * wage), previous, forecasts, (F(3, 20), F(1, 21))):
+        opening = tx.d[owner] - wages  # Actual pre-payroll wallet, not a forecast.
+        quote = household.cash_stock_budget(
+            opening_cash=opening, paid_wages=wages, previous_income=prior,
+            forecast_income=wages + forecast, cash_ratio=ratio)
+        goods = prefs.residual + prefs.services
+        plans.append((quote.funded * prefs.residual / goods / unit,
+                      quote.funded * prefs.services / goods / unit)
+                     if goods else (ZERO, ZERO))
+        tx.note('household_budget', owner, 'goods', quote.wallet,
+                mode='cash_stock_close_v1', opening_cash=opening, paid_wages=wages,
+                income_previous=prior, income_forecast=wages + forecast,
+                forecast=forecast, forecast_source=source, cash_ratio=ratio,
+                adjustment=F(1, 4), desired=quote.desired, funded=quote.funded)
+    (cr, sa), (_, sb) = plans
+    return cr, sa, sb
+
+
 def _clear_market(tx, orders, controls, vintages, capital, depreciation, lr, lf):
     """Bounded chronological clearing of frozen orders with actual owned cash.
 
@@ -1386,7 +1429,10 @@ def _clear_market(tx, orders, controls, vintages, capital, depreciation, lr, lf)
     wage = unit * orders.real_wage
     chi = orders.capital_resource_cost
     renewals = {r.loan_id: r for r in controls.renewals}
-    if controls.household_mode == 'fixed':
+    closing = controls.household_mode == 'cash_stock_close_v1'
+    if closing:
+        desired_cr, desired_sa, desired_sb = _closing_household_plans(tx, orders, wage, lr, lf)
+    elif controls.household_mode == 'fixed':
         desired_cr, desired_sa, desired_sb = (orders.residual_consumption,
                                               orders.service_a, orders.service_b)
     else:
@@ -1567,8 +1613,9 @@ def _clear_market(tx, orders, controls, vintages, capital, depreciation, lr, lf)
         physical_i += buy_i
         progress |= bool(buy_cr + buy_i)
         progress |= settle_debt('R')
-        progress |= bool(distribute_firms())
-        progress |= bool(distribute_banks())
+        if not closing:
+            progress |= bool(distribute_firms())
+            progress |= bool(distribute_banks())
         if not progress:
             break
     else:
@@ -1601,6 +1648,8 @@ def advance_given_orders(state, orders, controls=Controls()):
         raise TypeError('Step requires explicit Controls.')
     if type(orders) is not ProductionOrders:
         raise TypeError('Advance requires immutable ProductionOrders.')
+    if controls.household_mode == 'cash_stock_close_v1' and not orders.market_clearing:
+        raise ValueError('Closing household budgets require explicit market clearing.')
     q, s = state.quarter+1,state.scale
     unit = s * orders.price_factor
     wage = unit * orders.real_wage
