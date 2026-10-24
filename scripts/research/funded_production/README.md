@@ -48,6 +48,15 @@ network, Godot process, Excel session or installed game. It does not write saves
   and submitted new offers. These conditional forecasts neither approve lending
   nor guarantee future cash, hiring or investment. The input defaults to `None`;
   it is not accepted by legacy household modes or the current macro adapter.
+- New `OperatingLoanOffer`/`OperatingLoan` contracts have two settlement dates
+  and permit automatic surplus-cash repayment in the closing-budget mode. After
+  mandatory dues and actual purchases, the executor keeps one actual paid payroll
+  as a buffer and repays eligible face in maturity/claim-ID order before dividends
+  and the next credit quotation. Principal retirement destroys matching deposits;
+  it is neither an expense nor new GDP. Ordinary legacy/project claims are not
+  swept. Consented renewals preserve the contract type and two-date term. Typed
+  restoration preserves eligibility; other household modes explicitly refuse
+  these contracts instead of silently dropping their repayment semantics.
 - Typed checkpoints and exact command replay. Project restrictions survive restore;
   principal paid cannot silently become a refinanced claim.
 

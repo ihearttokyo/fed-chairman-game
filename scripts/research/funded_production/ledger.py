@@ -162,6 +162,15 @@ class LoanOffer:
 
 
 @dataclass(frozen=True)
+class OperatingLoanOffer(LoanOffer):
+    """New two-settlement operating credit with a closing surplus-cash sweep.
+
+    The originator validates maturity relative to its actual settlement date.
+    Selecting this contract does not grant credit or change legacy loan terms.
+    """
+
+
+@dataclass(frozen=True)
 class Renewal:
     loan_id: str
     face: F
@@ -395,6 +404,16 @@ class Loan:
         if (not self.face or self.allowance > self.face or self.maturity <= self.start
                 or self.last_coupon_paid < self.start):
             raise ValueError('Invalid active private loan terms.')
+
+
+@dataclass(frozen=True)
+class OperatingLoan(Loan):
+    """Explicit prepayable operating contract; inherited fields retain ownership."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.maturity != self.start + 2:
+            raise ValueError('Operating loans require exactly two settlement dates.')
 
 
 @dataclass(frozen=True)
@@ -977,11 +996,14 @@ class _Transaction:
         start = self.quarter-1 if at_open else self.quarter
         if offer.maturity <= start:
             raise ValueError('New loan maturity must be a future quarter.')
+        loan_type = OperatingLoan if isinstance(offer, OperatingLoanOffer) else Loan
+        if loan_type is OperatingLoan and offer.maturity != start + 2:
+            raise ValueError('Operating credit requires two settlement dates.')
         bank = offer.lender
         # Equity is unchanged by matching loan/deposit creation/settlement.
         if self.equity(bank) <= 0 or self.equity(bank) < COVENANT*(self.risk(bank)+offer.face):
             raise _Failure('credit_constraint','Loan offer exceeds lender closing capital headroom.')
-        loan = Loan(f'L{self.next_id}',bank,offer.face,offer.rate_pct,offer.maturity,
+        loan = loan_type(f'L{self.next_id}',bank,offer.face,offer.rate_pct,offer.maturity,
                     start,start,borrower=borrower)
         self.next_id += 1
         self.loans.append(loan)
@@ -1021,6 +1043,9 @@ class _Transaction:
         _money(quote.face,self.scale)
         if quote.maturity <= self.quarter:
             raise ValueError('Renewal maturity must be a future quarter.')
+        loan_type = OperatingLoan if isinstance(loan, OperatingLoan) else Loan
+        if loan_type is OperatingLoan and quote.maturity != self.quarter + 2:
+            raise ValueError('Operating renewal must preserve two settlement dates.')
         if loan.maturity != self.quarter or loan.last_coupon_paid != self.quarter:
             raise ValueError('Renewal requires the due loan and its fully paid current coupon.')
         bank = loan.lender
@@ -1035,7 +1060,7 @@ class _Transaction:
         if closing_equity <= 0 or closing_equity < COVENANT*new_risk:
             raise _Failure('credit_constraint','Renewal exceeds replacement capital headroom.',loan.id)
         delta = quote.face-loan.face
-        new = Loan(f'L{self.next_id}',bank,quote.face,quote.rate_pct,quote.maturity,
+        new = loan_type(f'L{self.next_id}',bank,quote.face,quote.rate_pct,quote.maturity,
                    self.quarter,self.quarter,carried_allowance,borrower=borrower,performing=loan.performing)
         if delta < 0:
             if -delta > self.d[borrower]:
@@ -1657,6 +1682,23 @@ def _clear_market(tx, orders, controls, vintages, capital, depreciation, lr, lf)
             tx.refresh_cb(bank)
         return paid
 
+    def sweep_operating_cash():
+        # Only the new contractual subtype authorizes this automatic repayment.
+        # Legacy and protected project installments remain ordinary Loan claims.
+        buffers = {'R': lr * wage, 'F': lf * wage}
+        for loan in sorted((l for l in tx.loans if isinstance(l, OperatingLoan)),
+                           key=lambda l: (l.maturity, l.id)):
+            cash = tx.d[loan.borrower]
+            value = _floor(min(loan.face, max(ZERO, cash - buffers[loan.borrower])),
+                           tx.money_quantum)
+            if not value:
+                continue
+            tx.principal(loan, value)
+            tx.note('operating_cash_sweep', loan.borrower, loan.lender, value, loan.id,
+                    cash_before=cash, buffer=buffers[loan.borrower],
+                    cash_after=tx.d[loan.borrower], face_before=loan.face,
+                    face_after=loan.face - value)
+
     limit_reached = False
     for rounds in range(1, orders.max_clearing_rounds + 1):
         progress = False
@@ -1711,6 +1753,8 @@ def _clear_market(tx, orders, controls, vintages, capital, depreciation, lr, lf)
     for loan in tx.loans:
         if coupon_due(loan) or loan.maturity <= tx.quarter:
             raise _Failure('credit_default', 'Mandatory private cash obligation remains unpaid.', loan.id)
+    if closing:
+        sweep_operating_cash()
     distribute_firms()
     distribute_banks()
     for bank in BANKS:
@@ -1734,6 +1778,10 @@ def advance_given_orders(state, orders, controls=Controls()):
         raise TypeError('Advance requires immutable ProductionOrders.')
     if controls.household_mode == 'cash_stock_close_v1' and not orders.market_clearing:
         raise ValueError('Closing household budgets require explicit market clearing.')
+    if controls.household_mode != 'cash_stock_close_v1' and (
+            any(isinstance(l, OperatingLoan) for l in state.loans) or
+            any(isinstance(o, OperatingLoanOffer) for o in controls.new_loans)):
+        raise ValueError('Operating cash-sweep contracts require the closing-budget mode.')
     q, s = state.quarter+1,state.scale
     unit = s * orders.price_factor
     wage = unit * orders.real_wage
@@ -1743,10 +1791,14 @@ def advance_given_orders(state, orders, controls=Controls()):
         loan = _find(state,renewal.loan_id)
         if loan.maturity != q or renewal.maturity<=q:
             raise ValueError('Renewal must identify a loan due now and a future new maturity.')
+        if isinstance(loan, OperatingLoan) and renewal.maturity != q + 2:
+            raise ValueError('Operating renewal must preserve two settlement dates.')
         _money(renewal.face,s)
     for offer in controls.new_loans:
         if offer.maturity<q:
             raise ValueError('Opening credit cannot mature before the current quarter closes.')
+        if isinstance(offer, OperatingLoanOffer) and offer.maturity != q + 1:
+            raise ValueError('Opening operating credit requires two settlement dates.')
         _money(offer.face,s)
     tx = _Transaction(state,controls,q)
     try:

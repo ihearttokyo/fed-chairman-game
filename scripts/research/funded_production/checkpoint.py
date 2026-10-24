@@ -168,7 +168,8 @@ _TYPES = MappingProxyType({
     **{name: getattr(m.ledger, name) for name in (
         'SectorState', 'Bank', 'Loan', 'CBLoan', 'Collateral', 'Vintage',
         'PublicBook', 'RRPClaim', 'Report', 'Payment', 'Trace', 'Controls',
-        'LoanOffer', 'Renewal', 'PublicInstructions', 'ClosingCreditForecast')},
+        'LoanOffer', 'Renewal', 'PublicInstructions', 'ClosingCreditForecast',
+        'OperatingLoanOffer', 'OperatingLoan')},
     'CandidateState': CandidateState,
     'DecisionEvent': DecisionEvent,
 })
