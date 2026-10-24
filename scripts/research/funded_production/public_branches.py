@@ -399,7 +399,10 @@ def _select(paths, tolerance):
                                 weight, bool(admitted), conditional, 'WAIT' if exercise else 'NEVER'))
     if incomplete:
         return incomplete, None, expected_now, None, now_admissible, tuple(choices)
-    if now_admissible and expected_now > tolerance and expected_now > wait_value + tolerance:
+    # An ineligible option cannot veto NOW merely by falling within its
+    # near-tie margin. Keep the preference for waiting when WAIT is eligible.
+    if (now_admissible and expected_now > tolerance
+            and (wait_value <= tolerance or expected_now > wait_value + tolerance)):
         action = 'NOW'
     elif wait_value > tolerance:
         action = 'WAIT'

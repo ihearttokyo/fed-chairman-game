@@ -164,6 +164,30 @@ class PublicBranchesPureTests(unittest.TestCase):
         self.assertEqual((result[1], result[2], result[3]), ('WAIT', 2, 2))
         self.assertEqual(tuple(x.action for x in result[5]), ('WAIT', 'NEVER'))
 
+    def test_subthreshold_wait_cannot_veto_eligible_now(self):
+        b, _ = modules(False)
+        # Conditional exercise can be worthwhile while its probability-weighted
+        # option remains ineligible. Near-tie preference applies only to an
+        # eligible WAIT option, including exactly the tolerance boundary.
+        for conditional, weighted in ((F(3), F(3, 4)), (F(4), F(1))):
+            paths = self.pure_paths(now=(F(3, 2),) * 4,
+                wait=(conditional, -1, -1, -1),
+                keys=(('a',), ('b',), ('c',), ('d',)))
+            result = b._select(paths, F(1))
+            self.assertEqual((result[1], result[2], result[3]),
+                             ('NOW', F(3, 2), weighted))
+            self.assertEqual(result[5][0].action, 'WAIT')
+
+    def test_eligible_near_tie_wait_still_wins_and_tolerance_scales(self):
+        b, _ = modules(False)
+        for scale in (F(1, 1000), F(1), F(1000)):
+            paths = self.pure_paths(now=(F(3, 2) * scale,) * 4,
+                wait=(F(5) * scale, -scale, -scale, -scale),
+                keys=(('a',), ('b',), ('c',), ('d',)))
+            result = b._select(paths, scale)
+            self.assertEqual((result[1], result[2], result[3]),
+                             ('WAIT', F(3, 2) * scale, F(5, 4) * scale))
+
     def test_failed_positive_weight_baseline_is_not_filtered(self):
         b, _ = modules(False); paths = self.pure_paths(now=(20,) * 4, wait=(10,) * 4)
         paths = tuple(replace(x, status='failed', reason='credit_constraint', total_pv=None,
