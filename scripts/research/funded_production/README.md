@@ -292,6 +292,33 @@ No recurring forecast is enabled in the shipping game or accepted as an adopted
 checkpoint. Full-table, held-out, recovery, native, workbook and game-turn
 qualification require their own evidence.
 
+## Early public liquidity (experimental)
+
+The fresh opt-in `EarlyPaydateBook` adds a witnessed credit phase after public
+principal settlement and before the original nonhousehold coupons. It is a
+quarter-resolution secured-credit convention, not a daily payment-system model
+or a claim of actual Federal Reserve borrower eligibility. The strict paid-payroll
+calendar remains separate; unsupported old adapters refuse the new book.
+
+The journal retires a due CB claim once through same-counterparty novation,
+records the replacement and cash repayment, then creates only the additional
+reserves needed for the ordered coupon prefix. Refinanced face and new draws use
+one shared gross facility offer. Existing collateral, positive current modeled
+bank equity and explicit contract terms still bind. No early security sale,
+Treasury-primary funding, household cash gift or anticipated remittance funds
+the phase. The existing haircut and eligibility test are authored assumptions.
+
+Current coupons use the frozen original balances: new reserves and replacement
+debt do not retroactively earn or owe opening interest. Later draws retain their
+actual conditions, pledges and remaining gross usage. New phase/credit witnesses
+and reference-codec tags check consistency, not historical custody or native
+save compatibility. The factory does not migrate paid careers.
+
+Targeted raw-journal and codec tests do not establish economic recovery,
+heterogeneous CB contract pricing, a qualified current-policy/forecast adapter,
+long-run solvency, workbook parity or native adoption. Nothing here is enabled
+in the shipping game.
+
 ## Limits before adoption
 
 **The current candidate has not demonstrated recovery or gameplay depth.**
