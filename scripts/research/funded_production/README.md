@@ -91,6 +91,41 @@ network, Godot process, Excel session or installed game. It does not write saves
   checkpoint/replay, full public adapter and native integration remain unfinished.
 - Typed checkpoints and exact command replay. Project restrictions survive restore;
   principal paid cannot silently become a refinanced claim.
+- An opt-in `PublicIncomeBook` settles opening-stock Treasury, mortgage/MBS,
+  reserve, CB-loan and RRP coupons inside the same atomic journal. Explicit
+  annual Treasury cash masses follow actual holder/maturity pools through
+  consenting same-face rolls. Treasury payments use actual TGA funds; borrower
+  payments use owned deposits/reserves, not automatic new borrowing. Bank
+  earnings reach households only through actual earned distributions. Signed
+  coupons reverse the payer; mortgage and MBS legs are one funded flow.
+  Missing applicable CB/RRP terms refuse, while explicit zero is a contract.
+  Deferred CB losses are an explicit nonspendable asset, not private bank capital
+  or collateral. Earnings cover that deficit before remittance. The model assumes
+  zero CB operating costs/dividends and no surplus adjustment; this is narrower
+  than [Federal Reserve accounting](https://www.federalreserve.gov/aboutthefed/chapter-1-balance-sheet.htm).
+  Opening stocks proxy quarterly averages, not
+  [actual daily IORB calculation and payment timing](https://www.federalreserve.gov/monetarypolicy/iorb-faqs.htm).
+  Treasury coupons aggregate per holder before toward-zero monetary rounding;
+  other coupons round separately per owner. No empirical coupon calibration is
+  selected. Rates for this declared program are research inputs, not an
+  implemented policy-to-IORB or security-market pricing bridge.
+  An explicit `PublicIncomeControls` command may set the current administered
+  reserve rate inside the journal, without rewriting prior paid history or fixed
+  Treasury/mortgage coupons. A bounded eleven-obligation opening snapshot binds
+  current payment purposes, owners, claims and amounts. Missing, invented or
+  duplicate matched receipts fail checkpoint validation and raw-ledger history
+  consumption. These consistency checks do not establish historical custody.
+  A signed disposable-income budget uses nonnegative desired transaction-cash
+  targets; for nonnegative incomes its formula equals the existing rule.
+  Paid interest is observed without crediting the wallet twice. Existing book,
+  control and report serialized fields remain unchanged; strict new subtype
+  identities carry the additional state. Source-bound historical checkpoints
+  still require their original source; there is no silent migration.
+  QE, coupon-right transfers and new public quantity operations remain explicitly
+  refused in this income-first program. Existing private/macro forecasts refuse
+  enabled books until their public-income bridge is implemented and qualified.
+  These accounting hand cases do not establish recovery, a complete public-policy
+  adapter, native/workbook parity or release adoption.
 - A pure partial-equilibrium prospectus quotes four declared forecast cells,
   three actions and 19 dates: 228 scalar rows and zero ledger transitions.
   Sold services are limited by demand, dated capital and focal labor. The
@@ -142,9 +177,10 @@ product adoption. Nothing here is enabled in the released game.
 
 This is a candidate qualification tool, not a validated replacement simulation.
 The source-backed parameters coexist with disclosed authored production and
-investment conventions. The public balance-sheet adapter supports only a
-stationary same-face Treasury rollover program. Full QE/MBS, currency/RRP and
-public-interest accounting are not implemented here. Household allocation is a
+investment conventions. The macro balance-sheet adapter supports only a
+stationary same-face Treasury rollover program. The separate opt-in income
+program does not qualify the full QE/MBS, currency/RRP or public-policy bridge.
+Household allocation is a
 fixed structural rule, not an optimal utility solution. Ordinary private default
 still refuses the transition rather than modeling an economic successor.
 

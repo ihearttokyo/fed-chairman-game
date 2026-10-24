@@ -37,6 +37,8 @@ class Prepared:
 def prepare(opening,policy,news=m.News(),*,project_units=0):
     if type(opening) is not m.Envelope or type(policy) is not m.Policy or type(news) is not m.News:
         raise TypeError('Require immutable current-information inputs.')
+    if isinstance(opening.sector.public_book,l.PublicIncomeBook):
+        raise NotImplementedError('Public-income private forecast/finance bridge remains unqualified.')
     _paid_economy(opening)
     a,s=opening.macro,opening.sector
     if a.consumption_state_pct or a.deferred_consumption_units:

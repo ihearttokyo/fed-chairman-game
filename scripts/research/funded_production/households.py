@@ -1,7 +1,7 @@
 """Authored household cash-budget choices, not an estimated consumption model."""
 from dataclasses import dataclass
 from fractions import Fraction
-from .numerics import amount
+from .numerics import amount, _signed
 
 @dataclass(frozen=True)
 class Preferences:
@@ -60,6 +60,27 @@ def cash_stock_budget(*, opening_cash, paid_wages, previous_income,
     wallet = cash + wages
     funded = min(wallet, desired)
     return CashStockBudget(desired, wallet, funded, wallet - funded)
+
+
+def net_cash_stock_budget(*, opening_cash, paid_wages, previous_income,
+                          forecast_income, cash_ratio, adjustment=Fraction(1,4),
+                          demand_multiplier=1):
+    """Opt-in disposable-income convention, including negative paid income.
+
+    Desired transaction balances cannot be negative. For nonnegative incomes
+    this is exactly the existing rule; debt expense is not erased or cash.
+    """
+    cash,wages,ratio,speed,impulse=map(amount,(opening_cash,paid_wages,cash_ratio,
+                                            adjustment,demand_multiplier))
+    prior,forecast=map(_signed,(previous_income,forecast_income))
+    if speed>1:raise ValueError('Cash-target adjustment must be in [0, 1].')
+    old_target=max(Fraction(0),ratio*prior)
+    new_target=max(Fraction(0),ratio*forecast)
+    desired=impulse*max(Fraction(0),forecast-(new_target-old_target)
+                       +speed*(cash-old_target))
+    wallet=cash+wages
+    funded=min(wallet,desired)
+    return CashStockBudget(desired,wallet,funded,wallet-funded)
 
 
 def _mode(mode):

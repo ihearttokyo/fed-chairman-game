@@ -170,6 +170,8 @@ class Prepared:
 
 def prepare(envelope,policy,news=News(),investment_units=F(1),*,_quotes_only=False):
     if type(envelope) is not Envelope or type(policy) is not Policy or type(news) is not News: raise TypeError('Require immutable current-information inputs.')
+    if isinstance(envelope.sector.public_book,ledger.PublicIncomeBook):
+        raise NotImplementedError('Public-income macro preparation remains unqualified.')
     if type(_quotes_only) is not bool:raise TypeError('Quote-only selection must be Boolean.')
     investment_units=ledger._number(investment_units)
     a=envelope.macro; s=envelope.sector; cred=a.credibility
