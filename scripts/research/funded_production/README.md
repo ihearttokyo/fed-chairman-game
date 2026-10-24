@@ -76,6 +76,18 @@ network, Godot process, Excel session or installed game. It does not write saves
   existing macro pricing and historical payment results remain unchanged.
 - Typed checkpoints and exact command replay. Project restrictions survive restore;
   principal paid cannot silently become a refinanced claim.
+- A pure partial-equilibrium prospectus quotes four declared forecast cells,
+  three actions and 19 dates: 228 scalar rows and zero ledger transitions.
+  Sold services are limited by demand, dated capital and focal labor. The
+  unlevered score subtracts wages and the whole construction invoice, never
+  adds financing receipts or loan coupons, and assumes zero salvage. WAIT
+  exercises by conditional expectation within declared observable groups;
+  default grouping reveals no cell identity. Unknown financing checks cannot
+  become approval, and failed positive-weight baselines are not discarded.
+  Caller-supplied vectors and admission flags are assertions, not actual
+  borrower/bank verification. This table does not yet construct current-state
+  forecasts, hire labor, reserve simultaneous construction resources or execute
+  a coupled economy. It is not a qualified live private planner.
 
 The golden fixture retains all state fields and non-digest command fields from a
 16-quarter committed experiment and its specified quarter-17 resume fork. Class
