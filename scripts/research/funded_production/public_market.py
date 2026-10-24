@@ -111,25 +111,46 @@ def _reconstruct(value):
                           for field in fields(type(value))})
 
 
-def _opening(value):
+def _opening(value, book_type=l.FundedPublicBook):
+    if book_type is not l.FundedPublicBook and book_type is not l.PaydatePublicBook:
+        raise TypeError('Require an explicitly supported public-book convention.')
     if type(value) is not m.Envelope:
         raise TypeError('Require the exact current branch Envelope.')
     _check_shapes(value)
     p._canonical_value(value)  # Reject ALL hostile leaves before any constructor.
     if type(value.macro) is not m.Macro or type(value.sector) is not l.SectorState:
         raise TypeError('Require exact macro and sector records.')
-    if type(value.sector.public_book) is not l.FundedPublicBook:
-        raise TypeError('Require the exact funded public book.')
+    if type(value.sector.public_book) is not book_type:
+        raise TypeError('Require the exact selected public-book convention.')
     checked = _reconstruct(value)
     # Validate the predecessor, not a rewritten paid IORB or prior snapshot.
     p._paid_economy(checked)
     sector = checked.sector
-    l.validate_funded_public(sector.public_book, sector.scale, sector.quarter,
-                            None if sector.last is None else sector.last.payments)
+    if book_type is l.PaydatePublicBook:
+        l.validate_paydate_public(sector.public_book, sector.scale, sector.quarter,
+            None if sector.last is None else sector.last.payments,
+            None if sector.last is None else sector.last.trace)
+    else:
+        l.validate_funded_public(sector.public_book, sector.scale, sector.quarter,
+                                None if sector.last is None else sector.last.payments)
     return checked
 
 
 def resolve_date(opening, descriptor) -> s.ResolvedDate:
+    """The original funded-book route; it does not admit the paydate subtype."""
+    return _resolve_date(opening, descriptor, l.FundedPublicBook)
+
+
+def resolve_paydate_date(opening, descriptor) -> s.ResolvedDate:
+    """Explicit paydate-book route, sharing the same bounded fiscal arithmetic.
+
+    This neither settles nor certifies household coupons after wages. The new
+    current/future adapter owns that separate conditional and actual closure.
+    """
+    return _resolve_date(opening, descriptor, l.PaydatePublicBook)
+
+
+def _resolve_date(opening, descriptor, book_type) -> s.ResolvedDate:
     """Quote one immutable bounded command; zero preparation/executor calls.
 
     RRP return and unrolled PRIVATE due principal are available at subscription
@@ -140,7 +161,7 @@ def resolve_date(opening, descriptor) -> s.ResolvedDate:
     Historical paid-book validation retains its existing full-prefix checks.
     """
     checkpoint._check_sources()
-    opening = _opening(opening)
+    opening = _opening(opening, book_type)
     if descriptor is None:
         raise s.MissingCoverage('No authored market-funding program covers this date.')
     if type(descriptor) is not MarketFundingDate:
