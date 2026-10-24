@@ -23,7 +23,7 @@ _PACKAGE_DIR = Path(__file__).resolve().parent
 _MODULE_NAMES = ('__init__', 'source_data', 'numerics', 'households', 'pricing', 'public_income', 'public_funding',
                  'ledger', 'macro', 'episodes', 'cashflows', 'choice', 'checkpoint',
                  'prospectus', 'coupled', 'investment', 'public_forecast',
-                 'public_scenarios', 'public_branches', 'public_market')
+                 'public_scenarios', 'public_branches', 'public_market', 'paydate_households')
 _SOURCE_PATHS = {name: _PACKAGE_DIR / (name + '.py') for name in _MODULE_NAMES}
 _SOURCE_PATHS.update({'model.' + name: source_data.MODEL_DIR / name
                       for name in source_data.SOURCE_DIGESTS})
@@ -51,6 +51,7 @@ _check_sources()
 def _paid_economy(economy):
     if type(economy) is not m.Envelope:
         raise TypeError('Require the canonical reference Envelope.')
+    public_funding.validate_records(economy, tuple(_TAGS))
     # Validate the wrapper's version/type/clock contract even for fresh Q0;
     # valid Macro and Sector components alone do not validate their envelope.
     replace(economy)
@@ -117,7 +118,9 @@ def _paid_economy(economy):
     if isinstance(s.public_book,m.ledger.PublicIncomeBook):
         m.ledger.public_income.validate_payments(r.payments,s.public_book.observations,
                                                s.public_book.opening_deferred_asset)
-    if isinstance(s.public_book,m.ledger.FundedPublicBook):
+    if type(s.public_book) is m.ledger.PaydatePublicBook:
+        m.ledger.validate_paydate_public(s.public_book,s.scale,s.quarter,r.payments,r.trace)
+    elif isinstance(s.public_book,m.ledger.FundedPublicBook):
         m.ledger.validate_funded_public(s.public_book,s.scale,s.quarter,r.payments)
     if (paid['services'], paid['residual_consumption'], paid['investment'],
             paid['residual_payroll'], paid['focal_payroll']) != (
@@ -216,6 +219,7 @@ _TYPES = MappingProxyType({
         'SectorState', 'Bank', 'Loan', 'CBLoan', 'Collateral', 'Vintage',
         'PublicBook', 'PublicIncomeBook', 'PublicIncomeTerms', 'CouponLine', 'PublicIncomeControls', 'RRPClaim', 'Report', 'Payment', 'Trace', 'Controls',
         'FundedPublicBook', 'FundedPublicInstructions',
+        'PaydatePublicBook', 'PaydateSnapshot', 'PaydatePhase',
         'LoanOffer', 'Renewal', 'PublicInstructions', 'ClosingCreditForecast',
         'OperatingLoanOffer', 'OperatingLoan', 'ProjectCommitment', 'ProjectLoan')},
     **{name: getattr(public_funding, name) for name in (
@@ -236,6 +240,11 @@ def _canonical(value):
 
 
 def _pack(value):
+    public_funding.validate_records(value, tuple(_TAGS))
+    return _pack_checked(value)
+
+
+def _pack_checked(value):
     cls = type(value)
     if value is None or cls in (str, bool, int):
         return value
@@ -246,10 +255,10 @@ def _pack(value):
     if cls is F:
         return {'$fraction': [str(value.numerator), str(value.denominator)]}
     if cls is tuple:
-        return {'$tuple': [_pack(x) for x in value]}
+        return {'$tuple': [_pack_checked(x) for x in value]}
     if cls in _TAGS:
         return {'$type': _TAGS[cls], 'fields': {
-            f.name: _pack(getattr(value, f.name)) for f in fields(value)}}
+            f.name: _pack_checked(getattr(value, f.name)) for f in fields(cls)}}
     raise TypeError('Untrusted checkpoint value/type.')
 
 

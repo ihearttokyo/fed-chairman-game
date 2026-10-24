@@ -178,6 +178,19 @@ network, Godot process, Excel session or installed game. It does not write saves
   explicit `PolicyIORB()` nominal-policy identity; the latter is an authored
   zero-spread convention, not an estimated Fed relationship or the nonlinear
   effective borrowing rate. Missing dates or inactive promises remain unknown.
+- Fresh-Q0 `PaydatePublicBook` is a separate, authored payment convention.
+  Principal and non-household coupons settle first; household mortgage coupons
+  and matched MBS pass-through settle after funded payroll, before purchases.
+  CB earnings/remittance close only after all coupons. Phase witnesses bind
+  actual ordered payments, reserves, four wallets, debt, rights and budgets;
+  validation does not execute another quarter or authenticate historical custody.
+  A negative cash-adjustment base is not negative owned cash. Only opening cash,
+  actual paid wages and signed settled income fund the household wallet; forecasts
+  affect intentions only. Insufficient deposits/reserves still fail atomically.
+  Existing books, modes and their timing remain unchanged. This new research
+  subtype has explicit checkpoint tags; there is no paid-career migration.
+  The older current/future public adapters still refuse it. Journal hand cases
+  and checkpoint consistency do not establish recovery or native adoption.
 - The separate pure `public_market.resolve_date` quotes a bounded Treasury
   funding command. Explicit roll consent, additional issue authorization, bank
   bids, coupon rates, maturity and allocation priority are required. Subscriptions
