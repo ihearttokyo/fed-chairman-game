@@ -15,11 +15,12 @@ import re
 import sys
 
 from . import source_data
+from . import public_funding
 from . import episodes as e
 m = e.m
 
 _PACKAGE_DIR = Path(__file__).resolve().parent
-_MODULE_NAMES = ('__init__', 'source_data', 'numerics', 'households', 'pricing', 'public_income',
+_MODULE_NAMES = ('__init__', 'source_data', 'numerics', 'households', 'pricing', 'public_income', 'public_funding',
                  'ledger', 'macro', 'episodes', 'cashflows', 'choice', 'checkpoint',
                  'prospectus', 'coupled', 'investment')
 _SOURCE_PATHS = {name: _PACKAGE_DIR / (name + '.py') for name in _MODULE_NAMES}
@@ -112,6 +113,8 @@ def _paid_economy(economy):
     if isinstance(s.public_book,m.ledger.PublicIncomeBook):
         m.ledger.public_income.validate_payments(r.payments,s.public_book.observations,
                                                s.public_book.opening_deferred_asset)
+    if isinstance(s.public_book,m.ledger.FundedPublicBook):
+        m.ledger.validate_funded_public(s.public_book,s.scale,s.quarter,r.payments)
     if (paid['services'], paid['residual_consumption'], paid['investment'],
             paid['residual_payroll'], paid['focal_payroll']) != (
             r.services * unit, r.residual_consumption * unit, r.investment * unit,
@@ -208,8 +211,11 @@ _TYPES = MappingProxyType({
     **{name: getattr(m.ledger, name) for name in (
         'SectorState', 'Bank', 'Loan', 'CBLoan', 'Collateral', 'Vintage',
         'PublicBook', 'PublicIncomeBook', 'PublicIncomeTerms', 'CouponLine', 'PublicIncomeControls', 'RRPClaim', 'Report', 'Payment', 'Trace', 'Controls',
+        'FundedPublicBook', 'FundedPublicInstructions',
         'LoanOffer', 'Renewal', 'PublicInstructions', 'ClosingCreditForecast',
         'OperatingLoanOffer', 'OperatingLoan', 'ProjectCommitment', 'ProjectLoan')},
+    **{name: getattr(public_funding, name) for name in (
+        'FundingOpening', 'FundingBatch', 'TreasuryTransfer')},
     'CandidateState': CandidateState,
     'DecisionEvent': DecisionEvent,
 })
