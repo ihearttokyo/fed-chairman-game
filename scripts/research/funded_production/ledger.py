@@ -300,6 +300,22 @@ class PublicInstructions:
 
 
 @dataclass(frozen=True)
+class ClosingCreditForecast:
+    """Conditional nominal plans for A/R and B/F, not credit approvals.
+
+    Project amounts are already gross funding requests, separate from payroll.
+    No future realized cash, executable callback or borrower-wallet duplication
+    across lenders is permitted by this deliberately narrow mapping.
+    """
+    payroll_nominal: tuple
+    project_gross_nominal: tuple = (ZERO, ZERO)
+
+    def __post_init__(self):
+        for name in ('payroll_nominal', 'project_gross_nominal'):
+            object.__setattr__(self, name, _amount_pair(getattr(self, name), name))
+
+
+@dataclass(frozen=True)
 class Controls:
     facility_limits: tuple = (ZERO, ZERO)
     security_bids: tuple | None = None
@@ -310,6 +326,7 @@ class Controls:
     household_mode: str = 'fixed'
     public_instructions: PublicInstructions | None = None
     bank_capital_targets: tuple | None = None
+    closing_credit_forecast: ClosingCreditForecast | None = None
 
     def __post_init__(self):
         if self.bank_capital_targets is not None:
@@ -335,6 +352,11 @@ class Controls:
             raise TypeError('Household mode must be immutable built-in text.')
         if self.household_mode not in ('fixed', 'wallet', 'liquidity', 'cash_stock_close_v1'):
             raise ValueError('Unknown household mode.')
+        if self.closing_credit_forecast is not None:
+            if type(self.closing_credit_forecast) is not ClosingCreditForecast:
+                raise TypeError('Require an immutable ClosingCreditForecast, not a callback.')
+            if self.household_mode != 'cash_stock_close_v1':
+                raise ValueError('Closing forecasts require the explicit closing-budget mode.')
 
 
 def _dividend_capital_floor(controls, bank, risk):
@@ -1376,7 +1398,54 @@ def step(state, controls=Controls(), orders=None):
     return advance_given_orders(state, _DEFAULT_ORDERS if orders is None else orders, controls)
 
 
-def _closing_household_plans(tx, orders, wage, lr, lf):
+def _closing_credit_floor(tx, controls, bank):
+    """Quote from actual post-firm-payout cash, before paying bank income."""
+    risk = tx.risk(bank)
+    floor = _dividend_capital_floor(controls, bank, risk)
+    forecast = controls.closing_credit_forecast
+    if forecast is None:
+        return floor
+    index = _bank(bank)
+    borrower = ('R', 'F')[index]
+    cash = tx.d[borrower]
+    payroll = forecast.payroll_nominal[index]
+    # Each quoted sufficient-cash request rounds UP on the nominal money grid.
+    wage_request = -((-max(ZERO, payroll - cash)) // tx.money_quantum) * tx.money_quantum
+    project = forecast.project_gross_nominal[index]
+    project_request = -((-project) // tx.money_quantum) * tx.money_quantum
+    gross = wage_request + project_request
+    target = max(floor, COVENANT * (risk + gross))
+    tx.note('closing_credit_quote', bank, borrower, target,
+            firm_cash=cash, forecast_payroll=payroll, closing_risk=risk,
+            wage_request=wage_request, project_request=project_request,
+            gross_request=gross, target=target,
+            unfunded_target=max(ZERO, target - tx.equity(bank)),
+            status='conditional_quote_not_approval')
+    return target
+
+
+def _previous_credit_quotes(last):
+    """Admit diagnostic metadata explicitly; never accept last-write-wins."""
+    quotes = {}
+    if last is None:
+        return quotes
+    for note in last.trace:
+        if note.kind != 'closing_credit_quote':
+            continue
+        bank = note.actor
+        index = _bank(bank)
+        if bank in quotes or note.counterparty != ('R', 'F')[index]:
+            raise ValueError('Duplicate or misidentified closing credit quote.')
+        data = dict(note.details)
+        if len(data) != len(note.details) or not {'forecast_payroll', 'gross_request'} <= data.keys():
+            raise ValueError('Missing or duplicate closing credit metadata.')
+        _number(data['forecast_payroll'])
+        _number(data['gross_request'])
+        quotes[bank] = data
+    return quotes
+
+
+def _closing_household_plans(tx, orders, controls, wage, lr, lf):
     """Version-1 research behavior: freeze owned budgets after actual payroll.
 
     Income seeds and target ratios are authored reference conventions, not cash
@@ -1398,6 +1467,7 @@ def _closing_household_plans(tx, orders, wage, lr, lf):
                 (last.payroll_residual + last.dividend_residual + last.bank_dividend_to('HA'),
                  last.payroll_focal + last.dividend_focal + last.bank_dividend_to('HB')))
     unit = tx.scale * orders.price_factor
+    previous_quotes = _previous_credit_quotes(last)
     plans = []
     for owner, prefs, wages, prior, forecast, ratio in zip(
             ('HA', 'HB'), (orders.preferences_a, orders.preferences_b),
@@ -1415,6 +1485,18 @@ def _closing_household_plans(tx, orders, wage, lr, lf):
                 income_previous=prior, income_forecast=wages + forecast,
                 forecast=forecast, forecast_source=source, cash_ratio=ratio,
                 adjustment=F(1, 4), desired=quote.desired, funded=quote.funded)
+        bank, borrower = ('A', 'R') if owner == 'HA' else ('B', 'F')
+        if bank in previous_quotes:
+            old = previous_quotes[bank]
+            offered = sum((o.face for o in controls.new_loans
+                           if o.lender == bank and o.borrower == borrower), ZERO)
+            tx.note('closing_credit_forecast_observed', bank, borrower,
+                    wages - old['forecast_payroll'],
+                    forecast_quarter=tx.quarter - 1,
+                    payroll_forecast=old['forecast_payroll'], payroll_paid=wages,
+                    payroll_error=wages - old['forecast_payroll'],
+                    gross_request_forecast=old['gross_request'], gross_new_offered=offered,
+                    offer_error=offered - old['gross_request'])
     (cr, sa), (_, sb) = plans
     return cr, sa, sb
 
@@ -1431,7 +1513,7 @@ def _clear_market(tx, orders, controls, vintages, capital, depreciation, lr, lf)
     renewals = {r.loan_id: r for r in controls.renewals}
     closing = controls.household_mode == 'cash_stock_close_v1'
     if closing:
-        desired_cr, desired_sa, desired_sb = _closing_household_plans(tx, orders, wage, lr, lf)
+        desired_cr, desired_sa, desired_sb = _closing_household_plans(tx, orders, controls, wage, lr, lf)
     elif controls.household_mode == 'fixed':
         desired_cr, desired_sa, desired_sb = (orders.residual_consumption,
                                               orders.service_a, orders.service_b)
@@ -1563,8 +1645,10 @@ def _clear_market(tx, orders, controls, vintages, capital, depreciation, lr, lf)
             equity = tx.equity(bank)
             if equity < 0:
                 raise _Failure('credit_default', f'Bank {bank} is insolvent after settled flows.')
+            floor = (_closing_credit_floor(tx, controls, bank) if closing else
+                     _dividend_capital_floor(controls, bank, tx.risk(bank)))
             dividend = _floor(min(max(ZERO, tx.earnings[bank] - bank_paid[bank]),
-                max(ZERO, equity - _dividend_capital_floor(controls, bank, tx.risk(bank)))), tx.money_quantum)
+                max(ZERO, equity - floor)), tx.money_quantum)
             owner = 'HA' if bank == 'A' else 'HB'
             tx.d[owner] += dividend
             tx.record('Bank' + bank, owner, dividend, 'bank_dividend')

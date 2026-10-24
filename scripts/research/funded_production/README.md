@@ -40,6 +40,14 @@ network, Godot process, Excel session or installed game. It does not write saves
   Legacy modes are unchanged. The macro adapter still explicitly refuses this
   new mode: endogenous hiring/investment, contractual cash sweeps, project
   commitments/draws and a coupled reference remain unqualified.
+- Optional `ClosingCreditForecast` inputs in that closing mode quote next
+  nominal payroll and gross project finance for A/R and B/F. Bank payout targets
+  use actual post-firm-payout cash and all closing legal principal, including
+  next-due claims. Requests round up; only earned distributable income can be
+  retained. Traces separate quoted requests from the next quarter's paid payroll
+  and submitted new offers. These conditional forecasts neither approve lending
+  nor guarantee future cash, hiring or investment. The input defaults to `None`;
+  it is not accepted by legacy household modes or the current macro adapter.
 - Typed checkpoints and exact command replay. Project restrictions survive restore;
   principal paid cannot silently become a refinanced claim.
 
