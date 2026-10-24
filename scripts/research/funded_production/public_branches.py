@@ -463,8 +463,8 @@ def _current_paydate_signature(opening, descriptor):
         descriptor.replacement_maturity, descriptor.allocation_priority))
 
 
-def _evaluate(opening, cells, *, units, forward_gross, tolerance=1e-6, paydate) -> Quotation:
-    """Common finite engine; its exact internal Boolean selects a closed pair."""
+def _validated_inputs(opening, cells, *, units, forward_gross, tolerance=1e-6, paydate):
+    """Shared pure admission; exact Boolean selects only code-owned calendars."""
     _, scenarios, book_type = _pair(paydate)
 
     checkpoint._check_sources()
@@ -530,6 +530,14 @@ def _evaluate(opening, cells, *, units, forward_gross, tolerance=1e-6, paydate) 
             structural_u += descriptor.news.structural_unemployment_change_pct
             if not 0 < structural_u < 100:
                 raise ValueError('Invalid structural unemployment forecast path.')
+    return checked, units, tolerance, forwards, discounts, before
+
+
+def _evaluate(opening, cells, *, units, forward_gross, tolerance=1e-6, paydate) -> Quotation:
+    """Original finite engine; no recurring construction is added here."""
+    checked, units, tolerance, forwards, discounts, before = _validated_inputs(
+        opening, cells, units=units, forward_gross=forward_gross,
+        tolerance=tolerance, paydate=paydate)
     credibility = m.rational(opening.macro.credibility)
     paths = []
     try:

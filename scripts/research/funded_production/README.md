@@ -270,6 +270,28 @@ records original file hashes, not proof of original run custody. Package-specifi
 source digests necessarily differ. This format does not migrate historical Python
 checkpoints or native game saves. Digests check consistency, not authenticity.
 
+## Recurring-background counterfactual (experimental)
+
+The separate opt-in recurring forecast declares one fixed physical replacement
+request at every forecast date, common across all actions and cells. It adds a
+NOW/WAIT tranche only on its legal decision date, and compares whole-firm actual
+unlevered cashflow against an identically declared NEVER background. This is an
+authored counterfactual—not an endogenous investment rule or a recovery fix.
+The original zero-background API and record types remain unchanged.
+
+Background and extra construction can share one actual loan. The new records
+therefore name the **decision-date joint construction cohort**, never a fictional
+candidate-only fraction. Later background claims remain separately visible and
+can extend beyond the nineteen-date horizon. Actual cash, resources, underwriting
+and principal receipts remain the one ledger's responsibility. Known background
+shortfalls are recorded, not filled by decree; missing public-credit coverage
+cannot become an investment recommendation. A partially paid joint order does
+not establish delivery of the extra candidate.
+
+No recurring forecast is enabled in the shipping game or accepted as an adopted
+checkpoint. Full-table, held-out, recovery, native, workbook and game-turn
+qualification require their own evidence.
+
 ## Limits before adoption
 
 **The current candidate has not demonstrated recovery or gameplay depth.**
