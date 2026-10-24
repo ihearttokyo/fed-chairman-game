@@ -112,7 +112,8 @@ def _reconstruct(value):
 
 
 def _opening(value, book_type=l.FundedPublicBook):
-    if book_type is not l.FundedPublicBook and book_type is not l.PaydatePublicBook:
+    if (book_type is not l.FundedPublicBook and book_type is not l.PaydatePublicBook
+            and book_type is not l.EarlyPaydateBook):
         raise TypeError('Require an explicitly supported public-book convention.')
     if type(value) is not m.Envelope:
         raise TypeError('Require the exact current branch Envelope.')
@@ -126,7 +127,11 @@ def _opening(value, book_type=l.FundedPublicBook):
     # Validate the predecessor, not a rewritten paid IORB or prior snapshot.
     p._paid_economy(checked)
     sector = checked.sector
-    if book_type is l.PaydatePublicBook:
+    if book_type is l.EarlyPaydateBook:
+        l.validate_early_paydate_public(sector.public_book, sector.scale, sector.quarter,
+            None if sector.last is None else sector.last.payments,
+            None if sector.last is None else sector.last.trace)
+    elif book_type is l.PaydatePublicBook:
         l.validate_paydate_public(sector.public_book, sector.scale, sector.quarter,
             None if sector.last is None else sector.last.payments,
             None if sector.last is None else sector.last.trace)
@@ -148,6 +153,16 @@ def resolve_paydate_date(opening, descriptor) -> s.ResolvedDate:
     current/future adapter owns that separate conditional and actual closure.
     """
     return _resolve_date(opening, descriptor, l.PaydatePublicBook)
+
+
+def resolve_early_paydate_date(opening, descriptor) -> s.ResolvedDate:
+    """Exact early-book route through the SAME bounded Treasury arithmetic.
+
+    Prior paid payments AND trace validate before quoting changed IORB. This
+    neither draws early credit nor expands Treasury subscription funding; the
+    separate current bridge and sole journal own early-credit qualification.
+    """
+    return _resolve_date(opening, descriptor, l.EarlyPaydateBook)
 
 
 def _resolve_date(opening, descriptor, book_type) -> s.ResolvedDate:
