@@ -126,6 +126,24 @@ network, Godot process, Excel session or installed game. It does not write saves
   enabled books until their public-income bridge is implemented and qualified.
   These accounting hand cases do not establish recovery, a complete public-policy
   adapter, native/workbook parity or release adoption.
+- Pure `public_funding` helpers quote authorized principal settlement and exact
+  coupon-right transfers. They are not yet connected to the monetary journal.
+  Private subscriptions require actual quoted reserves, issuer authorization
+  and explicit signed annual coupon cash; missing terms are not zero rates.
+  Fractional maturities use the ledger's existing principal allocation, and
+  proportional coupon rights follow the actual allocated face without rounding.
+  Income uses original opening stocks, not newly issued or transferred claims.
+  The declared order returns due RRP, settles mortgage and Treasury principal,
+  pays Treasury coupons, then CB-origin outflows and private obligations, and
+  remits CB earnings last. Later remittance cannot fund an earlier shortfall.
+  Inputs and results are immutable asserted snapshots, not authenticated books
+  or paid transactions. Transfer validation checks current proportional rights,
+  not event uniqueness; an executor must enforce its own transaction identity.
+  The par, pooled quarterly rollover convention carries
+  existing coupon mass; it does not price a new auction, accrued interest or
+  market yields. Existing ledger restrictions, checkpoint types and forecast
+  refusals remain unchanged. Journal integration and its receipt/position
+  reconciliation tests must precede any public-policy or gameplay qualification.
 - A pure partial-equilibrium prospectus quotes four declared forecast cells,
   three actions and 19 dates: 228 scalar rows and zero ledger transitions.
   Sold services are limited by demand, dated capital and focal labor. The

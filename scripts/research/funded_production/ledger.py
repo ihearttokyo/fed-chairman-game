@@ -202,16 +202,7 @@ def _cohorts(values):
 
 def _distribute(face, weights, quantum):
     """Exact face, largest remainders, lower index wins equal remainders."""
-    total = sum(weights)
-    raw = tuple(face * w / total for w in weights)
-    result = [_floor(x, quantum) for x in raw]
-    missing = int((face - sum(result)) / quantum)
-    order = sorted(range(len(weights)), key=lambda i: (-(raw[i]-result[i]), i))
-    for i in order[:missing]:
-        result[i] += quantum
-    # Existing face need not be on the flow grid; retain its exact remainder.
-    result[order[0]] += face - sum(result)
-    return tuple(result)
+    return precision.distribute(face, weights, quantum)
 
 
 @dataclass(frozen=True)
