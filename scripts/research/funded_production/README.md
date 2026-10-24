@@ -178,6 +178,18 @@ network, Godot process, Excel session or installed game. It does not write saves
   explicit `PolicyIORB()` nominal-policy identity; the latter is an authored
   zero-spread convention, not an estimated Fed relationship or the nonlinear
   effective borrowing rate. Missing dates or inactive promises remain unknown.
+- The separate pure `public_market.resolve_date` quotes a bounded Treasury
+  funding command. Explicit roll consent, additional issue authorization, bank
+  bids, coupon rates, maturity and allocation priority are required. Subscriptions
+  cover only the signed Treasury coupon/principal cash prefix and use actual
+  current bank reserves, RRP returns and private principal redemptions. They do
+  not use future coupons, IORB, payroll, remittance or CB primary purchases.
+  New issuance creates Treasury debt and bank securities, not household income
+  or GDP; its coupon rights start after the original-opening coupon bases.
+  Deterministic bid priority is not an auction or optimizer. The command remains
+  outside the four-cell scenario API and saved commands; source binding is not
+  historical custody. It does not cure pre-payroll household mortgage shortages,
+  execute a quarter or qualify recovery. Existing full-roll scenarios are unchanged.
 - `public_branches.evaluate` simulates one candidate tranche: NOW at date zero,
   WAIT at date one, or NEVER, with no further replacement orders. Each branch
   recomputes its own hiring, payroll, purchases, dividends, credit and policy-rule
