@@ -3,8 +3,47 @@ from pathlib import Path
 import json
 import math
 import random
+import shutil
+import tempfile
 import bpy
 from mathutils import Vector
+
+
+def sanitize_file_browser_directories():
+    """Clear saved UI paths, including bytes beyond the first string terminator."""
+    neutral = b'/private/tmp/'
+    for screen in bpy.data.screens:
+        for area in screen.areas:
+            for space in area.spaces:
+                if space.type != 'FILE_BROWSER' or space.params is None:
+                    continue
+                params = space.params
+                capacity = params.bl_rna.properties['directory'].length_max
+                if not len(neutral) < capacity <= 16384:
+                    raise RuntimeError('Unsupported File Browser directory capacity')
+                # RNA's public setter writes a terminator but can retain the old
+                # fixed-buffer tail. Fill its entire advertised usable capacity
+                # with a neutral, component-bounded path before the short path.
+                remaining = capacity - 1 - len(neutral)
+                padding = (b'p/' * ((remaining + 1) // 2))[:remaining]
+                padded = neutral + padding
+                params.directory = padded
+                if params.directory != padded:
+                    raise RuntimeError('File Browser directory setter truncated padding')
+                params.directory = neutral
+                if params.directory != neutral:
+                    raise RuntimeError('File Browser directory sanitization failed')
+
+
+def save_portable_source(destination):
+    # A neutral save filename also prevents the save operator from caching the
+    # checkout's absolute path. No user preferences or startup files are changed.
+    with tempfile.TemporaryDirectory(prefix='fed-chair-city-', dir='/private/tmp') as directory:
+        staged = Path(directory) / 'policy_city.blend'
+        sanitize_file_browser_directories()
+        bpy.ops.wm.save_as_mainfile(filepath=str(staged), compress=True, relative_remap=False)
+        shutil.copyfile(staged, destination)
+
 
 out = Path(__file__).resolve().parents[1] / 'assets'
 # Separate scene: preserve all pre-existing scene data.
@@ -333,7 +372,7 @@ assert -8.9 < rotation_envelope[0] < rotation_envelope[1] < 8.9
 out.mkdir(exist_ok=True)
 # Git retains the prior native assets; do not create unowned .blend1 backups.
 bpy.context.preferences.filepaths.save_version = 0
-bpy.ops.wm.save_as_mainfile(filepath=str(Path(__file__).with_name('policy_city.blend')))
+save_portable_source(Path(__file__).with_name('policy_city.blend'))
 bpy.ops.export_scene.gltf(filepath=str(out / 'policy_city.glb'), export_format='GLB', export_apply=True, use_active_scene=True, export_cameras=False, export_lights=False)
 size = (out / 'policy_city.glb').stat().st_size
 assert 1000 < size <= 16 * 1024 * 1024
