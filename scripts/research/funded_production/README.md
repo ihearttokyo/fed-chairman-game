@@ -336,6 +336,29 @@ route does not provide future branch programs, migrate paid careers, establish
 recovery or endogenous investment, or change the shipping game. Long-run
 checkpoint size and runtime remain separate qualification work.
 
+## Experimental post-payroll settlement liquidity
+
+The fresh-only `HouseholdLiquidityBook` adds a fixed `household_credit` phase
+between actual payroll and original mortgage coupons. It first checks household
+owned deposits, then quotes the minimum money-grid bank reserve advance from
+actual current equity, collateral, CB debt and remaining gross facility room.
+Borrowing creates matching bank reserves and CB liabilities, not household
+income, bank equity or GDP. Missing needed contracts remain unsupported; a
+household wallet shortfall remains a funding failure even with ample facilities.
+
+Early refinancing, household advances and other draws share one gross offer;
+repayment does not reopen it. Current coupon bases stay frozen before new credit.
+Private collateral witnesses reconcile preceding actual claims and flows. A
+failure rolls back the entire quarter. Neither security sales nor future wages,
+remittance or invented deposits fund this phase.
+
+`public_household_paydate` provides the explicit current-quarter bridge;
+`public_market.resolve_household_paydate_date` uses the existing bounded Treasury
+arithmetic. Pure preparations do not approve future post-payroll credit and are
+not serialized adopted commands. Old books, entry points and paid reference
+checkpoints are not migrated. This authored convention still needs recovery,
+long-run codec/runtime, future-program, native and workbook qualification.
+
 ## Limits before adoption
 
 **The current candidate has not demonstrated recovery or gameplay depth.**
