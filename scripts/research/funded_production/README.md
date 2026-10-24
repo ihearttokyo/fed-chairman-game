@@ -57,6 +57,15 @@ network, Godot process, Excel session or installed game. It does not write saves
   swept. Consented renewals preserve the contract type and two-date term. Typed
   restoration preserves eligibility; other household modes explicitly refuse
   these contracts instead of silently dropping their repayment semantics.
+- Optional `ProjectCommitment` commands reserve opening gross lending headroom
+  without creating money. The closing mode attempts the full construction
+  tranche before residual household goods, using actual service receipts and a
+  minimum sufficient loan draw. Undrawn capacity expires. Failed resource or
+  financing preflight leaves no loan, coupon or WIP; internally financed projects
+  issue no claims. Actual draws use up to 16 positive dated `ProjectLoan` claims
+  whose explicit renewal is forbidden. WIP basis is the whole paid invoice,
+  including internal funds. Signed coupons retain their actual payer. This does
+  not provide endogenous project selection or a qualified macro adapter.
 - Typed checkpoints and exact command replay. Project restrictions survive restore;
   principal paid cannot silently become a refinanced claim.
 

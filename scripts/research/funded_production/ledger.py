@@ -9,6 +9,7 @@ contractual cashflows; negative-coupon experiments are not a Fed-policy/NIM mode
 Only active claims, physical vintages and the current ordered trace are retained.
 """
 from dataclasses import dataclass, replace
+import copy
 from fractions import Fraction as F
 import math
 
@@ -325,6 +326,19 @@ class ClosingCreditForecast:
 
 
 @dataclass(frozen=True)
+class ProjectCommitment:
+    """One optional F construction tranche; a ceiling is not an issued loan."""
+    lender: str
+    face_ceiling: F
+    rate_pct: F
+
+    def __post_init__(self):
+        _bank(self.lender)
+        object.__setattr__(self, 'face_ceiling', _number(self.face_ceiling))
+        object.__setattr__(self, 'rate_pct', _number(self.rate_pct, signed=True))
+
+
+@dataclass(frozen=True)
 class Controls:
     facility_limits: tuple = (ZERO, ZERO)
     security_bids: tuple | None = None
@@ -336,6 +350,7 @@ class Controls:
     public_instructions: PublicInstructions | None = None
     bank_capital_targets: tuple | None = None
     closing_credit_forecast: ClosingCreditForecast | None = None
+    project_commitment: ProjectCommitment | None = None
 
     def __post_init__(self):
         if self.bank_capital_targets is not None:
@@ -366,6 +381,11 @@ class Controls:
                 raise TypeError('Require an immutable ClosingCreditForecast, not a callback.')
             if self.household_mode != 'cash_stock_close_v1':
                 raise ValueError('Closing forecasts require the explicit closing-budget mode.')
+        if self.project_commitment is not None:
+            if type(self.project_commitment) is not ProjectCommitment:
+                raise TypeError('Require an immutable ProjectCommitment, not a callback.')
+            if self.household_mode != 'cash_stock_close_v1':
+                raise ValueError('Project commitments require the explicit closing-budget mode.')
 
 
 def _dividend_capital_floor(controls, bank, risk):
@@ -414,6 +434,16 @@ class OperatingLoan(Loan):
         super().__post_init__()
         if self.maturity != self.start + 2:
             raise ValueError('Operating loans require exactly two settlement dates.')
+
+
+@dataclass(frozen=True)
+class ProjectLoan(Loan):
+    """Protected actual project principal; no explicit renewal/novation."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.borrower != 'F' or not 2 <= self.maturity - self.start <= 17:
+            raise ValueError('Project principal requires its F owner and dated construction schedule.')
 
 
 @dataclass(frozen=True)
@@ -990,13 +1020,16 @@ class _Transaction:
         self.loans[index] = replace(loan,last_coupon_paid=self.quarter)
         return interest
 
-    def originate(self, offer, at_open=False):
+    def originate(self, offer, at_open=False, _project=False):
         borrower=offer.borrower
         _money(offer.face,self.scale)
         start = self.quarter-1 if at_open else self.quarter
         if offer.maturity <= start:
             raise ValueError('New loan maturity must be a future quarter.')
-        loan_type = OperatingLoan if isinstance(offer, OperatingLoanOffer) else Loan
+        loan_type = (ProjectLoan if _project else
+                     OperatingLoan if isinstance(offer, OperatingLoanOffer) else Loan)
+        if _project and (not at_open or borrower != 'F' or type(offer) is not LoanOffer):
+            raise ValueError('Project draw requires an opening F tranche, not an operating offer.')
         if loan_type is OperatingLoan and offer.maturity != start + 2:
             raise ValueError('Operating credit requires two settlement dates.')
         bank = offer.lender
@@ -1040,6 +1073,8 @@ class _Transaction:
 
     def renew(self, loan, quote):
         borrower=loan.borrower
+        if isinstance(loan, ProjectLoan):
+            raise ValueError('Protected project principal cannot be renewed.')
         _money(quote.face,self.scale)
         if quote.maturity <= self.quarter:
             raise ValueError('Renewal maturity must be a future quarter.')
@@ -1526,7 +1561,96 @@ def _closing_household_plans(tx, orders, controls, wage, lr, lf):
     return cr, sa, sb
 
 
-def _clear_market(tx, orders, controls, vintages, capital, depreciation, lr, lf):
+def _project_faces(draw, scale):
+    return _distribute(draw, (F(1),) * 16, scale * QUANTUM)
+
+
+def _minimum_project_draw(cash, invoice, buffer, ceiling, rate, scale):
+    """First sufficient integer-money draw; forecast math, not credit approval.
+
+    Bound the search by the actual integer ceiling's bit length, not a false
+    fixed 64 probes on Python's unbounded integer domain. Private coupons of
+    400% or more cannot add current net funding; this does not cap policy rates.
+    """
+    cash, invoice, buffer, ceiling, scale = map(_number, (cash, invoice, buffer, ceiling, scale))
+    rate = _number(rate, signed=True)
+    if not scale:
+        raise ValueError('Project monetary scale must be positive.')
+    ceiling = _money(ceiling, scale)
+    if cash >= invoice + buffer:
+        return ZERO, 0
+    if not ceiling or rate >= 400:
+        return None, 0
+    quantum = scale * QUANTUM
+    def enough(ticks):
+        draw = ticks * quantum
+        coupon = sum((precision.coupon(face, rate, scale, QUANTUM)[1]
+                      for face in _project_faces(draw, scale)), ZERO)
+        return cash + draw - coupon >= invoice + buffer
+    high = int(ceiling / quantum)
+    if not enough(high):
+        return None, 1
+    low, probes = 1, 1
+    while low < high:
+        middle = (low + high) // 2
+        probes += 1
+        if enough(middle):
+            high = middle
+        else:
+            low = middle + 1
+    return low * quantum, probes
+
+
+def _reserve_project(tx, controls):
+    plan = controls.project_commitment
+    if plan is None:
+        return None
+    ceiling = _money(plan.face_ceiling, tx.scale)
+    offered = sum((o.face for o in controls.new_loans if o.lender == plan.lender), ZERO)
+    risk, equity = tx.risk(plan.lender), tx.equity(plan.lender)
+    approved = not ceiling or (equity > 0 and equity >= COVENANT * (risk + offered + ceiling))
+    limit = ceiling if approved else ZERO
+    tx.note('project_reservation', plan.lender, 'F', limit, requested=ceiling,
+            approved=approved, opening_risk=risk, gross_new_offers=offered,
+            opening_equity=equity, required_equity=COVENANT * (risk + offered + ceiling))
+    return limit
+
+
+def _stage_project(tx, plan, draw, invoice, buffer):
+    """Preflight current owned cash and atomic delivery on a private journal.
+
+    No later SectorState is fabricated. The immutable predecessor remains the
+    same object; every mutable journal container is copied. Failed trials never
+    alter the live journal, including private IDs and actual background flows.
+    """
+    stage = copy.deepcopy(tx, {id(tx.original): tx.original})
+    coupon = ZERO
+    if draw:
+        bank = plan.lender
+        if stage.equity(bank) <= 0 or stage.equity(bank) < COVENANT * (stage.risk(bank) + draw):
+            raise _Failure('credit_constraint', 'Project draw exceeds actual current capital headroom.')
+        ids = []
+        for h, face in enumerate(_project_faces(draw, tx.scale), 1):
+            if face:
+                ids.append(stage.originate(LoanOffer(bank, face, plan.rate_pct,
+                           tx.quarter + h, borrower='F'), at_open=True, _project=True))
+        for loan_id in ids:
+            coupon += stage.coupon(next(z for z in stage.loans if z.id == loan_id))
+    stage.pay('F', 'R', invoice, 'investment')
+    if stage.d['F'] < buffer:
+        raise ValueError('Project solver/delivery mismatch: actual payroll buffer is unfunded.')
+    if any(stage.equity(b) < 0 for b in BANKS):
+        raise _Failure('credit_default', 'Signed project settlement leaves an insolvent bank.')
+    stage.note('project_draw_settled', plan.lender, 'F', draw,
+               invoice=invoice, coupon=coupon, retained_cash=stage.d['F'])
+    if stage.original is not tx.original or set(stage.__dict__) != set(tx.__dict__):
+        raise ValueError('Project journal ownership mismatch.')
+    tx.__dict__.update(stage.__dict__)
+    return coupon
+
+
+def _clear_market(tx, orders, controls, vintages, capital, depreciation, lr, lf,
+                  project_ceiling=None):
     """Bounded chronological clearing of frozen orders with actual owned cash.
 
     This is a fixed-price trading program, not a GE or household-optimality
@@ -1700,6 +1824,8 @@ def _clear_market(tx, orders, controls, vintages, capital, depreciation, lr, lf)
                     face_after=loan.face - value)
 
     limit_reached = False
+    project_attempted = False
+    project_drawn = ZERO
     for rounds in range(1, orders.max_clearing_rounds + 1):
         progress = False
         # Declare proportional simultaneous HA basket funding before services
@@ -1716,8 +1842,40 @@ def _clear_market(tx, orders, controls, vintages, capital, depreciation, lr, lf)
         progress |= bool(buy_sa + buy_sb)
         progress |= settle_debt('F')
         progress |= settle_debt('R')
+        project = controls.project_commitment
+        if project is not None and not project_attempted:
+            project_attempted = True
+            invoice = chi * orders.investment_units * unit
+            reason = None
+            if orders.investment_units:
+                if chi * orders.investment_units > resource_capacity:
+                    reason = 'insufficient_physical_resources'
+                elif debt_pending('F'):
+                    reason = 'unpaid_mandatory_F_claim'
+                else:
+                    draw, probes = _minimum_project_draw(tx.d['F'], invoice, lf * wage,
+                                                        project_ceiling, project.rate_pct, tx.scale)
+                    tx.note('project_draw_quote', project.lender, 'F', draw or ZERO,
+                            probes=probes, feasible=draw is not None, ceiling=project_ceiling)
+                    if draw is None:
+                        reason = 'insufficient_current_finance'
+                    else:
+                        try:
+                            paid_coupon = _stage_project(tx, project, draw, invoice, lf * wage)
+                        except _Failure as error:
+                            reason = error.status
+                        else:
+                            physical_i = orders.investment_units
+                            project_drawn = draw
+                            interest['F'] += paid_coupon
+                            accrued['F'] += max(ZERO, paid_coupon)
+                            negative_paid['F'] += min(ZERO, paid_coupon)
+                            progress = True
+            if reason:
+                tx.note('project_cancelled', 'F', project.lender, reason=reason,
+                        requested_units=orders.investment_units, invoice=invoice)
         funded_cr = min(max(ZERO, desired_cr - cr), tx.d['HA'] / unit)
-        i_order = (ZERO if debt_pending('F') else min(
+        i_order = (ZERO if project is not None or debt_pending('F') else min(
             max(ZERO, orders.investment_units - physical_i),
             max(ZERO, tx.d['F'] - orders.cash_floor_f * unit) / (chi * unit)))
         resources = max(ZERO, resource_capacity - cr - chi * physical_i)
@@ -1753,6 +1911,9 @@ def _clear_market(tx, orders, controls, vintages, capital, depreciation, lr, lf)
     for loan in tx.loans:
         if coupon_due(loan) or loan.maturity <= tx.quarter:
             raise _Failure('credit_default', 'Mandatory private cash obligation remains unpaid.', loan.id)
+    if controls.project_commitment is not None:
+        tx.note('project_reservation_expired', controls.project_commitment.lender, 'F',
+                project_ceiling - project_drawn, drawn=project_drawn)
     if closing:
         sweep_operating_cash()
     distribute_firms()
@@ -1779,16 +1940,22 @@ def advance_given_orders(state, orders, controls=Controls()):
     if controls.household_mode == 'cash_stock_close_v1' and not orders.market_clearing:
         raise ValueError('Closing household budgets require explicit market clearing.')
     if controls.household_mode != 'cash_stock_close_v1' and (
-            any(isinstance(l, OperatingLoan) for l in state.loans) or
+            any(isinstance(l, (OperatingLoan, ProjectLoan)) for l in state.loans) or
             any(isinstance(o, OperatingLoanOffer) for o in controls.new_loans)):
         raise ValueError('Operating cash-sweep contracts require the closing-budget mode.')
     q, s = state.quarter+1,state.scale
     unit = s * orders.price_factor
     wage = unit * orders.real_wage
     chi = orders.capital_resource_cost
+    if controls.project_commitment is not None:
+        _money(controls.project_commitment.face_ceiling, s)
+        if orders.investment_units != _floor(orders.investment_units, QUANTUM):
+            raise ValueError('A full project tranche must be on the physical order grid.')
     # Quote misuse is a programmer error, checked before any economic work.
     for renewal in controls.renewals:
         loan = _find(state,renewal.loan_id)
+        if isinstance(loan, ProjectLoan):
+            raise ValueError('Protected project principal cannot be renewed.')
         if loan.maturity != q or renewal.maturity<=q:
             raise ValueError('Renewal must identify a loan due now and a future new maturity.')
         if isinstance(loan, OperatingLoan) and renewal.maturity != q + 2:
@@ -1815,6 +1982,7 @@ def advance_given_orders(state, orders, controls=Controls()):
             # Preserve the qualified legacy no-PublicBook ordering.
             tx.qe(controls.asset_purchase_request, controls.asset_offers)
             tx.cb_maturities()
+        project_ceiling = _reserve_project(tx, controls)
         for offer in controls.new_loans:
             tx.originate(offer,at_open=True)
         # Last quarter's paid investment becomes serviceable before current
@@ -1862,7 +2030,7 @@ def advance_given_orders(state, orders, controls=Controls()):
                        if orders.market_clearing or orders.max_clearing_rounds != 64 else {}))
         if orders.market_clearing:
             cr, physical_i, services, interest, dr, df, bank_div = _clear_market(
-                tx, orders, controls, vintages, capital, depreciation, lr, lf)
+                tx, orders, controls, vintages, capital, depreciation, lr, lf, project_ceiling)
             investment = chi * physical_i
         else:
             if controls.household_mode=='fixed':

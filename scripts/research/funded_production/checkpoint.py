@@ -169,7 +169,7 @@ _TYPES = MappingProxyType({
         'SectorState', 'Bank', 'Loan', 'CBLoan', 'Collateral', 'Vintage',
         'PublicBook', 'RRPClaim', 'Report', 'Payment', 'Trace', 'Controls',
         'LoanOffer', 'Renewal', 'PublicInstructions', 'ClosingCreditForecast',
-        'OperatingLoanOffer', 'OperatingLoan')},
+        'OperatingLoanOffer', 'OperatingLoan', 'ProjectCommitment', 'ProjectLoan')},
     'CandidateState': CandidateState,
     'DecisionEvent': DecisionEvent,
 })
