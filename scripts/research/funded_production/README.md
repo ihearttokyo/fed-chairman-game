@@ -103,6 +103,21 @@ network, Godot process, Excel session or installed game. It does not write saves
   borrower/bank verification. This table does not yet construct current-state
   forecasts, hire labor, reserve simultaneous construction resources or execute
   a coupled economy. It is not a qualified live private planner.
+- The opt-in `investment` wrapper builds the four physical forecast cells from
+  current observations and freezes the current Staff fallback. It quotes demand
+  signals, observable next-policy branches and a conditional BankB/F financing
+  schedule, then adopts the selected tranche through the real coupled ledger.
+  One physical table (228 rows), at most 228 conditional finance dates and
+  additional claim scans/draw probes use zero paid forecast transitions; adoption
+  uses one actual transition. Loan proceeds and debt service stay out of the
+  unlevered value score. Forecasted purchases are conditions, not proven future
+  household affordability. Opening BankB CB debt or unsupported claim ownership
+  leaves admission unknown. Other-bank future finance, reserve/collateral access
+  and full public interest are not projected; actual settlement still enforces
+  them and can refuse/cancel a proposal. Forecast errors are returned, not booked
+  as income. Quarterly price/productivity roots use the explicit decimal quote
+  of Python's floating root; later vector arithmetic is rational. This is not
+  an optimal planner, an autonomous reference qualification or native adoption.
 
 The golden fixture retains all state fields and non-digest command fields from a
 16-quarter committed experiment and its specified quarter-17 resume fork. Class

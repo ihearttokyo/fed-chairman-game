@@ -144,6 +144,11 @@ def evaluate(cells,credibility,*,units,capital_productivity,tolerance=F(1,10**6)
         weight=(credibility if c.fulfilled else 1-credibility)/2
         values.append(CellValue(c.demand_sign,c.fulfilled,c.observable_node,weight,
                      totals['NOW']-totals['NEVER'],totals['WAIT']-totals['NEVER']))
+    return Quotation(tuple(rows),tuple(values),_decision(cells,values,tolerance))
+
+
+def _decision(cells,values,tolerance):
+    """Internal reducer for the same physical cells with updated admission only."""
     active=tuple((c,z) for c,z in zip(cells,values) if z.weight)
     if any(c.baseline_ok is False for c,z in active):
         decision=Decision('baseline_incomplete',None,None,None,False)
@@ -167,4 +172,4 @@ def evaluate(cells,credibility,*,units,capital_productivity,tolerance=F(1,10**6)
         elif wait>tolerance: action='WAIT'
         else: action='NEVER'
         decision=Decision('quoted_choice',action,now,wait,now_ok,tuple(exercise))
-    return Quotation(tuple(rows),tuple(values),decision)
+    return decision

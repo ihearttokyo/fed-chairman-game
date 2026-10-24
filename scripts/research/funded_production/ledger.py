@@ -1737,7 +1737,7 @@ def _clear_market(tx, orders, controls, vintages, capital, depreciation, lr, lf,
         return any(l.borrower == borrower and
                    (coupon_due(l) or l.maturity <= tx.quarter) for l in tx.loans)
 
-    def settle_debt(borrower):
+    def settle_debt_pass(borrower):
         changed = False
         for loan in tuple(tx.loans):
             if loan.borrower != borrower:
@@ -1767,6 +1767,19 @@ def _clear_market(tx, orders, controls, vintages, capital, depreciation, lr, lf,
                     tx.principal(loan, loan.face)
                 changed = True
         return changed
+
+    def settle_debt(borrower):
+        if not closing:
+            return settle_debt_pass(borrower)
+        changed=False
+        # Finish fundable same-date dues before deciding whether to cancel the
+        # optional project. No future receipts, extra credit or relaxed capital.
+        count=sum(loan.borrower==borrower for loan in tx.loans)
+        for _ in range(2*count+1):
+            progress=settle_debt_pass(borrower)
+            changed|=progress
+            if not progress:return changed
+        raise AssertionError('Finite closing debt-settlement bound exhausted.')
 
     def distribute_firms():
         paid = ZERO
