@@ -66,6 +66,14 @@ network, Godot process, Excel session or installed game. It does not write saves
   whose explicit renewal is forbidden. WIP basis is the whole paid invoice,
   including internal funds. Signed coupons retain their actual payer. This does
   not provide endogenous project selection or a qualified macro adapter.
+- Dated financing helpers quote opening operating credit at two future closing
+  dates, while a closing project draw has a same-date coupon and 16 future
+  principal dates. An authored 16-interval curve separates current-rate and
+  long-anchor exposure; its rational root grid leaves a reported compounding
+  residual. Promised-schedule par is not option-adjusted for early repayment.
+  Per-claim settlement PV reports rounding differences without posting fictional
+  profit. Factories return conditional loan/commitment commands, not approvals;
+  existing macro pricing and historical payment results remain unchanged.
 - Typed checkpoints and exact command replay. Project restrictions survive restore;
   principal paid cannot silently become a refinanced claim.
 
