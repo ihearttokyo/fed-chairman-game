@@ -16,6 +16,7 @@ import sys
 
 from . import source_data
 from . import public_funding
+from . import early_liquidity
 from . import episodes as e
 m = e.m
 
@@ -24,7 +25,7 @@ _MODULE_NAMES = ('__init__', 'source_data', 'numerics', 'households', 'pricing',
                  'ledger', 'macro', 'episodes', 'cashflows', 'choice', 'checkpoint',
                  'prospectus', 'coupled', 'investment', 'public_forecast',
                  'public_scenarios', 'public_branches', 'public_market', 'paydate_households',
-                 'public_paydate', 'paydate_scenarios', 'public_paydate_branches', 'public_recurring_branches')
+                 'public_paydate', 'paydate_scenarios', 'public_paydate_branches', 'public_recurring_branches', 'early_liquidity')
 _SOURCE_PATHS = {name: _PACKAGE_DIR / (name + '.py') for name in _MODULE_NAMES}
 _SOURCE_PATHS.update({'model.' + name: source_data.MODEL_DIR / name
                       for name in source_data.SOURCE_DIGESTS})
@@ -57,6 +58,18 @@ def _paid_economy(economy):
     # valid Macro and Sector components alone do not validate their envelope.
     replace(economy)
     a, s = economy.macro, economy.sector
+    if type(s.public_book) is m.ledger.EarlyPaydateBook:
+        # New convention: reject forged/unnormalized components before Q0's
+        # early return too. These are code-owned constructors after tree admission.
+        components = (a, *s.banks, *s.loans, *s.cb_loans, *s.vintages,
+                      *(position for loan in s.cb_loans for position in loan.collateral),
+                      s.public_book.terms, s.public_book, s)
+        if s.last is not None:
+            components += (s.last,)
+        for record in components:
+            checked = replace(record)
+            if _canonical(_pack_checked(checked)) != _canonical(_pack_checked(record)):
+                raise ValueError('Noncanonical early-paydate component.')
     if not a.quarter:
         if s.last is not None:
             raise ValueError('Opening state cannot carry a paid-quarter report.')
@@ -121,7 +134,8 @@ def _paid_economy(economy):
                                                s.public_book.opening_deferred_asset)
     if type(s.public_book) is m.ledger.PaydatePublicBook:
         m.ledger.validate_paydate_public(s.public_book,s.scale,s.quarter,r.payments,r.trace)
-    elif isinstance(s.public_book,m.ledger.FundedPublicBook):
+    elif (isinstance(s.public_book,m.ledger.FundedPublicBook)
+          and type(s.public_book) is not m.ledger.EarlyPaydateBook):
         m.ledger.validate_funded_public(s.public_book,s.scale,s.quarter,r.payments)
     if (paid['services'], paid['residual_consumption'], paid['investment'],
             paid['residual_payroll'], paid['focal_payroll']) != (
@@ -221,10 +235,12 @@ _TYPES = MappingProxyType({
         'PublicBook', 'PublicIncomeBook', 'PublicIncomeTerms', 'CouponLine', 'PublicIncomeControls', 'RRPClaim', 'Report', 'Payment', 'Trace', 'Controls',
         'FundedPublicBook', 'FundedPublicInstructions',
         'PaydatePublicBook', 'PaydateSnapshot', 'PaydatePhase',
+        'EarlyPaydateBook', 'EarlyPhase', 'EarlyCreditWitness', 'LaterCreditWitness',
         'LoanOffer', 'Renewal', 'PublicInstructions', 'ClosingCreditForecast',
         'OperatingLoanOffer', 'OperatingLoan', 'ProjectCommitment', 'ProjectLoan')},
     **{name: getattr(public_funding, name) for name in (
         'FundingOpening', 'FundingBatch', 'TreasuryTransfer')},
+    'EarlyPlan': early_liquidity.EarlyPlan,
     'CandidateState': CandidateState,
     'DecisionEvent': DecisionEvent,
 })
