@@ -203,8 +203,14 @@ def _canonical_value(value):
                l.ProductionOrders, households.Preferences, households.CashStockBudget,
                funding.FundingProjection, funding.FundingPrefix)
     if any(cls is allowed for allowed in records):
+        schema = fields(cls)
+        attributes = object.__getattribute__(value, '__dict__')
+        if (type(attributes) is not dict
+                or any(type(key) is not str for key in attributes)
+                or set(attributes) != {field.name for field in schema}):
+            raise ValueError('Canonical records require their class-defined instance fields.')
         return cls, tuple((field.name, _canonical_value(getattr(value, field.name)))
-                          for field in fields(value))
+                          for field in schema)
     raise ValueError('Prepared inputs require exact canonical records and scalars.')
 
 

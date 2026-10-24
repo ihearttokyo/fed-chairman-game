@@ -7,7 +7,7 @@ cash rights at explicit par only; no market pricing or empirical fit is implied.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, fields, replace
 from fractions import Fraction as F
 import math
 
@@ -27,6 +27,48 @@ Treasuries = tuple[FaceRow, FaceRow, FaceRow]
 OptionalMassPair = tuple[F | None, F | None]
 CashReceipt = tuple[str, str, F, str, str | None]
 Payments = tuple[CashReceipt, ...]
+
+
+def validate_records(value, record_types):
+    """Admit a closed immutable tree before equality, packing or reconstruction.
+
+    Callers provide a fixed trusted class registry, never classes named by data.
+    Class fields are authoritative; instance metadata and scalar proxies cannot
+    execute callbacks or conceal fields. This checks structure, not custody or
+    the monetary meaning of otherwise well-typed values.
+    """
+    active = set()
+
+    def visit(item):
+        cls = type(item)
+        if any(cls is scalar for scalar in (type(None), str, bool, int)):
+            return
+        if cls is float or cls is F:
+            _number(item, signed=True)
+            return
+        if cls is not tuple and not any(cls is record for record in record_types):
+            raise TypeError('Require an exact immutable record or scalar from the trusted registry.')
+        identity = id(item)
+        if identity in active:
+            raise ValueError('Immutable record trees cannot contain cycles.')
+        active.add(identity)
+        try:
+            if cls is tuple:
+                for child in item:
+                    visit(child)
+                return
+            schema = fields(cls)
+            attributes = object.__getattribute__(item, '__dict__')
+            if (type(attributes) is not dict
+                    or any(type(key) is not str for key in attributes)
+                    or set(attributes) != {field.name for field in schema}):
+                raise ValueError('Immutable records require only their class-defined fields.')
+            for field in schema:
+                visit(object.__getattribute__(item, field.name))
+        finally:
+            active.remove(identity)
+
+    visit(value)
 
 
 def _number(value: F, *, signed: bool = False) -> F:
