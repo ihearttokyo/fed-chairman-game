@@ -38,23 +38,25 @@ class CashStockBudget:
 
 
 def cash_stock_budget(*, opening_cash, paid_wages, previous_income,
-                      forecast_income, cash_ratio, adjustment=Fraction(1, 4)):
-    """Pure proposed closing-dividend budget; not wired into any ledger mode.
+                      forecast_income, cash_ratio, adjustment=Fraction(1, 4),
+                      demand_multiplier=1):
+    """Pure closing-dividend intention, used by explicit cash-stock ledger mode.
 
-    All inputs are current nominal amounts except dimensionless cash_ratio and
-    adjustment. Forecast income is a disclosed intention input, never cash.
+    Amounts are current nominal; cash_ratio, adjustment and demand_multiplier
+    are dimensionless. The preference impulse scales desire before the wallet
+    cap, not owned cash. Forecast income is an intention input, never cash.
     Previous income must be actual paid income, not its previous forecast.
     The target-growth deduction funds desired liquid-balance growth rather than
     spending expected income AND assuming the growing target is already saved.
     These are authored behavioral conventions, not estimated household behavior.
     """
-    cash, wages, prior, forecast, ratio, speed = map(amount, (
+    cash, wages, prior, forecast, ratio, speed, impulse = map(amount, (
         opening_cash, paid_wages, previous_income, forecast_income,
-        cash_ratio, adjustment))
+        cash_ratio, adjustment, demand_multiplier))
     if speed > 1:
         raise ValueError('Cash-target adjustment must be in [0, 1].')
-    desired = max(Fraction(0), forecast - ratio * (forecast - prior)
-                  + speed * (cash - ratio * prior))
+    desired = impulse * max(Fraction(0), forecast - ratio * (forecast - prior)
+                            + speed * (cash - ratio * prior))
     wallet = cash + wages
     funded = min(wallet, desired)
     return CashStockBudget(desired, wallet, funded, wallet - funded)

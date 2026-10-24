@@ -20,7 +20,8 @@ m = e.m
 
 _PACKAGE_DIR = Path(__file__).resolve().parent
 _MODULE_NAMES = ('__init__', 'source_data', 'numerics', 'households', 'pricing',
-                 'ledger', 'macro', 'episodes', 'cashflows', 'choice', 'checkpoint')
+                 'ledger', 'macro', 'episodes', 'cashflows', 'choice', 'checkpoint',
+                 'prospectus', 'coupled')
 _SOURCE_PATHS = {name: _PACKAGE_DIR / (name + '.py') for name in _MODULE_NAMES}
 _SOURCE_PATHS.update({'model.' + name: source_data.MODEL_DIR / name
                       for name in source_data.SOURCE_DIGESTS})
@@ -68,6 +69,9 @@ def _paid_economy(economy):
         'investment': (('F', 'R'),),
         'residual_payroll': (('R', 'HA'),),
         'focal_payroll': (('F', 'HB'),),
+        'residual_dividend': (('R', 'HA'),),
+        'focal_dividend': (('F', 'HB'),),
+        'bank_dividend': (('BankA', 'HA'), ('BankB', 'HB')),
     }
     paid = dict.fromkeys(routes, F(0))
     for payment in r.payments:
@@ -80,6 +84,9 @@ def _paid_economy(economy):
             r.services * unit, r.residual_consumption * unit, r.investment * unit,
             r.payroll_residual, r.payroll_focal):
         raise ValueError('Current report differs from actual paid invoices.')
+    if (paid['residual_dividend'], paid['focal_dividend'], paid['bank_dividend']) != (
+            r.dividend_residual, r.dividend_focal, r.dividend_bank):
+        raise ValueError('Current income history differs from identified paid dividends.')
     wage = unit * m.rational(a.productivity_trend)
     if (r.payroll_residual, r.payroll_focal) != (
             r.paid_residual_workers * wage, r.paid_focal_workers * wage):

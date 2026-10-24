@@ -37,7 +37,7 @@ network, Godot process, Excel session or installed game. It does not write saves
   scale, not new deposits. Cash ratios 3/20 and 1/21 and adjustment 1/4 are fixed
   version-1 conventions. Dividend forecasts use explicit order inputs or the
   initial/last paid reference; they do not assume a solved growth path.
-  Legacy modes are unchanged. The macro adapter still explicitly refuses this
+  Legacy modes are unchanged. The legacy macro adapter still explicitly refuses this
   new mode: endogenous hiring/investment, contractual cash sweeps, project
   commitments/draws and a coupled reference remain unqualified.
 - Optional `ClosingCreditForecast` inputs in that closing mode quote next
@@ -74,6 +74,21 @@ network, Godot process, Excel session or installed game. It does not write saves
   Per-claim settlement PV reports rounding differences without posting fictional
   profit. Factories return conditional loan/commitment commands, not approvals;
   existing macro pricing and historical payment results remain unchanged.
+- The opt-in `coupled` quarter builds hiring from current cash-budget sales
+  forecasts, then lets the single ledger fund payroll and purchases. Actual GDP
+  and employment feed the shared price/expectation/credibility closure. The
+  old IS-consumption and generated-jobs paths are not evaluated by this mode;
+  incompatible old demand/backlog stocks are refused, not erased. A disclosed
+  exponential demand preference impulse changes desired spending once, before
+  the owned-wallet cap. Last paid dividends are forecasts, never spendable cash.
+  Closing-mode firm buffers now consistently use one actual paid payroll,
+  including ordinary internally financed investment; detached order floors
+  still apply to legacy modes. Historical fixed-mode golden results are retained.
+  Current-state capital ages and paid WIP follow the same legal opening calendar.
+  The default private plan remains explicitly **unqualified, no project**;
+  supplied project units are research inputs, not an autonomous optimum. The
+  quotation/financial planner, coupled reference existence, exact new-mode
+  checkpoint/replay, full public adapter and native integration remain unfinished.
 - Typed checkpoints and exact command replay. Project restrictions survive restore;
   principal paid cannot silently become a refinanced claim.
 - A pure partial-equilibrium prospectus quotes four declared forecast cells,

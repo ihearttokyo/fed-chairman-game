@@ -108,6 +108,7 @@ class ProductionOrders:
     initial_dividends_real: tuple = (F(3), F(1))
     market_clearing: bool = False
     max_clearing_rounds: int = 64
+    demand_multiplier: F = F(1)
 
     def __post_init__(self):
         if type(self.market_clearing) is not bool:
@@ -118,7 +119,7 @@ class ProductionOrders:
                     'capital_resource_cost')
         for name in (*positive, 'residual_workers', 'focal_workers',
                      'investment_units', 'residual_consumption', 'service_a',
-                     'service_b', 'available_workers', 'cash_floor_r', 'cash_floor_f'):
+                     'service_b', 'available_workers', 'cash_floor_r', 'cash_floor_f', 'demand_multiplier'):
             value = _number(getattr(self, name))
             if name in positive and not value:
                 raise ValueError(f'{name} must be positive.')
@@ -1535,7 +1536,8 @@ def _closing_household_plans(tx, orders, controls, wage, lr, lf):
         opening = tx.d[owner] - wages  # Actual pre-payroll wallet, not a forecast.
         quote = household.cash_stock_budget(
             opening_cash=opening, paid_wages=wages, previous_income=prior,
-            forecast_income=wages + forecast, cash_ratio=ratio)
+            forecast_income=wages + forecast, cash_ratio=ratio,
+            demand_multiplier=orders.demand_multiplier)
         goods = prefs.residual + prefs.services
         plans.append((quote.funded * prefs.residual / goods / unit,
                       quote.funded * prefs.services / goods / unit)
@@ -1544,7 +1546,9 @@ def _closing_household_plans(tx, orders, controls, wage, lr, lf):
                 mode='cash_stock_close_v1', opening_cash=opening, paid_wages=wages,
                 income_previous=prior, income_forecast=wages + forecast,
                 forecast=forecast, forecast_source=source, cash_ratio=ratio,
-                adjustment=F(1, 4), desired=quote.desired, funded=quote.funded)
+                adjustment=F(1, 4), desired=quote.desired, funded=quote.funded,
+                **({'demand_multiplier':orders.demand_multiplier}
+                   if orders.demand_multiplier != 1 else {}))
         bank, borrower = ('A', 'R') if owner == 'HA' else ('B', 'F')
         if bank in previous_quotes:
             old = previous_quotes[bank]
@@ -1780,8 +1784,9 @@ def _clear_market(tx, orders, controls, vintages, capital, depreciation, lr, lf,
                 (l.face for l in tx.loans if l.borrower == borrower), ZERO)
             # An unfilled optional I plan is neither an invoice reserve nor
             # paid capital basis. Dividends can precede later-round purchases.
+            buffer = payroll if closing else floor * unit
             dividend = _floor(min(max(ZERO, profit - distributed[borrower]),
-                max(ZERO, tx.d[borrower] - floor * unit - commitments(borrower)),
+                max(ZERO, tx.d[borrower] - buffer - commitments(borrower)),
                 max(ZERO, equity)), tx.money_quantum)
             tx.pay(borrower, owner, dividend, kind)
             distributed[borrower] += dividend
@@ -1877,7 +1882,7 @@ def _clear_market(tx, orders, controls, vintages, capital, depreciation, lr, lf,
         funded_cr = min(max(ZERO, desired_cr - cr), tx.d['HA'] / unit)
         i_order = (ZERO if project is not None or debt_pending('F') else min(
             max(ZERO, orders.investment_units - physical_i),
-            max(ZERO, tx.d['F'] - orders.cash_floor_f * unit) / (chi * unit)))
+            max(ZERO, tx.d['F'] - (lf * wage if closing else orders.cash_floor_f * unit)) / (chi * unit)))
         resources = max(ZERO, resource_capacity - cr - chi * physical_i)
         buy_cr, i_resources = precision.ration(resources, funded_cr, chi * i_order,
                                                quantum=QUANTUM)
@@ -1939,6 +1944,8 @@ def advance_given_orders(state, orders, controls=Controls()):
         raise TypeError('Advance requires immutable ProductionOrders.')
     if controls.household_mode == 'cash_stock_close_v1' and not orders.market_clearing:
         raise ValueError('Closing household budgets require explicit market clearing.')
+    if orders.demand_multiplier != 1 and controls.household_mode != 'cash_stock_close_v1':
+        raise ValueError('A demand multiplier requires the explicit closing-budget mode.')
     if controls.household_mode != 'cash_stock_close_v1' and (
             any(isinstance(l, (OperatingLoan, ProjectLoan)) for l in state.loans) or
             any(isinstance(o, OperatingLoanOffer) for o in controls.new_loans)):
