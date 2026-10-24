@@ -1,0 +1,594 @@
+{
+  "source_commit": "48d5bb4f0e6831a8241716bf852c4f3bdca5b73c",
+  "classification": "REJECTED recovery/depth claim; retained research evidence, NOT game adoption",
+  "design": "8 deterministic quarters; real growth0/2; honest fixed3.5/3.5 or own-current-state Staff; private planner or explicit no-project comparator; same initial books, target inflation2, no new shocks",
+  "actual_attempts": 64,
+  "replay_attempts": 32,
+  "interpretation": "All four private paths choose WAIT twice then NEVER, invest nothing and match the no-project GDP contraction. Unit/accounting test success does not qualify the economy.",
+  "paths": [
+    {
+      "real_growth": 0,
+      "policy_family": "hold",
+      "private_investment": false,
+      "actual_statuses": [
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok"
+      ],
+      "actions": [
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER"
+      ],
+      "output_indices": [
+        86.151276,
+        67.09318,
+        47.479668,
+        36.267832,
+        27.682636,
+        21.1443,
+        16.193812,
+        12.464456
+      ],
+      "paid_investment_units": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ]
+    },
+    {
+      "real_growth": 0,
+      "policy_family": "hold",
+      "private_investment": true,
+      "actual_statuses": [
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok"
+      ],
+      "actions": [
+        "WAIT",
+        "WAIT",
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER"
+      ],
+      "output_indices": [
+        86.151276,
+        67.09318,
+        47.479668,
+        36.267832,
+        27.682636,
+        21.1443,
+        16.193812,
+        12.464456
+      ],
+      "paid_investment_units": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "proposed_units": [
+        "49363/50000",
+        "719639/1000000",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "bounded_units": [
+        "49363/50000",
+        "719639/1000000",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "decision_statuses": [
+        "quoted_choice",
+        "quoted_choice",
+        "quoted_choice",
+        "quoted_choice",
+        "quoted_choice",
+        "quoted_choice",
+        "quoted_choice",
+        "quoted_choice"
+      ],
+      "conditional_finance_reasons": [
+        {
+          "conditional_complete": 12
+        },
+        {
+          "conditional_complete": 12
+        },
+        {
+          "conditional_complete": 12
+        },
+        {
+          "conditional_complete": 12
+        },
+        {
+          "conditional_complete": 12
+        },
+        {
+          "conditional_complete": 12
+        },
+        {
+          "conditional_complete": 12
+        },
+        {
+          "conditional_complete": 12
+        }
+      ]
+    },
+    {
+      "real_growth": 0,
+      "policy_family": "staff",
+      "private_investment": false,
+      "actual_statuses": [
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok"
+      ],
+      "actions": [
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER"
+      ],
+      "output_indices": [
+        86.151276,
+        67.09318,
+        47.479668,
+        36.267832,
+        27.682636,
+        21.144284,
+        16.193796,
+        12.46448
+      ],
+      "paid_investment_units": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ]
+    },
+    {
+      "real_growth": 0,
+      "policy_family": "staff",
+      "private_investment": true,
+      "actual_statuses": [
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok"
+      ],
+      "actions": [
+        "WAIT",
+        "WAIT",
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER"
+      ],
+      "output_indices": [
+        86.151276,
+        67.09318,
+        47.479668,
+        36.267832,
+        27.682636,
+        21.144284,
+        16.193796,
+        12.46448
+      ],
+      "paid_investment_units": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "proposed_units": [
+        "49363/50000",
+        "719639/1000000",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "bounded_units": [
+        "49363/50000",
+        "719639/1000000",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "decision_statuses": [
+        "quoted_choice",
+        "quoted_choice",
+        "quoted_choice",
+        "quoted_choice",
+        "quoted_choice",
+        "quoted_choice",
+        "quoted_choice",
+        "quoted_choice"
+      ],
+      "conditional_finance_reasons": [
+        {
+          "conditional_complete": 12
+        },
+        {
+          "conditional_complete": 12
+        },
+        {
+          "conditional_complete": 12
+        },
+        {
+          "conditional_complete": 12
+        },
+        {
+          "conditional_complete": 12
+        },
+        {
+          "conditional_complete": 12
+        },
+        {
+          "conditional_complete": 12
+        },
+        {
+          "conditional_complete": 12
+        }
+      ]
+    },
+    {
+      "real_growth": 2,
+      "policy_family": "hold",
+      "private_investment": false,
+      "actual_statuses": [
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok"
+      ],
+      "actions": [
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER"
+      ],
+      "output_indices": [
+        86.381652,
+        67.481984,
+        48.007032,
+        36.825152,
+        28.226828,
+        21.647652,
+        16.643008,
+        12.855384
+      ],
+      "paid_investment_units": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ]
+    },
+    {
+      "real_growth": 2,
+      "policy_family": "hold",
+      "private_investment": true,
+      "actual_statuses": [
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok"
+      ],
+      "actions": [
+        "WAIT",
+        "WAIT",
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER"
+      ],
+      "output_indices": [
+        86.381652,
+        67.481984,
+        48.007032,
+        36.825152,
+        28.226828,
+        21.647652,
+        16.643008,
+        12.855384
+      ],
+      "paid_investment_units": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "proposed_units": [
+        "1133537/1000000",
+        "879523/1000000",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "bounded_units": [
+        "1133537/1000000",
+        "879523/1000000",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "decision_statuses": [
+        "quoted_choice",
+        "quoted_choice",
+        "quoted_choice",
+        "quoted_choice",
+        "quoted_choice",
+        "quoted_choice",
+        "quoted_choice",
+        "quoted_choice"
+      ],
+      "conditional_finance_reasons": [
+        {
+          "conditional_complete": 12
+        },
+        {
+          "conditional_complete": 12
+        },
+        {
+          "conditional_complete": 12
+        },
+        {
+          "conditional_complete": 12
+        },
+        {
+          "conditional_complete": 12
+        },
+        {
+          "conditional_complete": 12
+        },
+        {
+          "conditional_complete": 12
+        },
+        {
+          "conditional_complete": 12
+        }
+      ]
+    },
+    {
+      "real_growth": 2,
+      "policy_family": "staff",
+      "private_investment": false,
+      "actual_statuses": [
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok"
+      ],
+      "actions": [
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER"
+      ],
+      "output_indices": [
+        86.381652,
+        67.481984,
+        48.007032,
+        36.825152,
+        28.226824,
+        21.647636,
+        16.642996,
+        12.855404
+      ],
+      "paid_investment_units": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ]
+    },
+    {
+      "real_growth": 2,
+      "policy_family": "staff",
+      "private_investment": true,
+      "actual_statuses": [
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok"
+      ],
+      "actions": [
+        "WAIT",
+        "WAIT",
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER",
+        "NEVER"
+      ],
+      "output_indices": [
+        86.381652,
+        67.481984,
+        48.007032,
+        36.825152,
+        28.226824,
+        21.647636,
+        16.642996,
+        12.855404
+      ],
+      "paid_investment_units": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "proposed_units": [
+        "1133537/1000000",
+        "879523/1000000",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "bounded_units": [
+        "1133537/1000000",
+        "879523/1000000",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "decision_statuses": [
+        "quoted_choice",
+        "quoted_choice",
+        "quoted_choice",
+        "quoted_choice",
+        "quoted_choice",
+        "quoted_choice",
+        "quoted_choice",
+        "quoted_choice"
+      ],
+      "conditional_finance_reasons": [
+        {
+          "conditional_complete": 12
+        },
+        {
+          "conditional_complete": 12
+        },
+        {
+          "conditional_complete": 12
+        },
+        {
+          "conditional_complete": 12
+        },
+        {
+          "conditional_complete": 12
+        },
+        {
+          "conditional_complete": 12
+        },
+        {
+          "conditional_complete": 12
+        },
+        {
+          "conditional_complete": 12
+        }
+      ]
+    }
+  ]
+}

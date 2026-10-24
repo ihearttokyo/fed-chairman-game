@@ -168,8 +168,9 @@ class Prepared:
     release_units: float
 
 
-def prepare(envelope,policy,news=News(),investment_units=F(1)):
+def prepare(envelope,policy,news=News(),investment_units=F(1),*,_quotes_only=False):
     if type(envelope) is not Envelope or type(policy) is not Policy or type(news) is not News: raise TypeError('Require immutable current-information inputs.')
+    if type(_quotes_only) is not bool:raise TypeError('Quote-only selection must be Boolean.')
     investment_units=ledger._number(investment_units)
     a=envelope.macro; s=envelope.sector; cred=a.credibility
     supply=P['supply_pressure_persistence']*a.supply_pressure_pct+news.supply_innovation_pct
@@ -199,6 +200,11 @@ def prepare(envelope,policy,news=News(),investment_units=F(1)):
     follow=math.exp(-abs(policy.rate_pct-commitment)/P['credibility_followthrough_tolerance_pct']) if a.guidance_active else 1
     base=P['inflation_persistence']*(1+a.annualized_quarterly_inflation_pct/100)+(1-P['inflation_persistence'])*(1+a.expected_short_inflation_pct/100)
     price=a.price_index*(base*math.exp((P['inflation_output_gap_sensitivity']*a.output_gap_pct+P['inflation_supply_sensitivity']*supply)/(100+P['inflation_target_pct'])))**.25
+    if _quotes_only:
+        # Private source quote extraction, not a legacy executable preparation.
+        # Avoid even evaluating the discarded IS/employment/backlog machinery.
+        return Prepared(envelope,policy,news,ledger.depth_orders(),price,supply,rstar,
+                        reference,trend,u,e,long,restraint,adequacy,follow,0,0,0,0)
     # Authored consumption sensitivity, distinct from identified aggregate IS.
     x=P['output_gap_persistence']*a.consumption_state_pct-.12*restraint+news.demand_shock_pct-P['supply_output_gap_sensitivity']*supply
     reference_c=18.15*trend; underlying=reference_c*math.exp(x/100)
@@ -258,7 +264,12 @@ def execute(p,controls):
         raise NotImplementedError('This macro section supports stationary same-face Treasury rolls only; full public adapter is not yet qualified.')
     out=ledger.advance_given_orders(state,p.orders,controls)
     if not out.ok: return Transition(False,p.opening,out.status,out.reason)
-    b=out.state; r=b.last; output=4*float(r.real_output)
+    return _close_paid(p,out.state)
+
+
+def _close_paid(p,b,*,closing_households=False):
+    """Paid-output closure; each caller validates its own prepared program."""
+    a=p.opening.macro; r=b.last; output=4*float(r.real_output)
     if output<=0: return Transition(False,p.opening,'terminal_crisis','Zero paid GDP; economic crisis successor remains required.')
     orders=p.orders; capital=float(b.capital_units)
     potential=4*frontier(a.workforce*(1-p.structural_u/100),float(orders.residual_productivity),float(orders.service_productivity),float(orders.capital_productivity),capital)
@@ -276,7 +287,7 @@ def execute(p,controls):
     hardship=P['public_inflation_burden_weight']*abs(four-P['inflation_target_pct'])+P['public_unemployment_burden_weight']*max(0,unemployment-p.structural_u)
     memory=P['public_hardship_memory_persistence']*a.public_hardship_memory+(1-P['public_hardship_memory_persistence'])*hardship
     support_target=max(0,min(100,P['public_support_base']-hardship-P['public_hardship_memory_weight']*memory))
-    paid_release=min(p.release_units,max(0,float(r.residual_consumption)-p.underlying_consumption))
-    backlog=(1-P['demand_cancellation_fraction'])*a.deferred_consumption_units-paid_release+P['deferred_demand_share']*max(0,p.reference_consumption-float(r.residual_consumption))
-    macro=replace(a,quarter=b.quarter,price_index=p.price_index,price_history=h,annualized_quarterly_inflation_pct=100*((p.price_index/a.price_index)**4-1),four_quarter_inflation_pct=four,expected_short_inflation_pct=expected_short,expected_long_inflation_pct=expected_long,credibility=closing_cred,inflation_miss_memory_pct=miss,public_support=a.public_support+P['public_support_adjustment']*(support_target-a.public_support),public_hardship_memory=memory,unemployment_rate_pct=unemployment,structural_unemployment_pct=p.structural_u,actual_output_index=output,potential_output_index=potential,physical_max_output_index=maximum,output_gap_pct=100*(output/potential-1),annualized_actual_growth_pct=100*((output/a.actual_output_index)**4-1),annualized_potential_growth_pct=100*((potential/a.potential_output_index)**4-1),productivity_trend=p.trend,r_star_pct=p.r_star,r_star_reference_pct=p.r_star_reference,supply_pressure_pct=p.supply_pressure,financial_restraint_pct=p.financial_restraint,consumption_state_pct=p.consumption_state,deferred_consumption_units=backlog,guidance_active=True,prior_policy=p.policy,guidance_reference_inflation_pct=a.four_quarter_inflation_pct,guidance_reference_gap_pct=a.output_gap_pct)
+    paid_release=0 if closing_households else min(p.release_units,max(0,float(r.residual_consumption)-p.underlying_consumption))
+    backlog=0 if closing_households else (1-P['demand_cancellation_fraction'])*a.deferred_consumption_units-paid_release+P['deferred_demand_share']*max(0,p.reference_consumption-float(r.residual_consumption))
+    macro=replace(a,quarter=b.quarter,price_index=p.price_index,price_history=h,annualized_quarterly_inflation_pct=100*((p.price_index/a.price_index)**4-1),four_quarter_inflation_pct=four,expected_short_inflation_pct=expected_short,expected_long_inflation_pct=expected_long,credibility=closing_cred,inflation_miss_memory_pct=miss,public_support=a.public_support+P['public_support_adjustment']*(support_target-a.public_support),public_hardship_memory=memory,unemployment_rate_pct=unemployment,structural_unemployment_pct=p.structural_u,actual_output_index=output,potential_output_index=potential,physical_max_output_index=maximum,output_gap_pct=100*(output/potential-1),annualized_actual_growth_pct=100*((output/a.actual_output_index)**4-1),annualized_potential_growth_pct=100*((potential/a.potential_output_index)**4-1),productivity_trend=p.trend,r_star_pct=p.r_star,r_star_reference_pct=p.r_star_reference,supply_pressure_pct=p.supply_pressure,financial_restraint_pct=p.financial_restraint,consumption_state_pct=0 if closing_households else p.consumption_state,deferred_consumption_units=backlog,guidance_active=True,prior_policy=p.policy,guidance_reference_inflation_pct=a.four_quarter_inflation_pct,guidance_reference_gap_pct=a.output_gap_pct)
     return Transition(True,Envelope(macro,b),'ok',paid_release_units=paid_release)

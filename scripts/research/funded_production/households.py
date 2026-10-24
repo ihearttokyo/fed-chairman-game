@@ -23,6 +23,45 @@ class Allocation:
     saving: Fraction
 
 
+@dataclass(frozen=True)
+class CashStockBudget:
+    """An intention and funded ceiling, NOT actual purchases or closing saving.
+
+    Unfilled goods orders can leave more owned cash than ``unspent_wallet``.
+    Closing distributions, if actually paid, add cash only at their legal date.
+    """
+
+    desired: Fraction
+    wallet: Fraction
+    funded: Fraction
+    unspent_wallet: Fraction
+
+
+def cash_stock_budget(*, opening_cash, paid_wages, previous_income,
+                      forecast_income, cash_ratio, adjustment=Fraction(1, 4),
+                      demand_multiplier=1):
+    """Pure closing-dividend intention, used by explicit cash-stock ledger mode.
+
+    Amounts are current nominal; cash_ratio, adjustment and demand_multiplier
+    are dimensionless. The preference impulse scales desire before the wallet
+    cap, not owned cash. Forecast income is an intention input, never cash.
+    Previous income must be actual paid income, not its previous forecast.
+    The target-growth deduction funds desired liquid-balance growth rather than
+    spending expected income AND assuming the growing target is already saved.
+    These are authored behavioral conventions, not estimated household behavior.
+    """
+    cash, wages, prior, forecast, ratio, speed, impulse = map(amount, (
+        opening_cash, paid_wages, previous_income, forecast_income,
+        cash_ratio, adjustment, demand_multiplier))
+    if speed > 1:
+        raise ValueError('Cash-target adjustment must be in [0, 1].')
+    desired = impulse * max(Fraction(0), forecast - ratio * (forecast - prior)
+                            + speed * (cash - ratio * prior))
+    wallet = cash + wages
+    funded = min(wallet, desired)
+    return CashStockBudget(desired, wallet, funded, wallet - funded)
+
+
 def _mode(mode):
     if mode not in ('wallet','liquidity'):
         raise ValueError('Choose wallet control or liquidity-saving mode.')

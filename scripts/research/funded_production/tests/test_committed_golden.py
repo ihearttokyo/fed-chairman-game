@@ -28,6 +28,8 @@ class CommittedGoldenTests(unittest.TestCase):
             # New optional payout instruction is explicitly disabled; retain
             # strict equality of every pre-existing frozen command field.
             self.assertIsNone(actual['fields']['controls']['fields'].pop('bank_capital_targets'))
+            self.assertIsNone(actual['fields']['controls']['fields'].pop('closing_credit_forecast'))
+            self.assertIsNone(actual['fields']['controls']['fields'].pop('project_commitment'))
             self.assertEqual(actual, expected)
             a = out.state
         expected = next(s for s in golden['states'] if s['case'] == 'q16')
