@@ -167,10 +167,32 @@ network, Godot process, Excel session or installed game. It does not write saves
   is a refusal, not missing future coverage. Shared quotation helpers preserve
   the old price equations and coupled baseline; legacy entry-point guards stay.
   Actual resulting states use existing checkpoints, but public commands and
-  prepared records have no qualified decision-replay format. Future scenario
-  coverage, fair NOW/WAIT/NEVER forecasts and endogenous investment selection
-  remain unimplemented; this is not a qualified runtime/private planner. QE,
+  prepared records have no qualified decision-replay format. Conditional future
+  branches are separate from this current-quarter adapter; endogenous career
+  investment adoption remains unqualified. QE,
   currency conversion, new RRP and implicit CB contracts are unsupported here.
+- `public_scenarios` declares nineteen dated public programs in four authored
+  demand/promise cells. Full-roll instructions resolve each branch's actual
+  holder dues and explicit issuer consent, not another branch's calendar. Rates,
+  news and facilities are explicit. A caller may supply a fixed IORB or an
+  explicit `PolicyIORB()` nominal-policy identity; the latter is an authored
+  zero-spread convention, not an estimated Fed relationship or the nonlinear
+  effective borrowing rate. Missing dates or inactive promises remain unknown.
+- `public_branches.evaluate` simulates one candidate tranche: NOW at date zero,
+  WAIT at date one, or NEVER, with no further replacement orders. Each branch
+  recomputes its own hiring, payroll, purchases, dividends, credit and policy-rule
+  response through the same ledger. There are at most 228 forecast attempts,
+  not zero-executor quotations or real career adoptions. Only scalar rows and
+  candidate-debt receipts survive; successful nineteen-date paths must retire
+  newly issued project principal. Operating PV deducts the actual whole invoice
+  once, excludes financial flows and depreciation, and uses eighteen explicit
+  common discount factors with date zero undiscounted. No salvage is assumed.
+  WAIT exercise uses conditional expectation within a documented coarse public
+  release/own-firm information set; neither latent cell labels nor future news
+  enter it. Failed positive-weight baselines remain visible. Unknown coverage,
+  including a canceled draw with undeclared CB terms, is not an economic rejection
+  or approval. These are conditional research choices, not an adopted investment
+  controller, future-decision checkpoint format, recovery or native qualification.
 - A pure partial-equilibrium prospectus quotes four declared forecast cells,
   three actions and 19 dates: 228 scalar rows and zero ledger transitions.
   Sold services are limited by demand, dated capital and focal labor. The

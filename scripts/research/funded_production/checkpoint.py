@@ -22,7 +22,8 @@ m = e.m
 _PACKAGE_DIR = Path(__file__).resolve().parent
 _MODULE_NAMES = ('__init__', 'source_data', 'numerics', 'households', 'pricing', 'public_income', 'public_funding',
                  'ledger', 'macro', 'episodes', 'cashflows', 'choice', 'checkpoint',
-                 'prospectus', 'coupled', 'investment', 'public_forecast')
+                 'prospectus', 'coupled', 'investment', 'public_forecast',
+                 'public_scenarios', 'public_branches')
 _SOURCE_PATHS = {name: _PACKAGE_DIR / (name + '.py') for name in _MODULE_NAMES}
 _SOURCE_PATHS.update({'model.' + name: source_data.MODEL_DIR / name
                       for name in source_data.SOURCE_DIGESTS})
@@ -50,6 +51,9 @@ _check_sources()
 def _paid_economy(economy):
     if type(economy) is not m.Envelope:
         raise TypeError('Require the canonical reference Envelope.')
+    # Validate the wrapper's version/type/clock contract even for fresh Q0;
+    # valid Macro and Sector components alone do not validate their envelope.
+    replace(economy)
     a, s = economy.macro, economy.sector
     if not a.quarter:
         if s.last is not None:

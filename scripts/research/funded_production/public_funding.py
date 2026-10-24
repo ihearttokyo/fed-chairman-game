@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from fractions import Fraction as F
+import math
 
 from . import public_income
 from .numerics import amount, _signed, distribute
@@ -30,13 +31,16 @@ Payments = tuple[CashReceipt, ...]
 
 def _number(value: F, *, signed: bool = False) -> F:
     # Built-in scalar types only: no Boolean, callback or numeric proxy.
-    if type(value) not in (int, float, F):
+    if type(value) is not int and type(value) is not float and type(value) is not F:
         raise TypeError('Require a finite numeric scalar, not Boolean or callback.')
     # Fraction(int-subclass) can retain callback-bearing numerator/denominator
     # objects even though its outer type is exactly Fraction.
     if type(value) is F and (type(value.numerator) is not int
                             or type(value.denominator) is not int):
         raise TypeError('Fraction components must be plain integers.')
+    if type(value) is F and (value.denominator <= 0
+                            or math.gcd(value.numerator, value.denominator) != 1):
+        raise ValueError('Fraction components must be reduced with positive denominator.')
     return _signed(value) if signed else amount(value)
 
 
