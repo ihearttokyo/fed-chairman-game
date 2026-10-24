@@ -128,6 +128,18 @@ checkpoints or native game saves. Digests check consistency, not authenticity.
 
 ## Limits before adoption
 
+**The current candidate has not demonstrated recovery or gameplay depth.**
+At source commit `48d5bb4`, all four private paths wait twice, then propose no
+investment as forecast sales collapse. Their eight-quarter GDP matches the
+no-project comparator: a GDP index of about 12.46 or 12.86 from initial 100.
+All twelve conditional finance cases remain admissible under their quoted sales
+assumptions; no funding refusal explains the result. The
+[retained pilot evidence](../../../docs/research/PRIVATE_INVESTMENT_552_PILOT.json)
+records the fixed design, actions and exact paths. It is a falsifier, not a
+contract to preserve the bad behavior. Unit-test success does not qualify this
+economy. The wrapper's name `adopt` means one simulated private decision, not
+product adoption. Nothing here is enabled in the released game.
+
 This is a candidate qualification tool, not a validated replacement simulation.
 The source-backed parameters coexist with disclosed authored production and
 investment conventions. The public balance-sheet adapter supports only a
