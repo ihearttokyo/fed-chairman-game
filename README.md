@@ -5,10 +5,11 @@ macOS with original Blender assets. Godot is the sole maintained frontend. The
 previous Swift implementation is retired to Git history; installed copies and
 existing saves remain separate and are not replaced or migrated.
 
-This is a local pre-release candidate, not a market-ready release. Developer ID
-signing, Apple notarization, accessibility validation and representative human
-playtesting are distinct release gates. The project has no Federal Reserve
-affiliation, sponsorship or endorsement.
+This is an early public alpha, not a market-ready release.
+[Download an Apple Silicon build](https://github.com/ihearttokyo/fed-chairman-game/releases).
+Developer ID signing, Apple notarization, accessibility validation and
+representative human playtesting are distinct release gates. The project has no
+Federal Reserve affiliation, sponsorship or endorsement.
 
 ## Play
 
