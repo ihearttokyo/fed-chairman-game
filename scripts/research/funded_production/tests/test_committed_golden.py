@@ -25,6 +25,9 @@ class CommittedGoldenTests(unittest.TestCase):
             actual = json.loads(k.encode_event(out.event))['payload']
             actual['fields'].pop('before_digest')
             actual['fields'].pop('after_digest')
+            # New optional payout instruction is explicitly disabled; retain
+            # strict equality of every pre-existing frozen command field.
+            self.assertIsNone(actual['fields']['controls']['fields'].pop('bank_capital_targets'))
             self.assertEqual(actual, expected)
             a = out.state
         expected = next(s for s in golden['states'] if s['case'] == 'q16')

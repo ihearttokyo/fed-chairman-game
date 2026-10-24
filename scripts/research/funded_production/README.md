@@ -23,6 +23,9 @@ network, Godot process, Excel session or installed game. It does not write saves
 - Finite NOW/WAIT/NEVER project episodes, explicit no-rollover claims, and a
   conditional waiting option. Operating DCF excludes financing flows; finance
   still constrains feasibility. This is not shareholder NPV or welfare.
+- Optional bank payout targets retain only earned profits, reduce owner cash
+  distributions and never grant equity/reserves or waive loan covenants. Disabled
+  targets preserve baseline transitions; they are not an implemented bank planner.
 - Typed checkpoints and exact command replay. Project restrictions survive restore;
   principal paid cannot silently become a refinanced claim.
 

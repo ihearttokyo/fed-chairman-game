@@ -309,8 +309,12 @@ class Controls:
     renewals: tuple = ()
     household_mode: str = 'fixed'
     public_instructions: PublicInstructions | None = None
+    bank_capital_targets: tuple | None = None
 
     def __post_init__(self):
+        if self.bank_capital_targets is not None:
+            object.__setattr__(self, 'bank_capital_targets',
+                               _amount_pair(self.bank_capital_targets, 'bank_capital_targets'))
         if self.public_instructions is not None and not isinstance(self.public_instructions,PublicInstructions):
             raise TypeError('Require immutable explicit public instructions.')
         for name in ('facility_limits', 'asset_offers'):
@@ -331,6 +335,14 @@ class Controls:
             raise TypeError('Household mode must be immutable built-in text.')
         if self.household_mode not in ('fixed', 'wallet', 'liquidity'):
             raise ValueError('Unknown household mode.')
+
+
+def _dividend_capital_floor(controls, bank, risk):
+    """A payout target retains earned equity; it never changes underwriting."""
+    required = COVENANT * risk
+    if controls.bank_capital_targets is not None:
+        required = max(required, controls.bank_capital_targets[_bank(bank)])
+    return required
 
 
 @dataclass(frozen=True)
@@ -1506,7 +1518,7 @@ def _clear_market(tx, orders, controls, vintages, capital, depreciation, lr, lf)
             if equity < 0:
                 raise _Failure('credit_default', f'Bank {bank} is insolvent after settled flows.')
             dividend = _floor(min(max(ZERO, tx.earnings[bank] - bank_paid[bank]),
-                max(ZERO, equity - COVENANT * tx.risk(bank))), tx.money_quantum)
+                max(ZERO, equity - _dividend_capital_floor(controls, bank, tx.risk(bank)))), tx.money_quantum)
             owner = 'HA' if bank == 'A' else 'HB'
             tx.d[owner] += dividend
             tx.record('Bank' + bank, owner, dividend, 'bank_dividend')
@@ -1752,7 +1764,7 @@ def advance_given_orders(state, orders, controls=Controls()):
                 if shortfall:
                     tx.note('capital_shortfall',bank,'capital_covenant',shortfall)
                 dividend = _floor(min(max(ZERO,tx.earnings[bank]),
-                                      max(ZERO,tx.equity(bank)-COVENANT*tx.risk(bank))),tx.money_quantum)
+                                      max(ZERO,tx.equity(bank)-_dividend_capital_floor(controls,bank,tx.risk(bank)))),tx.money_quantum)
                 # The bank's actual owner is HA (A) or HB (B); creation of an
                 # owner deposit reduces equity dollar for dollar, not reserves.
                 owner = 'HA' if bank=='A' else 'HB'
