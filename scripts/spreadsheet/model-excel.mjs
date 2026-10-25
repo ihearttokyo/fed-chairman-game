@@ -33,7 +33,7 @@
  */
 import { createHash } from 'node:crypto';
 import { ModelCompileError, modelConstants, builtinValue, binaryValue, modelArithmetic, modelNumber, isModelNumber, rawNumber, numericKind, coerceTyped, gdType, variantType, VARIANT_TYPES, validFloatString, irFingerprint, COMPILER_VERSION } from './model-compiler.mjs';
-export const EXCEL_BACKEND_VERSION='gd-excel-4';
+export const EXCEL_BACKEND_VERSION='gd-excel-6';
 const scalar=v=>v&&v.tag==='scalar';
 const ref=v=>v&&v.tag==='ref';
 const choice=v=>v&&v.tag==='choice';
@@ -41,6 +41,10 @@ const unprovedType=v=>v&&v.tag==='unproved-type-enum';
 const ABSENT=Symbol('absent');
 const primitive=v=>isModelNumber(v)||v===null||['number','boolean','string'].includes(typeof v);
 const type=v=>unprovedType(v)?'number':scalar(v)?v.type:gdType(v);
+// Runtime category provenance is distinct from numeric int/float provenance.
+// In particular, a selected blank reference can become numeric zero in Excel;
+// re-testing the materialized phi would not recover its source NIL category.
+const uncertainCategory=v=>scalar(v)&&(v.external||v.sourceCategory!==undefined||v.type==='variant');
 // Bare backend bookkeeping constants are floats; source and input numbers are
 // always tagged before reaching arithmetic. No value-based integer inference.
 const numberType=v=>unprovedType(v)?'int':scalar(v)?v.numericType??'unknown':isModelNumber(v)?numericKind(v):typeof v==='number'?'float':'unknown';
@@ -112,6 +116,10 @@ export function emitExcel(ir,cellBindings={}){
     if(primitive(v))return Boolean(rawNumber(v));
     if(ref(v))return true;
     if(choice(v))return select(v.condition,bool(v.yes,c,n),bool(v.no,c,n),c,n);
+    if(uncertainCategory(v)){
+      const cat=category(v,c,n);
+      return emit(`IF(${code(compare('==',cat,'boolean',c,n))},${code(v)},IF(${code(compare('==',cat,'number',c,n))},${code(v)}<>0,IF(${code(compare('==',cat,'null',c,n))},FALSE,${code(v)}<>"")))`,'boolean',c,n);
+    }
     if(v.type==='boolean')return v;
     if(v.type==='number')return emit(`${code(v)}<>0`,'boolean',c,n);
     if(v.type==='string')return emit(`${code(v)}<>""`,'boolean',c,n);
@@ -132,28 +140,43 @@ export function emitExcel(ir,cellBindings={}){
     // Distinct numeric tags are observable by later Variant division/typeof.
     // Keep a guarded choice, even when the numeric values/cell codes coincide.
     if(type(yes)==='number'&&type(no)==='number'&&numberType(yes)!==numberType(no))return {tag:'choice',condition,yes,no};
+    // A heterogeneous scalar phi would erase Boolean/String/numeric category
+    // provenance (including the absent-access fallback). Keep both typed arms;
+    // generic choice lowering retains their lazy guards instead of coercing.
+    if((primitive(yes)||scalar(yes))&&(primitive(no)||scalar(no))&&type(yes)!==type(no))return {tag:'choice',condition,yes,no};
     if(optimize){
       if(yes===true&&no===false)return condition;
       if(yes===false&&no===true)return not(condition,c,n);
-      if(yes===false&&type(no)==='boolean')return and(not(condition,c,n),no,c,n);
-      if(no===false&&type(yes)==='boolean')return and(condition,yes,c,n);
-      if(scalar(yes)&&scalar(no)&&yes.code===no.code&&yes.type===no.type)return yes;
+      if(yes===false&&type(no)==='boolean'&&!uncertainCategory(no))return and(not(condition,c,n),no,c,n);
+      if(no===false&&type(yes)==='boolean'&&!uncertainCategory(yes))return and(condition,yes,c,n);
+      if(scalar(yes)&&scalar(no)&&yes.code===no.code&&yes.type===no.type&&!uncertainCategory(yes)&&!uncertainCategory(no))return yes;
       // Ordered scalar DAG identities only. Guarded values are already equal to
       // their fallback outside that guard, so a redundant outer phi is removed.
-      if(scalar(yes)&&yes.guard!==true&&no===yes.fallback&&implies(yes.guard,condition))return yes;
-      if(scalar(no)&&no.guard!==true&&yes===no.fallback&&implies(no.guard,not(condition,c,n)))return no;
+      if(scalar(yes)&&!uncertainCategory(yes)&&yes.guard!==true&&no===yes.fallback&&implies(yes.guard,condition))return yes;
+      if(scalar(no)&&!uncertainCategory(no)&&no.guard!==true&&yes===no.fallback&&implies(no.guard,not(condition,c,n)))return no;
       if(scalar(yes)&&yes.phi&&implies(condition,yes.phi.condition))yes=yes.phi.yes;
       if(scalar(no)&&no.phi&&implies(not(condition,c,n),not(no.phi.condition,c,n)))no=no.phi.no;
       if(yes===no)return yes;
     }
     if(yes===ABSENT&&no===ABSENT)return ABSENT;
     if(ref(yes)||ref(no)||choice(yes)||choice(no)||yes===ABSENT||no===ABSENT||yes===null||no===null)return {tag:'choice',condition,yes,no};
-    const t=type(yes)===type(no)?type(yes):'variant',emitted=emit(`IF(${code(condition)},${code(yes)},${code(no)})`,t,{...c,active:true},n),result=t==='number'?withNumberType(emitted,numberType(yes)):emitted;if(optimize)result.phi={condition,yes,no};return result;
+    const t=type(yes)===type(no)?type(yes):'variant',emitted=emit(`IF(${code(condition)},${code(yes)},${code(no)})`,t,{...c,active:true},n),result=t==='number'?withNumberType(emitted,numberType(yes)):{...emitted};
+    // Never attach expression-specific provenance to an interned/CSE object.
+    if(uncertainCategory(yes)||uncertainCategory(no)){result.external=true;result.sourceCategory=select(condition,category(yes,c,n),category(no,c,n),c,n);}
+    if(optimize)result.phi={condition,yes,no};return result;
   };
   const numeric=(v,c,n)=>{
     if(primitive(v)){try{return modelNumber(builtinValue('float',[rawNumber(v)]),'float');}catch{return NaN;}}
     if(choice(v)){const saved=c.active;c.active=and(saved,v.condition,c,n);const a=numeric(v.yes,c,n);c.active=and(saved,not(v.condition,c,n),c,n);const b=numeric(v.no,c,n);c.active=saved;return select(v.condition,a,b,c,n);}
     if(!scalar(v)){markUnavailable(c,n);return 0;}
+    if(uncertainCategory(v)){
+      const cat=category(v,c,n),number=compare('==',cat,'number',c,n),logical=compare('==',cat,'boolean',c,n),valid=or(number,logical,c,n);
+      // Explicit numeric casts really convert Boolean values; they must not
+      // merely retag a raw cell. Dynamic decimal String conversion is unproved
+      // by this dialect and stays unavailable rather than using Excel parsing.
+      markUnavailable(c,n,and(c.active,not(valid,c,n),c,n));
+      return withNumberType(emit(`IF(${code(logical)},IF(${code(v)},1,0),IF(${code(number)},${code(v)},NA()))`,'number',c,n),'float');
+    }
     if(v.type==='number')return withNumberType(v,'float');
     if(v.type==='boolean')return withNumberType(emit(`IF(${code(v)},1,0)`,'number',c,n),'float');
     return withNumberType(emit(`IFERROR(1*${code(v)},NA())`,'number',c,n),'float');
@@ -170,7 +193,7 @@ export function emitExcel(ir,cellBindings={}){
   };
   // Equality compares numeric int/float values across subtypes, while excluding
   // Boolean/text coercion. This internal category is NOT source-visible typeof.
-  const category=(v,c,n)=>primitive(v)?gdType(v):ref(v)?c.heap.get(v.id).kind:!v.external&&v.type!=='variant'?v.type:emit(`IF(ISLOGICAL(${code(v)}),"boolean",IF(ISNUMBER(${code(v)}),"number",IF(ISBLANK(${code(v)}),"null","string")))`,'string',c,n);
+  const category=(v,c,n)=>primitive(v)?gdType(v):ref(v)?c.heap.get(v.id).kind:v.sourceCategory??(!v.external&&v.type!=='variant'?v.type:emit(`IF(ISLOGICAL(${code(v)}),"boolean",IF(ISNUMBER(${code(v)}),"number",IF(ISBLANK(${code(v)}),"null","string")))`,'string',c,n));
   const compare=(op,a,b,c,n)=>{
     if(choice(a))return select(a.condition,compare(op,a.yes,b,c,n),compare(op,a.no,b,c,n),c,n);
     if(choice(b))return select(b.condition,compare(op,a,b.yes,c,n),compare(op,a,b.no,c,n),c,n);
@@ -184,7 +207,11 @@ export function emitExcel(ir,cellBindings={}){
     }
     if(a===ABSENT||b===ABSENT)return op==='!=';
     if(primitive(a)&&primitive(b))return binaryValue(op,a,b);
-    if(['==','!='].includes(op)&&type(a)!=='variant'&&type(b)!=='variant'&&type(a)!==type(b))return op==='!=';
+    if(['==','!='].includes(op)&&(a===null||b===null)){
+      const equal=compare('==',category(a===null?b:a,c,n),'null',c,n);
+      return op==='=='?equal:not(equal,c,n);
+    }
+    if(['==','!='].includes(op)&&!uncertainCategory(a)&&!uncertainCategory(b)&&type(a)!=='variant'&&type(b)!=='variant'&&type(a)!==type(b))return op==='!=';
     if(ref(a)||ref(b)){
       if(!ref(a)||!ref(b))return op==='!=';
       if(!['==','!='].includes(op))error('ordered container comparison unsupported',n);
@@ -196,12 +223,14 @@ export function emitExcel(ir,cellBindings={}){
     }
     if(typeof rawNumber(a)==='number'&&!Number.isFinite(rawNumber(a))||typeof rawNumber(b)==='number'&&!Number.isFinite(rawNumber(b))){
       const swapped=typeof rawNumber(a)==='number'&&!Number.isFinite(rawNumber(a)),constant=rawNumber(swapped?a:b),other=swapped?b:a;
+      if(!['==','!='].includes(op)&&uncertainCategory(other))markUnavailable(c,n,and(c.active,not(math('is_finite',[other],c,n),c,n),c,n));
       if(Number.isNaN(constant))return op==='!=';
       if(type(other)==='number')return binaryValue(op,swapped?constant:0,swapped?0:constant);
       error('nonfinite comparison requires a numeric operand',n);
     }
     const translated=({'==':'=','!=':'<>'})[op]??op;
     if(!['==','!='].includes(op)&&['string','variant'].some(t=>type(a)===t||type(b)===t))error('ordered editable text/Variant comparison has no qualified case-sensitive Unicode backend primitive',n);
+    if(!['==','!='].includes(op))for(const v of [a,b])if(uncertainCategory(v))markUnavailable(c,n,and(c.active,not(math('is_finite',[v],c,n),c,n),c,n));
     if(['==','!='].includes(op)&&(scalar(a)&&(a.external||a.type==='variant')||scalar(b)&&(b.external||b.type==='variant'))){
       const ta=category(a,c,n),tb=category(b,c,n),sameType=compare('==',ta,tb,c,n);
       const equal=and(sameType,select(compare('==',ta,'string',c,n),emit(`EXACT(${code(a)},${code(b)})`,'boolean',c,n),emit(`${code(a)}=${code(b)}`,'boolean',c,n),c,n),c,n);
@@ -298,18 +327,18 @@ export function emitExcel(ir,cellBindings={}){
       if(ref(v))return modelNumber(c.heap.get(v.id).kind==='array'?VARIANT_TYPES.TYPE_ARRAY:VARIANT_TYPES.TYPE_DICTIONARY,'int');
       if(primitive(v)){try{return modelNumber(variantType(isModelNumber(v)?v:typeof v==='number'?modelNumber(v,numberType(v)):v),'int');}catch(e){error(e.message,n);}}
       if((v.type==='number'||v.type==='variant')&&numberType(v)==='unknown')error('typeof numeric cell requires exact numericType int/float provenance',n);
-      if(v.type!=='variant'&&!v.external)return modelNumber(v.type==='number'?(numberType(v)==='int'?2:3):v.type==='boolean'?1:4,'int');
+      if(!uncertainCategory(v))return modelNumber(v.type==='number'?(numberType(v)==='int'?2:3):v.type==='boolean'?1:4,'int');
       // These closed predicates are total even for spreadsheet error cells.
       // Hoisting them changes no lazy error behavior and enables exact reuse
       // across validation paths; no economic arithmetic is hoisted.
       const total=optimize?{...c,active:true}:c;
       const valid=emit(`IFERROR(${code(v)}=${code(v)},FALSE)`,'boolean',total,n);markUnavailable(c,n,and(c.active,not(valid,c,n),c,n));
+      const cat=category(v,total,n),logical=compare('==',cat,'boolean',total,n),number=compare('==',cat,'number',total,n),nil=compare('==',cat,'null',total,n);
       if(numberType(v)==='unknown'){
-        const isNumber=emit(`ISNUMBER(${code(v)})`,'boolean',total,n);
-        const nonnumeric=withNumberType(emit(`IF(ISLOGICAL(${code(v)}),1,IF(ISBLANK(${code(v)}),0,4))`,'number',total,n),'int');
-        return {tag:'choice',condition:isNumber,yes:{tag:'unproved-type-enum'},no:nonnumeric};
+        const nonnumeric=withNumberType(emit(`IF(${code(logical)},1,IF(${code(nil)},0,4))`,'number',total,n),'int');
+        return {tag:'choice',condition:number,yes:{tag:'unproved-type-enum'},no:nonnumeric};
       }
-      return withNumberType(emit(`IF(ISLOGICAL(${code(v)}),1,IF(ISNUMBER(${code(v)}),${numberType(v)==='int'?2:3},IF(ISBLANK(${code(v)}),0,4)))`,'number',total,n),'int');
+      return withNumberType(emit(`IF(${code(logical)},1,IF(${code(number)},${numberType(v)==='int'?2:3},IF(${code(nil)},0,4)))`,'number',total,n),'int');
     }
     if(['pow','abs','min','max','minf','maxf','clamp','exp','log','tanh','lerpf','round','roundf','signf','floor'].includes(name)){
       if(c.active===false)return modelNumber(0,'float');
@@ -321,7 +350,7 @@ export function emitExcel(ir,cellBindings={}){
     }
     const kinds=args.map(numberType),resultKind=name==='int'?'int':name==='float'||['pow','exp','log','tanh','lerpf','minf','maxf','roundf','signf'].includes(name)?'float':kinds.every(k=>k==='int')?'int':kinds.every(k=>k==='float')?'float':'unknown';
     if(args.every(primitive)){try{const value=builtinValue(name,args.map(rawNumber),maxLoops);return Array.isArray(value)?array(value.map(x=>modelNumber(x,'int')),c):typeof value==='number'?modelNumber(value,resultKind):value;}catch(error){if(name==='range')throw error;return NaN;}}
-    if(name==='is_finite'){const v=args[0];return ref(v)?false:emit(`IFERROR(IF(ISLOGICAL(${code(v)}),FALSE,ISNUMBER(${code(v)})),FALSE)`,'boolean',optimize?{...c,active:true}:c,n);}
+    if(name==='is_finite'){const v=args[0];if(ref(v))return false;const total=optimize?{...c,active:true}:c,physical=emit(`IFERROR(IF(ISLOGICAL(${code(v)}),FALSE,ISNUMBER(${code(v)})),FALSE)`,'boolean',total,n);return uncertainCategory(v)?and(compare('==',category(v,total,n),'number',total,n),physical,total,n):physical;}
     if(name==='float')return numeric(args[0],c,n);
     if(name==='int'){
       const value=numeric(args[0],c,n),result=emit(`SIGN(${code(value)})*INT(ABS(${code(value)}))`,'number',c,n),valid=compare('<=',math('abs',[result],c,n),Number.MAX_SAFE_INTEGER,c,n);
@@ -551,7 +580,11 @@ export function emitExcel(ir,cellBindings={}){
     leaves.set(path||'result',{value:v,present});return leaves;
   };
   for(const [path,leaf] of flatten(result,'')){outputs[path]=leaf.value;outputPresence[path]=leaf.present;}
-  const outputFormulas={};for(const [path,value] of Object.entries(outputs))outputFormulas[path]=`=IF(${code(and(outputPresence[path],not(unavailable,ctx,fn),ctx,fn))},${code(value)},NA())`;
+  const outputFormulas={};for(const [path,value] of Object.entries(outputs)){
+    let available=and(outputPresence[path],not(unavailable,ctx,fn),ctx,fn);
+    if(uncertainCategory(value))available=and(available,not(compare('==',category(value,ctx,fn),'null',ctx,fn),ctx,fn),ctx,fn);
+    outputFormulas[path]=`=IF(${code(available)},${code(value)},NA())`;
+  }
   if(cellBindings.outputs){const occupied=new Set(Object.keys(formulas).map(normalizedCell));for(const [path,address] of Object.entries(cellBindings.outputs)){if(!Object.hasOwn(outputs,path))error(`unknown output binding ${path}`,fn);if(!localCell(address))error(`invalid local output binding ${address}`,fn);const key=normalizedCell(address);if(occupied.has(key)||reservedInputs.has(key))error(`output/helper/input collision ${address}`,fn);occupied.add(key);formulas[address]=outputFormulas[path];sourceMap.push({cell:address,node:fn.id,source:fn.source,type:type(outputs[path]),output:path});}}
   const presenceFormulas=Object.fromEntries(Object.entries(outputPresence).map(([k,v])=>[k,code(v)]));
   const numericDescriptor=v=>choice(v)?{condition:code(v.condition),yes:numericDescriptor(v.yes),no:numericDescriptor(v.no)}:type(v)==='number'?numberType(v):null;

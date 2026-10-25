@@ -35,7 +35,7 @@ function formulaAST(text) {
   }
   const tree=expression();assert.equal(i,tokens.length,`Trailing formula tokens: ${text}`);return tree;
 }
-function evaluate(program, inputs={}) {
+function evaluate(program, inputs={}, options={}) {
   const cache=new Map(Object.entries(inputs));
   const finite=n=>{if(!Number.isFinite(n))throw new CellError('#NUM!');return n;};
   const cell=name=>{if(!cache.has(name)){if(!Object.hasOwn(program.formulas,name))throw Error('Missing test binding '+name);try{cache.set(name,run(formulaAST(program.formulas[name])));}catch(e){if(!(e instanceof CellError))throw e;cache.set(name,e);}}const value=cache.get(name);if(value instanceof CellError)throw value;return value;};
@@ -43,7 +43,7 @@ function evaluate(program, inputs={}) {
     if(Object.hasOwn(n,'literal'))return n.literal;if(n.cell)return cell(n.cell);if(n.unary)return finite(n.unary==='-'?-run(n.arg):+run(n.arg));
     if(n.op){const a=run(n.left),b=run(n.right),aa=typeof a==='string'?a.toLowerCase():a,bb=typeof b==='string'?b.toLowerCase():b;switch(n.op){case '+':return finite(a+b);case '-':return finite(a-b);case '*':return finite(a*b);case '/':if(b===0)throw new CellError('#DIV/0!');return finite(a/b);case '^':return finite(a**b);case '&':return String(a)+String(b);case '=':return aa===bb;case '<>':return aa!==bb;case '<':return aa<bb;case '>':return aa>bb;case '<=':return aa<=bb;case '>=':return aa>=bb;}}
     const name=n.call,a=n.args;
-    if(name==='IF')return run(a[0])?run(a[1]):run(a[2]);
+    if(name==='IF'){const value=run(a[0])?run(a[1]):run(a[2]);return value===null&&options.coerceBlankSelections?0:value;}
     if(name==='IFERROR'){try{return run(a[0]);}catch(e){if(!(e instanceof CellError))throw e;return run(a[1]);}}
     if(name==='NA')throw new CellError('#N/A');
     if(['ISNUMBER','ISLOGICAL','ISBLANK'].includes(name)){let v;try{v=run(a[0]);}catch(e){if(e instanceof CellError)return false;throw e;}return name==='ISNUMBER'?typeof v==='number':name==='ISLOGICAL'?typeof v==='boolean':v===null;}
@@ -60,6 +60,64 @@ let checks=1;
 const emittedFunctions=new Set();
 const recordCoverage=program=>program.coverage.functions.forEach(name=>emittedFunctions.add(name));
 const test=(name,run)=>{if(process.env.FED_MODEL_TEST_FILTER&&!name.includes(process.env.FED_MODEL_TEST_FILTER))return;run();checks++;console.log('PASS '+name);};
+test('same-category optional float phis retain actual category for Boolean text and blank edits',()=>{
+  const source='func run(d: Dictionary) -> Dictionary:\n\tif not d.has("v") or typeof(d.v) != TYPE_FLOAT:\n\t\treturn {"ok":false}\n\treturn {"ok":true,"v":d.v/2,"type":typeof(d.v)}\n';
+  for(const optimize of [true,false]){const program=emitExcel(compileModel(source,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{d:{v:{$optional:true,present:{cell:"'Policy'!E6",type:'boolean'},value:{cell:"'Policy'!E7",type:'number',numericType:'float'}}}}});
+    for(const coerceBlankSelections of [true,false])for(const present of [true,false])for(const x of [5.0,0,true,false,'5','wrong','',null]){const got=evaluate(program,{"'Policy'!E6":present,"'Policy'!E7":x},{coerceBlankSelections}),valid=present&&typeof x==='number';assert.equal(got.output('ok'),valid,`float edit ${x}, present=${present}, optimize=${optimize}`);assert.equal(got.output('v'),valid?x/2:'#N/A');assert.equal(got.output('type'),valid?3:'#N/A');}
+  }
+});
+test('same-category Boolean and String defaults do not certify mutable cell categories',()=>{
+  for(const optimize of [true,false])for(const [type,defaultText,defaultValue,typeEnum,validValues]of [['boolean','false',false,'TYPE_BOOL',[true,false]],['string','"fallback"','fallback','TYPE_STRING',['text','']]]){
+    const source=`func run(d: Dictionary) -> Dictionary:\n\tvar v = d.get("v",${defaultText})\n\tif typeof(v) != ${typeEnum}:\n\t\treturn {"ok":false}\n\treturn {"ok":true,"v":v}\n`,program=emitExcel(compileModel(source,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{d:{v:{$optional:true,present:{cell:"'Policy'!E6",type:'boolean'},value:{cell:"'Policy'!E7",type}}}}});
+    for(const present of [true,false])for(const x of [true,false,5,0,'text','',null]){const valid=!present||validValues.includes(x),got=evaluate(program,{"'Policy'!E6":present,"'Policy'!E7":x},{coerceBlankSelections:true});assert.equal(got.output('ok'),valid,`${type} ${x}/${present}`);assert.equal(got.output('v'),valid?(present?x:defaultValue):'#N/A');}
+  }
+});
+test('nested same-category selections and CSE retain source categories independently of numeric values',()=>{
+  const source='func run(d: Dictionary,x: bool,y: bool) -> Array:\n\tvar a = d.get("v",0.0)\n\tvar b = d.get("v",0.0)\n\tvar c = (a if x else b) if y else 1.0\n\treturn [typeof(a),typeof(b),typeof(c),c==true,c==1.0,c==null]\n';
+  for(const optimize of [true,false]){const program=emitExcel(compileModel(source,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{d:{v:{$optional:true,present:{cell:"'Policy'!E6",type:'boolean'},value:{cell:"'Policy'!E7",type:'number',numericType:'float'}}},x:{cell:"'Policy'!E8",type:'boolean'},y:{cell:"'Policy'!E9",type:'boolean'}}});
+    for(const present of [true,false])for(const x of [true,false])for(const y of [true,false])for(const [value,tag]of [[2,3],[true,1],['1',4],[null,0]]){const actualSource=present?value:0,sourceTag=present?tag:3,selected=y?actualSource:1;const hand=[sourceTag,sourceTag,y?sourceTag:3,selected===true,selected===1,selected===null],got=evaluate(program,{"'Policy'!E6":present,"'Policy'!E7":value,"'Policy'!E8":x,"'Policy'!E9":y},{coerceBlankSelections:true});hand.forEach((v,i)=>assert.equal(got.output(`result[${i}]`),v,`nested ${value}/${present}/${x}/${y}, mode=${optimize}`));}
+    const raw=emitExcel(compileModel('func run(d: Dictionary) -> Variant:\n\treturn d.get("v",0.0)\n',{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{d:{v:{$optional:true,present:{cell:"\'Policy\'!E6",type:'boolean'},value:{cell:"\'Policy\'!E7",type:'number',numericType:'float'}}}}});assert.equal(evaluate(raw,{"\'Policy\'!E6":true,"\'Policy\'!E7":null},{coerceBlankSelections:true}).output('result'),'#N/A','source NIL must not materialize as healthy numeric zero');
+  }
+});
+test('casts and truthiness consume source-category provenance; unproved text conversion is unavailable',()=>{
+  const head='func run(d: Dictionary) -> Array:\n\tvar v = d.get("v",0.0)\n',cast=head+'\treturn [float(v),typeof(float(v)),int(v),typeof(int(v)),typeof(v)]\n',truth=head+'\treturn [not v,v and true,v or false]\n';
+  for(const optimize of [true,false]){const binding={entrypoint:'run',optimize,arguments:{d:{v:{$optional:true,present:{cell:"'Policy'!E6",type:'boolean'},value:{cell:"'Policy'!E7",type:'number',numericType:'float'}}}}},program=emitExcel(compileModel(cast,{entrypoints:['run']}),binding),truthProgram=emitExcel(compileModel(truth,{entrypoints:['run']}),binding);
+    for(const [value,hand]of [[5.5,[5.5,3,5,2,3]],[-5.5,[-5.5,3,-5,2,3]],[true,[1,3,1,2,1]],[false,[0,3,0,2,1]]]){const got=evaluate(program,{"'Policy'!E6":true,"'Policy'!E7":value});hand.forEach((v,i)=>assert.equal(got.output(`result[${i}]`),v));}
+    for(const value of ['5','invalid',null]){const got=evaluate(program,{"'Policy'!E6":true,"'Policy'!E7":value},{coerceBlankSelections:true});for(let i=0;i<5;i++)assert.equal(got.output(`result[${i}]`),'#N/A','closed cast refusal, no Excel text/blank coercion');}
+    for(const value of [5,0,true,false,'text','',null]){const got=evaluate(truthProgram,{"'Policy'!E6":true,"'Policy'!E7":value},{coerceBlankSelections:true}),b=Boolean(value);[!b,b,b].forEach((v,i)=>assert.equal(got.output(`result[${i}]`),v));}
+    const ordered=emitExcel(compileModel(head+'\treturn [v < INF,v > -INF]\n',{entrypoints:['run']}),binding);for(const value of [true,'5',null]){const got=evaluate(ordered,{"'Policy'!E6":true,"'Policy'!E7":value},{coerceBlankSelections:true});assert.equal(got.output('result[0]'),'#N/A');assert.equal(got.output('result[1]'),'#N/A');}
+  }
+});
+test('optional Boolean has/typeof composition retains categories in both modes',()=>{
+  const source='func run(d: Dictionary) -> Dictionary:\n\tif not d.has("b") or typeof(d.b) != TYPE_BOOL:\n\t\treturn {"ok":false}\n\treturn {"ok":true,"b":d.b}\n';
+  const ir=compileModel(source,{entrypoints:['run']});
+  for(const optimize of [true,false]){const program=emitExcel(ir,{entrypoint:'run',optimize,arguments:{d:{b:{$optional:true,present:{cell:"'Policy'!E6",type:'boolean'},value:{cell:"'Policy'!E7",type:'boolean'}}}}});
+    for(const present of [true,false])for(const value of [true,false,5,'s',null]){const got=evaluate(program,{"'Policy'!E6":present,"'Policy'!E7":value}),valid=present&&typeof value==='boolean';assert.equal(got.output('ok'),valid);assert.equal(got.output('b'),valid?value:'#N/A');}
+    const observed=source.replace('"b":d.b}', '"b":d.b,"type":typeof(d.b)}');
+    assert.throws(()=>emitExcel(compileModel(observed,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{d:{b:{$optional:true,present:{cell:"'Policy'!E6",type:'boolean'},value:{cell:"'Policy'!E7",type:'boolean'}}}}}),/cannot observe an unproved type enum/,'retained closed refusal: the current guard solver cannot discharge every unknown numeric edit alternative for a directly observed enum');
+  }
+});
+test('heterogeneous scalar choices retain source typeof enums without coercion in both modes',()=>{
+  for(const optimize of [true,false])for(const [yes,no,hand]of [['true','2.0',[[true,1,2],[2,3,2]]],['"text"','2.0',[["text",4,2],[2,3,2]]],['null','2.0',[["#N/A",0,2],[2,3,2]]]]){
+    const source=`func run(x: bool) -> Array:\n\tvar v = ${yes} if x else ${no}\n\treturn [v,typeof(v),typeof(typeof(v))]\n`,program=emitExcel(compileModel(source,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{x:{cell:"'Policy'!E6",type:'boolean'}}});
+    for(const [i,x]of [true,false].entries()){const got=evaluate(program,{"'Policy'!E6":x});hand[i].forEach((v,j)=>assert.equal(got.output(`result[${j}]`),v,`${yes}/${no} ${x}, optimize=${optimize}`));}
+  }
+});
+test('heterogeneous choices retain lazy numeric errors, explicit conversion and missing-value unavailability',()=>{
+  const source='func run(x: bool) -> Array:\n\tvar v = true if x else 2.0\n\treturn [float(v)+1.0,7.0 if x else log(-1.0),log(-1.0) if x else 9.0,typeof(v)]\n';
+  for(const optimize of [true,false]){const program=emitExcel(compileModel(source,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{x:{cell:"'Policy'!E6",type:'boolean'}}});
+    for(const [x,hand]of [[true,[2,7,'#N/A',1]],[false,[3,'#N/A',9,3]]]){const got=evaluate(program,{"'Policy'!E6":x});hand.forEach((v,i)=>assert.equal(got.output(`result[${i}]`),v));}
+    assert.throws(()=>emitExcel(compileModel('func run(x: bool) -> Variant:\n\tvar v = true if x else 2.0\n\treturn v+1.0\n',{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{x:{cell:"'Policy'!E6",type:'boolean'}}}),/Boolean\/non-numeric/,'a reachable invalid Boolean arithmetic arm must not be coerced');
+    const missing=emitExcel(compileModel('func run(d: Dictionary) -> int:\n\tvar unused = d.b\n\treturn 7\n',{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{d:{b:{$optional:true,present:{cell:"'Policy'!E6",type:'boolean'},value:{cell:"'Policy'!E7",type:'boolean'}}}}});
+    assert.equal(evaluate(missing,{"'Policy'!E6":true,"'Policy'!E7":false}).output('result'),7);assert.equal(evaluate(missing,{"'Policy'!E6":false,"'Policy'!E7":false}).output('result'),'#N/A');
+  }
+});
+test('deep copies preserve heterogeneous scalar choices under nested guards in both modes',()=>{
+  const source='func run(x: bool,y: bool) -> Array:\n\tvar a := [true if x else 2.0]\n\tvar b := ["text" if x else null]\n\tvar d := {"v":a if y else b}\n\tvar deep := d.duplicate(true)\n\ta[0] = "changed"\n\tb[0] = 9.0\n\treturn [deep.v[0],typeof(deep.v[0]),typeof(typeof(deep.v[0]))]\n';
+  for(const optimize of [true,false]){const program=emitExcel(compileModel(source,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{x:{cell:"'Policy'!E6",type:'boolean'},y:{cell:"'Policy'!E7",type:'boolean'}}});
+    for(const [x,y,hand]of [[true,true,[true,1,2]],[false,true,[2,3,2]],[true,false,['text',4,2]],[false,false,['#N/A',0,2]]]){const got=evaluate(program,{"'Policy'!E6":x,"'Policy'!E7":y});hand.forEach((v,i)=>assert.equal(got.output(`result[${i}]`),v));}
+  }
+});
 test('source typeof emits integer Variant enums and nested comparisons in both modes',()=>{
   const source='func run(x: Variant) -> Array:\n\treturn [typeof(x),typeof(typeof(x)),typeof(x)=="int",typeof(typeof(x))==TYPE_INT,typeof(null),typeof(true),typeof(5),typeof(5.0),typeof("x"),typeof({}),typeof([]),TYPE_NIL,TYPE_BOOL,TYPE_INT,TYPE_FLOAT,TYPE_STRING,TYPE_DICTIONARY,TYPE_ARRAY,typeof(TYPE_FLOAT)]\n';
   const ir=compileModel(source,{entrypoints:['run']});
