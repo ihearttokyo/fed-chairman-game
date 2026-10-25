@@ -5,6 +5,7 @@ const Chart = preload("res://play/history_chart.gd")
 const HelpGuide = preload("res://play/help_guide.gd")
 const ReportDialog = preload("res://play/report_dialog.gd")
 const PolicyReview = preload("res://play/policy_review.gd")
+const ForecastOverview = preload("res://play/forecast_overview.gd")
 const Music = preload("res://play/music.gd")
 const Advice = preload("res://play/policy_advice.gd")
 const RoutineFollowUp = preload("res://play/routine_follow_up.gd")
@@ -36,6 +37,7 @@ var objective_board: ObjectiveBoard
 var objective_panel: PanelContainer
 var mandate_label: Label
 var forecast_label: Label
+var comparison_series: Array = []
 var status_label: Label
 var rate: SpinBox
 var guidance: SpinBox
@@ -711,8 +713,16 @@ func _compare() -> void:
 	var text := _decision_briefing()
 	var dialog := ReportDialog.new()
 	dialog.title = "Compare policy paths"
-	var box := _vbox(dialog)
-	box.custom_minimum_size = Vector2(690, 450)
+	var tabs := TabContainer.new()
+	dialog.add_child(tabs)
+	var overview := ForecastOverview.new()
+	overview.name = "Paths"
+	tabs.add_child(overview)
+	overview.build(comparison_series, career.decisions.size() >= Career.MAX_QUARTERS, career.decisions.size() + 8 > Career.MAX_QUARTERS)
+	var box := VBoxContainer.new()
+	box.name = "Details"
+	tabs.add_child(box)
+	box.custom_minimum_size = Vector2.ZERO
 	_label(box, "Jump to section", 13, MUTED)
 	var chooser := OptionButton.new()
 	chooser.allow_reselect = true
@@ -730,8 +740,17 @@ func _compare() -> void:
 			chooser.set_item_metadata(chooser.item_count - 1, text.substr(0, offset).count("\n"))
 	chooser.disabled = chooser.item_count == 0
 	chooser.item_selected.connect(func(index): body.set_line_as_first_visible(chooser.get_item_metadata(index)))
-	_show_dialog(dialog, Vector2i(740, 540), body)
-	_link_focus([chooser, body, dialog.get_ok_button()])
+	tabs.custom_minimum_size = Vector2(690, 450)
+	if comparison_series.is_empty():
+		tabs.current_tab = 1
+	tabs.tab_changed.connect(_comparison_tab_focus.bind(tabs, overview, chooser, body, dialog.get_ok_button()))
+	_show_dialog(dialog, Vector2i(740, 540), body if comparison_series.is_empty() else tabs.get_tab_bar())
+	_comparison_tab_focus(tabs.current_tab, tabs, overview, chooser, body, dialog.get_ok_button())
+
+func _comparison_tab_focus(_index: int, tabs: TabContainer, overview: Control, chooser: Control, body: Control, close: Control) -> void:
+	var order: Array[Control] = []
+	order.assign([tabs.get_tab_bar(), chooser, body, close] if tabs.current_tab == 1 else [tabs.get_tab_bar(), overview.charts[0], overview.charts[1], close])
+	_link_focus(order)
 
 func _dispatch_details() -> void:
 	if routine.active:
@@ -898,11 +917,13 @@ func _preview() -> void:
 	forecast_label.text = "IF ADOPTED NOW\n%s · assets %+.2f · lending %s\nRunoff %s · RMP %s · RRP %s\nUnsterilized %s · uncovered funding %s\n\nCONDITIONAL Q+8\nInflation %.2f%% · unemployment %.2f%% · output gap %+.2f%%" % [rate_text, first.asset_flow_applied_pct_initial_gdp / n, Career.funding_amount_text(first.liquidity_applied_pct_initial_gdp / n), Career.funding_amount_text(first.long_securities_runoff_pct_initial_gdp / n), Career.funding_amount_text(first.reserve_maintenance_purchase_pct_initial_gdp / n), Career.funding_amount_text(first.sterilization_applied_pct_initial_gdp / n), Career.funding_amount_text(first.sterilization_unfulfilled_pct_initial_gdp / n), Career.funding_amount_text(first.uncovered_funding_pct_initial_gdp / n), last.four_quarter_inflation_pct, last.unemployment_rate_pct, last.output_gap_pct]
 
 func _decision_briefing() -> String:
+	comparison_series = []
 	var policy := _policy()
 	var selected: Dictionary = career.forecast(policy)
 	var held: Dictionary = career.forecast(career.model.benchmark_policy(career.state, career.params, "hold"))
 	if not selected.ok or not held.ok:
 		return "Comparison unavailable: " + _policy_error(selected.error if not selected.ok else held.error)
+	comparison_series = ForecastOverview.series(career.state, selected, held)
 	var first: Dictionary = selected.states[0]
 	var reference: Dictionary = held.states[0]
 	var n: float = first.decision_nominal_gdp_ratio

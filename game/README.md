@@ -350,6 +350,15 @@ future pulse.
 The same scenario and seed reproduce the path within the same engine and model.
 Saved careers retain the realized path. The 240-quarter neutral equilibrium assertion instead
 supplies explicit empty shocks; it does not promise a flat seeded career.
+Compare opens on two keyboard-inspectable conditional paths: staged policy and
+the Hold reference, plotted for inflation and unemployment from now through
+eight quarters. Details retains the complete selectable report and section
+chooser. Q0 is relative to the current meeting, not career quarter zero. PageUp
+and PageDown scroll the graphical pane; Left/Right and Home/End inspect a chart.
+Paths crossing Q240 are explicitly diagnostic, not additional playable turns.
+The graphs reuse the report’s computed paths; they add no forecast calls and
+do not depict confidence bands.
+
 Forward comparisons use the current observed shock, then no new disturbances.
 The separate formula workbook exposes realized seed-1 paths for audit and labels
 their background shocks; it is not a forecast or the game's concealed future.

@@ -117,3 +117,15 @@ stale Help-child assumptions in three tests and one stale refinancing label;
 those assertions were repaired without relaxing their numeric/semantic checks.
 Independent code/test and non-code visual reviews were completed. Source previews
 used private storage; no player save or running player app was used.
+
+
+## Conditional paths before report detail
+
+Compare now opens on staged-versus-Hold inflation and unemployment paths. Native
+Paths/Details tabs retain all report text and keyboard section navigation.
+Charts retain exact conditional values and a relative-now horizon. Explicit
+context distinguishes model paths from realized history and warns about any
+post-Q240 diagnostic points. No new forecasts, model equations or save fields
+are introduced. Tiny parent windows use vertical scrolling rather than forcing
+the nested Details minimum outside the window. Native screenshot/interaction
+qualification and clean process-exit regression are required before delivery.

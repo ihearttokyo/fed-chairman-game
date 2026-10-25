@@ -213,11 +213,17 @@ func compare_sample(game: Control, expected: Dictionary,
 		await close_reports(game)
 		return {}
 	var dialog: AcceptDialog = dialogs[0]
+	var tabs: TabContainer = dialog.find_children("*", "TabContainer", true, false)[0]
 	var bodies := dialog.find_children("*", "TextEdit", true, false)
 	if not check(bodies.size() == 1, label + ": complete native report body"):
 		await close_reports(game)
 		return {}
 	var body: TextEdit = bodies[0]
+	var unavailable := body.text.begins_with("Comparison unavailable:")
+	check(tabs.current_tab == (1 if unavailable else 0), label + ": valid paths open graphically; failed paths open on the error report")
+	check(game.comparison_series.size() == (0 if unavailable else 9), label + ": cache is empty on failure and complete on success")
+	tabs.current_tab = 1
+	await process_frame
 	check(dialog.visible and body.is_visible_in_tree(),
 		label + ": report is displayed")
 	check(body.accessibility_description == body.text,
@@ -404,7 +410,15 @@ func run() -> void:
 		if not setup_ok:
 			break
 	for game in games:
+		if is_instance_valid(game.music):
+			game.music.free()
 		game.queue_free()
+	# This focused fixture starts with a fresh private HOME, where music is on.
+	# Two headless frames alone do not allow native audio playback to drain.
+	# Keep cleanup outside every measured comparison interval, as in _quit_app.
+	var deadline := Time.get_ticks_msec() + 100
+	while Time.get_ticks_msec() < deadline:
+		await process_frame
 	await process_frame
 	await process_frame
 	print("%s: comparison count, exact parity and paired timing fixture; failures=%d"

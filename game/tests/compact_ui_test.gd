@@ -217,6 +217,12 @@ func check_small_actions(game: Control, density: float) -> void:
 	var dialog: AcceptDialog = game.get_child(game.get_child_count() - 1)
 	check_report_bounds(dialog)
 	var body: TextEdit = dialog.find_children("*", "TextEdit", true, false)[0]
+	var comparison_tabs: TabContainer = dialog.find_children("*", "TabContainer", true, false)[0]
+	comparison_tabs.get_tab_bar().grab_focus()
+	await key(dialog, KEY_RIGHT)
+	await key(dialog, KEY_TAB)
+	await key(dialog, KEY_TAB)
+	check(body.has_focus(), "small comparison keyboard tabs reach the complete Details report")
 	await key(dialog, KEY_END)
 	check(body.get_v_scroll_bar().value > 0, "small comparison keyboard End reaches its complete report tail")
 	await key(dialog, KEY_ESCAPE)

@@ -6,6 +6,10 @@ var labels := ["Inflation · 4-quarter", "Long expectations"]
 var colors := [Color("e9b76e"), Color("75d4c0")]
 var heading := "PRICES & EXPECTATIONS"
 var hovered := -1
+var inspection_context := "Historical chart."
+var inspection_help := "Exact values are available in the Data and journal button."
+var minimum_plot_size := Vector2(310, 190)
+var compact_legend := false
 
 func _make_custom_tooltip(for_text: String) -> Object:
 	return preload("res://play/wrapped_tooltip.gd").create(self, for_text)
@@ -14,7 +18,7 @@ static func tick_quarters(count: int) -> Array:
 	return [0] if count <= 1 else [0, 1] if count == 2 else [0, roundi((count - 1) / 2.0), count - 1]
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(310, 190)
+	custom_minimum_size = minimum_plot_size
 	focus_mode = Control.FOCUS_ALL
 	focus_entered.connect(func(): _inspect(history.size() - 1))
 	focus_exited.connect(func(): hovered = -1; queue_redraw())
@@ -23,7 +27,7 @@ func _ready() -> void:
 			hovered = -1
 			queue_redraw())
 	accessibility_name = heading
-	accessibility_description = "Historical chart. Exact values are available in the Data and journal button."
+	accessibility_description = inspection_context + " " + inspection_help
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and not history.is_empty():
@@ -42,7 +46,7 @@ func _inspect(quarter: int) -> void:
 		return
 	hovered = clampi(quarter, 0, history.size() - 1)
 	tooltip_text = "Q%d | %s %.2f%% | %s %.2f%%" % [hovered, labels[0], history[hovered][keys[0]], labels[1], history[hovered][keys[1]]]
-	accessibility_description = tooltip_text + ". Left and Right inspect quarters; Home and End jump to the first and latest."
+	accessibility_description = inspection_context + " " + tooltip_text + ". Left and Right inspect quarters; Home and End jump to the first and latest."
 	queue_redraw()
 
 func _draw() -> void:
@@ -54,7 +58,8 @@ func _draw() -> void:
 		draw_rect(Rect2(Vector2.ZERO, size), Color("e9b76e"), false, 2)
 	if hovered >= 0 and hovered < history.size():
 		draw_string(font, Vector2(42, 33), "Q%d · %.2f%% / %.2f%%" % [hovered, history[hovered][keys[0]], history[hovered][keys[1]]], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("e9b76e"))
-	var plot := Rect2(42, 38, size.x - 58, size.y - 108)
+	var one_line_legend := compact_legend and size.x >= 460.0
+	var plot := Rect2(42, 38, size.x - 58, size.y - (91 if one_line_legend else 108))
 	var low := INF
 	var high := -INF
 	for state in history:
@@ -74,9 +79,10 @@ func _draw() -> void:
 		if points.size() > 1:
 			draw_polyline(points, colors[series], 2.3, true)
 		draw_circle(points[-1], 3.2, colors[series])
-		var y := size.y - 22 + series * 17
-		draw_line(Vector2(0, y - 4), Vector2(14, y - 4), colors[series], 3)
-		draw_string(font, Vector2(22, y), "%s  %.2f%%" % [labels[series], history[-1][keys[series]]], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, colors[series])
+		var y := size.y - 10 if one_line_legend else size.y - 22 + series * 17
+		var x := size.x * series / 2.0 if one_line_legend else 0.0
+		draw_line(Vector2(x, y - 4), Vector2(x + 14, y - 4), colors[series], 3)
+		draw_string(font, Vector2(x + 22, y), "%s  %.2f%%" % [labels[series], history[-1][keys[series]]], HORIZONTAL_ALIGNMENT_LEFT, size.x / 2.0 - 22 if one_line_legend else -1, 12, colors[series])
 	for q in tick_quarters(history.size()):
 		draw_string(font, Vector2(plot.position.x + plot.size.x * q / maxf(1, history.size() - 1) - 8, plot.end.y + 18), "Q%d" % q, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("9bb3b9"))
 	if hovered >= 0 and hovered < history.size():
