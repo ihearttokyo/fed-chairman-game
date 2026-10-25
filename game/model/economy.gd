@@ -1148,3 +1148,277 @@ func _read_json(path: String) -> Dictionary:
 	if parsed == null:
 		return {"ok": false, "error": "invalid JSON in %s" % path}
 	return {"ok": true, "value": parsed}
+
+
+# Optional BW617 laboratory only. Existing career equations above are unchanged.
+# Zero loan interest and CB-first payment priority are authored exercise rules,
+# not statutory bank-resolution priorities or actual discount-window terms.
+static func _bw_fail(message: String) -> Dictionary:
+	return {"ok": false, "error": message}
+
+
+static func _bw_number(value: Variant) -> bool:
+	if typeof(value) == TYPE_INT:
+		return value >= -9007199254740992 and value <= 9007199254740992
+	return typeof(value) == TYPE_FLOAT and is_finite(value)
+
+
+static func _bw_schema(value: Variant, keys: Array) -> bool:
+	if typeof(value) != TYPE_DICTIONARY or value.size() != keys.size():
+		return false
+	for key in keys:
+		if not value.has(key):
+			return false
+	return true
+
+
+static func _bw_difference(larger: float, smaller: float) -> float:
+	var residual := larger - smaller
+	if residual < 0.0 or (smaller > 0.0 and residual == larger):
+		return NAN
+	var virtual := residual - larger
+	var roundoff := (larger - (residual - virtual)) + (-smaller - virtual)
+	if larger == floor(larger) and smaller == floor(smaller) and roundoff != 0.0:
+		return NAN
+	return residual
+
+
+static func _bw_net(legs: Array) -> float:
+	# Cancel original opposite legs before summing, without importing research
+	# code or erasing a small payment against large principal/cash balances.
+	var credits: Array = []
+	var debits: Array = []
+	for leg in legs:
+		if not is_finite(float(leg)):
+			return NAN
+		if leg > 0.0:
+			credits.append(float(leg))
+		elif leg < 0.0:
+			debits.append(-float(leg))
+	credits.sort()
+	debits.sort()
+	while not credits.is_empty() and not debits.is_empty():
+		var credit: float = credits.pop_back()
+		var debit: float = debits.pop_back()
+		if credit > debit:
+			var residual := _bw_difference(credit, debit)
+			if not is_finite(residual):
+				return NAN
+			credits.append(residual)
+			credits.sort()
+		elif debit > credit:
+			var residual := _bw_difference(debit, credit)
+			if not is_finite(residual):
+				return NAN
+			debits.append(residual)
+			debits.sort()
+	var residuals: Array = credits if not credits.is_empty() else debits
+	var total := 0.0
+	for amount in residuals:
+		var combined: float = total + amount
+		if not is_finite(combined):
+			return NAN
+		var virtual: float = combined - total
+		var roundoff: float = (total - (combined - virtual)) + (amount - virtual)
+		if (total > 0.0 and (combined == total or combined == amount)) or (total == floor(total) and amount == floor(amount) and roundoff != 0.0):
+			return NAN
+		total = combined
+	return -total if not debits.is_empty() else total
+
+
+static func _bw_discount_log(yield_pct: float) -> float:
+	if not is_finite(yield_pct) or yield_pct <= -200.0:
+		return NAN
+	if yield_pct < -100.0:
+		return log((200.0 + yield_pct) / 200.0)
+	var x := yield_pct / 200.0
+	if x == 0.0 and yield_pct != 0.0:
+		return NAN
+	var u := 1.0 + x
+	if u == 1.0:
+		return x
+	return log(u) * (x / (u - 1.0))
+
+
+static func _bw_validate(state: Variant) -> Dictionary:
+	var keys := ["quarter_index", "cash", "deposits", "withdrawal_queue", "central_bank_loan",
+		"loan_arrears", "annual_yield_pct", "claims", "initial_face", "matured_face"]
+	if not _bw_schema(state, keys):
+		return _bw_fail("Invalid or unknown workout-bank schema")
+	if not state.quarter_index is int or state.quarter_index < 0:
+		return _bw_fail("Workout quarter must be a nonnegative integer")
+	for key in ["cash", "deposits", "withdrawal_queue", "central_bank_loan", "loan_arrears", "initial_face", "matured_face"]:
+		if not _bw_number(state[key]) or state[key] < 0.0:
+			return _bw_fail("Invalid workout amount: %s" % key)
+	if state.withdrawal_queue > state.deposits or state.loan_arrears > state.central_bank_loan:
+		return _bw_fail("Queue/arrears must remain subsets of recorded claims")
+	if not _bw_number(state.annual_yield_pct) or state.annual_yield_pct <= -200.0 or typeof(state.claims) != TYPE_ARRAY:
+		return _bw_fail("Invalid workout yield or dated cashflows")
+	var face_legs: Array = [float(state.matured_face)]
+	for claim in state.claims:
+		if not _bw_schema(claim, ["maturity_quarter", "face"]) or not claim.maturity_quarter is int or claim.maturity_quarter <= state.quarter_index:
+			return _bw_fail("Invalid or already matured workout cashflow")
+		if not _bw_number(claim.face) or claim.face < 0.0:
+			return _bw_fail("Invalid workout face amount")
+		face_legs.append(float(claim.face))
+	var face := _bw_net(face_legs)
+	if not is_finite(face) or abs(face - state.initial_face) > 1e-12 * maxf(face, state.initial_face):
+		return _bw_fail("Workout matured and remaining face must equal initial face")
+	return {"ok": true}
+
+
+static func _bw_mark(claims: Array, quarter: int, yield_pct: float) -> Dictionary:
+	var values: Array = []
+	var log_base := _bw_discount_log(yield_pct)
+	if not is_finite(log_base):
+		return _bw_fail("Unrepresentable workout discount base")
+	for claim in claims:
+		var face := float(claim.face)
+		if face == 0.0:
+			values.append(0.0)
+			continue
+		var distance: int = claim.maturity_quarter - quarter
+		var exact_distance := distance
+		while yield_pct != 0.0 and exact_distance > 9007199254740992:
+			if (exact_distance & 1) != 0:
+				return _bw_fail("Remaining maturity cannot be converted exactly for discounting")
+			exact_distance = exact_distance >> 1
+		var exponent := -0.5 * float(distance) * log_base
+		var value := face if yield_pct == 0.0 else exp(log(face) + exponent)
+		if not is_finite(value) or value <= 0.0:
+			return _bw_fail("Positive workout claim has an unrepresentable price")
+		values.append(value)
+	var total := _bw_net(values)
+	if not is_finite(total):
+		return _bw_fail("Unrepresentable workout market value")
+	return {"ok": true, "market_value": total, "claim_values": values}
+
+
+static func bank_workout_value(state: Variant, yield_pct: Variant) -> Dictionary:
+	var valid := _bw_validate(state)
+	if not valid.ok:
+		return valid
+	if not _bw_number(yield_pct) or yield_pct <= -200.0:
+		return _bw_fail("Invalid workout valuation quote")
+	return _bw_mark(state.claims, state.quarter_index, float(yield_pct))
+
+
+static func bank_workout_step(prior: Variant, order: Variant) -> Dictionary:
+	var valid := _bw_validate(prior)
+	if not valid.ok:
+		return valid
+	var keys := ["annual_yield_pct", "new_withdrawals", "liquidity_offer", "haircut_pct", "pledgeable_share"]
+	if not _bw_schema(order, keys):
+		return _bw_fail("Invalid or unknown workout order schema")
+	for key in keys:
+		if not _bw_number(order[key]):
+			return _bw_fail("Invalid numeric workout order: %s" % key)
+	var requested := _bw_net([float(prior.withdrawal_queue), float(order.new_withdrawals)])
+	if not is_finite(requested) or order.new_withdrawals < 0.0 or requested > prior.deposits:
+		return _bw_fail("New withdrawals exceed unrequested deposits or are unrepresentable")
+	if order.annual_yield_pct <= -200.0 or order.liquidity_offer < 0.0 or order.haircut_pct < 0.0 or order.haircut_pct > 100.0 or order.pledgeable_share < 0.0 or order.pledgeable_share > 1.0:
+		return _bw_fail("Workout order outside its physical domain")
+	if prior.quarter_index == 9223372036854775807:
+		return _bw_fail("Workout quarter cannot advance representably")
+	var next_quarter: int = prior.quarter_index + 1
+	var old_mark := _bw_mark(prior.claims, prior.quarter_index, prior.annual_yield_pct)
+	if not old_mark.ok:
+		return old_mark
+	var remaining: Array = []
+	var due_faces: Array = []
+	for claim in prior.claims:
+		if claim.maturity_quarter == next_quarter:
+			due_faces.append(float(claim.face))
+		else:
+			remaining.append(claim.duplicate(true))
+	var new_mark := _bw_mark(remaining, next_quarter, order.annual_yield_pct)
+	if not new_mark.ok:
+		return new_mark
+	var due := _bw_net(due_faces)
+	var cash_legs: Array = [float(prior.cash)]
+	cash_legs.append_array(due_faces)
+	var available_cash := _bw_net(cash_legs)
+	var old_debt := float(prior.central_bank_loan)
+	var reference_legs: Array = [old_debt, float(prior.withdrawal_queue), float(order.new_withdrawals)]
+	for amount in cash_legs:
+		reference_legs.append(-amount)
+	var reference := _bw_net(reference_legs)
+	var repayment := minf(available_cash, old_debt)
+	var cash_remaining := _bw_difference(available_cash, repayment)
+	var old_remaining := _bw_difference(old_debt, repayment)
+	var capacity: float = new_mark.market_value * (1.0 - order.haircut_pct / 100.0) * order.pledgeable_share
+	if new_mark.market_value > 0.0 and order.haircut_pct < 100.0 and order.pledgeable_share > 0.0 and capacity == 0.0:
+		return _bw_fail("Workout collateral capacity underflow")
+	var permitted := minf(order.liquidity_offer, capacity)
+	var renewal := minf(old_remaining, permitted)
+	var arrears := _bw_difference(old_remaining, renewal)
+	var cash_shortfall := _bw_net([requested, -cash_remaining])
+	if not is_finite(cash_shortfall):
+		return _bw_fail("Unrepresentable remaining withdrawal need")
+	var needed_cash := maxf(0.0, cash_shortfall)
+	var fresh := 0.0
+	if permitted > old_remaining and needed_cash > 0.0:
+		var required_total := _bw_net([old_remaining, needed_cash])
+		if is_finite(required_total) and required_total <= permitted:
+			fresh = needed_cash
+		else:
+			var headroom := _bw_difference(permitted, old_remaining)
+			if not is_finite(headroom):
+				return _bw_fail("Unrepresentable fresh-credit headroom")
+			fresh = minf(headroom, needed_cash)
+	var withdrawal_cash := _bw_net([cash_remaining, fresh])
+	var paid := minf(requested, withdrawal_cash)
+	var cash := _bw_difference(withdrawal_cash, paid)
+	var deposits := _bw_difference(float(prior.deposits), paid)
+	var queue := _bw_difference(requested, paid)
+	var principal := _bw_net([old_remaining, fresh])
+	var matured := _bw_net([float(prior.matured_face), due])
+	var net_cb := _bw_net([fresh, -repayment])
+	for amount in [due, available_cash, requested, repayment, cash_remaining, old_remaining, capacity, permitted, renewal, arrears, needed_cash, fresh, withdrawal_cash, paid, cash, deposits, queue, principal, matured, net_cb]:
+		if not is_finite(amount):
+			return _bw_fail("Unrepresentable workout settlement; no claim was discarded")
+	var next := {"quarter_index": next_quarter, "cash": cash, "deposits": deposits,
+		"withdrawal_queue": queue, "central_bank_loan": principal, "loan_arrears": arrears,
+		"annual_yield_pct": float(order.annual_yield_pct), "claims": remaining,
+		"initial_face": prior.initial_face, "matured_face": matured}
+	valid = _bw_validate(next)
+	if not valid.ok:
+		return valid
+	# Queue and arrears are subsets of these liabilities, never additional debt.
+	var old_equity_legs: Array = [float(prior.cash), -float(prior.deposits), -old_debt]
+	old_equity_legs.append_array(old_mark.claim_values)
+	var new_equity_legs: Array = [cash, -deposits, -principal]
+	new_equity_legs.append_array(new_mark.claim_values)
+	var change_legs: Array = new_equity_legs.duplicate()
+	for amount in old_equity_legs:
+		change_legs.append(-amount)
+	var expected_legs: Array = due_faces.duplicate()
+	expected_legs.append_array(new_mark.claim_values)
+	for amount in old_mark.claim_values:
+		expected_legs.append(-amount)
+	var before := _bw_net(old_equity_legs)
+	var after := _bw_net(new_equity_legs)
+	var change := _bw_net(change_legs)
+	var expected := _bw_net(expected_legs)
+	for amount in [before, after, change, expected]:
+		if not is_finite(amount):
+			return _bw_fail("Unrepresentable workout equity bridge")
+	var scale := 0.0
+	for amount in old_equity_legs + new_equity_legs:
+		scale = maxf(scale, abs(amount))
+	if abs(change - expected) > 1e-10 + 1e-12 * scale:
+		return _bw_fail("Workout equity bridge does not reconcile")
+	var distress := queue > 0.0 or arrears > 0.0
+	var result := {"ok": true, "state": next, "repayment": repayment, "renewal": renewal,
+		"new_cash": fresh, "withdrawals_paid": paid, "remaining_queue": queue, "loan_arrears": arrears,
+		"capacity": capacity, "permitted_exposure": permitted, "old_exposure_remaining": old_remaining,
+		"net_cb_flow": net_cb, "matured_principal": due, "old_market_value": old_mark.market_value,
+		"remaining_market_value": new_mark.market_value, "equity_before": before, "equity_after": after,
+		"equity_change": change, "expected_equity_change": expected, "solvent": after >= 0.0,
+		"payment_distress": distress, "workout": distress or after < 0.0,
+		"prequote_reference_legs": reference_legs, "prequote_reference_representable": is_finite(reference)}
+	# Do not reject an otherwise representable distress state just because a
+	# compound evaluation reference cannot fit one float. Keep its original legs.
+	if is_finite(reference):
+		result.prequote_reference_need = maxf(0.0, reference)
+	return result
