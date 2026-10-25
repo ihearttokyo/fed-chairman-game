@@ -94,7 +94,7 @@ class ScopeTests(unittest.TestCase):
             'Install checksum-pinned Godot 4.7.2':'30058b2ab572cfaafd9782decd4e44b5bcaba55ce15e30e014771f51e98c8d32',
             'Focused model channels':'9269943b20c148a93d91f42c16911f1cc9dcab4e53036146584f84e88c053f32',
             'Model and packaging safety tests':'c4cb3a32a815e254781812769899e709312810299081cecce3620ba0e14e9aee',
-            'Import and test playable Godot game':'7c7e06d004b7c646f059db3fa776e90cba3621a9e36327dded5f48477bbc1398',
+            'Import and test playable Godot game':'7ca224c0a097a595db53114033a908a1e31b5e2e0a9ffaf42ba3b08c74ad2d30',
             'Curated career method and pilot qualification':'09cc2b2a362ad6a93884fab71e6cd89664c2f569744e0f90f0644aeb9a9930d8',
             'Current-source 1100-career diagnostic':'681d7bf6f3b217470ba9a3d5778c5d41ed69a16db645f646ee30d7ecbcddbb60',
         }
@@ -106,7 +106,7 @@ class ScopeTests(unittest.TestCase):
             body='\n'.join(lines[i+1:]) if lines[i]=='        run: |' else lines[i][len('        run: '):]
             self.assertEqual(hashlib.sha256(body.encode()).hexdigest(),hashes[name],name)
         for marker in ['python3 -B -m unittest discover -s scripts/research/funded_production/tests -v',
-                       'PASS: 187 release-safe checks','PASS: bundled guidance continuation and comparison',
+                       'PASS: 210 release-safe checks','PASS: bundled guidance continuation and comparison',
                        'PASS: bundled mandate assessment and realized feedback','scripts/test-curated-careers.sh pilot',
                        'scripts/test-curated-careers.sh full']:
             self.assertIn(marker,workflow)
