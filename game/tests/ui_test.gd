@@ -76,7 +76,12 @@ func check_report_body(dialog: AcceptDialog, markers: Array[String]) -> void:
 	var body: TextEdit = bodies[0]
 	check(body.focus_mode == Control.FOCUS_ALL and body.selecting_enabled, "report body supports keyboard focus and native selection")
 	check(not body.editable and body.wrap_mode == TextEdit.LINE_WRAPPING_BOUNDARY and not body.tab_input_mode, "report is read-only, wrapped and permits keyboard focus to leave")
-	check(body.accessibility_name == dialog.title and body.custom_minimum_size == Vector2(690, 450), "report retains its accessible title and existing dimensions")
+	var is_help_guide := dialog.title == "How to play" and dialog.get_child(0) is VBoxContainer
+	if is_help_guide:
+		check(body.accessibility_name == "How to play" and body.custom_minimum_size == Vector2.ZERO, "topic help body retains its accessible title and fits its owning guide instead of imposing a second report minimum")
+		check(dialog.get_child(0).get_global_rect().grow(1).encloses(body.get_global_rect()), "topic help body stays inside the viewport-fitted guide container")
+	else:
+		check(body.accessibility_name == dialog.title and body.custom_minimum_size == Vector2(690, 450), "report retains its accessible title and existing dimensions")
 	check(body.accessibility_description == body.text, "native assistive description retains the entire report including wrapped paragraphs")
 	for marker in markers:
 		check(body.text.contains(marker), "complete report retains " + marker)
@@ -107,6 +112,40 @@ func check_report_body(dialog: AcceptDialog, markers: Array[String]) -> void:
 	dialog.push_input(tab)
 	await process_frame
 	check(not body.has_focus(), "Tab leaves the report body rather than trapping keyboard navigation")
+func check_help_topics(dialog: AcceptDialog) -> void:
+	var guide = dialog.get_child(0)
+	check(guide is VBoxContainer and guide.body is TextEdit and guide.topics is OptionButton, "help retains a native topic chooser and selectable current-topic body")
+	var reference: String = guide.reference_text
+	check(not reference.is_empty() and guide.pages.size() == 6 and guide.topics.item_count == 6, "six help topics retain the complete original reference string")
+	var displayed: Dictionary = {}
+	for paragraph in reference.split("\n\n", false):
+		displayed[paragraph] = 0
+	var assigned: Array[String] = []
+	for index in guide.topics.item_count:
+		guide.topics.select(index)
+		guide.topics.item_selected.emit(index)
+		await process_frame
+		await process_frame
+		check(guide.topics.selected == index and guide.body.accessibility_name == "How to play" and guide.body.accessibility_description == guide.body.text, "actual topic selection refreshes the readable accessible page")
+		check(not guide.body.editable and guide.body.selecting_enabled and guide.body.custom_minimum_size == Vector2.ZERO, "each selected help topic remains read-only, selectable and viewport-fitted")
+		for block in guide.pages[index].blocks:
+			assigned.append(block)
+			check(guide.body.text.contains(block), "actual topic body renders its complete assigned original paragraph")
+		for paragraph in guide.body.text.split("\n\n", false):
+			if displayed.has(paragraph):
+				displayed[paragraph] += 1
+		guide.body.select_all()
+		check(guide.body.get_selected_text() == guide.body.text, "each help topic supports native selection through its complete tail")
+		guide.body.deselect()
+	for paragraph in reference.split("\n\n", false):
+		check(assigned.count(paragraph) == 1 and displayed[paragraph] == 1, "every original reference paragraph is assigned once and reachable exactly once through actual topic selection")
+	guide.topics.select(0)
+	guide.topics.item_selected.emit(0)
+	await process_frame
+	await process_frame
+	check(guide.topics.get_item_text(0).to_lower().contains("quarter") and guide.body.text.contains("1. Read the dispatch") and guide.body.text.contains("5. Inspect applied amounts"), "default Start quarter topic preserves the original five-step decision loop")
+	check(not guide.body.text.contains("Keyboard controls") and guide.body.text.length() < reference.length(), "default help shows the short starting task rather than every keyboard and reference paragraph")
+
 func check_text_reports(game: Control) -> void:
 	game._start_career("mixed_crises", 417)
 	var preserved: PackedByteArray = game.career.encode()
@@ -125,17 +164,18 @@ func check_text_reports(game: Control) -> void:
 		dialog = game.get_child(game.get_child_count() - 1)
 		await check_report_body(dialog, [])
 		if method == "_help":
-			var help_text: TextEdit = dialog.get_child(0)
-			check(help_text.text.contains("R staff estimate") and help_text.text.contains("initial neutral-rate prior") and help_text.text.contains("two-decimal published") and help_text.text.contains("true neutral rate") and help_text.text.contains("short inflation expectations"), "help distinguishes the published-data staff shortcut from the hidden-input diagnostic benchmark")
-			check(help_text.text.contains(BENCHMARK_FINANCING_LIMIT), "help discloses the benchmark financing limitation")
-			check(help_text.text.contains("inflation reacts with a lag"), "help retains the inflation transmission lag explanation")
-			check(help_text.text.contains("Routine follow-up") and help_text.text.contains("three staff rate/guidance updates") and help_text.text.contains("four outcomes"), "help explains the optional staged decision and bounded benchmark follow-ups")
-			check(help_text.text.contains("Off by default and not saved") and help_text.text.contains("Stop or Escape") and help_text.text.contains("editing, reports, New and Load cancel"), "help explains transient follow-up permission and cancellation")
-			check(help_text.text.contains("including Tab and arrows") and help_text.text.contains("Save, Quit and the staff estimate action"), "help includes navigation keys and command cancellation of follow-up")
-			check(help_text.text.contains("A firm promise is easier to understand") and help_text.text.contains("missing it reduces follow-through credit"), "help preserves the firm-pledge understandability and delivery tradeoff")
-			check(help_text.text.contains("target-range midpoint") and help_text.text.contains("not the market's effective rate") and help_text.text.contains("a real chair acts with the committee"), "help distinguishes the target midpoint from the effective market rate and sole-chair authority")
-			check(help_text.text.contains("The preview holds a rate") and help_text.text.contains("does not predict adaptive follow-up"), "help distinguishes the conditional preview from automatic benchmark updates")
-			check(help_text.text.contains("2% objective and portfolio reference observations are source-backed") and help_text.text.contains("behavioral coefficients, starting conditions and shock incidence are design assumptions") and not help_text.text.contains("Only the 2% objective"), "help distinguishes source-backed portfolio observations from assumed behavior")
+			var help_text: String = dialog.get_child(0).reference_text
+			check(help_text.contains("R staff estimate") and help_text.contains("initial neutral-rate prior") and help_text.contains("two-decimal published") and help_text.contains("true neutral rate") and help_text.contains("short inflation expectations"), "help distinguishes the published-data staff shortcut from the hidden-input diagnostic benchmark")
+			check(help_text.contains(BENCHMARK_FINANCING_LIMIT), "help discloses the benchmark financing limitation")
+			check(help_text.contains("inflation reacts with a lag"), "help retains the inflation transmission lag explanation")
+			check(help_text.contains("Routine follow-up") and help_text.contains("three staff rate/guidance updates") and help_text.contains("four outcomes"), "help explains the optional staged decision and bounded benchmark follow-ups")
+			check(help_text.contains("Off by default and not saved") and help_text.contains("Stop or Escape") and help_text.contains("editing, reports, New and Load cancel"), "help explains transient follow-up permission and cancellation")
+			check(help_text.contains("including Tab and arrows") and help_text.contains("Save, Quit and the staff estimate action"), "help includes navigation keys and command cancellation of follow-up")
+			check(help_text.contains("A firm promise is easier to understand") and help_text.contains("missing it reduces follow-through credit"), "help preserves the firm-pledge understandability and delivery tradeoff")
+			check(help_text.contains("target-range midpoint") and help_text.contains("not the market's effective rate") and help_text.contains("a real chair acts with the committee"), "help distinguishes the target midpoint from the effective market rate and sole-chair authority")
+			check(help_text.contains("The preview holds a rate") and help_text.contains("does not predict adaptive follow-up"), "help distinguishes the conditional preview from automatic benchmark updates")
+			check(help_text.contains("2% objective and portfolio reference observations are source-backed") and help_text.contains("behavioral coefficients, starting conditions and shock incidence are design assumptions") and not help_text.contains("Only the 2% objective"), "help distinguishes source-backed portfolio observations from assumed behavior")
+			await check_help_topics(dialog)
 		dialog.get_ok_button().pressed.emit()
 		check(dialog.visible and dialog.is_queued_for_deletion(), "text reports preserve deferred accessibility closing")
 		await process_frame
@@ -2095,16 +2135,17 @@ func run() -> void:
 	game._help()
 	await process_frame
 	var help: AcceptDialog = game.get_child(game.get_child_count() - 1)
-	var help_text: TextEdit = help.get_child(0)
-	check(help_text.text.contains("Every career includes seeded background disturbances") and help_text.text.contains("baseline starts at equilibrium") and help_text.text.contains("no scheduled scenario events"), "help explains the seeded baseline and scheduled-event distinction")
-	check(help_text.text.contains("same scenario and seed") and help_text.text.contains("same engine and model"), "help qualifies every input needed to reproduce the path")
-	check(help_text.text.contains("1bp increments") and help_text.text.contains("U.S. counterfactual") and help_text.text.contains("diminishing benefits") and help_text.text.contains("Conditional implied quotes"), "help explains quote precision, negative-rate transmission and nominal promise accountability")
-	check(help_text.text.contains("Varied policy career and Recurring crises draw from 50 curated exogenous events") and not help_text.text.contains("precomputes50"), "help describes the event pool, not fifty events in every career")
-	check(help_text.text.contains("Deferred demand") and help_text.text.contains("not all lost consumption") and help_text.text.contains("no guaranteed return to 2%"), "help distinguishes catch-up spending from forced recovery")
-	check(help_text.text.contains("structural reference") and help_text.text.to_lower().contains("short expectations") and help_text.text.contains("prior long"), "help explains separate structural and expectation restoration channels")
-	check(not help_text.text.contains(Engine.get_license_text()), "help omits only the duplicated engine license, retained in Credits")
+	var help_text: String = help.get_child(0).reference_text
+	check(help_text.contains("Every career includes seeded background disturbances") and help_text.contains("baseline starts at equilibrium") and help_text.contains("no scheduled scenario events"), "help explains the seeded baseline and scheduled-event distinction")
+	check(help_text.contains("same scenario and seed") and help_text.contains("same engine and model"), "help qualifies every input needed to reproduce the path")
+	check(help_text.contains("1bp increments") and help_text.contains("U.S. counterfactual") and help_text.contains("diminishing benefits") and help_text.contains("Conditional implied quotes"), "help explains quote precision, negative-rate transmission and nominal promise accountability")
+	check(help_text.contains("Varied policy career and Recurring crises draw from 50 curated exogenous events") and not help_text.contains("precomputes50"), "help describes the event pool, not fifty events in every career")
+	check(help_text.contains("Deferred demand") and help_text.contains("not all lost consumption") and help_text.contains("no guaranteed return to 2%"), "help distinguishes catch-up spending from forced recovery")
+	check(help_text.contains("structural reference") and help_text.to_lower().contains("short expectations") and help_text.contains("prior long"), "help explains separate structural and expectation restoration channels")
+	check(not help_text.contains(Engine.get_license_text()), "help omits only the duplicated engine license, retained in Credits")
 	check(game.dispatch_details_text.contains("Deferred demand") and game.dispatch_details_text.contains("% potential"), "dispatch details preserve the known deferred-demand stock with its unit")
 	check(game.career.encode() == before_cancel and game._policy() == staged_before_cancel, "reading seeded help leaves the active career and staged policy unchanged")
+	await check_help_topics(help)
 	help.get_ok_button().pressed.emit()
 	await process_frame
 	game._credits()

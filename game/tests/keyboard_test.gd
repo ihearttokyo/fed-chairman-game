@@ -407,13 +407,39 @@ func run() -> void:
 	await process_frame
 	await process_frame
 	for shortcut in [KEY_F1, KEY_J]:
+		var report_invoker: Control = root.gui_get_focus_owner()
+		var report_parent_size := root.size
+		var report_canvas_size := root.content_scale_size
+		if shortcut == KEY_F1 and DisplayServer.get_name() == "headless":
+			# The earlier cold-start test restores the script root's default 64×64.
+			# A fitted help guide needs actual text lines to exercise Page Down.
+			root.size = Vector2i(1440, 960)
+			root.content_scale_size = Vector2i(1440, 960)
+			await process_frame
+			await process_frame
 		await key(root, shortcut, shortcut == KEY_J)
 		report = game.get_child(game.get_child_count() - 1) as AcceptDialog
 		check(report is AcceptDialog and report.gui_get_focus_owner() is TextEdit, "help and history accelerators immediately focus readable native content")
 		if shortcut == KEY_F1:
-			check(report.get_child(0).text.contains("Keyboard controls") and report.get_child(0).text.contains("modified Return"), "in-game guide exposes every accelerator and ordinary-key alternative")
+			var guide = report.get_child(0)
+			check(guide.topics.selected == 0 and report.gui_get_focus_owner() == guide.body and not guide.body.text.contains("Keyboard controls"), "F1 initially focuses the short Start quarter topic, not the full reference")
+			await key(report, KEY_TAB, false, true)
+			check(report.gui_get_focus_owner() == guide.topics, "Shift-Tab reaches the native help topic chooser from its initially focused body")
+			await key(report, KEY_ENTER)
+			check(is_instance_valid(report) and guide.topics.get_popup().visible, "plain Return opens the help chooser without dismissing its report")
+			await key(guide.topics.get_popup(), KEY_DOWN)
+			await key(guide.topics.get_popup(), KEY_ESCAPE)
+			check(is_instance_valid(report) and not guide.topics.get_popup().visible and guide.topics.selected == 0, "chooser arrows and Escape cancel topic navigation without dismissing Help or changing its page")
+			await key(report, KEY_ENTER)
+			for topic_step in range(5):
+				await key(guide.topics.get_popup(), KEY_DOWN)
+			await key(guide.topics.get_popup(), KEY_ENTER)
+			check(is_instance_valid(report) and guide.topics.selected == 5 and guide.body.text.contains("Keyboard controls") and guide.body.text.contains("modified Return"), "native chooser Return and navigation select Controls/scoring and expose every accelerator: " + str([guide.topics.selected, guide.body.text.left(80), report.gui_get_focus_owner()]))
+			if report.gui_get_focus_owner() == guide.topics:
+				await key(report, KEY_TAB)
+			check(report.gui_get_focus_owner() == guide.body, "selected Controls/scoring topic exposes its native body in the keyboard cycle")
 			await key(report, KEY_PAGEDOWN)
-			check(report.get_child(0).get_v_scroll_bar().value > 0, "focused report Page Down scrolls actual long content: " + str([report.get_child(0).get_v_scroll_bar().value, report.get_child(0).get_v_scroll_bar().max_value, report.get_child(0).get_v_scroll_bar().page, report.get_child(0).get_caret_line(), report.gui_get_focus_owner()]))
+			check(guide.body.get_v_scroll_bar().value > 0, "focused help Controls/scoring Page Down scrolls its complete current-topic content: " + str([guide.body.get_v_scroll_bar().value, guide.body.get_v_scroll_bar().max_value, guide.body.get_v_scroll_bar().page, guide.body.get_caret_line(), guide.body.size, report.gui_get_focus_owner()]))
 		else:
 			check_journal(report, game.career.history)
 			await key(report, KEY_TAB)
@@ -425,6 +451,13 @@ func run() -> void:
 			check_review_interval(report, 1, 1)
 			check(report.gui_get_focus_owner() == report.get_child(0), "keyboard journal transition focuses the graphical review body")
 		await key(report, KEY_ESCAPE)
+		if shortcut == KEY_F1:
+			check(not is_instance_valid(report) and root.gui_get_focus_owner() == report_invoker, "Help Escape dismisses the report and restores the exact cockpit invoking control")
+			if DisplayServer.get_name() == "headless":
+				root.size = report_parent_size
+				root.content_scale_size = report_canvas_size
+				await process_frame
+				await process_frame
 		check(game.career.encode() == adopted, "keyboard help, history and realized review remain pure")
 	button(game, "Credits").grab_focus()
 	await key(root, KEY_SPACE)
