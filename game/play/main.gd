@@ -9,6 +9,7 @@ const Music = preload("res://play/music.gd")
 const Advice = preload("res://play/policy_advice.gd")
 const RoutineFollowUp = preload("res://play/routine_follow_up.gd")
 const TransitionExplanation = preload("res://play/transition_explanation.gd")
+const ObjectiveBoard = preload("res://play/objective_board.gd")
 const OutcomeDrivers = preload("res://play/outcome_drivers.gd")
 const DispatchBrief = preload("res://play/dispatch_brief.gd")
 const PolicyCommittee = preload("res://play/policy_committee.gd")
@@ -31,6 +32,8 @@ var dispatch_details_button: Button
 var dispatch_details_text := ""
 var consequence: Label
 var outcome_drivers: OutcomeDrivers
+var objective_board: ObjectiveBoard
+var objective_panel: PanelContainer
 var mandate_label: Label
 var forecast_label: Label
 var status_label: Label
@@ -202,6 +205,11 @@ func _ready() -> void:
 	briefing = _label(brief_box, "", 14)
 	briefing.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	briefing.mouse_filter = Control.MOUSE_FILTER_PASS
+	objective_panel = _panel(left)
+	objective_board = ObjectiveBoard.new()
+	objective_panel.add_child(objective_board)
+	objective_board.details_requested.connect(_objective_details)
+	keyboard_controls.append(objective_board.details_button)
 	outcome_drivers = OutcomeDrivers.new()
 	left.add_child(outcome_drivers)
 	outcome_drivers.details_requested.connect(_driver_details)
@@ -497,7 +505,7 @@ func _build_city(parent: Node) -> void:
 	case_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	context.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var container := TextureRect.new()
-	container.custom_minimum_size = Vector2(0, 215)
+	container.custom_minimum_size = Vector2(0, 140)
 	container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	container.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	container.stretch_mode = TextureRect.STRETCH_SCALE
@@ -763,7 +771,10 @@ func _refresh(reset_controls := false, update_preview := true) -> void:
 	case_detail.text = "Holdings %.1f%% · Term premium %+.3f pp · Loans %s%% · Reserves %s%% · RRP %s%%\nStocks: %% of current annual GDP" % [s.asset_stock_pct_initial_gdp / n, s.term_premium_pct, Career.funding_amount_text(s.outstanding_liquidity_pct_initial_gdp / n), Career.funding_amount_text(s.reserves_pct_initial_gdp / n), Career.funding_amount_text(s.reverse_repo_pct_initial_gdp / n)]
 	quarter_label.text = "CAREER COMPLETE · %d MEETINGS" % Career.MAX_QUARTERS if complete else "YEAR %02d / Q%d   ·   MEETING %d" % [int(s.quarter_index / 4) + 1, int(s.quarter_index) % 4 + 1, s.quarter_index + 1]
 	var assessment := career.mandate_assessment()
-	mandate_label.text = _objective_summary(assessment)
+	var recovery_mode := career.scenario_id == "stagflation_bank_run"
+	objective_board.update_assessment(assessment, career.recovery_assessment() if recovery_mode else {}, recovery_mode)
+	objective_panel.visible = objective_board.snapshot.ok and objective_board.snapshot.eligible
+	mandate_label.text = objective_board.snapshot.title
 	mandate_label.tooltip_text = "Recovery v1 is a separate fictional stabilization challenge. Open Policy review → Challenge rules for scoring." if career.scenario_id == "stagflation_bank_run" else "Fictional challenge, assessed at Q240. Open Policy review → Challenge rules for thresholds and scoring."
 	mandate_label.accessibility_description = _mandate_rules_text()
 	if complete and assessment.eligible:
@@ -1437,6 +1448,21 @@ static func _mandate_value_text(value: float, limit: float) -> String:
 	if value < limit and float(shown) >= limit:
 		return "<%.3f" % limit
 	return shown
+
+func _objective_details() -> void:
+	var assessment: Dictionary = career.mandate_assessment()
+	var text := _objective_summary(assessment)
+	if career.decisions.is_empty():
+		text += "\n\nNo completed quarters."
+	elif career.scenario_id == "stagflation_bank_run":
+		var recovery: Dictionary = career.recovery_assessment()
+		text += "\n\nObserved window: %d/12 quarters.\nPrice distance %.6f pp; employment shortfall %.6f pp." % [recovery.window_quarters, recovery.inflation_miss, recovery.employment_shortfall]
+	else:
+		text += "\n\nCareer averages: prices %.6f pp; employment %.6f pp.\nLatest %d quarters: prices %.6f pp; employment %.6f pp." % [assessment.inflation_miss, assessment.employment_shortfall, mini(career.decisions.size(), Career.MANDATE_RECENT_QUARTERS), assessment.recent_inflation_miss, assessment.recent_employment_shortfall]
+	if not career.decisions.is_empty():
+		text += "\nFunding totals: applied %.6f; supported need %.6f (%% initial GDP, including refinancing)." % [assessment.funding_applied, assessment.funding_coverable]
+	text += "\n\n" + _mandate_rules_text()
+	_text_dialog("Challenge progress", text)
 
 func _objective_summary(assessment: Dictionary) -> String:
 	if career.scenario_id != "stagflation_bank_run":

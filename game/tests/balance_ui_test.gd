@@ -67,7 +67,7 @@ func check_small_funding_readouts(game: Control) -> void:
 		var before: PackedByteArray = game.career.encode()
 		game._preview()
 		check(game.dispatch_details_text.contains("Funding need %s (new)" % pair[1]), "dispatch details preserve small positive funding rather than round it to zero: " + str(pair[0]))
-		check(game.briefing.text.contains("Funding (%% current GDP): new %s · true refi 0.00 · eligible need %s · secured value 0.0040" % [pair[1], pair[1]]), "compact funding essentials preserve the actual small amount, eligibility and adjusted collateral in current GDP: " + str(pair[0]))
+		check(game.briefing.text.contains("Funding (%% current GDP): new %s · refi need 0.00 · eligible need %s · secured value 0.0040" % [pair[1], pair[1]]), "compact funding essentials preserve the actual small amount, eligibility and adjusted collateral in current GDP: " + str(pair[0]))
 		check(game.forecast_label.text.contains("uncovered funding %s" % pair[1]), "preview distinguishes small uncovered funding from zero: " + str(pair[0]))
 		check(game._decision_briefing().contains("Uncovered funding %s vs %s" % [pair[1], pair[1]]), "comparison preserves small funding on both paths: " + str(pair[0]))
 		check(game.career.encode() == before, "small-funding displays and comparisons remain read-only")
@@ -161,10 +161,17 @@ func run() -> void:
 	var saved: PackedByteArray = game.career.encode()
 	game._help()
 	var dialog: AcceptDialog = game.get_child(game.get_child_count() - 1)
-	var help: String = dialog.get_child(0).text.to_lower()
+	var guide = dialog.get_child(0)
+	guide.topics.select(3)
+	guide.topics.item_selected.emit(3)
+	await process_frame
+	await process_frame
+	var help: String = guide.body.text.to_lower()
+	check(guide.topics.selected == 3 and guide.body.accessibility_description == guide.body.text, "actual Assets/reserves/liquidity help topic exposes its current complete native assistive page")
 	for concept in ["current annual gdp", "reinvestment", "matur", "reverse repo", "overnight", "collateral", "steriliz"]:
 		check(help.contains(concept), "concise guide explains " + concept)
-	check(not help.contains("stock capacity") and not help.contains("quarterly capacity"), "guide no longer describes invented asset or lending caps")
+	var complete_help: String = guide.reference_text.to_lower()
+	check(not complete_help.contains("stock capacity") and not complete_help.contains("quarterly capacity"), "complete guide no longer describes invented asset or lending caps")
 	dialog.get_ok_button().pressed.emit()
 	await process_frame
 	check(game.career.encode() == saved, "reading balance-sheet help leaves the unsaved career intact")

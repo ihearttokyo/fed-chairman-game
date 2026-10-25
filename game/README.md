@@ -871,3 +871,11 @@ rates/guidance, portfolio/funding, recovery, or controls/scoring/model limits.
 Tab moves between the chooser, readable text and Close. Arrows and Return select
 a topic; Escape cancels an open menu before closing Help. Detailed mechanics and
 scenario-specific scoring remain available without filling the opening page.
+
+## Challenge progress
+
+The cockpit shows completed inflation misses, job shortfalls and funding coverage
+against their limits. The most binding career/recent constraint is labelled.
+Color is paired with numeric values and status words; Details retains the rules.
+A dash means no observations, not perfect performance. Practice is unscored, and
+Recovery uses its rolling 12-quarter window rather than a lifetime penalty.
