@@ -79,6 +79,27 @@ untrusted paths or symlinks. The export contains parameters, starting state,
 realized shocks, decisions and full quarterly states. Retain the realized shock
 path when reproducing a run across engine versions.
 
+## Policy committee and crisis campaign
+
+The committee offers three competing priorities: price stability, employment and
+secured funding. Price and employment proposals move the current rate by half
+the published inflation miss or output gap, rounded to the policy grid. Funding
+holds the rate and offers today's eligible collateral-backed need. These are
+fictional decision aids, not optimal policies; they cannot see the neutral rate
+or future shocks. Select a priority, then stage with Cmd/Ctrl+K. Staging never
+adopts a quarter. Rate proposals preserve other tools; funding replaces the loan
+offer. Compare the conditional path before adopting.
+
+New career → **Stagflation & bank run** starts with 7% inflation, a −3% output gap
+and immediate funding pressure. Curated events begin within three quarters and
+recur every8–10 quarters, including conditional normalization. This is an authored
+challenge, not a historically calibrated crisis frequency. Existing career paths,
+economic transmission equations are unchanged. The exact prior model digest is
+accepted for the original eight scenarios only, and only while this release's
+source digest matches the reviewed compatibility bridge. Loading replays the
+career without rewriting its file; an explicit new Save uses the current digest.
+Unknown digests and future source changes remain rejected.
+
 ## Routine follow-up candidate
 
 `Include routine follow-up (4 quarters total)` adopts the staged decision, then
