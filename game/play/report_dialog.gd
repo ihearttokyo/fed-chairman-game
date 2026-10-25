@@ -7,9 +7,9 @@ func _input(event: InputEvent) -> void:
 		return
 	if event.keycode in [KEY_ENTER, KEY_KP_ENTER] and not event.is_command_or_control_pressed():
 		var focused := gui_get_focus_owner()
-		if focused != get_ok_button() and not focused is TextEdit:
+		if focused != get_ok_button() and not focused is TextEdit and not focused is ScrollContainer:
 			return
-	# Dismiss text/OK, but let plain Return activate other report controls.
+	# Dismiss reading surfaces/OK; plain Return activates other report controls.
 	set_input_as_handled()
 	if not event.echo:
 		queue_free()

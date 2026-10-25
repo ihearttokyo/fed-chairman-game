@@ -142,7 +142,8 @@ func check_text_reports(game: Control) -> void:
 	preserved = game.career.encode()
 	game._review()
 	dialog = game.get_child(game.get_child_count() - 1)
-	await check_report_body(dialog, ["REALIZED PATHS / Q1–Q1", "There is no dismissal threshold."])
+	await check_review_graph(dialog, game.career.review_comparison())
+	dialog = await open_review_method(game, dialog, ["REALIZED PATHS / Q1–Q1", "There is no dismissal threshold."])
 	dialog.get_ok_button().pressed.emit()
 	await process_frame
 	check(game.career.encode() == preserved, "completed keyboard review is pure")
@@ -258,7 +259,7 @@ func check_change_precision(game: Control) -> void:
 func check_persistent_actions(game: Control) -> void:
 	var actions: Array[Button] = []
 	for button in game.find_children("*", "Button", true, false):
-		if button.text in ["Compare policy paths", "Adopt decision  →  Next quarter"]:
+		if button.text in ["Policy paths", "Adopt decision  →  Next quarter"]:
 			actions.append(button)
 			var ancestor: Node = button.get_parent()
 			while ancestor != game:
@@ -304,7 +305,7 @@ func check_terminal_career(game: Control) -> void:
 	check(game.quarter_label.text == "CAREER COMPLETE · 240 MEETINGS", "completion never advertises Year61 or meeting241")
 	check(game.decision_button.disabled and game.decision_button.text == "Career complete", "terminal action explains why no next quarter is available")
 	var review: AcceptDialog = game.get_child(game.get_child_count() - 1)
-	check(review.title == "Your 12-quarter policy review", "completion retains the final realized policy review")
+	check(review.title == "Policy review" and review_labels(review).contains("Q229–Q240"), "completion retains the final twelve-quarter graphical policy review")
 	review.get_ok_button().pressed.emit()
 	await process_frame
 	check_terminal_cockpit(game, "final adoption")
@@ -558,7 +559,7 @@ func check_pending_policy(game: Control) -> void:
 			var projected: Dictionary = game.career.forecast(expected)
 			if compare:
 				for button in game.find_children("*", "Button", true, false):
-					if button.text == "Compare policy paths":
+					if button.text == "Policy paths":
 						button.pressed.emit()
 				await process_frame
 				await process_frame
@@ -735,9 +736,9 @@ func check_review_access(game: Control) -> void:
 				if child is AcceptDialog and child.visible:
 					reviews += 1
 			check(reviews == 1 and not is_instance_valid(journal), "only one review remains after actual journal exit")
-			var text: TextEdit = review.get_child(0)
-			check(review.title == "Your %d-quarter policy review" % mini(12, quarters), "on-demand review title uses actual interval length")
-			check(text.text.contains("REALIZED PATHS / Q%d–Q%d" % [maxi(0, quarters - 12) + 1, quarters]), "on-demand review reports only the latest completed interval")
+			await check_review_graph(review, game.career.review_comparison())
+			check(review.title == "Policy review", "on-demand review retains its concise policy title")
+			check(review_labels(review).contains("Q%d–Q%d" % [maxi(0, quarters - 12) + 1, quarters]), "on-demand graph reports only the latest completed interval")
 			review.get_ok_button().pressed.emit()
 		await process_frame
 		check(game.career.encode() == preserved and game._policy() == staged, "opening and closing realized review preserves career and controls")
@@ -747,7 +748,99 @@ func review_staff_snapshot(game: Control) -> PackedByteArray:
 	for field in [game.rate, game.guidance, game.assets, game.liquidity, game.inflation_response, game.activity_response]:
 		inputs.append([field.value, field.get_line_edit().text])
 	return var_to_bytes([game.career.encode(), game.career.state, game.career.history, game.career.decisions, game.career.shocks, game.career._seeded_shocks, game.career.episodes, game.career.params, game._policy(), game.commitment.selected, inputs, game.forecast_label.text])
-func check_review_staff_metrics(body: TextEdit, compared: Dictionary) -> void:
+func review_labels(dialog: AcceptDialog) -> String:
+	var text := ""
+	for label in dialog.find_children("*", "Label", true, false):
+		text += label.text + "\n"
+	return text
+func review_button(dialog: AcceptDialog, text: String) -> Button:
+	for button in dialog.find_children("*", "Button", true, false):
+		if button.text == text:
+			return button
+	return null
+func check_review_graph(dialog: AcceptDialog, compared: Dictionary) -> void:
+	await process_frame
+	await process_frame
+	check(dialog.get_child(0) is ScrollContainer, "default review is a scrollable graph, not a methodology report")
+	check(dialog.find_children("*", "TextEdit", true, false).is_empty(), "default review contains no wall of report text")
+	if not dialog.get_child(0) is ScrollContainer:
+		return
+	var graph: ScrollContainer = dialog.get_child(0)
+	check(graph.focus_mode == Control.FOCUS_ALL and graph.follow_focus and graph.accessibility_name == "Realized policy comparison", "graph supports keyboard focus and an accessible realized-comparison name")
+	var text := review_labels(dialog)
+	check(text.contains("Q%d–Q%d" % [compared.from_quarter + 1, compared.to_quarter]), "graph labels the actual completed interval")
+	check(text.contains("Completed shocks") and text.contains("hindsight, not a forecast"), "graph distinguishes hindsight from a future preview")
+	check(text.contains("First three measures are period averages; credibility and support are ending values."), "graph distinguishes averages from ending scores")
+	var summaries: Array = [compared.actual, compared.held]
+	var names := ["Your policy", "Hold"]
+	if not compared.get("staff", {}).is_empty():
+		summaries.append(compared.staff)
+		names.append("Model benchmark")
+	else:
+		check(text.contains(compared.get("staff_error", "Model benchmark unavailable.")), "unavailable benchmark retains its explicit reason beside usable graph metrics")
+	var bars := graph.find_children("*", "ProgressBar", true, false)
+	check(bars.size() == 5 * summaries.size(), "five graphical metrics show exactly the available paths")
+	var metrics := [["Inflation distance", "inflation_miss", 1.0, "pp", "Lower is better · distance from 2%"],
+		["Employment shortfall", "employment_shortfall", 1.0, "pp", "Lower is better · unemployment above structural reference"],
+		["Uncovered funding", "uncovered_funding", 1.0, "% GDP", "Lower is better · unmet need, not bank losses"],
+		["Credibility", "credibility", 100.0, "/100", "Higher is better · ending value"],
+		["Public support", "public_support", 1.0, "/100", "Higher is better · ending value"]]
+	for metric_index in metrics.size():
+		var metric: Array = metrics[metric_index]
+		check(text.contains(metric[0]) and text.contains(metric[4]), "graph labels " + metric[0] + " meaning and preferred direction")
+		var ceiling := 0.001
+		for summary in summaries:
+			ceiling = maxf(ceiling, float(summary[metric[1]]) * metric[2])
+		for path_index in summaries.size():
+			var index := metric_index * summaries.size() + path_index
+			if index >= bars.size():
+				continue
+			var bar: ProgressBar = bars[index]
+			var value: float = float(summaries[path_index][metric[1]]) * metric[2]
+			check(absf(bar.value - value) < 0.000000001, "graph preserves unrounded " + metric[0] + " for " + names[path_index])
+			check(bar.min_value == 0.0 and is_equal_approx(bar.max_value, ceiling), "metric bars use one zero-based scale across available paths")
+			check(bar.accessibility_name == "%s: %s %.3f %s" % [metric[0], names[path_index], value, metric[3]], "bar exposes path, metric, value and units without relying on color")
+			var displayed := ("%.1f" if metric_index >= 3 else "%.2f") % value
+			if value > 0.0 and float(displayed) == 0.0:
+				displayed = "<0.1" if metric_index >= 3 else "<0.01"
+			var numeric_label: Label = bar.get_parent().get_child(bar.get_index() + 1)
+			check(numeric_label.text == "%s %s" % [displayed, metric[3]], "graph prints the path's numeric " + metric[0] + " value and units at readable precision without rounding positive values to zero")
+	check(review_button(dialog, "Method & definitions") != null and review_button(dialog, "Challenge rules") != null, "dense definitions and challenge rules remain explicit on-demand actions")
+	graph.grab_focus()
+	var end := InputEventKey.new()
+	end.keycode = KEY_END
+	end.pressed = true
+	dialog.push_input(end)
+	await process_frame
+	var scroll := graph.get_v_scroll_bar()
+	if scroll.max_value > scroll.page:
+		check(scroll.value > 0.0, "keyboard End reaches the last graphical metric")
+	var home := InputEventKey.new()
+	home.keycode = KEY_HOME
+	home.pressed = true
+	dialog.push_input(home)
+	await process_frame
+	check(scroll.value == 0.0, "keyboard Home returns to the review interval and first metric")
+	var tab := InputEventKey.new()
+	tab.keycode = KEY_TAB
+	tab.pressed = true
+	dialog.push_input(tab)
+	await process_frame
+	check(not graph.has_focus(), "Tab leaves the graph body for disclosure actions")
+func open_review_method(game: Control, dialog: AcceptDialog, markers: Array[String]) -> AcceptDialog:
+	var method := review_button(dialog, "Method & definitions")
+	check(method != null, "graph offers a Method & definitions action")
+	if method == null:
+		return dialog
+	method.pressed.emit()
+	check(dialog.visible and dialog.is_queued_for_deletion(), "opening definitions defers graph deletion for native accessibility")
+	await process_frame
+	await process_frame
+	var details: AcceptDialog = game.get_child(game.get_child_count() - 1)
+	check(not is_instance_valid(dialog) and details.title == "Comparison method", "definitions replace the graph with one readable report without nested exclusive windows")
+	await check_report_body(details, markers)
+	return details
+func check_review_detail_metrics(body: TextEdit, compared: Dictionary) -> void:
 	var summaries: Array = [compared.get("actual", {}), compared.get("held", {})]
 	var staff: Dictionary = compared.get("staff", {})
 	if not staff.is_empty():
@@ -809,12 +902,13 @@ func check_review_staff_dialog(game: Control) -> void:
 		game.rate.get_line_edit().grab_focus()
 		game._review()
 		var dialog: AcceptDialog = game.get_child(game.get_child_count() - 1)
-		await check_report_body(dialog, ["Your policy / Hold / Model benchmark", "Avg inflation distance", "Avg employment shortfall", "Avg uncovered funding", "Ending credibility", "Ending public support"])
+		await check_review_graph(dialog, compared)
+		dialog = await open_review_method(game, dialog, ["Your policy / Hold / Model benchmark", "Avg inflation distance", "Avg employment shortfall", "Avg uncovered funding", "Ending credibility", "Ending public support"])
 		var bodies := dialog.find_children("*", "TextEdit", true, false)
 		if bodies.size() == 1:
 			var body: TextEdit = bodies[0]
-			check_review_staff_metrics(body, compared)
-			check(dialog.title == "Your %d-quarter policy review" % game.career.decisions.size() and body.text.contains("REALIZED PATHS / Q1–Q%d" % game.career.decisions.size()), "realized staff review labels the completed interval, not a future horizon")
+			check_review_detail_metrics(body, compared)
+			check(dialog.title == "Comparison method" and body.text.contains("REALIZED PATHS / Q1–Q%d" % game.career.decisions.size()), "realized staff review labels the completed interval, not a future horizon")
 			check(body.text.contains("your actual Q0 state") and body.text.contains("already occurred"), "all realized references disclose their matched starting state and completed shocks")
 			check(body.text.contains("full-information") and body.text.contains("true neutral rate") and body.text.contains("short inflation expectations") and body.text.to_lower().contains("feedback") and body.text.contains("data dependence"), "benchmark reference discloses its hidden inputs, feedback rate and data-dependent guidance")
 			check(body.text.contains(BENCHMARK_FINANCING_LIMIT), "realized benchmark reference discloses the financing limitation")
@@ -845,10 +939,11 @@ func check_review_staff_dialog(game: Control) -> void:
 	check(unavailable.get("actual", {}) == available.get("actual", {}) and unavailable.get("held", {}) == available.get("held", {}), "staff-only failure preserves every usable actual/hold summary value")
 	game._review()
 	var failure_dialog: AcceptDialog = game.get_child(game.get_child_count() - 1)
-	await check_report_body(failure_dialog, ["Your policy / Hold", expected_error])
+	await check_review_graph(failure_dialog, unavailable)
+	failure_dialog = await open_review_method(game, failure_dialog, ["Your policy / Hold", expected_error])
 	var failure_bodies := failure_dialog.find_children("*", "TextEdit", true, false)
 	if failure_bodies.size() == 1:
-		check_review_staff_metrics(failure_bodies[0], unavailable)
+		check_review_detail_metrics(failure_bodies[0], unavailable)
 		check(not failure_bodies[0].text.begins_with(expected_error), "unavailable staff does not replace the usable realized metrics with an error-only report")
 	failure_dialog.canceled.emit()
 	check(failure_dialog.visible and failure_dialog.is_queued_for_deletion(), "unavailable staff review cancellation preserves its native window until deferred deletion")
@@ -1654,7 +1749,7 @@ func run() -> void:
 	await check_persistent_actions(game)
 	var compare_button: Button
 	for button in game.find_children("*", "Button", true, false):
-		if button.text == "Compare policy paths":
+		if button.text == "Policy paths":
 			compare_button = button
 	check(compare_button != null, "player can compare selected policy with holding policy")
 	if compare_button != null:
@@ -1737,11 +1832,11 @@ func run() -> void:
 	game._review()
 	await process_frame
 	var review: AcceptDialog = game.get_child(game.get_child_count() - 1)
-	var review_text: TextEdit = review.get_child(0)
-	check(review.title == "Your 1-quarter policy review", "short completed review does not claim twelve quarters")
-	check(not review_text.text.contains("employment are close"), "review cannot infer employment from the output gap")
-	check(review_text.text.contains("REALIZED PATHS") and review_text.text.contains("unemployment above structural reference"), "review exposes realized inflation and employment tradeoffs")
-	check(review_text.text.contains("already occurred") and review_text.text.contains("not a forecast"), "review distinguishes hindsight from a conditional future preview")
+	await check_review_graph(review, game.career.review_comparison())
+	check(review.title == "Policy review" and review_labels(review).contains("Q1–Q1"), "short graphical review does not claim twelve quarters")
+	check(not review_labels(review).contains("employment are close"), "graph cannot infer employment from the output gap")
+	review = await open_review_method(game, review, ["REALIZED PATHS", "unemployment above structural reference", "already occurred", "not a forecast"])
+	check(not review.get_child(0).text.contains("employment are close"), "method cannot infer employment from the output gap")
 	review.get_ok_button().pressed.emit()
 	await process_frame
 	var before_new: PackedByteArray = game.career.encode()
