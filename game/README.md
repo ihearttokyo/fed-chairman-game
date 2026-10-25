@@ -863,3 +863,11 @@ continuation/comparison checks and12 mandate assessment/replay checks, without e
 The release verifier also runs that self-check. Linux CI validates
 source behavior; it does not build or distribute an Intel Mac game. Intel
 hardware testing is not a release gate for this ARM64-only product.
+
+## Help navigation
+
+F1 / How to play opens a short action loop. Choose a Help topic for proposals,
+rates/guidance, portfolio/funding, recovery, or controls/scoring/model limits.
+Tab moves between the chooser, readable text and Close. Arrows and Return select
+a topic; Escape cancels an open menu before closing Help. Detailed mechanics and
+scenario-specific scoring remain available without filling the opening page.

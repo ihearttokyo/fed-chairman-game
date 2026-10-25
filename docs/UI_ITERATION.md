@@ -62,3 +62,27 @@ to the final meeting. Final-meeting promise evaluation no longer disappears
 when a routine segment began before the first announcement. Score-point units
 and rounding bounds remain explicit. Policy controls use tighter spacing without
 smaller fonts, and driver-chart scale is explicitly labelled.
+
+## Topic-based Help
+
+Help now opens with a short play loop and six named topics. The existing complete
+help assembly is retained verbatim; each nonempty paragraph appears exactly once
+in the topic reference. Unknown future paragraphs remain reachable in the final
+topic. Staff estimates, diagnostic benchmarks, scenario-specific scoring, units,
+negative-rate limits and settlement recovery were not paraphrased away.
+
+The chooser and read-only native text share one existing ReportDialog. Tab links
+topics, text and Close; native arrows/Return choose a topic. Escape cancels an open
+menu before closing the report. Selection resets the reading position, and the
+assistive description tracks the selected topic. The container, not the text
+widget, owns the report minimum so small windows can wrap properly.
+
+Evidence: 89 focused checks cover both scoring branches, exact paragraph coverage,
+read-only access, purity and 320/640-pixel fitting. Full UI/keyboard suites pass,
+including real menu key dispatch. One inherited keyboard fixture used a 64×64
+headless parent; it now supplies a realistic Help-only headless canvas while
+keeping the Page Down assertion. Native previews are never resized by that test.
+A private background source preview was inspected with Computer Use: Shift+Tab,
+Return/Down selection, menu Escape, Tab/Page Down scrolling, then report Escape
+and rate-focus restoration. No career adoption occurred; this is source UI
+validation, not an installed-binary or whole-game usability claim.
