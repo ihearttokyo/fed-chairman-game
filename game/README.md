@@ -352,8 +352,12 @@ Saved careers retain the realized path. The 240-quarter neutral equilibrium asse
 supplies explicit empty shocks; it does not promise a flat seeded career.
 Compare opens on two keyboard-inspectable conditional paths: staged policy and
 the Hold reference, plotted for inflation and unemployment from now through
-eight quarters. Details retains the complete selectable report and section
-chooser. Q0 is relative to the current meeting, not career quarter zero. PageUp
+eight quarters. A third chart shows unmet funding when either path has a
+shortfall; otherwise a short status line replaces it. Funding uses percent of
+initial GDP, preserves tiny positive amounts, and reports the Q1–Q8 peak rather
+than confusing a transient shortage with its Q8 endpoint. Q0 is inherited, not
+a future policy outcome. Missing paths show unavailable, never a clean bill of
+health. Details retains the complete selectable report and section chooser. Q0 is relative to the current meeting, not career quarter zero. PageUp
 and PageDown scroll the graphical pane; Left/Right and Home/End inspect a chart.
 Paths crossing Q240 are explicitly diagnostic, not additional playable turns.
 The graphs reuse the report’s computed paths; they add no forecast calls and
