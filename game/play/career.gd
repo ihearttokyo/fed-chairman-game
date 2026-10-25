@@ -225,12 +225,17 @@ func recovery_assessment() -> Dictionary:
 func model_digest() -> String:
 	return (FileAccess.get_sha256("res://model/economy.gd") + FileAccess.get_sha256("res://model/parameters.json") + FileAccess.get_sha256("res://model/scenarios.json") + FileAccess.get_sha256("res://model/exogenous_shocks.json") + FileAccess.get_sha256("res://model/portfolio_reference.json")).sha256_text()
 
-# Exact additive-campaign compatibility only. Existing eight scenario definitions,
-# equations and RNG call order are unchanged. Any later source/parameter/catalogue
-# change disables this bridge unless separately qualified; unknown digests refuse.
+# Exact default-career compatibility only. The optional workout functions are
+# isolated behind an optional settlement context; default cases/parameters/RNG remain unchanged.
+# Full pre-edit nine-scenario Q240 replay is separately qualified. Future source
+# drift disables both bridges; older eight-only scope remains unchanged.
 func _compatible_saved_model(data: Dictionary) -> bool:
-	return model_digest() == "06714dc18908afbd2805c5f2ed0f97bc9ede6ab53c111ee73aa0413724ca49a6" \
-		and data.get("model_digest") == "ff431fc6f24cbc90339055340ede21cc1db7677a8a5f4011633ca59016205cdc" \
+	if model_digest() != "f88f562b3039ed35b9af8740fdf6509d1c44ff03a2b4f9dbf642fec9c9709725":
+		return false
+	var prior: Variant = data.get("model_digest")
+	if prior == "06714dc18908afbd2805c5f2ed0f97bc9ede6ab53c111ee73aa0413724ca49a6":
+		return data.get("scenario_id") in ["base", "demand_boom", "supply_shock", "funding_stress", "unanchored_inflation", "lower_bound_slump", "mixed_crises", "policy_career", "stagflation_bank_run"]
+	return prior == "ff431fc6f24cbc90339055340ede21cc1db7677a8a5f4011633ca59016205cdc" \
 		and data.get("scenario_id") in ["base", "demand_boom", "supply_shock", "funding_stress", "unanchored_inflation", "lower_bound_slump", "mixed_crises", "policy_career"]
 
 func payload() -> Dictionary:

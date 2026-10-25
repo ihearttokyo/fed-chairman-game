@@ -6,13 +6,34 @@ only shipping economic implementation. Nothing in `game/` imports this package.
 From the repository root:
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
+python3 -B -m unittest discover \
   -s scripts/research/funded_production/tests -v
 ```
 
-The package reads and verifies the existing model parameters, portfolio reference
-and Godot source through repository-relative paths. It needs no private task files,
-network, Godot process, Excel session or installed game. It does not write saves.
+The package ships its three historical inputs in `reference_inputs/`, so a cold
+copy of this package needs no `game/` tree, private task files, network, Godot
+process, Excel session or installed game. It does not write saves.
+
+### Frozen source provenance
+
+The following files were preserved byte-for-byte from Git commit
+`2703f7965a3c5f67c5bc233ce3d3c6560268ce7c`, under `game/model/`. Each extracted
+file was verified against the pre-existing `SOURCE_DIGESTS` pin **before** being
+added here. These are canonical qualification inputs, not a working game copy.
+
+| Frozen file | SHA-256 |
+|---|---|
+| `parameters.json` | `6e45d72e2231d59f67305270c10ccb5b7afcfc2a3475ec8eb72a497522320949` |
+| `economy.gd` | `52580ad1073aca877912527ecc7a6aa36f935de17fbc93e460323b8eba4a0987` |
+| `portfolio_reference.json` | `5e7362e82bc848e85869df0c69334f05eb68349b19bf84f7bd7d03b283b19e7e` |
+
+The loader still checks all three exact hashes before loading parameters or the
+portfolio. Missing or changed frozen inputs refuse; there is no live-game
+fallback, silent refresh or relaxed drift check. Changes to current `game/model/`
+inputs do not alter this research baseline. The source pins and historical
+goldens are unchanged. Checkpoints also fingerprint the Python implementation;
+this path repair does not authorize migration of differently source-bound
+checkpoints or qualify the reference as the current/native game model.
 
 ## What it covers
 

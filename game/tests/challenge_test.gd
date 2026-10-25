@@ -30,7 +30,14 @@ func run() -> void:
 	var preserved: PackedByteArray = game.career.encode()
 	game._new_dialog()
 	check(game.scenario.get_item_metadata(game.scenario.selected) == "policy_career", "New defaults to the challenge without replacing active play")
-	check(game.scenario.item_count == game.career.cases.size() and game.career.cases.has("base"), "all laboratory scenarios remain available")
+	var offered: Array = []
+	for index in range(game.scenario.item_count):
+		offered.append(game.scenario.get_item_metadata(index))
+	var expected: Array = game.career.cases.keys()
+	expected.append(game.WORKOUT_CASE)
+	offered.sort()
+	expected.sort()
+	check(offered == expected and game.career.cases.has("base"), "all original scenarios and exactly one optional workout remain available")
 	check(game.career.encode() == preserved, "opening the chooser preserves unsaved play")
 	var dialog: AcceptDialog = game.get_child(game.get_child_count() - 1)
 	dialog.get_ok_button().pressed.emit()

@@ -100,11 +100,23 @@ cumulative eligible local funding. New shocks can end stabilization; the career
 continues throughQ240. Inherited inflation is not a lifetime-average penalty.
 This is separate from the unchanged60-year Mandate v1 award. Custom completed
 shock paths remain practice. Existing career paths and
-economic transmission equations are unchanged. The exact prior model digest is
-accepted for the original eight scenarios only, and only while this release's
-source digest matches the reviewed compatibility bridge. Loading replays the
+economic transmission equations are unchanged. The Alpha 614 model digest is
+accepted for all nine existing scenarios; the older compatibility bridge stays
+limited to the original eight. Both require this release's exact reviewed source
+digest. Loading replays the
 career without rewriting its file; an explicit new Save uses the current digest.
 Unknown digests and future source changes remain rejected.
+
+## Bank-workout laboratory
+
+New career → **Bank workout** opens an unsaved eight-meeting exercise. Securities
+mature into cash; unpaid withdrawals and overdue CB loans persist. Rates reprice
+collateral, while fresh lending, cash repayment and cashless renewal stay separate.
+The bank ledger and payment meter sit beside policy controls. Details and the
+Bank workout Help topic disclose the authored opening, zero-interest waterfall
+and valuation assumptions. Normal saves, career awards and automatic follow-up
+are unavailable in this mode; choose a normal new career to return to them.
+See [the accounting and qualification record](../docs/BANK_WORKOUT.md).
 
 ## Routine follow-up candidate
 

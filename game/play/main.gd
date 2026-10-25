@@ -1,6 +1,10 @@
 extends Control
 
 const Career = preload("res://play/career.gd")
+const Workout = preload("res://play/workout_career.gd")
+const WorkoutPanel = preload("res://play/bank_workout_panel.gd")
+const WORKOUT_CASE := "__bank_workout"
+const WORKOUT_HELP := "Eight meetings. Rate decisions change inflation, activity and the market value of the bank's securities. Lending can pay withdrawals or renew debt; it cannot create equity. Unpaid withdrawals and overdue loans carry forward. A final withdrawal wave requests all remaining unrequested deposits. Maturing securities turn into cash and stop serving as collateral.\n\nThis authored exercise uses zero loan interest and automatic cash-first repayment of CB principal, then deposit withdrawals. That is a teaching assumption, not statutory insolvency priority. Securities use one flat semiannual discount yield. Quantities are % of initial annual GDP; policy offers remain % of current GDP.\n\nPreviews include known maturities and today's request, not future withdrawal requests or shocks. Paths beyond meeting eight are diagnostics, not additional playable meetings. Normal career saves and awards are unavailable in this unsaved laboratory."
 const Chart = preload("res://play/history_chart.gd")
 const HelpGuide = preload("res://play/help_guide.gd")
 const ReportDialog = preload("res://play/report_dialog.gd")
@@ -82,6 +86,11 @@ var adopting := false
 var last_follow_up_reasons: Array[String] = []
 var committee: OptionButton
 var committee_note: Label
+var workout_panel: PanelContainer
+var workout_board: WorkoutPanel
+var workout_fed_stock: Label
+var city_panel: PanelContainer
+var normal_storage_buttons: Array[Button] = []
 
 const KEYBOARD_HELP := "Keyboard controls\nTab / Shift+Tab move forward / back through visible controls. Return or Space activates a focused button. In numeric fields, type a value and press Return to commit only that field; Up / Down use its advertised step. Arrow keys navigate open scenario or guidance menus; Return selects and Escape cancels.\n\nCharts: Left / Right inspect completed quarters; Home / End select the first / latest. Focused cockpit and reports: Page Up / Down scroll, Home / End reach the ends. Escape or modified Return closes an informational report and returns focus. Plain Return closes its text or OK button, otherwise activates the focused report control. Escape cancels replacement; Return still follows the focused confirmation control.\n\nOptional accelerators use Cmd on macOS or Ctrl elsewhere: N New, S Save, O Load, J journal, P Compare, R staff estimate, K stage committee proposal, modified Return adopt one quarter. F1 opens this guide. Every command also has a Tab-accessible control; plain typing never adopts a quarter.\n\n"
 const STAFF_HELP := "Staff estimates use two-decimal published inflation, output gap and long expectations with the scenario’s initial neutral-rate prior. They do not know the evolving neutral rate or short expectations. An estimate is not an optimal policy; other tools remain unchanged. The rate formula does not directly adjust for credit spreads, term premiums or weaker negative-rate transmission."
@@ -191,6 +200,14 @@ func _ready() -> void:
 	left.custom_minimum_size.x = 630
 	body_layout.add_child(left)
 	_build_city(left)
+	workout_panel = _panel(left)
+	workout_board = WorkoutPanel.new()
+	workout_panel.add_child(workout_board)
+	workout_fed_stock = _label(workout_board, "", 12, MUTED)
+	workout_fed_stock.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	workout_board.details_requested.connect(_workout_details)
+	keyboard_controls.append(workout_board.details_button)
+	workout_panel.hide()
 	var brief_box := _vbox(_panel(left), 5)
 	var dispatch_header := HBoxContainer.new()
 	brief_box.add_child(dispatch_header)
@@ -283,7 +300,15 @@ func _resize_layout() -> void:
 	var left: Control = chart_layout.get_parent()
 	# Project the unstacked chart width so narrower rows cannot move the wide breakpoint.
 	var policy_minimum := maxf(policy_panel.get_combined_minimum_size().x, _row_minimum(portfolio_layout) + policy_panel.get_theme_stylebox("panel").get_minimum_size().x)
-	var wide_minimum: float = maxf(630.0, _row_minimum(chart_layout)) + policy_minimum + body_layout.get_theme_constant("separation")
+	var left_minimum := 420.0 if _is_workout() else 630.0
+	var chart_floor := _row_minimum(chart_layout)
+	if _is_workout():
+		# The bank ledger takes priority; its two macro charts can stack locally
+		# without forcing the entire policy cockpit into a full-width column.
+		chart_floor = 0.0
+		for chart in chart_layout.get_children():
+			chart_floor = maxf(chart_floor, chart.get_combined_minimum_size().x)
+	var wide_minimum: float = maxf(left_minimum, chart_floor) + policy_minimum + body_layout.get_theme_constant("separation")
 	var metric_width := 3.0 * metric_layout.get_theme_constant("h_separation")
 	var cards := metric_layout.get_children()
 	for card in cards:
@@ -292,8 +317,9 @@ func _resize_layout() -> void:
 	metric_layout.columns = 4 if available >= metric_width else 2 if available >= paired_width else 1
 	body_layout.vertical = available < wide_minimum
 	action_layout.vertical = body_layout.vertical
-	left.custom_minimum_size.x = 0 if body_layout.vertical else 630
-	chart_layout.vertical = available < _row_minimum(chart_layout)
+	left.custom_minimum_size.x = 0 if body_layout.vertical else left_minimum
+	var chart_available: float = available - policy_minimum - body_layout.get_theme_constant("separation") if _is_workout() and not body_layout.vertical else available
+	chart_layout.vertical = chart_available < _row_minimum(chart_layout)
 	action_buttons.vertical = available < _row_minimum(action_buttons)
 	portfolio_layout.vertical = available < _row_minimum(portfolio_layout) + policy_panel.get_theme_stylebox("panel").get_minimum_size().x
 	var policy_index := 0 if body_layout.vertical else 1
@@ -452,6 +478,7 @@ func _build_header(parent: Node) -> void:
 	save_button.tooltip_text = "Save to policy-career-v2.save only. policy-career-v1.save and both older slots remain untouched."
 	save_button.accessibility_description = save_button.tooltip_text
 	var load_button := _button(row, "Load", _load, KEY_O)
+	normal_storage_buttons.assign([save_button, load_button])
 	load_button.tooltip_text = "Load policy-career-v2.save only. Older slots need their matching prior app/model; no fallback or migration."
 	load_button.accessibility_description = load_button.tooltip_text
 	_button(row, "Data & journal", _journal, KEY_J)
@@ -484,6 +511,7 @@ static func _city_texture_size(area: Vector2, physical: Vector2i, logical: Vecto
 
 func _build_city(parent: Node) -> void:
 	var panel := _panel(parent)
+	city_panel = panel
 	var box := _vbox(panel, 3)
 	var top := HBoxContainer.new()
 	top.alignment = BoxContainer.ALIGNMENT_END
@@ -707,7 +735,7 @@ func _apply_input(input: SpinBox) -> void:
 		input.apply()
 
 func _compare() -> void:
-	if career.decisions.size() < Career.MAX_QUARTERS:
+	if career.decisions.size() < _active_horizon():
 		_apply_policy_inputs()
 	_preview()
 	var text := _decision_briefing()
@@ -718,7 +746,7 @@ func _compare() -> void:
 	var overview := ForecastOverview.new()
 	overview.name = "Paths"
 	tabs.add_child(overview)
-	overview.build(comparison_series, career.decisions.size() >= Career.MAX_QUARTERS, career.decisions.size() + 8 > Career.MAX_QUARTERS)
+	overview.build(comparison_series, career.decisions.size() >= _active_horizon(), career.decisions.size() + 8 > _active_horizon(), _active_horizon())
 	var box := VBoxContainer.new()
 	box.name = "Details"
 	tabs.add_child(box)
@@ -773,28 +801,58 @@ func _guidance_controls() -> void:
 	_link_focus(_keyboard_focus_order())
 	_preview()
 
+func _is_workout() -> bool:
+	return career is Workout
+
+func _active_horizon() -> int:
+	return Workout.EPISODE_QUARTERS if _is_workout() else Career.MAX_QUARTERS
+
+func _workout_details() -> void:
+	_text_dialog("Bank workout", WORKOUT_HELP)
+
 func _start_career(case_id: String, seed_number: int) -> void:
 	_finish_follow_up("New career", false)
-	var result: Dictionary = career.start(case_id, seed_number)
+	var candidate = career
+	var result: Dictionary
+	if case_id == WORKOUT_CASE:
+		candidate = Workout.new()
+		var recipe: Dictionary = candidate.model.bank_workout_opening(candidate.params)
+		result = candidate.start_episode(recipe.bank, recipe.requests, recipe.haircut_pct, recipe.pledgeable_share, "stagflation_bank_run", seed_number, recipe.remaining_request_index) if recipe.ok else recipe
+	else:
+		if _is_workout():
+			candidate = Career.new()
+		result = candidate.start(case_id, seed_number)
 	if not result.ok:
 		status_label.text = result.error
 		return
+	career = candidate
 	clean_career = career.encode()
 	outcome_drivers.clear()
 	_refresh(true)
+	_resize_layout()
 	consequence.text = "Review current conditions, stage policy, then adopt."
 	consequence.tooltip_text = ""
 	consequence.accessibility_description = ""
-	status_label.text = "New unsaved career · %s · seed %d" % [career.cases[case_id].label, seed_number]
+	status_label.text = "New unsaved career · %s · seed %d" % ["Bank workout · 8 meetings" if _is_workout() else career.cases[case_id].label, seed_number]
 
 func _refresh(reset_controls := false, update_preview := true) -> void:
 	var s: Dictionary = career.state
 	_committee_brief()
-	var complete := career.decisions.size() >= Career.MAX_QUARTERS
-	case_title.text = career.cases[career.scenario_id].label
+	var complete := career.decisions.size() >= _active_horizon()
+	case_title.text = "Bank workout · unsaved laboratory" if _is_workout() else career.cases[career.scenario_id].label
 	var n: float = career.model.nominal_gdp_ratio(s)
 	case_detail.text = "Holdings %.1f%% · Term premium %+.3f pp · Loans %s%% · Reserves %s%% · RRP %s%%\nStocks: %% of current annual GDP" % [s.asset_stock_pct_initial_gdp / n, s.term_premium_pct, Career.funding_amount_text(s.outstanding_liquidity_pct_initial_gdp / n), Career.funding_amount_text(s.reserves_pct_initial_gdp / n), Career.funding_amount_text(s.reverse_repo_pct_initial_gdp / n)]
-	quarter_label.text = "CAREER COMPLETE · %d MEETINGS" % Career.MAX_QUARTERS if complete else "YEAR %02d / Q%d   ·   MEETING %d" % [int(s.quarter_index / 4) + 1, int(s.quarter_index) % 4 + 1, s.quarter_index + 1]
+	quarter_label.text = "CAREER COMPLETE · %d MEETINGS" % _active_horizon() if complete else "YEAR %02d / Q%d   ·   MEETING %d" % [int(s.quarter_index / 4) + 1, int(s.quarter_index) % 4 + 1, s.quarter_index + 1]
+	if _is_workout():
+		quarter_label.text = "EPISODE COMPLETE · 8 MEETINGS" if complete else "BANK WORKOUT · MEETING %d / 8" % (s.quarter_index + 1)
+	workout_panel.visible = _is_workout()
+	city_panel.visible = not _is_workout()
+	mandate_label.visible = not _is_workout()
+	for button in normal_storage_buttons:
+		button.disabled = _is_workout()
+	if _is_workout():
+		workout_board.update_snapshot((career as Workout).panel_snapshot())
+		workout_fed_stock.text = "Fed: " + case_detail.text.replace("\n", " · ")
 	var assessment := career.mandate_assessment()
 	var recovery_mode := career.scenario_id == "stagflation_bank_run"
 	objective_board.update_assessment(assessment, career.recovery_assessment() if recovery_mode else {}, recovery_mode)
@@ -803,7 +861,7 @@ func _refresh(reset_controls := false, update_preview := true) -> void:
 	mandate_label.tooltip_text = "Recovery v1 is a separate fictional stabilization challenge. Open Policy review → Challenge rules for scoring." if career.scenario_id == "stagflation_bank_run" else "Fictional challenge, assessed at Q240. Open Policy review → Challenge rules for thresholds and scoring."
 	mandate_label.accessibility_description = _mandate_rules_text()
 	if complete and assessment.eligible:
-		quarter_label.text = ("MANDATE ACHIEVED" if assessment.achieved else "MANDATE NOT MET") + " · %d MEETINGS" % Career.MAX_QUARTERS
+		quarter_label.text = ("MANDATE ACHIEVED" if assessment.achieved else "MANDATE NOT MET") + " · %d MEETINGS" % _active_horizon()
 	stats[0][0].text = "%.2f%%" % s.four_quarter_inflation_pct
 	stats[0][1].text = "Target 2%"
 	stats[1][0].text = "%.2f%%" % s.unemployment_rate_pct
@@ -855,6 +913,10 @@ func _refresh(reset_controls := false, update_preview := true) -> void:
 		else:
 			briefing.text = "Current summary unavailable. Open Details for the current record."
 		briefing.tooltip_text = "Current meeting data. Hardship memory is an index, not a percentage. Funding uses current annual GDP; settlement can constrain advances. Details shows the full calculations."
+	if _is_workout():
+		briefing.text = career.situation_briefing() if complete else briefing.text + "\n" + career.situation_briefing()
+		briefing.tooltip_text = "Macro conditions and this bank's cash-aware funding needs. Details separates the current record from authored workout assumptions."
+		dispatch_details_text += "\n\n" + WORKOUT_HELP
 	if complete:
 		dispatch_details_text = briefing.text
 	dispatch_details_button.disabled = dispatch_details_text.is_empty()
@@ -862,9 +924,11 @@ func _refresh(reset_controls := false, update_preview := true) -> void:
 	if reset_controls:
 		_reset_policy_controls()
 	decision_button.disabled = complete
-	decision_button.text = "Career complete" if complete else "Adopt decision  →  Next quarter"
+	decision_button.text = ("Episode complete" if _is_workout() else "Career complete") if complete else "Adopt decision  →  Next quarter"
 	if follow_up_toggle != null:
-		follow_up_toggle.disabled = complete
+		follow_up_toggle.disabled = complete or _is_workout()
+		if _is_workout():
+			follow_up_toggle.set_pressed_no_signal(false)
 	_link_focus(_keyboard_focus_order())
 	if update_preview:
 		_preview()
@@ -907,8 +971,8 @@ func _preview() -> void:
 	if follow_up_note != null:
 		follow_up_note.text = "Hold-rate preview; routine follow-up updates the staff estimate each quarter." if follow_up_toggle.button_pressed else ""
 		follow_up_note.visible = follow_up_toggle.button_pressed
-	if career.decisions.size() >= Career.MAX_QUARTERS:
-		forecast_label.text = "CAREER COMPLETE\nFinal outcomes at Q240. Compare paths is diagnostic only; no further decisions."
+	if career.decisions.size() >= _active_horizon():
+		forecast_label.text = "Episode complete. Review the retained bank ledger." if _is_workout() else "CAREER COMPLETE\nFinal outcomes at Q240. Compare paths is diagnostic only; no further decisions."
 		return
 	var result: Dictionary = career.forecast(_policy())
 	if not result.ok:
@@ -916,6 +980,10 @@ func _preview() -> void:
 		return
 	var first: Dictionary = result.states[0]
 	var last: Dictionary = result.states[-1]
+	if _is_workout() and result.diagnostic_beyond_episode:
+		forecast_label.tooltip_text = "Q+8 continues diagnostically beyond the playable eighth meeting. No future withdrawal requests are revealed."
+	else:
+		forecast_label.tooltip_text = ""
 	var rate_text := "Rate %.2f%%" % first.policy_rate_pct
 	if first.policy_rate_pct < 0.0:
 		rate_text += " (effective %.2f%%)" % first.effective_policy_rate_pct
@@ -933,8 +1001,11 @@ func _decision_briefing() -> String:
 	var first: Dictionary = selected.states[0]
 	var reference: Dictionary = held.states[0]
 	var n: float = first.decision_nominal_gdp_ratio
+	if _is_workout():
+		var bank: Dictionary = selected.bank_states[0]
+		return "CURRENT MEETING / BANK WORKOUT\nRate %.2f%% · Unpaid withdrawals %s · Overdue CB debt %s (%% initial GDP).\n\nFORECASTS / CONDITIONAL PATHS\nStaged policy versus holding the current rate with no new loan offer. Both include this bank's retained claims and known maturities; future withdrawal requests and shocks are excluded. Q+8 may extend beyond the playable eighth meeting.\n\nREFERENCE AND LIMITS\nLoan renewal moves no cash. Fresh advances cannot repair equity. Open Bank workout Details for the authored payment priority and valuation assumptions." % [first.policy_rate_pct, Career.funding_amount_text(bank.withdrawal_queue), Career.funding_amount_text(bank.loan_arrears)]
 	var text := "CURRENT MEETING / REQUESTED AND APPLIED\nRequested rate %.2f%% · Applied rate %.2f%%\nRequested assets %+.2f · Applied assets %+.2f\nRequested lending %s · Applied lending %s\n\nNominal rates apply in full on a 1bp quote grid; arrow convenience is 25bp. Negative policy is a U.S. counterfactual with diminishing effective borrowing-rate benefits. No invented purchase, stock or lending-offer ceilings. Runoff cannot exceed principal due. Lending is limited by borrower demand, eligibility, lending value and settlement. Asset and loan amounts here use %% of current annual GDP.\n\n" % [policy.policy_rate_request_pct, first.policy_rate_pct, policy.asset_flow_request_pct_initial_gdp / n, first.asset_flow_applied_pct_initial_gdp / n, Career.funding_amount_text(policy.liquidity_request_pct_initial_gdp / n), Career.funding_amount_text(first.liquidity_applied_pct_initial_gdp / n)]
-	if career.decisions.size() >= Career.MAX_QUARTERS:
+	if career.decisions.size() >= _active_horizon():
 		text = "CAREER COMPLETE / DIAGNOSTIC COMPARISON\nAll paths below continue beyond Q240, not extra playable turns.\n\n" + text
 	text += "PORTFOLIO AND FUNDING / CURRENT MEETING\nPrincipal due %s; runoff %s; reinvested %s\nLong runoff %s; reserve-maintenance bills %s; total-asset change %+.2f\nSterilization requested %s; applied RRP %s; unfulfilled %s\nLoan principal repaid %s; refinancing %s; new local lending %s; aggregate lending %s\nEnding reserves %s; reserve-scarcity premium %.3f pp\n\n" % [Career.funding_amount_text(first.principal_due_pct_initial_gdp / n), Career.funding_amount_text(first.principal_runoff_pct_initial_gdp / n), Career.funding_amount_text(first.principal_reinvestment_pct_initial_gdp / n), Career.funding_amount_text(first.long_securities_runoff_pct_initial_gdp / n), Career.funding_amount_text(first.reserve_maintenance_purchase_pct_initial_gdp / n), first.total_asset_change_pct_initial_gdp / n, Career.funding_amount_text(first.sterilization_requested_pct_initial_gdp / n), Career.funding_amount_text(first.sterilization_applied_pct_initial_gdp / n), Career.funding_amount_text(first.sterilization_unfulfilled_pct_initial_gdp / n), Career.funding_amount_text(first.liquidity_repayment_pct_initial_gdp / n), Career.funding_amount_text(first.liquidity_refinancing_applied_pct_initial_gdp / n), Career.funding_amount_text(first.liquidity_new_need_applied_pct_initial_gdp / n), Career.funding_amount_text(first.liquidity_aggregate_applied_pct_initial_gdp / n), Career.funding_amount_text(first.reserves_pct_initial_gdp / first.ending_nominal_gdp_ratio), first.reserve_scarcity_wedge_pct]
 	text += "Lending value %s; Eligible local demand %s; aggregate demand %s\nBinding constraints: lending offer %s, collateral %s, eligibility %s; RRP uptake %s, collateral %s, reserves %s\n\n" % [Career.funding_amount_text(first.lending_collateral_capacity_pct_initial_gdp / n), Career.funding_amount_text(first.eligible_local_need_pct_initial_gdp / n), Career.funding_amount_text(first.liquidity_aggregate_need_pct_initial_gdp / n), "yes" if first.liquidity_offer_binding or first.liquidity_aggregate_offer_binding else "no", "yes" if first.liquidity_collateral_binding or first.liquidity_aggregate_collateral_binding else "no", "yes" if first.liquidity_eligibility_binding else "no", "yes" if first.sterilization_uptake_binding else "no", "yes" if first.sterilization_collateral_binding else "no", "yes" if first.sterilization_reserve_binding else "no"]
@@ -958,7 +1029,7 @@ func _decision_briefing() -> String:
 		text += "No previous announcement to evaluate at this meeting.\n"
 	text += "\nNew quote %.2f%%; inflation response %.2f, output-gap response %.2f.\nA new announcement does not erase the previous obligation. Conditions affect next meeting's follow-through, not an immediate credibility bonus. Follow-through is one component of credibility, alongside inflation performance and policy stance.\n\n" % [policy.guidance_rate_pct, policy.guidance_inflation_sensitivity, policy.guidance_output_gap_sensitivity]
 	text += "GUIDANCE CONTINUATION / SELECTED HOLD VS PROMISE-FOLLOW\nA: selected-rate hold. B: follow the implied nominal promise at each later meeting and renew the originally chosen conditions.\nBoth apply the identical current decision and shock, then no future shocks. Portfolio switches persist; future asset/lending offers are zero. No automatic player decision.\nNominal delivery and effective borrowing rates differ under negative policy. Fulfillment need not improve stance adequacy or credibility; this is not an optimal-policy recommendation.\n\n"
-	if s.quarter_index + selected.states.size() > Career.MAX_QUARTERS:
+	if s.quarter_index + selected.states.size() > _active_horizon():
 		text += "Beyond Q240: diagnostic continuation only, not extra playable turns.\n\n"
 	var promise_follow: Dictionary = career.forecast(policy, true)
 	if not promise_follow.ok:
@@ -1024,7 +1095,7 @@ func _committee_brief() -> void:
 
 func _stage_committee() -> void:
 	_finish_follow_up("Committee proposal requested", false)
-	if career.decisions.size() >= Career.MAX_QUARTERS:
+	if career.decisions.size() >= _active_horizon():
 		status_label.text = "Career complete. Start a new career to stage policy."
 		return
 	var choices: Array = PolicyCommittee.proposals(career.state, career.params, career.current_briefing(), career.model.nominal_gdp_ratio(career.state))
@@ -1076,7 +1147,7 @@ func _advance() -> void:
 		return
 	_apply_policy_inputs()
 	var before: Dictionary = career.state.duplicate(true)
-	var include_follow_up := follow_up_toggle.button_pressed
+	var include_follow_up := follow_up_toggle.button_pressed and not _is_workout()
 	var first := career.decisions.size()
 	var result := _commit_policy(_policy())
 	if not result.ok:
@@ -1119,11 +1190,14 @@ func _show_outcome(before: Dictionary) -> void:
 	var prior_meeting: Dictionary = career.history[-2] if career.history.size() > 1 else before
 	if prior_meeting.guidance_active:
 		consequence.text += " · Promise %.1f/100" % (100 * s.guidance_followthrough_score)
-	if s.liquidity_applied_pct_initial_gdp > 0.0 or s.uncovered_funding_pct_initial_gdp > 0.0 or s.liquidity_repayment_pct_initial_gdp > 0.0:
+	if _is_workout() and not (career as Workout).settlements.is_empty():
+		var settled: Dictionary = (career as Workout).settlements[-1]
+		consequence.text += "\nBank advances %s · Cash repaid %s · Renewed %s (%% initial GDP)." % [Career.funding_amount_text(settled.new_cash), Career.funding_amount_text(settled.repayment), Career.funding_amount_text(settled.renewal)]
+	elif s.liquidity_applied_pct_initial_gdp > 0.0 or s.uncovered_funding_pct_initial_gdp > 0.0 or s.liquidity_repayment_pct_initial_gdp > 0.0:
 		var n: float = s.decision_nominal_gdp_ratio
 		consequence.text += "\nFunding (%% meeting GDP): lent %s · uncovered %s · repaid %s." % [Career.funding_amount_text(s.liquidity_applied_pct_initial_gdp / n), Career.funding_amount_text(s.uncovered_funding_pct_initial_gdp / n), Career.funding_amount_text(s.liquidity_repayment_pct_initial_gdp / n)]
 	_update_outcome_drivers(int(before.quarter_index))
-	status_label.text = "Quarter %d completed. Unsaved changes · %s" % [s.quarter_index, career.cases[career.scenario_id].label]
+	status_label.text = "Quarter %d completed. Unsaved changes · %s" % [s.quarter_index, "Bank workout" if _is_workout() else career.cases[career.scenario_id].label]
 
 func _update_outcome_drivers(first: int) -> void:
 	var last := career.decisions.size()
@@ -1232,6 +1306,9 @@ func _save() -> void:
 	status_label.text = "Saved quarter %d. Policy-career slot updated; older saves untouched." % career.state.quarter_index if result.ok else result.error
 
 func _load() -> void:
+	if _is_workout():
+		status_label.text = "Choose a normal New career before loading its save. This laboratory is unsaved."
+		return
 	_finish_follow_up("Load requested", false)
 	var dialog := AcceptDialog.new()
 	dialog.title = "Load saved career"
@@ -1389,6 +1466,8 @@ func _new_dialog() -> void:
 		scenario.set_item_metadata(scenario.item_count - 1, case_id)
 		if case_id == Career.DEFAULT_SCENARIO:
 			scenario.select(scenario.item_count - 1)
+	scenario.add_item("Bank workout · 8-meeting laboratory")
+	scenario.set_item_metadata(scenario.item_count - 1, WORKOUT_CASE)
 	box.add_child(scenario)
 	seed_input = _spin(box, "Scenario seed", 1, 2147483647, 1, "Same scenario and seed reproduce the path within the same engine and model.")
 	seed_input.value = 1
@@ -1541,17 +1620,24 @@ func _mandate_summary(assessment: Dictionary) -> String:
 	return "MANDATE v1 · %s · %s · %s · %s" % [prices, jobs, funding, status]
 
 func _mandate_rules_text() -> String:
+	if _is_workout():
+		return "Bank workout is an eight-meeting laboratory, without normal career awards."
 	if career.scenario_id == "stagflation_bank_run":
 		return "Recovery v1 is a separate fictional stabilization objective. Complete at least 12 quarters. Over the latest 12, average absolute inflation distance from 2% must be ≤1 pp and unemployment above its changing structural reference ≤1 pp. Cover ≥95% of cumulative eligible collateral-backed local funding, including refinancing; aggregate reserve loans do not count. No eligible need is n.a. New shocks can end stabilization; play continues through Q240. Only completed canonical shocks qualify. Inherited crisis inflation is not a lifetime-average penalty. Mandate v1 and its 60-year criteria are unchanged. Values are unrounded; neither score claims optimal policy or a real Federal Reserve rule."
 	return "Mandate v1 is a fictional game challenge for Varied policy career and Weakly anchored inflation, with canonical completed shocks. At Q240, career-average inflation distance must be ≤%.2f pp and unemployment above its changing structural reference ≤%.2f pp. Latest %d-quarter averages must each be ≤%.2f pp. Cover ≥%.0f%% of haircut/eligibility-supported local funding, including refinancing; aggregate reserve loans and insolvency repair do not count. No eligible need is not applicable. Criteria use unrounded values. Early misses never stop play. Other laboratories and custom completed shock paths are practice. Assessment is recalculated from completed history; it is not a Federal Reserve dismissal rule or an optimal-policy claim." % [Career.MANDATE_INFLATION_MISS_MAX, Career.MANDATE_EMPLOYMENT_SHORTFALL_MAX, Career.MANDATE_RECENT_QUARTERS, Career.MANDATE_RECENT_EMPLOYMENT_SHORTFALL_MAX, 100.0 * Career.MANDATE_FUNDING_COVERAGE_MIN]
 
 func _journal() -> void:
-	var text := "%s · seed %d\nRates and changes are percentage units. Asset and lending flows below use %% of each meeting's current annual GDP; ending stocks use ending GDP.\n\n" % [career.cases[career.scenario_id].label, career.seed_value]
+	var text := "%s · seed %d\nRates and changes are percentage units. Asset and lending flows below use %% of each meeting's current annual GDP; ending stocks use ending GDP.\n\n" % ["Bank workout" if _is_workout() else career.cases[career.scenario_id].label, career.seed_value]
 	for s in career.history:
 		text += "Q%03d | inflation %.2f%% | long expectations %.2f%% | unemployment %.2f%% | structural reference %.2f%% | rate %.2f%% | output gap %+.2f%% | credibility %.1f | support %.1f | hardship memory %.2f | assets %+.2f | loans %s\n\n" % [s.quarter_index, s.four_quarter_inflation_pct, s.expected_long_inflation_pct, s.unemployment_rate_pct, s.structural_unemployment_pct, s.policy_rate_pct, s.output_gap_pct, s.credibility * 100, s.public_support, s.public_hardship_memory, s.asset_flow_applied_pct_initial_gdp / s.decision_nominal_gdp_ratio, Career.funding_amount_text(s.liquidity_applied_pct_initial_gdp / s.decision_nominal_gdp_ratio)]
+	if _is_workout():
+		text += "\nBank ledger · % initial GDP\n"
+		for entry in (career as Workout).settlements:
+			text += "Q%d | cash repayment %s | renewal %s | fresh advances %s | withdrawals paid %s | queued %s | overdue %s | equity %+.4f\n" % [entry.state.quarter_index, Career.funding_amount_text(entry.repayment), Career.funding_amount_text(entry.renewal), Career.funding_amount_text(entry.new_cash), Career.funding_amount_text(entry.withdrawals_paid), Career.funding_amount_text(entry.remaining_queue), Career.funding_amount_text(entry.loan_arrears), entry.equity_after]
 	var dialog := _text_dialog("Economic history and policy journal", text)
 	var review := dialog.add_button("Review realized policy")
-	review.disabled = career.decisions.is_empty()
+	review.disabled = career.decisions.is_empty() or _is_workout()
+	review.visible = not _is_workout()
 	var order: Array[Control] = [dialog.get_child(0), review, dialog.get_ok_button()]
 	if review.disabled:
 		order.erase(review)
@@ -1569,12 +1655,14 @@ func _help() -> void:
 	dialog.title = "How to play"
 	var guide := HelpGuide.new()
 	guide.build(_help_text(), _read_only_report("How to play", ""))
+	if _is_workout():
+		guide.show_topic(guide.pages.size() - 1)
 	dialog.add_child(guide)
 	_show_dialog(dialog, Vector2i(740, 540), guide.body)
 	_link_focus([guide.topics, guide.body, dialog.get_ok_button()])
 
 func _help_text() -> String:
-	return KEYBOARD_HELP + STAFF_HELP + "\nNeutral real-rate prior: %.2f%%.\n\n" % career.params.initial_r_star_pct + BENCHMARK_HELP + "\n\n" + _mandate_rules_text() + "\n\nStart a career\nSet a target-range midpoint for a simplified FOMC, not the market's effective rate; a real chair acts with the committee.\n\nEvery career includes seeded background disturbances. Varied policy career and Recurring crises draw from 50 curated exogenous events. Varied policy career starts with weakly anchored inflation, then recurring dilemmas. Weakly anchored inflation remains separately selectable. The baseline starts at equilibrium with no scheduled scenario events, not a shock-free path. The same scenario and seed reproduce a path within the same engine and model.\n\n1. Read the dispatch for current conditions, not future shocks.\n2. Set the target rate. Higher real rates gradually restrain demand; inflation reacts with a lag. A supply shock can raise prices while weakening activity.\n3. Choose guidance. A firm promise is easier to understand, but missing it reduces follow-through credit. Data dependence adjusts the prior promise for changes in inflation and the output gap.\n4. Set purchases or a runoff cap, reinvestment, reserve maintenance and sterilization. Offer secured liquidity for eligible funding, not insolvency.\n5. Inspect applied amounts and the eight-quarter preview, then adopt. The preview assumes no new future shocks.\n\nPolicy committee\nChoose Price stability, Employment or Financial stability, then Stage committee proposal (Cmd/Ctrl+K). Price and employment proposals adjust the current rate by half the published inflation miss or output gap respectively; both round to the policy grid. Financial stability holds the rate and offers today's collateral-backed funding need. These fictional priorities disagree under stagflation; none knows the neutral rate or future shocks. Rate proposals preserve other tools; funding replaces the loan offer. Stage changes controls only. Compare before adopting.\n\nRoutine follow-up (optional)\nOff by default and not saved. Adopt your staged decision, then allow up to three staff rate/guidance updates, for at most four outcomes. Portfolio switches persist; purchase and loan offers reset. Funding, current events, drift or a scheduled check-in returns control. Stop or Escape, editing, reports, New and Load cancel follow-up. Any other non-modifier keypress, including Tab and arrows, also cancels, as do Save, Quit and the staff estimate action. The preview holds a rate; it does not predict adaptive follow-up.\n\nRates and guidance\nNominal rates apply in full: 1bp increments, 25bp arrows. Negative rates are a U.S. counterfactual, with diminishing benefits. Below zero, the effective financing rate is s*tanh(i/s); above zero it is unchanged. The illustrative scale s=1 percentage point is not an estimated lower bound. Credibility prices nominal guidance before this transmission. Stance credibility compares effective restraint with an unsaturated real-gap objective, giving constrained best effort partial credit rather than full adequacy. Conditional implied quotes round to the same 1bp grid before nominal promise follow-through.\n\nSecurities and runoff\nAsset and lending offers use percent of current annual GDP, converted once at the meeting. Purchases are uncapped; their duration-premium effect diminishes with scale. A negative offer caps runoff at maturing Treasury, MBS and bill principal, without selling unmatured holdings. With a zero or positive offer, reinvestment on rolls principal; off allows natural runoff. MBS paydown responds nonlinearly to lagged financing; Treasury timing uses a source-backed maturity ladder.\n\nReserves and sterilization\nMaintain ample reserves buys short bills after all other transactions to meet the disclosed buffer. With maintenance off, currency growth, runoff or loan repayment can exhaust reserves. A rejected settlement preserves the last valid quarter; enable maintenance or adjust purchases/runoff. Bills can ease funding scarcity but are excluded from the long-duration channel: long runoff can coexist with unchanged total assets. Sterilization retains securities and duration effects while replacing reserves with overnight reverse repo liabilities. Uptake, Treasury collateral and settlement can limit absorption. Tagged principal rolls without adding a new absorption target.\n\nLiquidity\nThe offer sets desired concurrent exposure, not accumulated quarterly turnover. Quotes use 0.0001% of current GDP; arrows move 0.25. Small funding amounts show four decimals; positive amounts below 0.0001 show <0.0001. Overnight/short loans mature next quarter. New needs and requested refinancing are separate; eligible refinancing has priority. Default zero refinancing assumes private repayment funds. Eligibility and haircut-adjusted collateral limit advances; excess offers do not become loans. Lending can relieve funding scarcity, not erase losses or create capital. Inspect applied amounts, RRP, reserve-maintenance purchases (RMP) and uncovered funding before adoption. Portfolio switches persist through previews and later meetings; one-time purchase and lending offers reset.\n\nRecovery\nDeferred demand tracks postponed durable/replacement purchases, not all lost consumption. Positive stock supports catch-up spending; negative stock means purchases were brought forward. Financing restraint delays release; growth changes the denominator, and obsolete plans decay. Its unit is percent of quarterly potential output. Short expectations gradually mix observed inflation with prior long expectations according to credibility. Transitory neutral-rate deviations revert toward a structural reference; permanent structural shifts change it. Recovery impulses provide no guaranteed return to 2% under persistent restraint.\n\nCredibility affects guidance pricing and long-run inflation expectations. Public support remembers inflation/deflation hardship and unemployment, recovering gradually without term resets or a game-over threshold.\n\nSaves and access\nSave and Load use policy-career-v2.save only. Prior policy-career-v1.save and original slots career-late-compound-v1.save and career-v1.save remain untouched; use their matching prior app/model. There is no copying, migration or fallback. New career and Load ask before replacing unsaved play. Tab navigates controls; Data & journal gives exact chart values. Animation defaults off.\n\nModel limits\nNine hypothetical scenarios. Varied policy career, Recurring crises and Stagflation & bank run draw from 50 curated exogenous events: disasters, demand/supply changes, funding and credit losses, and favorable developments. Forty-eight independent profiles use a no-repeat bag; two private-bank normalization events require prior eligible stress. The dispatch names active events, not future pulses. Private normalization cannot erase old losses or loans. The 2% objective and portfolio reference observations are source-backed; behavioral coefficients, starting conditions and shock incidence are design assumptions. This is a hypothetical economy, not an empirical forecast or financial advice. No Federal Reserve affiliation. Primary sources and equations are in the repository's FED_RESEARCH and model README."
+	return ("Bank workout\n" + WORKOUT_HELP.replace("\n\n", "\n") + "\n\n" if _is_workout() else "") + KEYBOARD_HELP + STAFF_HELP + "\nNeutral real-rate prior: %.2f%%.\n\n" % career.params.initial_r_star_pct + BENCHMARK_HELP + "\n\n" + _mandate_rules_text() + "\n\nStart a career\nSet a target-range midpoint for a simplified FOMC, not the market's effective rate; a real chair acts with the committee.\n\nEvery career includes seeded background disturbances. Varied policy career and Recurring crises draw from 50 curated exogenous events. Varied policy career starts with weakly anchored inflation, then recurring dilemmas. Weakly anchored inflation remains separately selectable. The baseline starts at equilibrium with no scheduled scenario events, not a shock-free path. The same scenario and seed reproduce a path within the same engine and model.\n\n1. Read the dispatch for current conditions, not future shocks.\n2. Set the target rate. Higher real rates gradually restrain demand; inflation reacts with a lag. A supply shock can raise prices while weakening activity.\n3. Choose guidance. A firm promise is easier to understand, but missing it reduces follow-through credit. Data dependence adjusts the prior promise for changes in inflation and the output gap.\n4. Set purchases or a runoff cap, reinvestment, reserve maintenance and sterilization. Offer secured liquidity for eligible funding, not insolvency.\n5. Inspect applied amounts and the eight-quarter preview, then adopt. The preview assumes no new future shocks.\n\nPolicy committee\nChoose Price stability, Employment or Financial stability, then Stage committee proposal (Cmd/Ctrl+K). Price and employment proposals adjust the current rate by half the published inflation miss or output gap respectively; both round to the policy grid. Financial stability holds the rate and offers today's collateral-backed funding need. These fictional priorities disagree under stagflation; none knows the neutral rate or future shocks. Rate proposals preserve other tools; funding replaces the loan offer. Stage changes controls only. Compare before adopting.\n\nRoutine follow-up (optional)\nOff by default and not saved. Adopt your staged decision, then allow up to three staff rate/guidance updates, for at most four outcomes. Portfolio switches persist; purchase and loan offers reset. Funding, current events, drift or a scheduled check-in returns control. Stop or Escape, editing, reports, New and Load cancel follow-up. Any other non-modifier keypress, including Tab and arrows, also cancels, as do Save, Quit and the staff estimate action. The preview holds a rate; it does not predict adaptive follow-up.\n\nRates and guidance\nNominal rates apply in full: 1bp increments, 25bp arrows. Negative rates are a U.S. counterfactual, with diminishing benefits. Below zero, the effective financing rate is s*tanh(i/s); above zero it is unchanged. The illustrative scale s=1 percentage point is not an estimated lower bound. Credibility prices nominal guidance before this transmission. Stance credibility compares effective restraint with an unsaturated real-gap objective, giving constrained best effort partial credit rather than full adequacy. Conditional implied quotes round to the same 1bp grid before nominal promise follow-through.\n\nSecurities and runoff\nAsset and lending offers use percent of current annual GDP, converted once at the meeting. Purchases are uncapped; their duration-premium effect diminishes with scale. A negative offer caps runoff at maturing Treasury, MBS and bill principal, without selling unmatured holdings. With a zero or positive offer, reinvestment on rolls principal; off allows natural runoff. MBS paydown responds nonlinearly to lagged financing; Treasury timing uses a source-backed maturity ladder.\n\nReserves and sterilization\nMaintain ample reserves buys short bills after all other transactions to meet the disclosed buffer. With maintenance off, currency growth, runoff or loan repayment can exhaust reserves. A rejected settlement preserves the last valid quarter; enable maintenance or adjust purchases/runoff. Bills can ease funding scarcity but are excluded from the long-duration channel: long runoff can coexist with unchanged total assets. Sterilization retains securities and duration effects while replacing reserves with overnight reverse repo liabilities. Uptake, Treasury collateral and settlement can limit absorption. Tagged principal rolls without adding a new absorption target.\n\nLiquidity\nThe offer sets desired concurrent exposure, not accumulated quarterly turnover. Quotes use 0.0001% of current GDP; arrows move 0.25. Small funding amounts show four decimals; positive amounts below 0.0001 show <0.0001. Overnight/short loans mature next quarter. New needs and requested refinancing are separate; eligible refinancing has priority. Default zero refinancing assumes private repayment funds. Eligibility and haircut-adjusted collateral limit advances; excess offers do not become loans. Lending can relieve funding scarcity, not erase losses or create capital. Inspect applied amounts, RRP, reserve-maintenance purchases (RMP) and uncovered funding before adoption. Portfolio switches persist through previews and later meetings; one-time purchase and lending offers reset.\n\nRecovery\nDeferred demand tracks postponed durable/replacement purchases, not all lost consumption. Positive stock supports catch-up spending; negative stock means purchases were brought forward. Financing restraint delays release; growth changes the denominator, and obsolete plans decay. Its unit is percent of quarterly potential output. Short expectations gradually mix observed inflation with prior long expectations according to credibility. Transitory neutral-rate deviations revert toward a structural reference; permanent structural shifts change it. Recovery impulses provide no guaranteed return to 2% under persistent restraint.\n\nCredibility affects guidance pricing and long-run inflation expectations. Public support remembers inflation/deflation hardship and unemployment, recovering gradually without term resets or a game-over threshold.\n\nSaves and access\nSave and Load use policy-career-v2.save only. Prior policy-career-v1.save and original slots career-late-compound-v1.save and career-v1.save remain untouched; use their matching prior app/model. There is no copying, migration or fallback. New career and Load ask before replacing unsaved play. Tab navigates controls; Data & journal gives exact chart values. Animation defaults off.\n\nModel limits\nNine hypothetical scenarios. Varied policy career, Recurring crises and Stagflation & bank run draw from 50 curated exogenous events: disasters, demand/supply changes, funding and credit losses, and favorable developments. Forty-eight independent profiles use a no-repeat bag; two private-bank normalization events require prior eligible stress. The dispatch names active events, not future pulses. Private normalization cannot erase old losses or loans. The 2% objective and portfolio reference observations are source-backed; behavioral coefficients, starting conditions and shock incidence are design assumptions. This is a hypothetical economy, not an empirical forecast or financial advice. No Federal Reserve affiliation. Primary sources and equations are in the repository's FED_RESEARCH and model README."
 
 func _process(delta: float) -> void:
 	_follow_up_frame(delta)
