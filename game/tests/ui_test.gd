@@ -1150,6 +1150,9 @@ func check_review_staff_dialog(game: Control) -> void:
 	game.career.model = original_model
 	game._start_career("supply_shock", 1)
 func activate_comparison_section(chooser: OptionButton, index: int) -> void:
+	var tabs: TabContainer = chooser.get_parent().get_parent()
+	tabs.current_tab = 1
+	await process_frame
 	chooser.show_popup()
 	await process_frame
 	await process_frame

@@ -127,6 +127,8 @@ func check_actionable_report_enter(game: Control) -> void:
 	await process_frame
 	await process_frame
 	var comparison: AcceptDialog = game.get_child(game.get_child_count() - 1) as AcceptDialog
+	comparison.find_children("*", "TabContainer", true, false)[0].current_tab = 1
+	await process_frame
 	var chooser: OptionButton = comparison.find_children("*", "OptionButton", true, false)[0]
 	chooser.grab_focus()
 	await viewport_key(comparison, KEY_ENTER)
@@ -245,7 +247,8 @@ func run() -> void:
 	check(report is AcceptDialog and report.title == "Compare policy paths", "platform command-P opens the actual comparison")
 	if report is AcceptDialog:
 		await process_frame
-		check(report.gui_get_focus_owner() is TextEdit, "opening a report immediately focuses its native readable body")
+		var path_tabs: TabContainer = report.find_children("*", "TabContainer", true, false)[0]
+		check(report.gui_get_focus_owner() == path_tabs.get_tab_bar(), "comparison immediately focuses its native path/details navigation")
 		await key(report, KEY_ENTER, true)
 		check(game.career.encode() == start, "adoption accelerator cannot escape a modal report")
 		check(not is_instance_valid(report), "modified Return dismisses the report without adoption")
