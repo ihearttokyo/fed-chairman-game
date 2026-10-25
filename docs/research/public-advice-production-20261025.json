@@ -1,0 +1,134 @@
+{
+  "script_sha256": "65c60eb18bccbfaf2a7e22f60dc838620a495a1464bb007f7670463301594149",
+  "paths": 12,
+  "transitions": 720,
+  "failures": 0,
+  "native_ui_handlers": true,
+  "physical_input": false,
+  "forecasting_disabled": true,
+  "production_adopted": false,
+  "paired_initial_params_state_tape_asserted": true,
+  "previous_shutdown_leak_repaired": true,
+  "rows": [
+    {
+      "attended": 27,
+      "automatic": 33,
+      "employment_shortfall": 0.271616162215557,
+      "policy": "oracle",
+      "price_distance": 1.39999261304501,
+      "scenario": "policy_career",
+      "seed": 72341,
+      "uncovered_funding": 0.0
+    },
+    {
+      "attended": 26,
+      "automatic": 34,
+      "employment_shortfall": 0.235885689188229,
+      "policy": "public",
+      "price_distance": 1.4470131834569,
+      "scenario": "policy_career",
+      "seed": 72341,
+      "uncovered_funding": 0.0
+    },
+    {
+      "attended": 32,
+      "automatic": 28,
+      "employment_shortfall": 0.308054775390247,
+      "policy": "oracle",
+      "price_distance": 1.36143402512912,
+      "scenario": "policy_career",
+      "seed": 98117,
+      "uncovered_funding": 0.0461421038587686
+    },
+    {
+      "attended": 32,
+      "automatic": 28,
+      "employment_shortfall": 0.277171469693353,
+      "policy": "public",
+      "price_distance": 1.40820009012624,
+      "scenario": "policy_career",
+      "seed": 98117,
+      "uncovered_funding": 0.0459949445032199
+    },
+    {
+      "attended": 18,
+      "automatic": 42,
+      "employment_shortfall": 0.133986512182046,
+      "policy": "oracle",
+      "price_distance": 0.291099449329973,
+      "scenario": "lower_bound_slump",
+      "seed": 72341,
+      "uncovered_funding": 0.0
+    },
+    {
+      "attended": 18,
+      "automatic": 42,
+      "employment_shortfall": 0.136228356106427,
+      "policy": "public",
+      "price_distance": 0.310491909558226,
+      "scenario": "lower_bound_slump",
+      "seed": 72341,
+      "uncovered_funding": 0.0
+    },
+    {
+      "attended": 18,
+      "automatic": 42,
+      "employment_shortfall": 0.1348513597441,
+      "policy": "oracle",
+      "price_distance": 0.395918335954304,
+      "scenario": "lower_bound_slump",
+      "seed": 98117,
+      "uncovered_funding": 0.0
+    },
+    {
+      "attended": 17,
+      "automatic": 43,
+      "employment_shortfall": 0.139307231609773,
+      "policy": "public",
+      "price_distance": 0.418698280559461,
+      "scenario": "lower_bound_slump",
+      "seed": 98117,
+      "uncovered_funding": 0.0
+    },
+    {
+      "attended": 34,
+      "automatic": 26,
+      "employment_shortfall": 0.665208549171053,
+      "policy": "oracle",
+      "price_distance": 2.47317513435883,
+      "scenario": "stagflation_bank_run",
+      "seed": 72341,
+      "uncovered_funding": 0.04
+    },
+    {
+      "attended": 33,
+      "automatic": 27,
+      "employment_shortfall": 0.594119606548449,
+      "policy": "public",
+      "price_distance": 2.62578492541309,
+      "scenario": "stagflation_bank_run",
+      "seed": 72341,
+      "uncovered_funding": 0.04
+    },
+    {
+      "attended": 37,
+      "automatic": 23,
+      "employment_shortfall": 0.693028183123759,
+      "policy": "oracle",
+      "price_distance": 2.44162058978403,
+      "scenario": "stagflation_bank_run",
+      "seed": 98117,
+      "uncovered_funding": 0.0857965622329933
+    },
+    {
+      "attended": 36,
+      "automatic": 24,
+      "employment_shortfall": 0.626476359311656,
+      "policy": "public",
+      "price_distance": 2.5933665530425,
+      "scenario": "stagflation_bank_run",
+      "seed": 98117,
+      "uncovered_funding": 0.0854521346153938
+    }
+  ]
+}
