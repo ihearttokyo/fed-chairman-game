@@ -86,3 +86,34 @@ A private background source preview was inspected with Computer Use: Shift+Tab,
 Return/Down selection, menu Escape, Tab/Page Down scrolling, then report Escape
 and rate-focus restoration. No career adoption occurred; this is source UI
 validation, not an installed-binary or whole-game usability claim.
+
+## Graphical challenge progress
+
+Three target meters now show completed inflation misses, employment shortfalls
+and eligible funding coverage. Each has a value, limit marker and explicit text
+status; color is not the only cue. Cost meters show 0–2×limit, funding 0–100%, with
+uncapped displayed values and precise boundary direction. The most binding of
+career/recent constraints is shown, normalized by its actual limit. No data and
+incomplete recovery windows are neutral, and practice has no score panel.
+
+The footer retains a short persistent title/status. Details exposes the measures
+and unchanged fictional scoring rules; an unobserved mean is not reported as
+measured zero. No score, equation, policy tool or save format changed.
+
+The first native preview placed the bottom of the meters behind the action bar.
+Reducing the illustrative city viewport from 215 to 140 logical pixels fixed that
+hierarchy without changing the asset. The final native geometry log confirms the
+whole board fits the cockpit. A window-bounded compact-layout capture was
+inspected; metric labels were then clarified to distinguish misses from rates.
+Headless 1280×840 checks cover final label/status bounds and keyboard End reaches
+the full real projection below the initial fold while Adopt remains pinned.
+
+Qualification: 55 focused checks include exact 95% principal-boundary behavior,
+recent/career selection, malformed clearing, both scorers, real current-information
+career rendering and active-routine Enter/Details/Escape/no-later-adoption.
+Full default game suite passed before final copy/layout refinements; final full UI,
+compact, mandate and focused checks passed afterward. Broader validation exposed
+stale Help-child assumptions in three tests and one stale refinancing label;
+those assertions were repaired without relaxing their numeric/semantic checks.
+Independent code/test and non-code visual reviews were completed. Source previews
+used private storage; no player save or running player app was used.

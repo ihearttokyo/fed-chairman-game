@@ -66,7 +66,14 @@ func run() -> void:
 	game._help()
 	await process_frame
 	var help: AcceptDialog = game.get_child(game.get_child_count() - 1)
-	check(help.get_child(0).text.contains("Mandate v1") and help.get_child(0).text.contains("95%"), "How to play explains how default achievement differs from career completion")
+	var help_guide = help.get_child(0)
+	check(help_guide.topics.item_count == 6, "Help keeps explicit access to its scoring topic")
+	help_guide.topics.select(5)
+	help_guide.topics.item_selected.emit(5)
+	await process_frame
+	await process_frame
+	check(help_guide.body.text.contains("Mandate v1") and help_guide.body.text.contains("fictional") and help_guide.body.text.contains("95%"), "actual Controls/scoring topic explains the fictional achievement criteria and 95% funding threshold rather than merely career completion")
+	check(help_guide.body.accessibility_description == help_guide.body.text, "scoring criteria remain complete in the currently selected native assistive body")
 	await close_report(game)
 	game.save_path = ProjectSettings.globalize_path("user://mandate-ui-fixture.save")
 	game._save()
