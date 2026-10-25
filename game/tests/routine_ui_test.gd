@@ -226,6 +226,24 @@ func run() -> void:
 		timing_game._process(0.1)
 		await process_frame
 	check(timing_game.career.encode() == timing_before and timing_model.attempts == 1 and timing_model.confirmed == 1, "cancelled pacing cannot resume later; separate timing fixture has exactly one confirmed native transition")
+	# A pointer selection emits item_selected without the keyboard cancellation path.
+	check(timing_game.routine.arm(timing_game.career.state, timing_game.career.params, timing_game._policy(), Engine.get_process_frames()).ok, "priority-change fixture re-arms without another economic transition")
+	timing_game.segment_start = 0
+	timing_game.follow_up_toggle.set_pressed_no_signal(true)
+	var priority_policy: Dictionary = timing_game._policy()
+	var priority_draft: String = timing_game.rate.get_line_edit().text
+	timing_game.committee.select(1)
+	timing_game.committee.item_selected.emit(1)
+	check(not timing_game.routine.active and not timing_game.follow_up_toggle.button_pressed, "pointer priority selection cancels active routine follow-up")
+	check(timing_game.committee.selected == 1 and timing_game.career.encode() == timing_before and timing_game._policy() == priority_policy and timing_game.rate.get_line_edit().text == priority_draft, "priority selection keeps the new choice and draft without adopting or staging a policy")
+	for _frame in range(25):
+		timing_game._process(0.1)
+		await process_frame
+	check(timing_game.career.encode() == timing_before and timing_model.attempts == 1, "priority-cancelled follow-up cannot resume on later frames")
+	timing_game.follow_up_toggle.set_pressed_no_signal(true)
+	timing_game.committee.select(2)
+	timing_game.committee.item_selected.emit(2)
+	check(timing_game.follow_up_toggle.button_pressed and timing_game._policy() == priority_policy and timing_game.career.encode() == timing_before, "inactive priority choice preserves the player's next-adoption follow-up preference and policy")
 	timing_game.music.free()
 	timing_game.queue_free()
 	await process_frame
