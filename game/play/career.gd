@@ -203,6 +203,25 @@ func mandate_assessment() -> Dictionary:
 	assessment.achieved = assessment.eligible and assessment.complete and assessment.prices_met and assessment.employment_met and (not assessment.funding_active or assessment.funding_met)
 	return assessment
 
+# Recovery is a separate current stabilization objective, not a relaxed Mandate.
+# Reuse its disclosed recent-window thresholds and cumulative settlement ledger.
+func recovery_assessment() -> Dictionary:
+	var mandate: Dictionary = mandate_assessment()
+	var eligible := scenario_id == "stagflation_bank_run"
+	for q in range(decisions.size()):
+		if shocks[q] != _seeded_shocks[q]:
+			eligible = false
+	var window: int = mini(decisions.size(), MANDATE_RECENT_QUARTERS)
+	var prices_met: bool = window == MANDATE_RECENT_QUARTERS and mandate.recent_inflation_miss <= MANDATE_INFLATION_MISS_MAX
+	var jobs_met: bool = window == MANDATE_RECENT_QUARTERS and mandate.recent_employment_shortfall <= MANDATE_RECENT_EMPLOYMENT_SHORTFALL_MAX
+	var funding_met: bool = not mandate.funding_active or mandate.funding_met
+	return {"eligible":eligible, "quarters":decisions.size(), "window_quarters":window,
+		"inflation_miss":mandate.recent_inflation_miss, "employment_shortfall":mandate.recent_employment_shortfall,
+		"funding_active":mandate.funding_active, "funding_coverable":mandate.funding_coverable,
+		"funding_applied":mandate.funding_applied, "funding_coverage":mandate.funding_coverage,
+		"prices_met":prices_met, "employment_met":jobs_met, "funding_met":funding_met,
+		"stabilized":eligible and prices_met and jobs_met and funding_met}
+
 func model_digest() -> String:
 	return (FileAccess.get_sha256("res://model/economy.gd") + FileAccess.get_sha256("res://model/parameters.json") + FileAccess.get_sha256("res://model/scenarios.json") + FileAccess.get_sha256("res://model/exogenous_shocks.json") + FileAccess.get_sha256("res://model/portfolio_reference.json")).sha256_text()
 

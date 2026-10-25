@@ -108,7 +108,6 @@ func run() -> void:
 		check(game.career.restore(bytes_to_var(saved)).ok,"Terminal native replay remains accepted")
 		game._refresh(true)
 		check(game.mandate_label.text.contains(expected) and game.career.encode() == saved,"Restored completion computes the same visible achievement")
-	game.free()
 	if failures == 0:
 		print("PASS: mandate UI persistence, realized feedback, precision, help, private Save/Load and both actual terminal outcomes; ",checks," checks")
-	quit(1 if failures else 0)
+	await game._quit_app(1 if failures else 0)
