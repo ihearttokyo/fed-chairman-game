@@ -719,6 +719,16 @@ func _balance_sheet_step(state: Dictionary, policy: Dictionary, shocks: Dictiona
 	if not workout.is_empty():
 		local_refinancing = workout.renewal
 	var local_new := local - local_refinancing
+	# Subtraction can round a fully funded new leg above its actual request.
+	# Bound the accepted advance before booking it; never erase an unpaid claim.
+	# Only formerly invalid paths change, preserving accepted historical replays.
+	if workout.is_empty() and local_new > new_need and (new_need - local_new) + (refinancing_need - local_refinancing) < 0.0:
+		local_new = eligible_new
+		local = local_refinancing + local_new
+		# Use the fresh leg, not the enormous renewed stock, as the error scale.
+		# Refuse quantities whose gross booking cannot represent the fresh advance.
+		if absf((local - local_refinancing) - local_new) > 1e-12 * local_new:
+			return {"ok":false,"error":"unrepresentable fractional refinancing advance"}
 	if not workout.is_empty():
 		local_new = workout.new_cash
 	var uncovered_new := new_need - local_new
