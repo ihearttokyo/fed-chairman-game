@@ -568,7 +568,9 @@ def upstream77_mutations(source, defect, row_map):
         elif action == 'decimal': rule.set('type', 'decimal')
         elif action == 'operator': rule.set('operator', 'equal')
         elif action == 'minimum': rule.find('s:formula1', NS).text = '0'
-        elif action == 'maximum': rule.find('s:formula2', NS).text = '9'
+        elif action == 'maximum':
+            maximum = rule.find('s:formula2', NS)
+            maximum.text = str(int(maximum.text) + 1)
         elif action == 'horizon': container[1].find('s:formula2', NS).text = '48'
         elif action == 'benchmark': container[2].find('s:formula2', NS).text = '3'
         elif action == 'overlap': rule.set('sqref', 'C4:C6')

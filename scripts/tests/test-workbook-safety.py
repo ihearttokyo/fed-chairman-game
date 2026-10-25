@@ -71,6 +71,25 @@ with tempfile.TemporaryDirectory(prefix='fed-scenario-mutations-') as directory:
         assert [targets[key] for key in ('source-first', 'source-last', 'source-constant')] == [f'C{start}', f'C{start + 119}', f'C{start - 4}']
 print('PASS: exact shipped-scenario binding and dynamic 8/9/10-case file-mutation targets (actual Python guards; synthetic inventories)')
 
+# An invalid maximum must differ from the authored rule after scenario additions.
+selector_nodes = [node for node in file_nodes if isinstance(node, ast.FunctionDef)
+                  and node.name in ('require', 'upstream77_mutations')]
+selector_scope = {'ET': ET, 'NS': {'s': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}}
+exec(compile(ast.Module(body=selector_nodes, type_ignores=[]), '<actual selector mutation>', 'exec'), selector_scope)
+for count in (8, 9, 10):
+    selector_xml = (f'<worksheet xmlns="{selector_scope["NS"]["s"]}"><dataValidations>'
+                    f'<dataValidation><formula1>1</formula1><formula2>{count}</formula2></dataValidation>'
+                    '<dataValidation/><dataValidation/></dataValidations></worksheet>').encode()
+    class SelectorSource:
+        def read(self, path):
+            assert path == 'xl/worksheets/sheet1.xml'
+            return selector_xml
+    changed = selector_scope['upstream77_mutations'](SelectorSource(), 'upstream77-selector-maximum', None)
+    rule = ET.fromstring(changed['xl/worksheets/sheet1.xml']).find('s:dataValidations/s:dataValidation', selector_scope['NS'])
+    assert rule.findtext('s:formula2', namespaces=selector_scope['NS']) == str(count + 1)
+    assert rule.findtext('s:formula1', namespaces=selector_scope['NS']) == '1'
+print('PASS: actual invalid-selector mutation changes 8/9/10-case maxima without changing the minimum (synthetic XML)')
+
 
 def rejected_output(path, message):
     try:
