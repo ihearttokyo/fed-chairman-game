@@ -93,7 +93,7 @@ func run() -> void:
 	check(game.last_follow_up_reasons == ["QUOTA_EXHAUSTED", "CURRENT_NEWS"], "scheduled return retains simultaneous current-news reasons")
 	for policy in game.career.decisions.slice(1):
 		check(policy.asset_flow_request_pct_initial_gdp == 0 and policy.liquidity_request_pct_initial_gdp == 0 and not policy.reinvest_principal, "one-shots reset while false portfolio switches persist")
-	check(game.consequence.text.contains("Q1–Q4") and game.consequence.text.contains("not isolated policy effects"), "returned explanation covers the whole completed segment")
+	check(game.outcome_drivers.visible and game.outcome_drivers.details_text.contains("Q1–Q4") and game.outcome_drivers.details_text.contains("not isolated policy effects") and not game.consequence.text.contains("Equation contributions"), "returned graphic covers the whole completed segment and keeps reconciliation behind Details")
 	game.follow_up_toggle.button_pressed = true
 	game._advance()
 	var adopted: int = game.career.decisions.size()
