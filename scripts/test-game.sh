@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-tests=(policy_committee_test crisis_campaign_test crisis_objectives_test music_test varied_career_test mandate_test mandate_ui_test challenge_test late_challenge_test compound_policy_test sustained_toolkit_test balance_sheet_test balance_career_test balance_ui_test recovery_test rate_transmission_test shock_catalogue_test campaign_save_slot_test career_test chart_test keyboard_test compact_ui_test ui_test transition_explanation_test routine_follow_up_test routine_ui_test comparison_performance_test music_shutdown_test)
+tests=(tooltip_test policy_review_test policy_committee_test crisis_campaign_test crisis_objectives_test music_test varied_career_test mandate_test mandate_ui_test challenge_test late_challenge_test compound_policy_test sustained_toolkit_test balance_sheet_test balance_career_test balance_ui_test recovery_test rate_transmission_test shock_catalogue_test campaign_save_slot_test career_test chart_test keyboard_test compact_ui_test ui_test transition_explanation_test routine_follow_up_test routine_ui_test comparison_performance_test music_shutdown_test)
 if (( $# )); then
   # Full-career qualification is opt-in, not repeated by the default UI suite.
   case " ${tests[*]} routine_career_test " in

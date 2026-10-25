@@ -102,8 +102,10 @@ func key(window: Window, code: Key) -> void:
 func check_report_bounds(dialog: AcceptDialog) -> void:
 	var decorated := Rect2(Vector2(dialog.get_position_with_decorations()), Vector2(dialog.get_size_with_decorations()))
 	check(root.get_visible_rect().grow(1).encloses(decorated), "small report including native chrome remains inside its logical parent")
-	for control in [dialog.find_children("*", "TextEdit", true, false)[0], dialog.get_ok_button()]:
-		check(dialog.get_visible_rect().grow(1).encloses(control.get_global_rect()), "small report text and dismissal button remain inside the dialog")
+	for control in [dialog.get_child(0), dialog.get_ok_button()]:
+		check(dialog.get_visible_rect().grow(1).encloses(control.get_global_rect()), "small report body and dismissal button remain inside the dialog")
+	for button in dialog.find_children("*", "Button", true, false):
+		check(dialog.get_visible_rect().grow(1).encloses(button.get_global_rect()), "small report disclosure actions remain inside the dialog")
 
 func check_small_resize(game: Control, density: float, edit: LineEdit, preserved: PackedByteArray) -> void:
 	var original_position := root.position
@@ -196,7 +198,7 @@ func check_small_actions(game: Control, density: float) -> void:
 	game.rate.get_line_edit().grab_focus()
 	var compare: Button
 	for control in game.keyboard_controls:
-		if control is Button and control.text == "Compare policy paths":
+		if control is Button and control.text == "Policy paths":
 			compare = control
 	var order: Array = game._keyboard_focus_order()
 	var start := order.find(game.rate.get_line_edit())
@@ -231,7 +233,7 @@ func check_resize_bounds(game: Control, logical: Vector2i, density: float) -> vo
 	for control in [game.consequence, game.mandate_label, game.status_label, game.decision_button, game.follow_up_toggle]:
 		check(visible.grow(0.5).encloses(control.get_global_rect()), "complete footer stays within the client: " + str(control.get_path()) + " at " + str(logical))
 	for control in game.keyboard_controls:
-		if control is Button and control.text == "Compare policy paths":
+		if control is Button and control.text == "Policy paths":
 			check(visible.grow(0.5).encloses(control.get_global_rect()), "Compare remains within the client at " + str(logical))
 	check(game.cockpit_scroll.size.y >= 200, "expanded guidance retains a usable vertical cockpit at " + str(logical))
 	if logical.x == 960:
@@ -354,6 +356,29 @@ func check_responsive_resize(game: Control) -> void:
 	await key(dialog, KEY_ENTER)
 	await settle_layout()
 	check(not is_instance_valid(dialog) and root.gui_get_focus_owner() == help_invoker, "small Help Return dismisses and restores its exact invoking control")
+	game._review()
+	dialog = game.get_child(game.get_child_count() - 1)
+	await settle_layout()
+	var graph: ScrollContainer = dialog.get_child(0)
+	check(dialog.find_children("*", "TextEdit", true, false).is_empty() and graph.find_children("*", "ProgressBar", true, false).size() == 15, "small review shows graphical policy comparisons rather than a text wall")
+	var graph_values: Array = []
+	for bar in graph.find_children("*", "ProgressBar", true, false):
+		graph_values.append([bar.value, bar.max_value, bar.accessibility_name])
+	preserved = resize_snapshot(game)
+	for logical in [Vector2i(800, 480), Vector2i(800, 240)]:
+		root.size = Vector2i((Vector2(logical) * density).round())
+		await settle_layout()
+		check_report_bounds(dialog)
+		var resized_values: Array = []
+		for bar in graph.find_children("*", "ProgressBar", true, false):
+			resized_values.append([bar.value, bar.max_value, bar.accessibility_name])
+		check(resized_values == graph_values and resize_snapshot(game) == preserved, "small graph resize preserves every comparison value, scale, semantic and career input")
+		graph.grab_focus()
+		await key(dialog, KEY_END)
+		check(graph.get_v_scroll_bar().value > 0, "small graph keyboard End reaches the final metrics")
+	await key(dialog, KEY_ESCAPE)
+	await settle_layout()
+	check(not is_instance_valid(dialog) and root.gui_get_focus_owner() == help_invoker, "small graphical review Escape restores its exact invoking control")
 	var motion: CheckButton
 	for control in game.keyboard_controls:
 		if control is CheckButton and control.text == "Animate city":

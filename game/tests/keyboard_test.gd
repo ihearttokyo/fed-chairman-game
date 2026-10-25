@@ -43,6 +43,13 @@ func viewport_key(window: Window, code: Key, command := false, echo := false) ->
 	await process_frame
 	await process_frame
 
+func check_review_interval(dialog: AcceptDialog, first: int, last: int) -> void:
+	check(dialog.title == "Policy review" and dialog.get_child(0) is ScrollContainer, "keyboard review opens the graphical Policy review")
+	var labels := ""
+	for label in dialog.find_children("*", "Label", true, false):
+		labels += label.text + "\n"
+	check(labels.contains("Q%d–Q%d" % [first, last]), "keyboard review graph identifies its actual completed interval")
+	check(dialog.find_children("*", "TextEdit", true, false).is_empty() and dialog.find_children("*", "ProgressBar", true, false).size() == 15, "keyboard review defaults to five graphical metrics across three paths, not detailed report text")
 func check_periodic_review_keys(game: Control) -> void:
 	for closing in [[KEY_ESCAPE, false], [KEY_ENTER, false], [KEY_KP_ENTER, false], [KEY_ENTER, true], [KEY_KP_ENTER, true]]:
 		for button_focus in [false, true]:
@@ -54,9 +61,10 @@ func check_periodic_review_keys(game: Control) -> void:
 			game.rate.get_line_edit().grab_focus()
 			await viewport_key(root, KEY_ENTER, true)
 			var dialog: AcceptDialog = game.get_child(game.get_child_count() - 1) as AcceptDialog
-			check(game.career.state.quarter_index == 12 and dialog != null and dialog.title.contains("policy review"), "actual modified Return opens automatic Q12 review without losing its opening event")
+			check(game.career.state.quarter_index == 12 and dialog != null and dialog.title == "Policy review", "actual modified Return opens automatic Q12 review without losing its opening event")
 			if dialog == null:
 				continue
+			check_review_interval(dialog, 1, 12)
 			if button_focus:
 				dialog.get_ok_button().grab_focus()
 			else:
@@ -91,10 +99,30 @@ func check_actionable_report_enter(game: Control) -> void:
 		review.grab_focus()
 		await viewport_key(journal, KEY_ENTER)
 		var report: AcceptDialog = game.get_child(game.get_child_count() - 1) as AcceptDialog
-		check(report != null and report.title.contains("policy review"), "plain Return activates journal review rather than dismissing its action")
+		check(report != null and report.title == "Policy review", "plain Return activates journal review rather than dismissing its action")
 		if report != null:
+			check_review_interval(report, 1, 1)
 			await viewport_key(report, KEY_ESCAPE)
 	check(game.career.encode() == preserved, "journal action via Return preserves the exact career")
+	for action in [["Method & definitions", "Comparison method", "REALIZED PATHS / Q1–Q1"], ["Challenge rules", "Challenge rules", "Mandate v1"]]:
+		game._review()
+		await process_frame
+		await process_frame
+		var graph: AcceptDialog = game.get_child(game.get_child_count() - 1) as AcceptDialog
+		check_review_interval(graph, 1, 1)
+		var disclosure: Button = button(game, action[0])
+		check(disclosure != null, "graph exposes keyboard-actionable " + action[0])
+		if disclosure != null:
+			disclosure.grab_focus()
+			await viewport_key(graph, KEY_ENTER)
+			var details: AcceptDialog = game.get_child(game.get_child_count() - 1) as AcceptDialog
+			check(not is_instance_valid(graph) and details != null and details.title == action[1], "plain Return activates " + action[0] + " rather than merely dismissing the graph")
+			if details != null:
+				check(details.get_child(0) is TextEdit and details.get_child(0).text.contains(action[2]), "keyboard disclosure retains its complete native readable report")
+				await viewport_key(details, KEY_ESCAPE)
+		else:
+			await viewport_key(graph, KEY_ESCAPE)
+		check(game.career.encode() == preserved, "graph disclosure via Return preserves every career byte")
 	game._compare()
 	await process_frame
 	await process_frame
@@ -391,7 +419,8 @@ func run() -> void:
 			await process_frame
 			await process_frame
 			report = game.get_child(game.get_child_count() - 1) as AcceptDialog
-			check(report.title == "Your 1-quarter policy review", "keyboard journal transition opens one actual realized review")
+			check_review_interval(report, 1, 1)
+			check(report.gui_get_focus_owner() == report.get_child(0), "keyboard journal transition focuses the graphical review body")
 		await key(report, KEY_ESCAPE)
 		check(game.career.encode() == adopted, "keyboard help, history and realized review remain pure")
 	button(game, "Credits").grab_focus()

@@ -102,7 +102,24 @@ func run() -> void:
 		var expected := "Mandate achieved" if mode == "funded" else "Mandate not met"
 		check(game.career.state.quarter_index == 240 and game.decision_button.disabled and game.mandate_label.text.contains(expected), "Completion visibly separates achievement from merely surviving")
 		var review: AcceptDialog = game.get_child(game.get_child_count() - 1)
-		check(review.get_child(0).text.contains(expected) and review.get_child(0).text.contains("Mandate v1"), "Terminal review explains the actual achievement result")
+		var labels := ""
+		for label in review.find_children("*", "Label", true, false):
+			labels += label.text + "\n"
+		check(review.get_child(0) is ScrollContainer and review.find_children("*", "ProgressBar", true, false).size() == 15, "Terminal review presents the five actual/hold/benchmark metrics graphically")
+		check(labels.contains(expected) and labels.contains("MANDATE v1"), "Terminal graph explains the actual achievement result")
+		check(review.find_children("*", "TextEdit", true, false).is_empty(), "Terminal review keeps detailed rules out of the graphical default")
+		var rules: Button
+		for button in review.find_children("*", "Button", true, false):
+			if button.text == "Challenge rules":
+				rules = button
+		check(rules != null, "Terminal graph retains explicit Challenge rules access")
+		if rules != null:
+			rules.pressed.emit()
+			check(review.visible and review.is_queued_for_deletion(), "Rules replace the terminal graph through deferred accessible closing")
+			await process_frame
+			await process_frame
+			var rule_report: AcceptDialog = game.get_child(game.get_child_count() - 1)
+			check(not is_instance_valid(review) and rule_report.title == "Challenge rules" and rule_report.get_child(0).text.contains("Mandate v1") and rule_report.get_child(0).text.contains("95%"), "On-demand rules retain achievement criteria without nested exclusive windows")
 		await close_report(game)
 		saved = game.career.encode()
 		check(game.career.restore(bytes_to_var(saved)).ok,"Terminal native replay remains accepted")

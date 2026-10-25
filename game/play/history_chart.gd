@@ -7,6 +7,9 @@ var colors := [Color("e9b76e"), Color("75d4c0")]
 var heading := "PRICES & EXPECTATIONS"
 var hovered := -1
 
+func _make_custom_tooltip(for_text: String) -> Object:
+	return preload("res://play/wrapped_tooltip.gd").create(self, for_text)
+
 static func tick_quarters(count: int) -> Array:
 	return [0] if count <= 1 else [0, 1] if count == 2 else [0, roundi((count - 1) / 2.0), count - 1]
 
