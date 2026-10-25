@@ -1,11 +1,13 @@
-"""Shared repository inputs for an offline qualification candidate, not a game backend."""
+"""Frozen historical inputs for an offline qualification candidate, not a game backend."""
 from pathlib import Path
 from types import MappingProxyType
 import hashlib
 import json
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
-MODEL_DIR = REPOSITORY_ROOT / 'game' / 'model'
+SOURCE_ORIGIN_COMMIT = '2703f7965a3c5f67c5bc233ce3d3c6560268ce7c'
+# Keep the existing MODEL_DIR interface for macro/checkpoint source fingerprints.
+# Shipping game inputs are deliberately not a fallback or an update source.
+MODEL_DIR = Path(__file__).resolve().parent / 'reference_inputs'
 SOURCE_PARAMETERS_SHA256 = '6e45d72e2231d59f67305270c10ccb5b7afcfc2a3475ec8eb72a497522320949'
 SOURCE_CORE_SHA256 = '52580ad1073aca877912527ecc7a6aa36f935de17fbc93e460323b8eba4a0987'
 SOURCE_PORTFOLIO_SHA256 = '5e7362e82bc848e85869df0c69334f05eb68349b19bf84f7bd7d03b283b19e7e'
