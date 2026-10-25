@@ -102,7 +102,7 @@ func update_result(result: Dictionary, first_quarter: int, last_quarter: int) ->
 	details_text = result.text
 	var period := "Q%d" % first_quarter if first_quarter == last_quarter else "Q%d–Q%d" % [first_quarter, last_quarter]
 	heading.text = "%s  Output-gap change %s pp" % [period, _signed(result.change)]
-	scale_label.text = "±%.3f pp" % shared_scale
+	scale_label.text = "Scale ±%.3f pp" % shared_scale
 	scale_label.accessibility_name = "Shared scale: %s percentage points in each direction, centered at zero" % str(shared_scale)
 	heading.accessibility_name = "Q%d through Q%d total output-gap change: %s percentage points" % [first_quarter, last_quarter, _signed(result.change)]
 	for index in range(bars.size()):

@@ -8,6 +8,7 @@ const Music = preload("res://play/music.gd")
 const RoutineFollowUp = preload("res://play/routine_follow_up.gd")
 const TransitionExplanation = preload("res://play/transition_explanation.gd")
 const OutcomeDrivers = preload("res://play/outcome_drivers.gd")
+const DispatchBrief = preload("res://play/dispatch_brief.gd")
 const PolicyCommittee = preload("res://play/policy_committee.gd")
 const FOLLOW_UP_INTERVAL_SECONDS := 2.0
 const FOLLOW_UP_MAX_FRAME_CREDIT_SECONDS := 0.1
@@ -22,6 +23,10 @@ var quarter_label: Label
 var case_title: Label
 var case_detail: Label
 var briefing: Label
+var dispatch_event: Label
+var dispatch_dilemma: Label
+var dispatch_details_button: Button
+var dispatch_details_text := ""
 var consequence: Label
 var outcome_drivers: OutcomeDrivers
 var mandate_label: Label
@@ -128,6 +133,7 @@ func _ready() -> void:
 	feedback.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	consequence = _label(feedback, "", 14, MINT)
 	consequence.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	consequence.mouse_filter = Control.MOUSE_FILTER_PASS
 	consequence.accessibility_live = AccessibilityServer.LIVE_POLITE
 	mandate_label = _label(feedback, "", 13, GOLD)
 	mandate_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -178,7 +184,18 @@ func _ready() -> void:
 	body_layout.add_child(left)
 	_build_city(left)
 	var brief_box := _vbox(_panel(left), 5)
-	_label(brief_box, "Meeting dispatch", 12, GOLD)
+	var dispatch_header := HBoxContainer.new()
+	brief_box.add_child(dispatch_header)
+	var dispatch_title := _label(dispatch_header, "Current conditions", 12, GOLD)
+	dispatch_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	dispatch_details_button = _button(dispatch_header, "Details", _dispatch_details)
+	dispatch_details_button.add_theme_font_size_override("font_size", 12)
+	dispatch_details_button.accessibility_name = "Current conditions details"
+	dispatch_details_button.tooltip_text = "Read current shocks, funding calculations and their limits."
+	dispatch_event = _label(brief_box, "", 16, GOLD)
+	dispatch_event.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	dispatch_dilemma = _label(brief_box, "", 13, MUTED)
+	dispatch_dilemma.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	briefing = _label(brief_box, "", 14)
 	briefing.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	briefing.mouse_filter = Control.MOUSE_FILTER_PASS
@@ -592,7 +609,7 @@ func _build_policy(parent: Node, actions: Node) -> void:
 	var panel := _panel(parent)
 	policy_panel = panel
 	panel.custom_minimum_size.x = 380
-	var box := _vbox(panel, 13)
+	var box := _vbox(panel, 8)
 	_label(box, "FOMC DECISION", 18, GOLD)
 	rate = _spin(box, "Target midpoint (%)", 0, 15, 0.25, "1bp quotes; 25bp arrows. No nominal rate or change cap. Negative policy is a U.S. counterfactual with diminishing financing benefits.")
 	rate.allow_lesser = true
@@ -705,6 +722,12 @@ func _compare() -> void:
 	_show_dialog(dialog, Vector2i(740, 540), body)
 	_link_focus([chooser, body, dialog.get_ok_button()])
 
+func _dispatch_details() -> void:
+	if routine.active:
+		_finish_follow_up("Current conditions opened", false)
+	if not dispatch_details_text.is_empty():
+		_text_dialog("Current conditions", dispatch_details_text)
+
 func _guidance_controls() -> void:
 	var use_custom := commitment.selected == 2
 	var focused: Control = get_viewport().gui_get_focus_owner()
@@ -724,6 +747,8 @@ func _start_career(case_id: String, seed_number: int) -> void:
 	outcome_drivers.clear()
 	_refresh(true)
 	consequence.text = "Review current conditions, stage policy, then adopt."
+	consequence.tooltip_text = ""
+	consequence.accessibility_description = ""
 	status_label.text = "New unsaved career · %s · seed %d" % [career.cases[case_id].label, seed_number]
 
 func _refresh(reset_controls := false, update_preview := true) -> void:
@@ -756,6 +781,10 @@ func _refresh(reset_controls := false, update_preview := true) -> void:
 	for chart in charts:
 		chart.history = career.history
 		chart.queue_redraw()
+	dispatch_event.hide()
+	dispatch_event.text = ""
+	dispatch_dilemma.hide()
+	dispatch_dilemma.text = ""
 	if complete:
 		briefing.text = "Career complete at Q240. Review final outcomes in Data & journal."
 		briefing.tooltip_text = "All 240 decisions are complete; there is no next meeting."
@@ -775,6 +804,21 @@ func _refresh(reset_controls := false, update_preview := true) -> void:
 		briefing.tooltip_text = "Refinancing need is capped by maturing short-loan principal. Lending value applies the current collateral haircut and eligibility. Impairment is a credit-spread proxy; liquidity lending cannot create bank capital."
 		briefing.text += "\nDeferred demand %+.2f%% potential · prior release %+.2f pp." % [s.deferred_demand_pct, s.demand_release_pct]
 		briefing.text += "\n\n" + career.situation_briefing()
+		dispatch_details_text = briefing.text
+		var previous: Dictionary = career.history[-2] if career.history.size() > 1 else s
+		var view := DispatchBrief.present(s, shock, previous, n, career.current_shock_episode())
+		if view.ok:
+			briefing.text = view.summary
+			dispatch_event.text = view.event_title
+			dispatch_dilemma.text = view.event_detail
+			dispatch_event.visible = not view.event_title.is_empty()
+			dispatch_dilemma.visible = not view.event_detail.is_empty()
+		else:
+			briefing.text = "Current summary unavailable. Open Details for the current record."
+		briefing.tooltip_text = "Current meeting data. Hardship memory is an index, not a percentage. Funding uses current annual GDP; settlement can constrain advances. Details shows the full calculations."
+	if complete:
+		dispatch_details_text = briefing.text
+	dispatch_details_button.disabled = dispatch_details_text.is_empty()
 	briefing.accessibility_description = briefing.tooltip_text
 	if reset_controls:
 		_reset_policy_controls()
@@ -1022,12 +1066,18 @@ func _commit_policy(policy: Dictionary) -> Dictionary:
 
 func _show_outcome(before: Dictionary) -> void:
 	var s: Dictionary = career.state
-	consequence.text = "Q%d OUTCOME  ·  Inflation %s; unemployment %s.\nApplied rate %.2f%%. Public support %s; credibility %s." % [s.quarter_index, _change_text(s.four_quarter_inflation_pct - before.four_quarter_inflation_pct, 2, "pp"), _change_text(s.unemployment_rate_pct - before.unemployment_rate_pct, 2, "pp"), s.policy_rate_pct, _change_text(s.public_support - before.public_support), _change_text((s.credibility - before.credibility) * 100)]
+	var first := int(before.quarter_index) + 1
+	var last := int(s.quarter_index)
+	var period := "Q%d" % last if first == last else "Q%d–Q%d" % [first, last]
+	consequence.text = "%s outcome · Inflation %s · Unemployment %s · Rate %.2f%%\nSupport %s · Credibility %s" % [period, _change_text(s.four_quarter_inflation_pct - before.four_quarter_inflation_pct, 2, "pp"), _change_text(s.unemployment_rate_pct - before.unemployment_rate_pct, 2, "pp"), s.policy_rate_pct, _change_text(s.public_support - before.public_support, 1, "pts"), _change_text((s.credibility - before.credibility) * 100, 1, "pts")]
+	consequence.tooltip_text = "Changes cover the labelled completed interval. Rate, promise and funding refer to its final meeting. Support and credibility changes are score points; promise measures follow-through of that meeting's prior announcement."
+	consequence.accessibility_description = consequence.tooltip_text
+	var prior_meeting: Dictionary = career.history[-2] if career.history.size() > 1 else before
+	if prior_meeting.guidance_active:
+		consequence.text += " · Promise %.1f/100" % (100 * s.guidance_followthrough_score)
 	if s.liquidity_applied_pct_initial_gdp > 0.0 or s.uncovered_funding_pct_initial_gdp > 0.0 or s.liquidity_repayment_pct_initial_gdp > 0.0:
 		var n: float = s.decision_nominal_gdp_ratio
 		consequence.text += "\nFunding (%% meeting GDP): lent %s · uncovered %s · repaid %s." % [Career.funding_amount_text(s.liquidity_applied_pct_initial_gdp / n), Career.funding_amount_text(s.uncovered_funding_pct_initial_gdp / n), Career.funding_amount_text(s.liquidity_repayment_pct_initial_gdp / n)]
-	if before.guidance_active:
-		consequence.text += "\nPrevious promise follow-through: %.1f / 100." % (100 * s.guidance_followthrough_score)
 	_update_outcome_drivers(int(before.quarter_index))
 	status_label.text = "Quarter %d completed. Unsaved changes · %s" % [s.quarter_index, career.cases[career.scenario_id].label]
 
@@ -1151,6 +1201,8 @@ func _load() -> void:
 			outcome_drivers.clear()
 			_refresh(true)
 			consequence.text = "Saved career restored with its decisions, economic history and policy lags."
+			consequence.tooltip_text = ""
+			consequence.accessibility_description = ""
 		status_label.text = "Loaded quarter %d." % career.state.quarter_index if result.ok else result.error
 	)
 	_show_dialog(dialog, Vector2i(740, 180), cancel)

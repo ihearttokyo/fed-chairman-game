@@ -46,3 +46,19 @@ The strip uses completed history only and makes no forecasts or economic steps.
 Valid refreshes keep keyboard focus; New/Load and invalid results clear stale
 attribution. The graph stays out of the pinned footer so compact-window adoption
 remains reachable. Economic coefficients and save format are unchanged.
+
+## Current conditions and compact outcomes
+
+Current canonical shock title and policy dilemma now lead the briefing instead
+of being buried after repeated market/public narration. The summary retains
+current demand/supply/gap, long expectations, hardship, promise delivery and
+funding essentials. Refinancing is capped by maturing principal; eligible need
+and haircut/eligibility-adjusted secured value use current GDP. The original
+full briefing remains unchanged behind keyboard-accessible Details.
+
+Outcome feedback uses two concise lines, plus a funding line only when needed.
+Multi-quarter changes name their full interval; rate, funding and promise refer
+to the final meeting. Final-meeting promise evaluation no longer disappears
+when a routine segment began before the first announcement. Score-point units
+and rounding bounds remain explicit. Policy controls use tighter spacing without
+smaller fonts, and driver-chart scale is explicitly labelled.
