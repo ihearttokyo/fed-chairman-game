@@ -1,5 +1,7 @@
 extends SceneTree
 
+const DispatchCareer = preload("res://play/career.gd")
+
 const BENCHMARK_FINANCING_LIMIT := "The rate formula does not directly adjust for credit spreads, term premiums or weaker negative-rate transmission."
 
 class RecordingQuitMain:
@@ -114,6 +116,7 @@ func check_text_reports(game: Control) -> void:
 	await check_report_body(dialog, [literal])
 	dialog.get_ok_button().pressed.emit()
 	await process_frame
+	await check_dispatch_details_access(game)
 	for method in ["_help", "_credits", "_journal", "_review"]:
 		game.follow_up_toggle.button_pressed = true
 		check(game.follow_up_note.visible and not game.routine.active, "real preview explains selected, unstarted follow-up")
@@ -179,7 +182,7 @@ func check_funding_outcome(game: Control) -> void:
 	var expected_line := "Funding (%% meeting GDP): lent %.2f · uncovered %.2f · repaid %.2f." % [s.liquidity_applied_pct_initial_gdp / n, s.uncovered_funding_pct_initial_gdp / n, s.liquidity_repayment_pct_initial_gdp / n]
 	check(game.consequence.text.contains(expected_line), "immediate funding outcome uses realized flows and meeting GDP")
 	check("%.2f" % (s.liquidity_applied_pct_initial_gdp / n) != "%.2f" % s.liquidity_applied_pct_initial_gdp and "%.2f" % (s.liquidity_applied_pct_initial_gdp / n) != "%.2f" % (s.liquidity_applied_pct_initial_gdp / s.ending_nominal_gdp_ratio), "loan fixture distinguishes meeting, initial and ending GDP at displayed precision")
-	check(game.liquidity.value == 0.0 and game.consequence.text.contains("Q5 OUTCOME") and game.consequence.text.contains("Previous promise follow-through") and game.consequence.accessibility_live == AccessibilityServer.LIVE_POLITE, "loan outcome retains offer reset, existing feedback and assistive announcements")
+	check(game.liquidity.value == 0.0 and game.consequence.text.contains("Q5 outcome") and game.consequence.text.contains("Promise %.1f/100" % (100 * s.guidance_followthrough_score)) and game.consequence.accessibility_live == AccessibilityServer.LIVE_POLITE, "loan outcome retains offer reset, existing feedback and assistive announcements")
 	var prior_loan: float = s.outstanding_liquidity_pct_initial_gdp
 	game._advance()
 	s = game.career.state
@@ -192,7 +195,7 @@ func check_funding_outcome(game: Control) -> void:
 	game._advance()
 	s = game.career.state
 	check(s.liquidity_applied_pct_initial_gdp == 0.0 and s.uncovered_funding_pct_initial_gdp == 0.0 and s.liquidity_repayment_pct_initial_gdp == 0.0, "explicit quiet fixture has no funding flows")
-	check(not game.consequence.text.contains("Funding (") and game.consequence.text.contains("Q1 OUTCOME"), "zero-flow adoption omits an unnecessary funding line")
+	check(not game.consequence.text.contains("Funding (") and game.consequence.text.contains("Q1 outcome"), "zero-flow adoption omits an unnecessary funding line")
 
 func check_score_feedback(game: Control) -> void:
 	game._start_career("funding_stress", 42)
@@ -202,15 +205,17 @@ func check_score_feedback(game: Control) -> void:
 	check(expected.ok and game.career.state == expected.state, "score wording preserves the exact adopted economic state")
 	var support_change: float = game.career.state.public_support - before.public_support
 	check(support_change < 0 and abs(support_change) < 0.05, "real Funding stress decision exercises a small negative support change")
-	check(game.consequence.text.contains("Public support down <0.05 points"), "real small support changes disclose their direction instead of negative zero")
+	check(game.consequence.text.contains("Support down <0.05 pts"), "real small support changes disclose their direction instead of negative zero")
 	var credibility_change: float = 100 * (game.career.state.credibility - before.credibility)
-	check(game.consequence.text.contains("credibility %+.1f points" % credibility_change), "credibility changes use score points, not the zero-to-one internal scale")
+	check(game.consequence.text.contains("Credibility %+.1f pts" % credibility_change), "credibility changes use score points, not the zero-to-one internal scale")
 	check(game.consequence.accessibility_live == AccessibilityServer.LIVE_POLITE, "score feedback retains assistive announcements")
+	check(game.consequence.text == expected_compact_outcome(game, before), "compact outcome preserves actual inflation, employment, rate, support, credibility, funding and prior-promise semantics")
 	check(game.has_method("_change_text"), "both outcome scores use one shared formatter")
 	if game.has_method("_change_text"):
 		var preserved: PackedByteArray = game.career.encode()
 		for sample in [[0.0, "unchanged"], [-0.0, "unchanged"], [0.000001, "up <0.05 points"], [-0.000001, "down <0.05 points"], [0.049999, "up <0.05 points"], [-0.049999, "down <0.05 points"], [0.05, "+0.1 points"], [-0.05, "-0.1 points"], [1.25, "+1.2 points"], [-1.25, "-1.2 points"]]:
 			check(game.call("_change_text", sample[0]) == sample[1], "score formatter preserves zero, small-change direction, precision threshold and signed points")
+			check(game.call("_change_text", sample[0], 1, "pts") == expected_change(sample[0], 1, "pts"), "short footer score units preserve zero, subprecision direction, threshold and signed point values")
 		for sample in [[0.0, "unchanged"], [-0.0, "unchanged"], [0.000001, "up <0.005 pp"], [-0.000001, "down <0.005 pp"], [0.004999, "up <0.005 pp"], [-0.004999, "down <0.005 pp"], [0.005, "+0.01 pp"], [-0.005, "-0.01 pp"], [1.23, "+1.23 pp"], [-1.23, "-1.23 pp"]]:
 			check(game.call("_change_text", sample[0], 2, "pp") == sample[1], "macro formatter preserves zero, direction, two-decimal threshold and percentage-point units")
 		for sample in [[0.0, "unchanged"], [-0.0, "unchanged"], [0.000001, "up <0.0005 pp"], [-0.000001, "down <0.0005 pp"], [0.0004999, "up <0.0005 pp"], [-0.0004999, "down <0.0005 pp"], [0.0005, "+0.001 pp"], [-0.0005, "-0.001 pp"], [1.234, "+1.234 pp"], [-1.234, "-1.234 pp"]]:
@@ -227,6 +232,35 @@ func expected_change(change: float, decimals: int, unit: String) -> String:
 	if abs(change) < bounds[decimals]:
 		return ("up" if change > 0 else "down") + " <" + labels[decimals] + " " + unit
 	return (formats[decimals] % change) + " " + unit
+func expected_compact_outcome(game: Control, before: Dictionary) -> String:
+	var after: Dictionary = game.career.state
+	var interval := "Q%d" % after.quarter_index if after.quarter_index == before.quarter_index + 1 else "Q%d–Q%d" % [before.quarter_index + 1, after.quarter_index]
+	var text := "%s outcome · Inflation %s · Unemployment %s · Rate %.2f%%\nSupport %s · Credibility %s" % [interval, expected_change(after.four_quarter_inflation_pct - before.four_quarter_inflation_pct, 2, "pp"), expected_change(after.unemployment_rate_pct - before.unemployment_rate_pct, 2, "pp"), after.policy_rate_pct, expected_change(after.public_support - before.public_support, 1, "pts"), expected_change(100 * (after.credibility - before.credibility), 1, "pts")]
+	# Promise, rate and funding are final-meeting observations, not interval sums.
+	var prior_completed: Dictionary = game.career.history[-2]
+	if prior_completed.guidance_active:
+		text += " · Promise %.1f/100" % (100 * after.guidance_followthrough_score)
+	if after.liquidity_applied_pct_initial_gdp > 0.0 or after.uncovered_funding_pct_initial_gdp > 0.0 or after.liquidity_repayment_pct_initial_gdp > 0.0:
+		var n: float = after.decision_nominal_gdp_ratio
+		text += "\nFunding (%% meeting GDP): lent %s · uncovered %s · repaid %s." % [DispatchCareer.funding_amount_text(after.liquidity_applied_pct_initial_gdp / n), DispatchCareer.funding_amount_text(after.uncovered_funding_pct_initial_gdp / n), DispatchCareer.funding_amount_text(after.liquidity_repayment_pct_initial_gdp / n)]
+	return text
+
+func check_completed_interval_feedback(game: Control) -> void:
+	game._start_career("base", 17)
+	var before: Dictionary = game.career.state.duplicate(true)
+	for quarter in range(4):
+		var policy: Dictionary = game.career.model.benchmark_policy(game.career.state, game.career.params, "feedback")
+		check(game.career.advance(policy).ok, "completed-interval footer fixture adopts four real native decisions")
+	game._refresh(true)
+	var preserved: PackedByteArray = game.career.encode()
+	game._show_outcome(before)
+	check(not before.guidance_active and game.career.history[-2].guidance_active, "multi-quarter fixture distinguishes its starting promise state from the prior final meeting")
+	check(game.consequence.text.begins_with("Q1–Q4 outcome · ") and not game.consequence.text.begins_with("Q4 outcome"), "multi-quarter feedback names the whole realized interval rather than only its final quarter")
+	check(game.consequence.text == expected_compact_outcome(game, before), "multi-quarter feedback preserves interval macro/score changes and final-meeting rate, funding and promise observations")
+	check(game.consequence.tooltip_text.contains("completed interval") and game.consequence.tooltip_text.contains("final meeting") and game.consequence.tooltip_text.contains("score points") and game.consequence.tooltip_text.contains("prior announcement") and game.consequence.accessibility_description == game.consequence.tooltip_text, "compact footer retains interval, final-meeting, score-unit and promise definitions in immediate and assistive detail")
+	check(game.consequence.accessibility_live == AccessibilityServer.LIVE_POLITE and game.career.encode() == preserved, "presenting a completed interval preserves the career and live assistive feedback")
+	game._start_career("supply_shock", 1)
+
 func check_change_precision(game: Control) -> void:
 	game._start_career("funding_stress", 42)
 	for quarter in [1, 2]:
@@ -238,9 +272,10 @@ func check_change_precision(game: Control) -> void:
 		var expected: Dictionary = game.career.model.step(before, game._policy(), game.career.current_briefing(), game.career.params)
 		game._advance()
 		check(expected.ok and game.career.state == expected.state and game.career.state.quarter_index == quarter, "change precision preserves each real Funding42 adopted state")
+		check(game.consequence.text == expected_compact_outcome(game, before), "compact footer displays the complete independently calculated realized result for each precision fixture")
 		var pi_change: float = game.career.state.four_quarter_inflation_pct - before.four_quarter_inflation_pct
 		var unemployment_change: float = game.career.state.unemployment_rate_pct - before.unemployment_rate_pct
-		check(game.consequence.text.contains("Inflation " + expected_change(pi_change, 2, "pp") + "; unemployment " + expected_change(unemployment_change, 2, "pp")), "real macro outcomes disclose direction and bounds instead of rounded zero")
+		check(game.consequence.text.contains("Inflation " + expected_change(pi_change, 2, "pp") + " · Unemployment " + expected_change(unemployment_change, 2, "pp")), "real macro outcomes disclose direction and bounds instead of rounded zero")
 		if quarter == 2:
 			check(pi_change < 0 and abs(pi_change) < 0.005, "actual Funding42 Q2 exercises a negative subprecision inflation move")
 	var preserved: PackedByteArray = game.career.encode()
@@ -273,7 +308,7 @@ func check_persistent_actions(game: Control) -> void:
 			feedback_ancestor = feedback_ancestor.get_parent()
 	game._advance()
 	game._advance()
-	check(game.consequence.text.contains("Q2 OUTCOME") and game.consequence.text.contains("Previous promise follow-through"), "persistent feedback retains real outcome and prior promise explanation")
+	check(game.consequence.text.contains("Q2 outcome") and game.consequence.text.contains("Promise %.1f/100" % (100 * game.career.state.guidance_followthrough_score)), "persistent feedback retains real outcome and prior promise explanation")
 	var original_size := root.size
 	var original_status: String = game.status_label.text
 	game._staff_rule()
@@ -332,8 +367,61 @@ func check_terminal_career(game: Control) -> void:
 	await process_frame
 	game._start_career("supply_shock", 1)
 	check(game.quarter_label.text == "YEAR 01 / Q1   ·   MEETING 1" and not game.decision_button.disabled and game.decision_button.text == "Adopt decision  →  Next quarter", "new career restores ordinary meeting and action labels")
+func expected_dispatch_details(game: Control) -> String:
+	# Compatibility oracle: the pre-compaction dispatch must remain byte-identical.
+	if game.career.decisions.size() >= game.career.MAX_QUARTERS:
+		return "Career complete at Q240. Review final outcomes in Data & journal."
+	var state: Dictionary = game.career.state
+	var shock: Dictionary = game.career.current_briefing()
+	var n: float = game.career.model.nominal_gdp_ratio(state)
+	var requested: float = shock.get("refinancing_need_pct_initial_gdp", 0.0)
+	var refinancing := minf(requested, state.outstanding_liquidity_pct_initial_gdp)
+	var collateral: float = shock.get("eligible_collateral_pct_initial_gdp", 0.0)
+	var haircut: float = shock.get("collateral_haircut_pct", 0.0)
+	var eligibility: float = shock.get("liquidity_eligibility_pct", 0.0)
+	var lending_value := collateral * (1.0 - haircut / 100.0) * (eligibility / 100.0)
+	var text := "Demand impulse %+.2f pp · supply innovation %+.2f pp · output gap %+.2f%%." % [shock.get("demand_shock_pct", 0), shock.get("supply_innovation_pct", 0), state.output_gap_pct]
+	if shock.get("funding_need_pct_initial_gdp", 0.0) > 0.0 or requested > 0.0 or state.outstanding_liquidity_pct_initial_gdp > 0.0 or collateral > 0.0:
+		text += "\nFunding need %s (new) · Requested refinancing %s · Refinancing need %s (%% current GDP).\nMaturing principal %s (short loans) · Collateral before haircut %s · Lending value %s (%% current GDP).\nCollateral haircut %.2f%% · Eligibility %.2f%%." % [DispatchCareer.funding_amount_text(shock.get("funding_need_pct_initial_gdp", 0) / n), DispatchCareer.funding_amount_text(requested / n), DispatchCareer.funding_amount_text(refinancing / n), DispatchCareer.funding_amount_text(state.outstanding_liquidity_pct_initial_gdp / n), DispatchCareer.funding_amount_text(collateral / n), DispatchCareer.funding_amount_text(lending_value / n), haircut, eligibility]
+	if shock.get("solvency_risk_innovation_pct", 0.0) != 0.0 or state.solvency_risk_wedge_pct != 0.0:
+		text += "\nCurrent impairment impulse %+.2f pp · Prior impairment %.2f pp (spread proxy, not booked bank loss)." % [shock.get("solvency_risk_innovation_pct", 0.0), state.solvency_risk_wedge_pct]
+	text += "\nDeferred demand %+.2f%% potential · prior release %+.2f pp." % [state.deferred_demand_pct, state.demand_release_pct]
+	return text + "\n\n" + game.career.situation_briefing()
+
+func check_dispatch_details_access(game: Control) -> void:
+	var action: Button = game.dispatch_details_button
+	check(action != null, "compact dispatch retains an explicit Dispatch Details action")
+	if action == null:
+		return
+	check(action.focus_mode == Control.FOCUS_ALL and game._keyboard_focus_order().has(action) and action.accessibility_name == "Current conditions details", "Dispatch Details participates in the actual keyboard focus order")
+	var preserved: PackedByteArray = game.career.encode()
+	var staged: Dictionary = game._policy().duplicate(true)
+	var expected := expected_dispatch_details(game)
+	check(game.dispatch_details_text == expected, "stored details preserve every byte of the original dispatch")
+	action.grab_focus()
+	var enter := InputEventKey.new()
+	enter.keycode = KEY_ENTER
+	enter.pressed = true
+	root.push_input(enter)
+	enter = enter.duplicate()
+	enter.pressed = false
+	root.push_input(enter)
+	await process_frame
+	await process_frame
+	var dialog: AcceptDialog = game.get_child(game.get_child_count() - 1)
+	await check_report_body(dialog, ["Demand impulse", "MARKETS /", "PUBLIC /", "FUNDING /"])
+	var bodies := dialog.find_children("*", "TextEdit", true, false)
+	if bodies.size() == 1:
+		check(bodies[0].text == expected, "keyboard Dispatch Details renders the entire byte-identical original briefing")
+	dialog.get_ok_button().pressed.emit()
+	await process_frame
+	await process_frame
+	check(not is_instance_valid(dialog) and action.has_focus(), "Dispatch Details dismissal restores its actual invoking keyboard control")
+	check(game.career.encode() == preserved and game._policy() == staged, "opening, selecting and closing dispatch details cannot adopt or change staged policy")
+
 func check_terminal_cockpit(game: Control, context: String) -> void:
 	check(game.briefing.text.begins_with("Career complete at Q240.") and not game.briefing.text.contains("Demand impulse") and not game.briefing.text.contains("Funding need"), context + " replaces phantom meeting inputs with completed-career context")
+	check(game.dispatch_details_text == expected_dispatch_details(game) and not game.dispatch_event.visible and game.dispatch_event.text.is_empty() and not game.dispatch_dilemma.visible and game.dispatch_dilemma.text.is_empty(), context + " clears current-event and future-meeting narration from terminal details")
 	check(game.forecast_label.text.begins_with("CAREER COMPLETE\n") and not game.forecast_label.text.contains("APPLIED NOW") and not game.forecast_label.text.contains("IF ADOPTED NOW") and not game.forecast_label.text.contains("CONDITIONAL Q+8"), context + " suppresses the nonexistent playable forecast")
 
 func check_backaudit_readouts(game: Control) -> void:
@@ -369,37 +457,49 @@ func check_backaudit_readouts(game: Control) -> void:
 			check(report.contains("Absolute inflation distance from the %.2f%% target (including below-target positive inflation)" % game.career.params.inflation_target_pct) and report.contains("Current hardship %.3f" % first.current_hardship), "comparison explains absolute target distance beside the actual hardship calculation")
 
 func check_situation_ui(game: Control) -> void:
-	check(game.briefing.text.contains("MARKETS /") and game.briefing.text.contains("PUBLIC /") and game.briefing.text.contains("FUNDING /"), "shared cockpit refresh exposes offline situation interpretation")
+	check(game.dispatch_details_text.contains("MARKETS /") and game.dispatch_details_text.contains("PUBLIC /") and game.dispatch_details_text.contains("FUNDING /"), "shared cockpit refresh exposes offline situation interpretation")
 	game._start_career("funding_stress", 41)
 	for q in range(4):
 		game.career.advance(game.career.model.benchmark_policy(game.career.state, game.career.params, "hold"))
 	game._refresh(true)
-	check(game.briefing.text.contains("New funding pressure") and game.briefing.text.contains("Funding need"), "interpretation retains the exact numerical dispatch")
+	check(game.dispatch_details_text.contains("New funding pressure") and game.dispatch_details_text.contains("Funding need"), "interpretation retains the exact numerical dispatch")
 	game.liquidity.value = 5.0
 	game._advance()
-	check(game.briefing.text.ends_with(game.career.situation_briefing()) and game.briefing.text.contains("Funding pressure continues"), "actual UI adoption advances the ongoing crisis readout")
-	var text: String = game.briefing.text
+	check(game.dispatch_details_text.ends_with(game.career.situation_briefing()) and game.dispatch_details_text.contains("Funding pressure continues"), "actual UI adoption advances the ongoing crisis readout")
+	check(game.dispatch_details_text == expected_dispatch_details(game), "adopted dispatch details retain the byte-identical pre-compaction briefing")
+	var summary: String = game.briefing.text
+	var event_text: String = game.dispatch_event.text
+	var dilemma_text: String = game.dispatch_dilemma.text
+	var text: String = game.dispatch_details_text
 	check(game.career.restore(bytes_to_var(game.career.encode())).ok, "UI readout uses real replay restoration")
 	game._refresh(true)
-	check(game.briefing.text == text, "shared load refresh restores identical situation text")
+	check(game.dispatch_details_text == text and game.briefing.text == summary and game.dispatch_event.text == event_text and game.dispatch_dilemma.text == dilemma_text, "shared load refresh restores identical compact summary, current event and complete situation details")
 	game._start_career("base", 41)
-	check(game.briefing.text.contains("No major new funding pressure") and not game.briefing.text.contains("Funding pressure continues"), "new career cannot retain the previous crisis storyline")
+	check(game.dispatch_details_text.contains("No major new funding pressure") and not game.dispatch_details_text.contains("Funding pressure continues"), "new career cannot retain the previous crisis storyline")
 	game._start_career("mixed_crises", 417)
-	check(not game.briefing.text.contains("EXOGENOUS /"), "initial cockpit cannot reveal the upcoming curated event")
+	check(not game.dispatch_details_text.contains("EXOGENOUS /") and not game.dispatch_event.visible and game.dispatch_event.text.is_empty() and not game.dispatch_dilemma.visible and game.dispatch_dilemma.text.is_empty(), "initial compact cockpit and details cannot reveal the upcoming curated event")
 	while game.career.current_shock_episode().is_empty() and game.career.decisions.size() < 24:
 		game.career.advance(game.career.model.benchmark_policy(game.career.state, game.career.params))
 	game._refresh(true)
+	await process_frame
+	await process_frame
 	var episode: Dictionary = game.career.current_shock_episode()
-	check(not episode.is_empty() and game.briefing.text.contains("EXOGENOUS / %s · %s" % [episode.get("title", "missing"), episode.get("policy_dilemma", "missing")]), "actual cockpit refresh names the known event and concise policy dilemma")
-	check(not game.briefing.text.contains("shock_profile") and not game.briefing.text.contains("duration_quarters"), "event readout omits hidden future metadata")
+	check(not episode.is_empty() and game.dispatch_details_text.contains("EXOGENOUS / %s · %s" % [episode.get("title", "missing"), episode.get("policy_dilemma", "missing")]), "actual cockpit refresh names the known event and concise policy dilemma")
+	check(game.dispatch_event.visible and game.dispatch_event.text.contains(episode.get("title", "missing")) and game.dispatch_dilemma.visible and game.dispatch_dilemma.text == episode.get("policy_dilemma", "missing"), "separate current-event label names the validated episode and policy dilemma")
+	check(game.dispatch_event.get_global_rect().end.y <= game.dispatch_dilemma.get_global_rect().position.y and game.dispatch_dilemma.get_global_rect().end.y <= game.briefing.get_global_rect().position.y, "current event is visually before the compact dispatch summary")
+	for field in ["shock_profile", "duration_quarters", "catalogue_version", "nominal_start_quarter"]:
+		check(not (game.dispatch_details_text + game.briefing.text + game.dispatch_event.text + game.dispatch_dilemma.text).contains(field), "all dispatch surfaces omit hidden future metadata: " + field)
+	check(game.dispatch_details_text == expected_dispatch_details(game), "current-event details retain the exact original narrative")
 	game._start_career("supply_shock", 1)
+	check(not game.dispatch_event.visible and game.dispatch_event.text.is_empty() and not game.dispatch_dilemma.visible and game.dispatch_dilemma.text.is_empty(), "new career clears the previous curated-event label")
+	check(game.dispatch_details_text == expected_dispatch_details(game), "new career replaces details with its own original dispatch")
 
 func check_current_signals_ui(game: Control) -> void:
 	check(game.briefing.mouse_filter == Control.MOUSE_FILTER_PASS and not game.briefing.tooltip_text.is_empty(), "current signal explanation accepts immediate tooltip hover")
 	game._start_career("base", 17)
 	game.career.shocks[0] = {}
 	game._refresh()
-	check(not game.briefing.text.contains("Requested refinancing") and not game.briefing.text.contains("Current impairment impulse") and not game.briefing.text.contains("Credit-risk impulse"), "quiet current dispatch omits zero-only funding, impairment and credit news")
+	check(not game.dispatch_details_text.contains("Requested refinancing") and not game.dispatch_details_text.contains("Current impairment impulse") and not game.dispatch_details_text.contains("Credit-risk impulse"), "quiet current dispatch omits zero-only funding, impairment and credit news")
 	game._start_career("base", 17)
 	game.career.shocks[0] = {"funding_need_pct_initial_gdp": 2.0, "eligible_collateral_pct_initial_gdp": 4.0, "liquidity_eligibility_pct": 100.0}
 	var choice: Dictionary = game.career.model.benchmark_policy(game.career.state, game.career.params, "hold")
@@ -414,22 +514,33 @@ func check_current_signals_ui(game: Control) -> void:
 	game._refresh(true)
 	check(game.career.encode() == preserved and var_to_bytes(game.career.state) == state_bytes and var_to_bytes(game.career.history) == history_bytes, "current dispatch refresh preserves every career/state/history byte")
 	for reading in ["Funding need 0.00", "Requested refinancing %.2f" % (6.0 / n), "Maturing principal %.2f" % (2.0 / n), "Refinancing need %.2f" % (2.0 / n), "Lending value %.2f" % (0.5 / n), "Collateral haircut 50.00%", "Eligibility 50.00%", "Current impairment impulse +0.70 pp", "Prior impairment 0.00 pp"]:
-		check(game.briefing.text.contains(reading), "current dispatch discloses " + reading)
-	check(game.briefing.text.contains("% current GDP") and game.briefing.text.to_lower().contains("spread proxy"), "funding flows use current GDP while impairment is a pp spread proxy")
-	check(game.briefing.text.contains("Credit-risk impulse +0.03 pp (spread pricing)."), "current cockpit discloses the known credit impulse before adoption")
+		check(game.dispatch_details_text.contains(reading), "current dispatch discloses " + reading)
+	check(game.dispatch_details_text.contains("% current GDP") and game.dispatch_details_text.to_lower().contains("spread proxy"), "funding flows use current GDP while impairment is a pp spread proxy")
+	check(game.dispatch_details_text.contains("Credit-risk impulse +0.03 pp (spread pricing)."), "dispatch details disclose the known credit impulse before adoption")
+	check(game.briefing.text.contains("Funding (%% current GDP): new 0.00 · refi need %.2f · eligible need %.2f · secured value %.2f" % [2.0 / n, 1.0 / n, 0.5 / n]), "visible funding essentials use true capped refinancing, eligibility-adjusted need and haircut-adjusted collateral at current GDP")
+	check(game.briefing.text.contains("Impairment pulse +0.70 pp · Prior wedge 0.00 pp (spread proxy)") and game.briefing.text.contains("Credit-risk pulse +0.03 pp"), "compact summary distinguishes the current known credit and impairment pulses from previously settled impairment")
+	for verbose in ["Requested refinancing", "Collateral before haircut", "Collateral haircut", "Eligibility 50.00%", "MARKETS /", "PUBLIC /", "FUNDING /"]:
+		check(not game.briefing.text.contains(verbose), "compact current briefing moves detailed narration and arithmetic to Details: " + verbose)
+	check(game.briefing.text.length() < game.dispatch_details_text.length() and game.briefing.text.split("\n").size() <= 6, "current briefing is genuinely concise while details retain the full account")
 	game.liquidity.value = 5.0
 	game._preview()
 	check(game.career.encode() == preserved and var_to_bytes(game.career.state) == state_bytes and var_to_bytes(game.career.history) == history_bytes, "current-signal UI preview preserves every career/state/history byte")
 	var report: String = game._decision_briefing()
 	check(report.contains("Loan principal repaid %.2f; refinancing %.2f; new local lending 0.00" % [2.0 / n, 0.5 / n]), "comparison shows principal repaid and haircut/eligibility-constrained refinancing, not the raw request")
 	check(game.career.encode() == preserved and var_to_bytes(game.career.state) == state_bytes and var_to_bytes(game.career.history) == history_bytes, "current-signal comparison preserves every career/state/history byte")
-	var dispatch: String = game.briefing.text
+	check(game.dispatch_details_text == expected_dispatch_details(game), "current funding arithmetic remains byte-identical in details")
+	var summary: String = game.briefing.text
+	var event_text: String = game.dispatch_event.text
+	var event_visible: bool = game.dispatch_event.visible
+	var dilemma_text: String = game.dispatch_dilemma.text
+	var dilemma_visible: bool = game.dispatch_dilemma.visible
+	var dispatch: String = game.dispatch_details_text
 	var preview: String = game.forecast_label.text
 	game.career.shocks[2] = {"credit_risk_innovation_pct":5.0}
 	game.career.shocks[200] = {"funding_need_pct_initial_gdp": 9.0, "refinancing_need_pct_initial_gdp": 9.0, "solvency_risk_innovation_pct": 5.0, "collateral_haircut_pct": 99.0, "liquidity_eligibility_pct": 0.0, "credit_risk_innovation_pct":5.0}
 	preserved = game.career.encode()
 	game._refresh()
-	check(game.briefing.text == dispatch and game.forecast_label.text == preview and game.career.encode() == preserved and var_to_bytes(game.career.state) == state_bytes and var_to_bytes(game.career.history) == history_bytes, "future funding/refinancing/impairment edits cannot change or be mutated by dispatch, preview or current state")
+	check(game.dispatch_details_text == dispatch and game.briefing.text == summary and game.dispatch_event.text == event_text and game.dispatch_event.visible == event_visible and game.dispatch_dilemma.text == dilemma_text and game.dispatch_dilemma.visible == dilemma_visible and game.forecast_label.text == preview and game.career.encode() == preserved and var_to_bytes(game.career.state) == state_bytes and var_to_bytes(game.career.history) == history_bytes, "future funding/refinancing/impairment edits cannot change or be mutated by dispatch, preview or current state")
 	check(game._decision_briefing() == report and game.career.encode() == preserved and var_to_bytes(game.career.state) == state_bytes and var_to_bytes(game.career.history) == history_bytes, "comparison cannot inspect future current-risk inputs or mutate their bytes")
 	game._start_career("base", 17)
 	game.career.shocks[0] = {"solvency_risk_innovation_pct": 1.25, "credit_risk_innovation_pct":0.03}
@@ -437,7 +548,8 @@ func check_current_signals_ui(game: Control) -> void:
 	state_bytes = var_to_bytes(game.career.state)
 	history_bytes = var_to_bytes(game.career.history)
 	game._refresh()
-	check(game.briefing.text.contains("Current impairment impulse +1.25 pp") and game.briefing.text.contains("Prior impairment 0.00 pp") and not game.briefing.text.contains("Funding aftermath"), "first-quarter impairment is disclosed before any settled impairment exists")
+	check(game.dispatch_details_text.contains("Current impairment impulse +1.25 pp") and game.dispatch_details_text.contains("Prior impairment 0.00 pp") and not game.dispatch_details_text.contains("Funding aftermath"), "first-quarter impairment is disclosed before any settled impairment exists")
+	check(game.briefing.text.contains("Impairment pulse +1.25 pp · Prior wedge 0.00 pp (spread proxy)"), "visible first-quarter impairment remains a new pulse, not settled loss")
 	check(game.career.encode() == preserved and var_to_bytes(game.career.state) == state_bytes and var_to_bytes(game.career.history) == history_bytes, "first-quarter impairment readout preserves every career/state/history byte")
 	check(game.career.advance(game.career.model.benchmark_policy(game.career.state, game.career.params, "hold")).ok, "UI impairment fixture settles through real adoption")
 	game.career.shocks[1] = {}
@@ -445,8 +557,9 @@ func check_current_signals_ui(game: Control) -> void:
 	state_bytes = var_to_bytes(game.career.state)
 	history_bytes = var_to_bytes(game.career.history)
 	game._refresh()
-	check(game.briefing.text.contains("Current impairment impulse +0.00 pp") and game.briefing.text.contains("Prior impairment 1.25 pp") and game.briefing.text.contains("credit impairment remains"), "settled spread proxy is not mislabeled as a new impairment impulse")
-	check(not game.briefing.text.contains("Credit-risk impulse"), "settled credit news disappears from the refreshed current cockpit")
+	check(game.dispatch_details_text.contains("Current impairment impulse +0.00 pp") and game.dispatch_details_text.contains("Prior impairment 1.25 pp") and game.dispatch_details_text.contains("credit impairment remains"), "settled spread proxy is not mislabeled as a new impairment impulse")
+	check(not game.dispatch_details_text.contains("Credit-risk impulse"), "settled credit news disappears from the refreshed current cockpit")
+	check(game.briefing.text.contains("Impairment pulse +0.00 pp · Prior wedge 1.25 pp (spread proxy)") and not game.briefing.text.contains("Credit-risk pulse"), "visible settled impairment retains its prior-wedge meaning and cannot repeat old credit news")
 	check(game.career.encode() == preserved and var_to_bytes(game.career.state) == state_bytes and var_to_bytes(game.career.history) == history_bytes, "settled impairment readout preserves every career/state/history byte")
 	game._start_career("supply_shock", 1)
 
@@ -1654,6 +1767,7 @@ func run() -> void:
 	check_funding_outcome(game)
 	check_score_feedback(game)
 	check_change_precision(game)
+	check_completed_interval_feedback(game)
 	if OS.get_cmdline_user_args().has("--score-feedback-only"):
 		if failures == 0:
 			print("PASS: meaningful outcome and comparison change direction and units")
@@ -1716,7 +1830,7 @@ func run() -> void:
 		game.free()
 		await _finish()
 		return
-	check_situation_ui(game)
+	await check_situation_ui(game)
 	check_current_signals_ui(game)
 	if OS.get_cmdline_user_args().has("--situation-only"):
 		if failures == 0:
@@ -1824,7 +1938,7 @@ func run() -> void:
 	check(game.forecast_label.text.contains("Rate 4.25%"), "preview reflects staged rate")
 	game._advance()
 	check(game.career.state.quarter_index == 1 and game.career.state.policy_rate_pct == 4.25, "UI adopts the displayed policy")
-	check(game.charts[0].history.size() == 2 and game.consequence.text.contains("Q1 OUTCOME"), "adoption updates chart and feedback")
+	check(game.charts[0].history.size() == 2 and game.consequence.text.contains("Q1 outcome"), "adoption updates chart and feedback")
 	check(game.consequence.accessibility_live == AccessibilityServer.LIVE_POLITE, "quarterly outcome is announced to assistive technology")
 	game.career.state.four_quarter_inflation_pct = 2.0
 	game.career.state.output_gap_pct = 0.0
@@ -1948,7 +2062,7 @@ func run() -> void:
 	check(help_text.text.contains("Deferred demand") and help_text.text.contains("not all lost consumption") and help_text.text.contains("no guaranteed return to 2%"), "help distinguishes catch-up spending from forced recovery")
 	check(help_text.text.contains("structural reference") and help_text.text.to_lower().contains("short expectations") and help_text.text.contains("prior long"), "help explains separate structural and expectation restoration channels")
 	check(not help_text.text.contains(Engine.get_license_text()), "help omits only the duplicated engine license, retained in Credits")
-	check(game.briefing.text.contains("Deferred demand") and game.briefing.text.contains("% potential"), "dispatch exposes the known deferred-demand stock with its unit")
+	check(game.dispatch_details_text.contains("Deferred demand") and game.dispatch_details_text.contains("% potential"), "dispatch details preserve the known deferred-demand stock with its unit")
 	check(game.career.encode() == before_cancel and game._policy() == staged_before_cancel, "reading seeded help leaves the active career and staged policy unchanged")
 	help.get_ok_button().pressed.emit()
 	await process_frame

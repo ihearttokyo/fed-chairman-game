@@ -32,7 +32,7 @@ func run() -> void:
 	drivers.update_result(result, 38, 41)
 	await settle()
 	check(drivers.visible and drivers.values == result.terms and drivers.bars.size() == 5, "all five signed contributions retain exact source floats")
-	check(drivers.scale_label.text == "±0.280 pp" and drivers.scale_label.accessibility_name.contains("centered at zero"), "shared scale and zero reference are visibly disclosed")
+	check(drivers.scale_label.text == "Scale ±0.280 pp" and drivers.scale_label.accessibility_name.contains("centered at zero"), "shared scale and zero reference are visibly disclosed")
 	check(drivers.shared_scale == 0.28 and drivers.details_text == result.text, "shared absolute scale and full disclosure retain source data")
 	check(drivers.heading.text.contains("Q38–Q41") and drivers.heading.text.contains("+0.140 pp"), "heading names actual completed interval and total gap change")
 	check(drivers.size.y >= 65 and drivers.size.y <= 90, "wide component remains a compact graphical strip")

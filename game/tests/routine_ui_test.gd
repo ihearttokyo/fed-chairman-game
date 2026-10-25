@@ -84,7 +84,7 @@ func run() -> void:
 		game._process(0.1)
 		await process_frame
 		if game.career.decisions.size() == 2:
-			saw_current_feedback = game.quarter_label.text.contains("MEETING 3") and game.consequence.text.contains("Q2 OUTCOME") and game.forecast_label.text.contains("paused")
+			saw_current_feedback = game.quarter_label.text.contains("MEETING 3") and game.consequence.text.contains("Q2 outcome") and game.forecast_label.text.contains("paused")
 		if not game.routine.active:
 			break
 	check(saw_current_feedback, "paced automatic quarter refreshes current data and outcomes without leaving a stale conditional preview")
@@ -93,7 +93,7 @@ func run() -> void:
 	check(game.last_follow_up_reasons == ["QUOTA_EXHAUSTED", "CURRENT_NEWS"], "scheduled return retains simultaneous current-news reasons")
 	for policy in game.career.decisions.slice(1):
 		check(policy.asset_flow_request_pct_initial_gdp == 0 and policy.liquidity_request_pct_initial_gdp == 0 and not policy.reinvest_principal, "one-shots reset while false portfolio switches persist")
-	check(game.outcome_drivers.visible and game.outcome_drivers.details_text.contains("Q1–Q4") and game.outcome_drivers.details_text.contains("not isolated policy effects") and not game.consequence.text.contains("Equation contributions"), "returned graphic covers the whole completed segment and keeps reconciliation behind Details")
+	check(game.consequence.text.begins_with("Q1–Q4 outcome") and game.consequence.text.contains("Promise %.1f/100" % (100 * game.career.state.guidance_followthrough_score)) and game.outcome_drivers.visible and game.outcome_drivers.details_text.contains("Q1–Q4") and game.outcome_drivers.details_text.contains("not isolated policy effects") and not game.consequence.text.contains("Equation contributions"), "returned graphic covers the whole completed segment and keeps reconciliation behind Details")
 	game.follow_up_toggle.button_pressed = true
 	game._advance()
 	var adopted: int = game.career.decisions.size()

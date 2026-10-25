@@ -571,7 +571,7 @@ func run() -> void:
 			if game.career.state.get(field) != first[field]:
 				state_differences.append(field)
 		check(game.career.state.quarter_index == 5 and game.career.decisions.size() == 5 and game.career.history.size() == 6 and game.career.decisions[-1] == expected and game.career.state == first, "modified Return adopts exactly one independently forecast boundary decision, including pending large lending: case %s; input %s; policy differences %s; state differences %s" % [quotes, pending_lending_input, policy_differences, state_differences])
-		check(game.consequence.text.begins_with("Q5 OUTCOME") and game.consequence.text.contains("Applied rate %.2f%%" % first.policy_rate_pct) and game.status_label.text.begins_with("Quarter 5 completed."), "boundary adoption reports its actual completed quarter and applied rate")
+		check(game.consequence.text.begins_with("Q5 outcome") and game.consequence.text.contains("Rate %.2f%%" % first.policy_rate_pct) and game.status_label.text.begins_with("Quarter 5 completed."), "boundary adoption reports its actual completed quarter and applied rate")
 		check(game.assets.value == 0.0 and game.liquidity.value == 0.0 and game.career.state.guidance_rate_pct == expected.guidance_rate_pct, "one-time offers reset while the committed guidance survives in economic state")
 		var boundary_saved: PackedByteArray = game.career.encode()
 		var replay = game.career.get_script().new()

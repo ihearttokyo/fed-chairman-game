@@ -79,7 +79,7 @@ func resize_snapshot(game: Control) -> PackedByteArray:
 		semantics.append([control.get_instance_id(), control.get_parent().get_instance_id(), control.accessibility_name, control.accessibility_description, control.tooltip_text, control.get_theme_font_size("font_size")])
 	var saved := FileAccess.file_exists(game.save_path)
 	return var_to_bytes([game.career.encode(), game.clean_career, game._policy(), inputs, semantics,
-		game.forecast_label.text, game.quarter_label.text, game.consequence.text, game.mandate_label.text, game.briefing.text, game.case_detail.text,
+		game.forecast_label.text, game.quarter_label.text, game.consequence.text, game.mandate_label.text, game.briefing.text, game.case_detail.text, game.dispatch_details_text, game.dispatch_event.text, game.dispatch_dilemma.text, game.outcome_drivers.details_text,
 		game.status_label.text, game.custom_guidance.visible, game.reduced_motion, game.city.rotation if game.reduced_motion else null,
 		game.career.forecast_calls, game.find_children("*", "", true, false).size(), saved, FileAccess.get_file_as_bytes(game.save_path) if saved else null])
 
@@ -219,7 +219,7 @@ func check_small_actions(game: Control, density: float) -> void:
 	await key(root, KEY_TAB)
 	check(game.decision_button.has_focus() and game.get_viewport_rect().grow(1).encloses(game.decision_button.get_global_rect()), "Tab exposes Adopt in an actually overflowing footer")
 	await key(root, KEY_ENTER)
-	check(game.career.state.quarter_index == quarter + 1 and game.consequence.text.contains("Q%d OUTCOME" % (quarter + 1)) and game.get_viewport_rect().grow(1).encloses(game.consequence.get_global_rect()), "reachable small-window Adopt produces exactly one quarter and visible outcome feedback")
+	check(game.career.state.quarter_index == quarter + 1 and game.consequence.text.contains("Q%d outcome" % (quarter + 1)) and game.get_viewport_rect().grow(1).encloses(game.consequence.get_global_rect()), "reachable small-window Adopt produces exactly one quarter and visible outcome feedback")
 
 func check_resize_bounds(game: Control, logical: Vector2i, density: float) -> void:
 	var visible: Rect2 = game.get_viewport_rect()
@@ -266,8 +266,8 @@ func check_responsive_resize(game: Control) -> void:
 	game._advance()
 	game.career.shocks[game.career.decisions.size()].credit_risk_innovation_pct = 0.03
 	game._refresh()
-	check(game.briefing.text.contains("Credit-risk impulse +0.03 pp (spread pricing)."), "compact resize fixture retains current credit units and magnitude")
-	check(game.briefing.text.contains("Credit-risk impulse +0.03 pp (spread pricing)."), "responsive matrix begins with current credit news, not a consumed pulse")
+	check((game.briefing.text.contains("Credit-risk pulse +0.03 pp") and game.dispatch_details_text.contains("Credit-risk impulse +0.03 pp (spread pricing).")), "compact resize fixture retains current credit units and magnitude")
+	check((game.briefing.text.contains("Credit-risk pulse +0.03 pp") and game.dispatch_details_text.contains("Credit-risk impulse +0.03 pp (spread pricing).")), "responsive matrix begins with current credit news, not a consumed pulse")
 	game._staff_rule()
 	game.commitment.select(2)
 	game.commitment.item_selected.emit(2)
