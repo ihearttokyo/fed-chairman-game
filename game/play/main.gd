@@ -749,7 +749,13 @@ func _compare() -> void:
 
 func _comparison_tab_focus(_index: int, tabs: TabContainer, overview: Control, chooser: Control, body: Control, close: Control) -> void:
 	var order: Array[Control] = []
-	order.assign([tabs.get_tab_bar(), chooser, body, close] if tabs.current_tab == 1 else [tabs.get_tab_bar(), overview.charts[0], overview.charts[1], close])
+	if tabs.current_tab == 1:
+		order.assign([tabs.get_tab_bar(), chooser, body, close])
+	else:
+		order.append(tabs.get_tab_bar())
+		for chart in overview.charts:
+			order.append(chart)
+		order.append(close)
 	_link_focus(order)
 
 func _dispatch_details() -> void:

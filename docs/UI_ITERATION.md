@@ -129,3 +129,28 @@ post-Q240 diagnostic points. No new forecasts, model equations or save fields
 are introduced. Tiny parent windows use vertical scrolling rather than forcing
 the nested Details minimum outside the window. Native screenshot/interaction
 qualification and clean process-exit regression are required before delivery.
+
+## Conditional funding paths
+
+Compare now plots unmet funding alongside inflation and unemployment when either
+conditional path has a shortfall. Quiet valid paths use one status line; failed
+comparisons have no empty charts or reassuring funding claim. Values use percent
+of initial GDP, not current GDP or booked bank losses. The Q1–Q8 peak note keeps a
+temporary shortage visible even when both Q8 endpoints are zero; inherited Q0
+is excluded from that peak. Tiny positive residuals retain the existing funding
+precision. Full report text and economic calculations remain unchanged.
+
+Every chart participates in the modal Tab order. Compact headings and inspected
+values wrap; narrow legends use Staged/Hold without changing accessible names.
+Historical charts retain their existing defaults. The graphs reuse computed
+paths and add no forecasts. The focused native fixture passes 347 checks,
+including actual failed-comparison navigation and career-byte purity.
+
+Background native source renders at 2400×1800 and 380×1200 physical pixels show
+all three metrics and readable narrow funding detail. The isolated seed-417
+preview stayed at Q0 with unchanged encoded career bytes and exited; no player
+app or save was used. Independent correctness, regression and pixel reviews
+closed the identified issues. This improves decision visibility, not the model's
+measured difficulty or whole-game usability acceptance.
+
+Validation captures are retained outside Git with the local qualification evidence.
