@@ -6,6 +6,51 @@ let checks = 0;
 const test = (name, run) => { if(process.env.FED_MODEL_TEST_FILTER&&!name.includes(process.env.FED_MODEL_TEST_FILTER))return;run(); checks++; console.log(`PASS ${name}`); };
 const unit = body => `extends RefCounted\nfunc run(x: float) -> Variant:\n${body}\n`;
 const compile = text => compileModel(text, { entrypoints: ['run'] });
+test('FED586 own String keys survive merge copy unboxing input and output boundaries',()=>{
+  const merge=compile('func run() -> Array:\n\tvar d := {}\n\td.merge({"__proto__":7},true)\n\treturn [d.size(),d.has("__proto__"),d.get("__proto__",9)]\n');
+  assert.deepEqual(evaluateModel(merge,'run'),[1,true,7]);
+  const root=compile('func run() -> Dictionary:\n\treturn {"__proto__":"kept","constructor":"ctor","toString":"text","safe":"yes"}\n'),hand=JSON.parse('{"__proto__":"kept","constructor":"ctor","toString":"text","safe":"yes"}');
+  for(const preserveNumericTypes of [false,true]){const got=evaluateModel(root,'run',[],{preserveNumericTypes});assert.deepEqual(got,hand);assert.equal(Object.getPrototypeOf(got),Object.prototype);for(const key of Object.keys(hand))assert.equal(Object.hasOwn(got,key),true);assert.deepEqual(JSON.parse(JSON.stringify(got)),hand);}
+  const copy=compile('func run() -> Array:\n\tvar a := [1]\n\tvar d := {"__proto__":a,"constructor":a,"toString":a}\n\tvar deep := d.duplicate(true)\n\tvar shallow := d.duplicate(false)\n\ta[0] = 9\n\tdeep["__proto__"][0] = 7\n\treturn [deep["constructor"][0],deep["toString"][0],shallow["__proto__"][0],a[0],deep["__proto__"][0]/2,typeof(deep["__proto__"][0]),deep]\n');
+  assert.deepEqual(evaluateModel(copy,'run'),[7,7,9,9,3,2,JSON.parse('{"__proto__":[7],"constructor":[7],"toString":[7]}')]);
+  const input=compile('func run(d: Dictionary) -> Dictionary:\n\tvar out := {}\n\tout.merge(d.duplicate(true),true)\n\treturn out\n');assert.deepEqual(evaluateModel(input,'run',[hand]),hand);
+  const overwrite=compile('func run() -> Array:\n\tvar d := {"__proto__":1,"constructor":2,"toString":3}\n\td.merge({"__proto__":7,"constructor":8,"toString":9},false)\n\tvar old := d.duplicate(true)\n\td.merge({"__proto__":7,"constructor":8,"toString":9},true)\n\treturn [old,d]\n');assert.deepEqual(evaluateModel(overwrite,'run'),[JSON.parse('{"__proto__":1,"constructor":2,"toString":3}'),JSON.parse('{"__proto__":7,"constructor":8,"toString":9}')]);
+  assert.equal(Object.hasOwn(Object.prototype,'safe'),false,'no host prototype mutation');
+  const symbols=compile('const __proto__: int = 5\nfunc constructor(__proto__: int) -> int:\n\tvar toString := __proto__\n\tif toString > 0:\n\t\ttoString += 2\n\treturn toString\nfunc run() -> Array:\n\tvar __proto__ := constructor(__proto__)\n\treturn [__proto__,typeof(__proto__)]\n');assert.deepEqual(evaluateModel(symbols,'run'),[7,2],'source names and boundary lookup must also use own properties');
+});
+test('FED586 method receiver and source kinds refuse before JavaScript property operations',()=>{
+  const bad=['return "abc".has("length")','return "abc".get("length",0)','return "abc".size()','return "abc".keys()','return "abc".duplicate()', 'var d := {}\n\td.merge([7],true)\n\treturn [d.size(),d.get("0",0)]','var d := {}\n\td.merge(null,true)\n\treturn d','var d := {}\n\td.merge("text",true)\n\treturn d','var a := []\n\ta.merge({"v":7},true)\n\treturn a','var a := [1]\n\ta.append_array({"v":7})\n\treturn a','return {}.is_valid_float()'];
+  for(const body of bad)assert.throws(()=>evaluateModel(compile('func run() -> Variant:\n\t'+body+'\n'),'run'),/receiver|requires|source|kind/,body);
+  for(const method of ['"abc".has("length")','d.merge([7],true)']){const ir=compile(`func run(flag: bool) -> int:\n\tvar d := {}\n\tif flag:\n\t\t${method}\n\treturn 9\n`);assert.equal(evaluateModel(ir,'run',[false]),9);assert.throws(()=>evaluateModel(ir,'run',[true]),/receiver|requires|source|kind/);}
+  assert.deepEqual(evaluateModel(compile('func run() -> Array:\n\tvar d := {"v":7}\n\td.merge({"x":8},true)\n\tvar a := [1]\n\ta.append_array([2])\n\treturn [d.has("x"),d.get("v"),d.size(),a,a.has(2),"1.5".is_valid_float()]\n'),'run'),[true,7,2,[1,2],true,true]);
+});
+test('PR120 4369307575 Array.has is Variant-type-sensitive scalar value membership',()=>{
+  const ir=compile('func run() -> Array:\n\tvar a := [10,20,7,true,"Tag",null]\n\treturn [a.has(0),a.has(20),a.has(7),a.has(7.0),[7.0].has(7),[7.0].has(7.0),a.has(true),a.has(false),a.has("Tag"),a.has("tag"),a.has(null),[].has(0),7==7.0]\n');
+  assert.deepEqual(evaluateModel(ir,'run'),[false,true,true,false,false,true,true,false,true,false,true,false,true]);
+  assert.throws(()=>evaluateModel(compile('func run() -> bool:\n\treturn [[1]].has([1])\n'),'run'),/membership.*scalar|scalar.*membership/);
+  const dynamic=compile('func run(x: Variant) -> bool:\n\treturn [7].has(x)\n');
+  assert.equal(evaluateModel(dynamic,'run',[modelNumber(7,'int')]),true);assert.equal(evaluateModel(dynamic,'run',[modelNumber(7,'float')]),false);
+  assert.throws(()=>evaluateModel(dynamic,'run',[7]),/membership.*provenance|provenance.*membership/);
+  const guarded=compile('func run(flag: bool) -> Array:\n\tvar a := [7 if flag else 7.0]\n\tvar b := [1]\n\tif flag:\n\t\tb.append(20)\n\treturn [a.has(7),a.has(7.0),b.has(20),b.has(0)]\n');
+  for(const [flag,hand]of [[true,[true,false,true,false]],[false,[false,true,false,false]]])assert.deepEqual(evaluateModel(guarded,'run',[flag]),hand);
+});
+test('PR120 4369307578 array iteration reads live later values with structural refusal',()=>{
+  const source='func change(a: Array,x: bool) -> void:\n\tif x:\n\t\ta[1] = 9\nfunc run(x: bool) -> Array:\n\tvar a := [1,2]\n\tvar alias := a\n\tvar out := []\n\tfor item in a:\n\t\tout.append(item)\n\t\tchange(alias,x)\n\treturn out\n';
+  for(const [x,hand]of [[true,[1,9]],[false,[1,2]]])assert.deepEqual(evaluateModel(compile(source),'run',[x]),hand);
+  for(const mutation of ['a.append(3)','a.pop_back()','a.append(3)\n\t\ta.pop_back()'])assert.throws(()=>evaluateModel(compile(`func run() -> Array:\n\tvar a := [1,2]\n\tfor item in a:\n\t\t${mutation}\n\treturn a\n`),'run'),/iterable.*mutat|iterable.*resiz/);
+});
+test('PR120 4369307581 hex prefixes precede decimal exponent provenance',()=>{
+  assert.deepEqual(evaluateModel(compile('func run() -> Array:\n\treturn [typeof(0xEF),0xEF/2]\n'),'run'),[2,119]);
+  const source='func run() -> Array:\n\treturn [typeof(0xef),0xef/2,typeof(0xE_F),0xE_F/2,typeof(1_000),1_000/2,typeof(1e2),1e2/2,typeof(1_0e1),1_0e1/2,typeof(1.0e-1),1.0e-1/2]\n';
+  assert.deepEqual(evaluateModel(compile(source),'run'),[2,119,2,119,2,500,3,50,3,50,3,.05]);
+  for(const bad of ['0xE__F','0x_EF','1__0','1_e2','1e_2'])assert.throws(()=>compile(`func run() -> Variant:\n\treturn ${bad}\n`));
+});
+test('PR120 4369307584 non-String dictionary keys refuse throughout literal access mutation methods merge',()=>{
+  const bodies=['var d := {1:"number","1":"text"}\n\treturn [d.size(),d[1],d["1"]]', 'var d := {"1":7}\n\treturn d[1]', 'var d := {"1":7}\n\td[1] = 8\n\treturn d', 'return {"1":7}.has(1)', 'return {"1":7}.get(1,9)', 'var d := {}\n\td.merge({1:7},true)\n\treturn d','return 1 in {"1":7}'];
+  for(const body of bodies)assert.throws(()=>evaluateModel(compile('func run() -> Variant:\n\t'+body+'\n'),'run'),/dictionary.*String|String.*dictionary/,body);
+  for(const expression of ['d[x]','d.has(x)','d.get(x,9)']){const ir=compile(`func run(x: Variant) -> Variant:\n\tvar d := {"1":7}\n\treturn ${expression}\n`);assert.equal(evaluateModel(ir,'run',['1']),expression==='d.has(x)'?true:7);for(const x of [modelNumber(1,'int'),true,null])assert.throws(()=>evaluateModel(ir,'run',[x]),/dictionary.*String|String.*dictionary/);}
+  assert.deepEqual(evaluateModel(compile('func run() -> Array:\n\tvar d := {"1":7}\n\td["1"] = 8\n\td.merge({"s":9},true)\n\treturn [d["1"],d.has("s"),d.get("missing",3)]\n'),'run'),[8,true,3]);
+});
 test('source typeof returns integer Variant enums, including nested typeof',()=>{
   const ir=compile('func run() -> Array:\n\treturn [typeof(null),typeof(true),typeof(5),typeof(5.0),typeof("x"),typeof({}),typeof([]),typeof(typeof(5)),typeof(5)=="int",typeof(typeof(5))==TYPE_INT,TYPE_NIL,TYPE_BOOL,TYPE_INT,TYPE_FLOAT,TYPE_STRING,TYPE_DICTIONARY,TYPE_ARRAY,typeof(TYPE_FLOAT)]\n');
   assert.deepEqual(evaluateModel(ir,'run'),[0,1,2,3,4,27,28,2,false,true,0,1,2,3,4,27,28,2]);

@@ -60,6 +60,80 @@ let checks=1;
 const emittedFunctions=new Set();
 const recordCoverage=program=>program.coverage.functions.forEach(name=>emittedFunctions.add(name));
 const test=(name,run)=>{if(process.env.FED_MODEL_TEST_FILTER&&!name.includes(process.env.FED_MODEL_TEST_FILTER))return;run();checks++;console.log('PASS '+name);};
+test('FED586 optional presence is strictly Boolean under enclosing parent guards',()=>{
+  const presence={cell:"'Policy'!E6",type:'boolean'},leaf={cell:"'Policy'!E7",type:'number',numericType:'int'},child={cell:"'Policy'!E8",type:'boolean'},invalid=[0,3,null,'','TRUE','text',new CellError('#REF!')];
+  for(const optimize of [true,false]){
+    for(const source of ['func run(d: Dictionary) -> Variant:\n\treturn d.has("v")\n','func run(d: Dictionary) -> Array:\n\treturn [d.has("v"),typeof(d.has("v"))]\n']){const p=emitExcel(compileModel(source,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{d:{v:{$optional:true,present:presence,value:leaf}}}}),paths=Object.keys(p.outputs);
+      for(const bad of invalid){const got=evaluate(p,{"'Policy'!E6":bad,"'Policy'!E7":7});for(const path of paths)assert.equal(got.output(path),'#N/A',`presence ${String(bad)}, ${optimize}`);}
+      for(const present of [true,false]){const got=evaluate(p,{"'Policy'!E6":present,"'Policy'!E7":7});assert.equal(got.output(paths[0]),present);assert.equal(typeof got.output(paths[0]),'boolean');if(paths.length===2)assert.equal(got.output(paths[1]),1);}
+    }
+    const nested=emitExcel(compileModel('func run(d: Dictionary) -> Variant:\n\treturn d.has("inner")\n',{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{d:{inner:{$optional:true,present:presence,value:{v:{$optional:true,present:child,value:leaf}}}}}});
+    for(const bad of invalid){assert.equal(evaluate(nested,{"'Policy'!E6":false,"'Policy'!E8":bad,"'Policy'!E7":new CellError('#N/A')}).output('result'),false,'inactive nested invalid presence/value cannot poison parent');assert.equal(evaluate(nested,{"'Policy'!E6":true,"'Policy'!E8":bad,"'Policy'!E7":7}).output('result'),'#N/A');assert.equal(evaluate(nested,{"'Policy'!E6":bad,"'Policy'!E8":false,"'Policy'!E7":7}).output('result'),'#N/A');}
+    const shared=emitExcel(compileModel('func run(d: Dictionary) -> Array:\n\treturn [d.has("a"),d.has("b")]\n',{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{d:Object.fromEntries([['a',presence],['b',{cell:"'Policy'!E9",type:'boolean'}]].map(([key,parent])=>[key,{$optional:true,present:parent,value:{v:{$optional:true,present:child,value:leaf}}}]))}});
+    for(const a of [true,false])for(const b of [true,false]){const got=evaluate(shared,{"'Policy'!E6":a,"'Policy'!E9":b,"'Policy'!E8":3,"'Policy'!E7":7});for(let i=0;i<2;i++)assert.equal(got.output(`result[${i}]`),a||b?'#N/A':false,'guard-specific CSE must retain each active parent validation');}
+  }
+});
+test('FED586 own String keys survive root output maps copies merges and packing',()=>{
+  const root='func run() -> Dictionary:\n\treturn {"__proto__":"kept","constructor":"ctor","toString":"text","safe":"yes"}\n',hand=JSON.parse('{"__proto__":"kept","constructor":"ctor","toString":"text","safe":"yes"}');
+  for(const optimize of [true,false]){
+    const p=emitExcel(compileModel(root,{entrypoints:['run']}),{entrypoint:'run',optimize}),got=evaluate(p);assert.deepEqual(Object.keys(p.outputs).sort(),Object.keys(hand).sort());
+    for(const [key,value]of Object.entries(hand)){assert.equal(Object.hasOwn(p.outputs,key),true);assert.equal(Object.hasOwn(p.outputPresence,key),true);assert.equal(got.output(key),value);assert.equal(Object.getPrototypeOf(p.outputs),Object.prototype);}
+    const arithmetic='func run(x: float) -> Dictionary:\n\treturn {"__proto__":x*2.0,"constructor":x+1.0,"toString":x-1.0}\n',outputs=Object.fromEntries(['__proto__','constructor','toString'].map((k,i)=>[k,`'Economy'!E${20+i}`])),q=emitExcel(compileModel(arithmetic,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{x:{cell:"'Policy'!E6",type:'number',numericType:'float'}},outputs});
+    for(const x of [-2,0,3.5]){const actual=evaluate(q,{"'Policy'!E6":x});for(const [key,value]of [['__proto__',x*2],['constructor',x+1],['toString',x-1]]){assert.equal(actual.output(key),value);assert.equal(Object.hasOwn(q.outputNumericTypes,key),true);assert.equal(q.outputNumericTypes[key],'float');assert.equal(q.formulas[outputs[key]],q.outputs[key]);}}
+    const copy='func run() -> Array:\n\tvar a := [1]\n\tvar d := {"__proto__":a,"constructor":a,"toString":a}\n\tvar deep := d.duplicate(true)\n\tvar shallow := d.duplicate(false)\n\ta[0] = 9\n\tdeep["__proto__"][0] = 7\n\tvar merged := {}\n\tmerged.merge(deep,true)\n\treturn [merged.size(),merged.has("__proto__"),merged["constructor"][0],merged["toString"][0],shallow["__proto__"][0],deep["__proto__"][0]/2,typeof(deep["__proto__"][0])]\n',c=emitExcel(compileModel(copy,{entrypoints:['run']}),{entrypoint:'run',optimize}),cg=evaluate(c);[3,true,7,7,9,3,2].forEach((v,i)=>assert.equal(cg.output(`result[${i}]`),v));
+    const input=emitExcel(compileModel('func run(d: Dictionary) -> Dictionary:\n\tvar out := {}\n\tout.merge(d.duplicate(true),true)\n\treturn out\n',{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{d:hand}}),ig=evaluate(input);for(const [key,value]of Object.entries(hand))assert.equal(ig.output(key),value);
+    const optional=emitExcel(compileModel('func run(d: Dictionary) -> Dictionary:\n\treturn d\n',{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{d:Object.fromEntries([['__proto__',{$optional:true,present:{cell:"'Policy'!E6",type:'boolean'},value:'kept'}]])}});assert.equal(Object.hasOwn(optional.outputs,'__proto__'),true);for(const [present,expected]of [[true,'kept'],[false,'#N/A'],[3,'#N/A']])assert.equal(evaluate(optional,{"'Policy'!E6":present}).output('__proto__'),expected);
+    const symbols=emitExcel(compileModel('const __proto__: int = 5\nfunc constructor(__proto__: int) -> int:\n\tvar toString := __proto__\n\tif toString > 0:\n\t\ttoString += 2\n\treturn toString\nfunc run() -> Array:\n\tvar __proto__ := constructor(__proto__)\n\treturn [__proto__,typeof(__proto__)]\n',{entrypoints:['run']}),{entrypoint:'run',optimize}),sg=evaluate(symbols);assert.equal(sg.output('result[0]'),7);assert.equal(sg.output('result[1]'),2);
+  }
+});
+test('FED586 method receiver and source kinds fail closed in both formula modes',()=>{
+  const bad=['return "abc".has("length")','return "abc".get("length",0)','return "abc".size()','return "abc".keys()','return "abc".duplicate()', 'var d := {}\n\td.merge([7],true)\n\treturn [d.size(),d.get("0",0)]','var d := {}\n\td.merge(null,true)\n\treturn d','var d := {}\n\td.merge("text",true)\n\treturn d','var a := []\n\ta.merge({"v":7},true)\n\treturn a','var a := [1]\n\ta.append_array({"v":7})\n\treturn a','return {}.is_valid_float()'];
+  for(const optimize of [true,false]){
+    for(const body of bad){let p;try{p=emitExcel(compileModel('func run() -> Variant:\n\t'+body+'\n',{entrypoints:['run']}),{entrypoint:'run',optimize});}catch(e){assert.equal(e.name,'ModelCompileError');continue;}assert.ok(p.diagnostics.some(d=>d.kind==='unavailable-guard'));const got=evaluate(p);for(const path of Object.keys(p.outputs))assert.equal(got.output(path),'#N/A',body);}
+    for(const method of ['"abc".has("length")','d.merge([7],true)']){const p=emitExcel(compileModel(`func run(flag: bool) -> int:\n\tvar d := {}\n\tif flag:\n\t\t${method}\n\treturn 9\n`,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{flag:{cell:"'Policy'!E6",type:'boolean'}}});assert.equal(evaluate(p,{"'Policy'!E6":false}).output('result'),9);assert.equal(evaluate(p,{"'Policy'!E6":true}).output('result'),'#N/A');}
+  }
+});
+test('PR120 4369307575 Array.has is Variant-type-sensitive scalar value membership',()=>{
+  const source='func run() -> Array:\n\tvar a := [10,20,7,true,"Tag",null]\n\treturn [a.has(0),a.has(20),a.has(7),a.has(7.0),[7.0].has(7),[7.0].has(7.0),a.has(true),a.has(false),a.has("Tag"),a.has("tag"),a.has(null),[].has(0),7==7.0]\n',hand=[false,true,true,false,false,true,true,false,true,false,true,false,true];
+  for(const optimize of [true,false]){
+    const program=emitExcel(compileModel(source,{entrypoints:['run']}),{entrypoint:'run',optimize}),got=evaluate(program);hand.forEach((v,i)=>assert.equal(got.output(`result[${i}]`),v,`membership ${i}, ${optimize}`));
+    const dynamic='func run(x: Variant) -> Array:\n\treturn [[7].has(x),[7.0].has(x),[true].has(x),["Tag"].has(x),[null].has(x)]\n';
+    for(const numericType of ['int','float']){const p=emitExcel(compileModel(dynamic,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{x:{cell:"'Policy'!E6",type:'variant',numericType}}});
+      for(const [x,expected]of [[7,[numericType==='int',numericType==='float',false,false,false]],[true,[false,false,true,false,false]],['Tag',[false,false,false,true,false]],['tag',[false,false,false,false,false]],[null,[false,false,false,false,true]]]){const actual=evaluate(p,{"'Policy'!E6":x},{coerceBlankSelections:true});expected.forEach((v,i)=>assert.equal(actual.output(`result[${i}]`),v));}}
+    assert.throws(()=>emitExcel(compileModel('func run() -> bool:\n\treturn [[1]].has([1])\n',{entrypoints:['run']}),{entrypoint:'run',optimize}),/membership.*scalar|scalar.*membership/);
+    const guarded=emitExcel(compileModel('func run(flag: bool) -> Array:\n\tvar a := [7 if flag else 7.0]\n\tvar b := [1]\n\tif flag:\n\t\tb.append(20)\n\treturn [a.has(7),a.has(7.0),b.has(20),b.has(0)]\n',{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{flag:{cell:"'Policy'!E6",type:'boolean'}}});
+    for(const [flag,hand]of [[true,[true,false,true,false]],[false,[false,true,false,false]]]){const actual=evaluate(guarded,{"'Policy'!E6":flag});hand.forEach((v,i)=>assert.equal(actual.output(`result[${i}]`),v));}
+  }
+});
+test('PR120 4369307577 absent optional integer validation is guarded by presence',()=>{
+  const sources=['func run(d: Dictionary) -> bool:\n\treturn d.has("v")\n','func run(d: Dictionary) -> bool:\n\treturn d.inner.has("v")\n'];
+  for(const optimize of [true,false])for(const [i,source]of sources.entries()){
+    const optional={$optional:true,present:{cell:"'Policy'!E6",type:'boolean'},value:{cell:"'Policy'!E7",type:'number',numericType:'int'}},arguments_={d:i?{inner:{$optional:true,present:{cell:"'Policy'!E8",type:'boolean'},value:{v:optional}}}:{v:optional}};
+    const p=emitExcel(compileModel(source,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:arguments_});
+    for(const value of [null,'unused',true,1.5,7])assert.equal(evaluate(p,{"'Policy'!E6":false,"'Policy'!E7":value,"'Policy'!E8":true}).output('result'),false,`absent ${value}, ${optimize}`);
+    assert.equal(evaluate(p,{"'Policy'!E6":true,"'Policy'!E7":7,"'Policy'!E8":true}).output('result'),true);
+    for(const value of [null,'unused',true,1.5])assert.equal(evaluate(p,{"'Policy'!E6":true,"'Policy'!E7":value,"'Policy'!E8":true}).output('result'),'#N/A');
+  }
+  for(const optimize of [true,false]){const p=emitExcel(compileModel('func run(d: Dictionary) -> bool:\n\treturn d.has("inner")\n',{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{d:{inner:{$optional:true,present:{cell:"'Policy'!E6",type:'boolean'},value:{v:{$optional:true,present:{cell:"'Policy'!E8",type:'boolean'},value:{cell:"'Policy'!E7",type:'number',numericType:'int'}}}}}}});assert.equal(evaluate(p,{"'Policy'!E6":false,"'Policy'!E7":'unused',"'Policy'!E8":true}).output('result'),false);}
+});
+test('PR120 4369307578 array iteration reads live later values with structural refusal',()=>{
+  const source='func change(a: Array,x: bool) -> void:\n\tif x:\n\t\ta[1] = 9\nfunc run(x: bool) -> Array:\n\tvar a := [1,2]\n\tvar alias := a\n\tvar out := []\n\tfor item in a:\n\t\tout.append(item)\n\t\tchange(alias,x)\n\treturn out\n';
+  for(const optimize of [true,false]){const p=emitExcel(compileModel(source,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{x:{cell:"'Policy'!E6",type:'boolean'}}});for(const [x,hand]of [[true,[1,9]],[false,[1,2]]]){const got=evaluate(p,{"'Policy'!E6":x});hand.forEach((v,i)=>assert.equal(got.output(`result[${i}]`),v));}
+    for(const mutation of ['a.append(3)','a.pop_back()','a.append(3)\n\t\ta.pop_back()'])assert.throws(()=>emitExcel(compileModel(`func run() -> Array:\n\tvar a := [1,2]\n\tfor item in a:\n\t\t${mutation}\n\treturn a\n`,{entrypoints:['run']}),{entrypoint:'run',optimize}),/iterable.*mutat|iterable.*resiz/);
+  }
+});
+test('PR120 4369307581 hex prefixes precede decimal exponent provenance',()=>{
+  for(const optimize of [true,false]){const p=emitExcel(compileModel('func run() -> Array:\n\treturn [typeof(0xEF),0xEF/2]\n',{entrypoints:['run']}),{entrypoint:'run',optimize}),got=evaluate(p);assert.equal(got.output('result[0]'),2);assert.equal(got.output('result[1]'),119);
+    const source='func run() -> Array:\n\treturn [typeof(0xef),0xef/2,typeof(0xE_F),0xE_F/2,typeof(1_000),1_000/2,typeof(1e2),1e2/2,typeof(1_0e1),1_0e1/2,typeof(1.0e-1),1.0e-1/2]\n',q=emitExcel(compileModel(source,{entrypoints:['run']}),{entrypoint:'run',optimize}),actual=evaluate(q);[2,119,2,119,2,500,3,50,3,50,3,.05].forEach((v,i)=>assert.equal(actual.output(`result[${i}]`),v));}
+});
+test('PR120 4369307584 non-String dictionary keys refuse throughout literal access mutation methods merge',()=>{
+  const bodies=['var d := {1:"number","1":"text"}\n\treturn [d.size(),d[1],d["1"]]', 'var d := {"1":7}\n\treturn d[1]', 'var d := {"1":7}\n\td[1] = 8\n\treturn d', 'return {"1":7}.has(1)', 'return {"1":7}.get(1,9)', 'var d := {}\n\td.merge({1:7},true)\n\treturn d','return 1 in {"1":7}'];
+  for(const optimize of [true,false]){
+    for(const body of bodies)assert.throws(()=>emitExcel(compileModel('func run() -> Variant:\n\t'+body+'\n',{entrypoints:['run']}),{entrypoint:'run',optimize}),/dictionary.*String|String.*dictionary/,body);
+    for(const expression of ['d[x]','d.has(x)','d.get(x,9)']){const p=emitExcel(compileModel(`func run(x: Variant) -> Variant:\n\tvar d := {"1":7}\n\treturn ${expression}\n`,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{x:{cell:"'Policy'!E6",type:'variant',numericType:'int'}}});assert.equal(evaluate(p,{"'Policy'!E6":'1'}).output('result'),expression==='d.has(x)'?true:7);for(const x of [1,true,null])assert.equal(evaluate(p,{"'Policy'!E6":x}).output('result'),'#N/A');}
+    const p=emitExcel(compileModel('func run() -> Array:\n\tvar d := {"1":7}\n\td["1"] = 8\n\td.merge({"s":9},true)\n\treturn [d["1"],d.has("s"),d.get("missing",3)]\n',{entrypoints:['run']}),{entrypoint:'run',optimize});[8,true,3].forEach((v,i)=>assert.equal(evaluate(p).output(`result[${i}]`),v));
+  }
+});
 test('same-category optional float phis retain actual category for Boolean text and blank edits',()=>{
   const source='func run(d: Dictionary) -> Dictionary:\n\tif not d.has("v") or typeof(d.v) != TYPE_FLOAT:\n\t\treturn {"ok":false}\n\treturn {"ok":true,"v":d.v/2,"type":typeof(d.v)}\n';
   for(const optimize of [true,false]){const program=emitExcel(compileModel(source,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{d:{v:{$optional:true,present:{cell:"'Policy'!E6",type:'boolean'},value:{cell:"'Policy'!E7",type:'number',numericType:'float'}}}}});

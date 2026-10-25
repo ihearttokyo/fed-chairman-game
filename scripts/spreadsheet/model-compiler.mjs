@@ -11,18 +11,23 @@
  */
 import { createHash } from 'node:crypto';
 
-export const COMPILER_VERSION = 'gd-model-ir-4';
+export const COMPILER_VERSION = 'gd-model-ir-6';
 export class ModelCompileError extends Error {
   constructor(message, at) { super(`${at ? `L${at.line}:${at.column}: ` : ''}${message}`); this.name = 'ModelCompileError'; this.source = at; }
 }
 const fail = (message, at) => { throw new ModelCompileError(message, at); };
 const hash = text => createHash('sha256').update(text).digest('hex');
+// Preserve every own String data key, including __proto__. Ordinary assignment
+// on a fresh {} would invoke the inherited prototype setter instead of storing
+// that legal Dictionary key. Public dictionaries remain ordinary JS objects.
+const setOwn=(target,key,value)=>{Object.defineProperty(target,key,{value,writable:true,enumerable:true,configurable:true});return value;};
 export function irFingerprint(ir){const {irSha256,...body}=ir;return hash(JSON.stringify(body,(_,v)=>typeof v==='number'&&!Number.isFinite(v)?{$number:String(v)}:v));}
 const TYPES = new Set(['Variant', 'float', 'int', 'bool', 'String', 'Array', 'Dictionary', 'void']);
 const BUILTINS = new Set(['float','int','str','typeof','is_finite','pow','abs','min','max','minf','maxf','clamp','exp','log','tanh','lerpf','round','roundf','signf','floor','range']);
 const METHODS = new Set(['get','has','size','duplicate','slice','append','append_array','fill','resize','pop_front','pop_back','sort','is_empty','merge','values','keys','is_valid_float']);
 const ARITY={float:[1,1],int:[1,1],str:[1,1],typeof:[1,1],is_finite:[1,1],pow:[2,2],abs:[1,1],min:[2,Infinity],max:[2,Infinity],minf:[2,2],maxf:[2,2],clamp:[3,3],exp:[1,1],log:[1,1],tanh:[1,1],lerpf:[3,3],round:[1,1],roundf:[1,1],signf:[1,1],floor:[1,1],range:[1,3]};
 const METHOD_ARITY={get:[1,2],has:[1,1],size:[0,0],duplicate:[0,1],slice:[1,2],append:[1,1],append_array:[1,1],fill:[1,1],resize:[1,1],pop_front:[0,0],pop_back:[0,0],sort:[0,0],is_empty:[0,0],merge:[1,2],values:[0,0],keys:[0,0],is_valid_float:[0,0]};
+const METHOD_RECEIVERS={get:['array','dictionary'],has:['array','dictionary'],size:['array','dictionary'],duplicate:['array','dictionary'],is_empty:['array','dictionary'],slice:['array'],append:['array'],append_array:['array'],fill:['array'],resize:['array'],pop_front:['array'],pop_back:['array'],sort:['array'],merge:['dictionary'],values:['dictionary'],keys:['dictionary'],is_valid_float:['string']};
 // Source-visible Godot Variant.Type values, NOT the internal gdType categories.
 // Only the represented scalar/container types are admitted by this subset.
 export const VARIANT_TYPES=Object.freeze({TYPE_NIL:0,TYPE_BOOL:1,TYPE_INT:2,TYPE_FLOAT:3,TYPE_STRING:4,TYPE_DICTIONARY:27,TYPE_ARRAY:28});
@@ -54,7 +59,9 @@ function lex(source) {
       while(i<source.length){const x=move();if(x===quote){closed=true;break;}if(x==='\\'){const e=move();value+=({n:'\n',r:'\r',t:'\t','\\':'\\','"':'"',"'":"'"})[e]??fail(`unsupported escape \\${e}`,at);}else{if(x==='\n')fail('multiline strings unsupported',at);value+=x;}}
       if(!closed)fail('unterminated string',at);push('string',value,at);continue;
     }
-    const number=source.slice(i).match(/^(?:0x[0-9a-fA-F]+|(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)/);
+    // Separators are admitted only between digits. Hex E/e is a digit, never a
+    // decimal exponent marker; keep the lexical spelling until classification.
+    const number=source.slice(i).match(/^(?:0x[0-9a-fA-F](?:_?[0-9a-fA-F])*|(?:\d(?:_?\d)*(?:\.(?:\d(?:_?\d)*)?)?|\.\d(?:_?\d)*)(?:[eE][+-]?\d(?:_?\d)*)?)/);
     if(number){for(let n=0;n<number[0].length;n++)move();push('number',number[0],at);continue;}
     const name=source.slice(i).match(/^[A-Za-z_][A-Za-z_0-9]*/);
     if(name){for(let n=0;n<name[0].length;n++)move();push('name',name[0],at);continue;}
@@ -79,7 +86,7 @@ class Parser {
   lines(){while(this.maybe('NEWLINE'));}
   type(){const t=this.take('name');if(!TYPES.has(t.value))fail(`unsupported type ${t.value}`,t);return t.value;}
   module(){
-    const functions={},constants=[];this.lines();
+    const functions=Object.create(null),constants=[];this.lines();
     while(!this.is('EOF')){
       if(this.maybe('extends')){this.take('name');this.take('NEWLINE');}
       else if(this.is('const'))constants.push(this.declaration(true));
@@ -124,7 +131,7 @@ class Parser {
     }return left;
   }
   prefix(){const at=this.take();
-    if(at.kind==='number')return this.node('literal',at,{value:Number(at.value),type:/[.eE]/.test(at.value)?'float':'int'});
+    if(at.kind==='number')return this.node('literal',at,{value:Number(at.value.replaceAll('_','')),type:at.value.startsWith('0x')?'int':/[.eE]/.test(at.value)?'float':'int'});
     if(at.kind==='string')return this.node('literal',at,{value:at.value,type:'String'});
     if(at.value==='not'||at.value==='-'||at.value==='+')return this.node('unary',at,{op:at.value,value:this.expression(at.value==='not'?25:55)});
     if(at.value==='('){const v=this.expression();this.take(')');return v;}
@@ -199,7 +206,7 @@ export function compileModel(source,inputSchema={}){
       ||validation?.kind!=='declare'||validation.value?.kind!=='call'||!named(validation.value.callee,spec.validator)||validation.value.args.length!==1||!member(validation.value.args[0],first.name,'value')
       ||last?.kind!=='return'||last.value?.kind!=='conditional'||!member(last.value.condition,validation.name,'ok')||!named(last.value.yes,first.name)||!named(last.value.no,validation.name))fail(`input boundary ${name} changed: only raw input + canonical validation + unchanged forwarding is admitted`,fn?.source);
   }
-  const functions={},pending=[...entrypoints],usedBoundaries=new Set();
+  const functions=Object.create(null),pending=[...entrypoints],usedBoundaries=new Set();
   while(pending.length){const name=pending.pop();if(functions[name])continue;const fn=parsed.functions[name];if(!fn)fail(`unresolved entrypoint/dependency ${name}`);
     if(BUILTINS.has(name))fail(`function ${name} shadows a builtin outside the admitted subset`,fn.source);
     functions[name]=fn;
@@ -258,7 +265,7 @@ export function compileModel(source,inputSchema={}){
     if(node.kind==='unary'&&node.op!=='not')node.type=node.value.type??'Variant';
     if(node.kind==='declare'){
       node.storageType=node.type==='Variant'&&(node.inferred||node.constant)?node.value?.type??'Variant':node.type;
-      env[node.name]=node.storageType;
+      setOwn(env,node.name,node.storageType);
     }
     if(node.kind==='assign'){
       node.storageType=node.target.kind==='name'?env[node.target.name]??'Variant':'Variant';
@@ -295,6 +302,7 @@ export function modelNumber(value,numericType){
   return new ModelNumber(value,numericType);
 }
 export function gdType(value){return isModelNumber(value)?'number':value===null?'null':Array.isArray(value)?'array':typeof value==='object'?'dictionary':typeof value;}
+const dictionaryValue=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&!isModelNumber(value)&&[Object.prototype,null].includes(Object.getPrototypeOf(value));
 export function variantType(value){
   if(gdType(value)==='number'){
     const kind=numericKind(value);if(kind==='unknown')throw new TypeError('typeof numeric Variant requires exact int/float provenance');
@@ -331,6 +339,16 @@ export function coerceTyped(value,target){
 }
 export function validFloatString(value){return typeof value==='string'&&/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value.trim())&&Number.isFinite(Number(value));}
 const same=(a,b)=>{a=rawNumber(a);b=rawNumber(b);if(typeof a!==typeof b)return false;if(Array.isArray(a)&&Array.isArray(b))return a.length===b.length&&a.every((x,i)=>same(x,b[i]));if(a&&b&&typeof a==='object')return Object.keys(a).length===Object.keys(b).length&&Object.keys(a).every(k=>Object.hasOwn(b,k)&&same(a[k],b[k]));return a===b;};
+// Array.has uses Variant-type-sensitive search, unlike ordinary int/float ==.
+// Container membership is deliberately outside this qualified scalar subset.
+function arrayMemberSame(a,b){
+  for(const value of [a,b]){
+    if(['array','dictionary'].includes(gdType(value)))throw new TypeError('Array.has membership supports scalar values only');
+    if(gdType(value)==='number'&&numericKind(value)==='unknown')throw new TypeError('Array.has membership requires exact numeric provenance');
+  }
+  return variantType(a)===variantType(b)&&same(a,b);
+}
+const dictionaryKey=key=>{if(typeof key!=='string')throw new TypeError('dictionary key must be String; heterogeneous keys are outside the admitted subset');return key;};
 export function builtinValue(name,a,limit=100000){
   const numeric=x=>{if(typeof x==='boolean')return Number(x);if(typeof x==='number')return x;if(typeof x==='string'&&x.trim()!==''&&!Number.isNaN(Number(x)))return Number(x);throw new TypeError('invalid numeric conversion');};
   switch(name){
@@ -346,7 +364,7 @@ export function binaryValue(op,a,b){
   switch(op){case '+':if(typeof a==='string'&&typeof b==='string'||typeof a==='number'&&typeof b==='number')return a+b;throw new TypeError('mixed String/non-numeric arithmetic requires explicit conversion');case '-':return a-b;case '*':return a*b;case '/':return a/b;case '**':return a**b;
     case '%':{if(typeof a!=='string')return a%b;let i=0;const args=Array.isArray(b)?b:[b];return a.replace(/%(?:\.(\d+))?([sdf%])/g,(whole,digits,type)=>type==='%'?'%':type==='s'?String(args[i++]):type==='d'?String(Math.trunc(args[i++])):Number(args[i++]).toFixed(Number(digits??6)));}
     case '==':return same(a,b);case '!=':return !same(a,b);case '<':return a<b;case '>':return a>b;case '<=':return a<=b;case '>=':return a>=b;
-    case 'in':return Array.isArray(b)?b.some(x=>same(a,x)):typeof b==='string'?b.includes(a):Object.hasOwn(b,a);case 'not in':return !binaryValue('in',a,b);case 'is':return gdType(a)===b;default:throw new Error(`unsupported operator ${op}`);}
+    case 'in':return Array.isArray(b)?b.some(x=>same(a,x)):typeof b==='string'?b.includes(a):Object.hasOwn(b,dictionaryKey(a));case 'not in':return !binaryValue('in',a,b);case 'is':return gdType(a)===b;default:throw new Error(`unsupported operator ${op}`);}
 }
 
 /** Pure reference interpreter of the very same IR. Not a Godot qualification. */
@@ -354,9 +372,10 @@ export function evaluateModel(ir,entrypoint,args=[],options={}){
   if(ir.irSha256!==irFingerprint(ir))fail('IR fingerprint mismatch; recompile canonical source rather than editing IR');
   if(options.numericInputs!==undefined&&options.numericInputs!=='float')fail('numericInputs must be explicit float (JSON-number domain); otherwise use modelNumber tags');
   const globals={...PREDEFINED,...Object.fromEntries(Object.entries(VARIANT_TYPES).map(([name,value])=>[name,modelNumber(value,'int')])),INF:modelNumber(Infinity,'float'),NAN:modelNumber(NaN,'float')};let fuel=options.maxOperations??1000000;
+  const structureVersions=new WeakMap(),resized=obj=>structureVersions.set(obj,(structureVersions.get(obj)??0)+1);
   const charge=n=>{if(--fuel<0)fail('pure interpreter operation budget exhausted',n?.source);};
-  const copy=(value,convertNumbers=false,memo=new Map())=>{if(isModelNumber(value))return value;if(typeof value==='number')return convertNumbers?modelNumber(value,options.numericInputs??'unknown'):value;if(!value||typeof value!=='object')return value;if(memo.has(value))return memo.get(value);const result=Array.isArray(value)?[]:{};memo.set(value,result);for(const [k,v] of Object.entries(value))result[k]=copy(v,convertNumbers,memo);return result;};
-  const unbox=(value,memo=new Map())=>{if(isModelNumber(value))return value.value;if(!value||typeof value!=='object')return value;if(memo.has(value))return memo.get(value);const result=Array.isArray(value)?[]:{};memo.set(value,result);for(const [k,v]of Object.entries(value))result[k]=unbox(v,memo);return result;};
+  const copy=(value,convertNumbers=false,memo=new Map())=>{if(isModelNumber(value))return value;if(typeof value==='number')return convertNumbers?modelNumber(value,options.numericInputs??'unknown'):value;if(!value||typeof value!=='object')return value;if(!Array.isArray(value)&&!dictionaryValue(value))fail('copy/input requires an Array or plain String-key Dictionary');if(memo.has(value))return memo.get(value);const result=Array.isArray(value)?[]:{};memo.set(value,result);for(const [k,v] of Object.entries(value))setOwn(result,k,copy(v,convertNumbers,memo));return result;};
+  const unbox=(value,memo=new Map())=>{if(isModelNumber(value))return value.value;if(!value||typeof value!=='object')return value;if(memo.has(value))return memo.get(value);const result=Array.isArray(value)?[]:{};memo.set(value,result);for(const [k,v]of Object.entries(value))setOwn(result,k,unbox(v,memo));return result;};
   const truth=value=>isModelNumber(value)?value.value!==0:Boolean(value);
   const typed=(value,target)=>{if(['int','float'].includes(target))return modelNumber(coerceTyped(value,target),target);return coerceTyped(value,target);};
   const builtin=(name,values)=>{
@@ -371,29 +390,37 @@ export function evaluateModel(ir,entrypoint,args=[],options={}){
   };
   const expr=(n,env)=>{charge(n);switch(n.kind){
     case 'literal':return typeof n.value==='number'?modelNumber(n.value,n.type):n.value;case 'name':if(Object.hasOwn(env,n.name))return env[n.name];if(Object.hasOwn(globals,n.name))return globals[n.name];fail(`unbound variable ${n.name}`,n.source);break;
-    case 'array':return n.items.map(x=>expr(x,env));case 'dictionary':return Object.fromEntries(n.entries.map(x=>[expr(x.key,env),expr(x.value,env)]));
+    case 'array':return n.items.map(x=>expr(x,env));case 'dictionary':return Object.fromEntries(n.entries.map(x=>[dictionaryKey(expr(x.key,env)),expr(x.value,env)]));
     case 'member':{const obj=expr(n.object,env);if(!Object.hasOwn(obj,n.name))fail(`missing member ${n.name}`,n.source);return obj[n.name];}
-    case 'index':{const obj=expr(n.object,env);let key=rawNumber(expr(n.index,env));if(Array.isArray(obj)&&key<0)key+=obj.length;if(!Object.hasOwn(obj,key))fail(`missing index ${key}`,n.source);return obj[key];}
+    case 'index':{const obj=expr(n.object,env),index=expr(n.index,env);let key=Array.isArray(obj)?rawNumber(index):dictionaryKey(index);if(Array.isArray(obj)&&key<0)key+=obj.length;if(!Object.hasOwn(obj,key))fail(`missing index ${key}`,n.source);return obj[key];}
     case 'unary':{const v=expr(n.value,env);if(n.op==='not')return !truth(v);if(gdType(v)!=='number')fail('Boolean/non-numeric unary arithmetic requires explicit conversion',n.source);return modelNumber(n.op==='-'?-rawNumber(v):+rawNumber(v),numericKind(v));}
     case 'binary':{const a=expr(n.left,env);if(n.op==='and')return truth(a)&&truth(expr(n.right,env));if(n.op==='or')return truth(a)||truth(expr(n.right,env));const b=expr(n.right,env);return ['+','-','*','/','%','**'].includes(n.op)?modelArithmetic(n.op,a,b):binaryValue(n.op,a,b);}
     case 'conditional':return expr(truth(expr(n.condition,env))?n.yes:n.no,env);
     case 'call':{const c=n.callee,receiver=c.kind==='member'?expr(c.object,env):null,a=n.args.map(x=>expr(x,env));
       if(c.kind==='name')return BUILTINS.has(c.name)?builtin(c.name,a):call(c.name,a);
       const obj=receiver,name=c.name;
-      switch(name){case 'get':return Object.hasOwn(obj,a[0])?obj[a[0]]:a[1]??null;case 'has':return Object.hasOwn(obj,a[0]);case 'size':return modelNumber(Array.isArray(obj)||typeof obj==='string'?obj.length:Object.keys(obj).length,'int');case 'is_empty':return (Array.isArray(obj)?obj.length:Object.keys(obj).length)===0;
-        case 'duplicate':return truth(a[0])?copy(obj):Array.isArray(obj)?obj.slice():{...obj};case 'slice':return obj.slice(...a.map(rawNumber));case 'append':obj.push(a[0]);return null;case 'append_array':obj.push(...a[0]);return null;case 'fill':obj.fill(a[0]);return null;
-        case 'resize':{const length=rawNumber(a[0]);if(!Number.isSafeInteger(length)||length<0||length>(options.maxArrayLength??10000))fail('invalid/beyond-budget array resize',n.source);while(obj.length<length)obj.push(null);obj.length=length;return null;}
-        case 'pop_back':if(!obj.length)fail('pop from empty array',n.source);return obj.pop();case 'pop_front':if(!obj.length)fail('pop from empty array',n.source);return obj.shift();case 'sort':obj.sort((a,b)=>a<b?-1:a>b?1:0);return null;
-        case 'merge':for(const [k,v] of Object.entries(a[0]))if(truth(a[1])||!Object.hasOwn(obj,k))obj[k]=v;return null;case 'values':return Object.values(obj);case 'keys':return Object.keys(obj);case 'is_valid_float':return validFloatString(obj);default:fail(`unsupported method ${name}`,n.source);}
+      const receiverKind=Array.isArray(obj)?'array':dictionaryValue(obj)?'dictionary':typeof obj==='string'?'string':'other';
+      if(!METHOD_RECEIVERS[name]?.includes(receiverKind))fail(`method ${name} has invalid receiver kind ${receiverKind}`,n.source);
+      if(name==='merge'&&!dictionaryValue(a[0]))fail('merge requires a Dictionary source',n.source);
+      if(name==='append_array'&&!Array.isArray(a[0]))fail('append_array requires an Array source',n.source);
+      switch(name){case 'get':{const key=Array.isArray(obj)?rawNumber(a[0]):dictionaryKey(a[0]);return Object.hasOwn(obj,key)?obj[key]:a[1]??null;}case 'has':return Array.isArray(obj)?obj.some(value=>arrayMemberSame(value,a[0])):Object.hasOwn(obj,dictionaryKey(a[0]));case 'size':return modelNumber(Array.isArray(obj)||typeof obj==='string'?obj.length:Object.keys(obj).length,'int');case 'is_empty':return (Array.isArray(obj)?obj.length:Object.keys(obj).length)===0;
+        case 'duplicate':return truth(a[0])?copy(obj):Array.isArray(obj)?obj.slice():{...obj};case 'slice':return obj.slice(...a.map(rawNumber));case 'append':resized(obj);obj.push(a[0]);return null;case 'append_array':if(a[0].length)resized(obj);obj.push(...a[0]);return null;case 'fill':obj.fill(a[0]);return null;
+        case 'resize':{const length=rawNumber(a[0]);if(!Number.isSafeInteger(length)||length<0||length>(options.maxArrayLength??10000))fail('invalid/beyond-budget array resize',n.source);if(length!==obj.length)resized(obj);while(obj.length<length)obj.push(null);obj.length=length;return null;}
+        case 'pop_back':if(!obj.length)fail('pop from empty array',n.source);resized(obj);return obj.pop();case 'pop_front':if(!obj.length)fail('pop from empty array',n.source);resized(obj);return obj.shift();case 'sort':obj.sort((a,b)=>a<b?-1:a>b?1:0);return null;
+        case 'merge':for(const [k,v] of Object.entries(a[0]))if(truth(a[1])||!Object.hasOwn(obj,k))setOwn(obj,k,v);return null;case 'values':return Object.values(obj);case 'keys':return Object.keys(obj);case 'is_valid_float':return validFloatString(obj);default:fail(`unsupported method ${name}`,n.source);}
     }default:fail(`unsupported expression ${n.kind}`,n.source);}};
-  const location=(target,env)=>{if(target.kind==='name')return {read:()=>env[target.name],write:value=>{env[target.name]=value;}};const obj=expr(target.object,env);let key=target.kind==='member'?target.name:rawNumber(expr(target.index,env));if(Array.isArray(obj)){if(key<0)key+=obj.length;if(!Number.isSafeInteger(key)||key<0||key>=obj.length)fail('array assignment out of bounds',target.source);}return {read:()=>{if(!Object.hasOwn(obj,key))fail('missing compound assignment target',target.source);return obj[key];},write:value=>{obj[key]=value;}};};
-  const run=(body,env)=>{for(const n of body){charge(n);switch(n.kind){case 'declare':env[n.name]=typed(n.value?expr(n.value,env):null,n.storageType);break;case 'assign':{const target=location(n.target,env);const value=n.op==='='?expr(n.value,env):modelArithmetic(n.op[0],target.read(),expr(n.value,env));target.write(typed(value,n.storageType));break;}
+  const location=(target,env)=>{if(target.kind==='name')return {read:()=>env[target.name],write:value=>setOwn(env,target.name,value)};const obj=expr(target.object,env),index=target.kind==='member'?target.name:expr(target.index,env);let key=Array.isArray(obj)?rawNumber(index):dictionaryKey(index);if(Array.isArray(obj)){if(key<0)key+=obj.length;if(!Number.isSafeInteger(key)||key<0||key>=obj.length)fail('array assignment out of bounds',target.source);}return {read:()=>{if(!Object.hasOwn(obj,key))fail('missing compound assignment target',target.source);return obj[key];},write:value=>setOwn(obj,key,value)};};
+  const run=(body,env)=>{for(const n of body){charge(n);switch(n.kind){case 'declare':setOwn(env,n.name,typed(n.value?expr(n.value,env):null,n.storageType));break;case 'assign':{const target=location(n.target,env);const value=n.op==='='?expr(n.value,env):modelArithmetic(n.op[0],target.read(),expr(n.value,env));target.write(typed(value,n.storageType));break;}
       case 'expression':expr(n.value,env);break;case 'return':return {value:expr(n.value,env)};case 'if':{const r=run(truth(expr(n.condition,env))?n.yes:n.no,env);if(r)return r;break;}
-      case 'for':{const values=expr(n.iterable,env);for(const item of Array.isArray(values)?values.slice():Object.keys(values)){env[n.name]=item;const r=run(n.body,env);if(r)return r;}break;}
+      case 'for':{const values=expr(n.iterable,env),isArray=Array.isArray(values),keys=Object.keys(values),length=values.length,version=structureVersions.get(values)??0,count=isArray?length:keys.length;
+        for(let i=0;i<count;i++){setOwn(env,n.name,isArray?values[i]:keys[i]);const r=run(n.body,env);
+          if(isArray&&(values.length!==length||(structureVersions.get(values)??0)!==version))fail('for iterable is resized/mutated: no finite iteration proof',n.source);
+          if(!isArray&&(Object.keys(values).length!==keys.length||keys.some(k=>!Object.hasOwn(values,k))))fail('for dictionary iterable key set is mutated: no finite iteration proof',n.source);
+          if(r)return r;}break;}
       case 'while':while(truth(expr(n.condition,env))){const r=run(n.body,env);if(r)return r;}break;case 'pass':break;default:fail(`unsupported statement ${n.kind}`,n.source);}}return null;};
-  const call=(name,values)=>{const boundary=ir.boundaries[name];if(boundary){const supplied=options.inputs?.[boundary.input];if(supplied===undefined)fail(`missing input-only boundary ${boundary.input}`);const value=copy(supplied,true),valid=call(boundary.validator,[value]);return valid.ok?{ok:true,value}:valid;}
-    const fn=ir.functions[name];if(!fn)fail(`unresolved function ${name}`);if(values.length>fn.params.length)fail(`too many arguments to ${name}`,fn.source);const env={};fn.params.forEach((p,i)=>{if(i<values.length)env[p.name]=typed(values[i],p.type);else if(p.value)env[p.name]=typed(expr(p.value,env),p.type);else fail(`missing argument ${name}.${p.name}`,p.source);});return typed(run(fn.body,env)?.value??null,fn.returns);};
-  for(const n of ir.constants)globals[n.name]=typed(expr(n.value,globals),n.storageType);
+  const call=(name,values)=>{const boundary=Object.hasOwn(ir.boundaries,name)?ir.boundaries[name]:undefined;if(boundary){const supplied=options.inputs?.[boundary.input];if(supplied===undefined)fail(`missing input-only boundary ${boundary.input}`);const value=copy(supplied,true),valid=call(boundary.validator,[value]);return valid.ok?{ok:true,value}:valid;}
+    const fn=ir.functions[name];if(!fn)fail(`unresolved function ${name}`);if(values.length>fn.params.length)fail(`too many arguments to ${name}`,fn.source);const env={};fn.params.forEach((p,i)=>{if(i<values.length)setOwn(env,p.name,typed(values[i],p.type));else if(p.value)setOwn(env,p.name,typed(expr(p.value,env),p.type));else fail(`missing argument ${name}.${p.name}`,p.source);});return typed(run(fn.body,env)?.value??null,fn.returns);};
+  for(const n of ir.constants)setOwn(globals,n.name,typed(expr(n.value,globals),n.storageType));
   const result=call(entrypoint,copy(args,true));return options.preserveNumericTypes?result:unbox(result);
 }
 
