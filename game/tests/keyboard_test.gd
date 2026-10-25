@@ -567,7 +567,10 @@ func run() -> void:
 		if not staged_preview.ok:
 			continue
 		var applied: Dictionary = staged_preview.states[0]
-		check(game.forecast_label.text.contains("Rate %.2f%%" % applied.policy_rate_pct) and game.forecast_label.text.contains("assets %+.2f" % (applied.asset_flow_applied_pct_initial_gdp / n)) and game.forecast_label.text.contains("lending %.2f" % (applied.liquidity_applied_pct_initial_gdp / n)), "typed boundary preview visibly reports actual rate, runoff or purchases and collateral-limited lending in meeting units")
+		check(game.forecast_label.text.contains("Rate %.2f%%" % applied.policy_rate_pct) and game.forecast_label.text.contains("assets %+.2f" % (applied.asset_flow_applied_pct_initial_gdp / n)) and (game.funding_plan.snapshot.get("ok", false) and game.funding_plan.snapshot.applied_meeting_gdp == applied.liquidity_applied_pct_initial_gdp / n), "typed boundary preview visibly reports actual rate, runoff or purchases and collateral-limited lending in meeting units")
+		if applied.liquidity_applied_pct_initial_gdp > 0.0:
+			var visible_amount: String = game.Career.funding_amount_text(applied.liquidity_applied_pct_initial_gdp / n)
+			check(game.funding_plan.visible and game.funding_plan.heading.is_visible_in_tree() and game.funding_plan.heading.text.contains(visible_amount + " applied"), "typed lending boundary exposes the actual numeric amount in the visible native readout")
 		var committed: Dictionary = expected.duplicate()
 		var negative: bool = quotes[0].begins_with("-")
 		if negative:
@@ -622,7 +625,7 @@ func run() -> void:
 	var floor_start: PackedByteArray = game.career.encode()
 	var floor_policy: Dictionary = game._policy()
 	await type_number(root, game.liquidity, "-1.00")
-	check(game.liquidity.value == 0.0 and game.liquidity.get_line_edit().text.to_float() == 0.0 and game._policy() == floor_policy and game.forecast_label.text.contains("lending 0.00") and game.career.encode() == floor_start, "typed negative lending normalizes to the nonnegative floor without adopting or changing applied feedback")
+	check(game.liquidity.value == 0.0 and game.liquidity.get_line_edit().text.to_float() == 0.0 and game._policy() == floor_policy and (game.funding_plan.snapshot.get("ok", false) and game.funding_plan.snapshot.applied_initial_gdp == 0.0 and not game.funding_plan.visible) and game.career.encode() == floor_start, "typed negative lending normalizes to the nonnegative floor without adopting or changing applied feedback")
 	var rejected_start: PackedByteArray = game.career.encode()
 	var successful_preview: String = game.forecast_label.text
 	check(successful_preview.begins_with("IF ADOPTED NOW\n"), "rejection fixture begins with a successful conditional forecast")

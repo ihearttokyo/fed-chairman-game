@@ -219,7 +219,7 @@ func check_funding_outcome(game: Control) -> void:
 	var s: Dictionary = game.career.state
 	var n: float = s.decision_nominal_gdp_ratio
 	check(s.liquidity_applied_pct_initial_gdp > 0.0 and s.liquidity_applied_pct_initial_gdp < policy.liquidity_request_pct_initial_gdp and s.uncovered_funding_pct_initial_gdp == 0.0, "oversized offer fixture distinguishes requested and applied loans with zero uncovered funding")
-	var expected_line := "Funding (%% meeting GDP): lent %.2f · uncovered %.2f · repaid %.2f." % [s.liquidity_applied_pct_initial_gdp / n, s.uncovered_funding_pct_initial_gdp / n, s.liquidity_repayment_pct_initial_gdp / n]
+	var expected_line := "Funding (%% meeting GDP): local cash %.2f · renewed %.2f · unmet %.2f." % [s.liquidity_new_need_applied_pct_initial_gdp / n, s.liquidity_refinancing_applied_pct_initial_gdp / n, s.uncovered_funding_pct_initial_gdp / n]
 	check(game.consequence.text.contains(expected_line), "immediate funding outcome uses realized flows and meeting GDP")
 	check("%.2f" % (s.liquidity_applied_pct_initial_gdp / n) != "%.2f" % s.liquidity_applied_pct_initial_gdp and "%.2f" % (s.liquidity_applied_pct_initial_gdp / n) != "%.2f" % (s.liquidity_applied_pct_initial_gdp / s.ending_nominal_gdp_ratio), "loan fixture distinguishes meeting, initial and ending GDP at displayed precision")
 	check(game.liquidity.value == 0.0 and game.consequence.text.contains("Q5 outcome") and game.consequence.text.contains("Promise %.1f/100" % (100 * s.guidance_followthrough_score)) and game.consequence.accessibility_live == AccessibilityServer.LIVE_POLITE, "loan outcome retains offer reset, existing feedback and assistive announcements")
@@ -228,8 +228,8 @@ func check_funding_outcome(game: Control) -> void:
 	s = game.career.state
 	n = s.decision_nominal_gdp_ratio
 	check(s.liquidity_applied_pct_initial_gdp == 0.0 and s.liquidity_repayment_pct_initial_gdp == prior_loan and s.uncovered_funding_pct_initial_gdp > 0.0, "next real meeting repays prior short loans and retains new unmet need")
-	expected_line = "Funding (%% meeting GDP): lent %.2f · uncovered %.2f · repaid %.2f." % [s.liquidity_applied_pct_initial_gdp / n, s.uncovered_funding_pct_initial_gdp / n, s.liquidity_repayment_pct_initial_gdp / n]
-	check(game.consequence.text.contains(expected_line), "repayment feedback reports completed meeting rather than next preview")
+	expected_line = "Funding (%% meeting GDP): local cash %.2f · renewed %.2f · unmet %.2f." % [s.liquidity_new_need_applied_pct_initial_gdp / n, s.liquidity_refinancing_applied_pct_initial_gdp / n, s.uncovered_funding_pct_initial_gdp / n]
+	check(game.consequence.text.contains(expected_line), "funding feedback reports the completed meeting rather than next preview; prior principal repayment remains independently checked")
 	game._start_career("base", 1)
 	game.career.shocks[0] = {}
 	game._advance()
@@ -282,7 +282,9 @@ func expected_compact_outcome(game: Control, before: Dictionary) -> String:
 		text += " · Promise %.1f/100" % (100 * after.guidance_followthrough_score)
 	if after.liquidity_applied_pct_initial_gdp > 0.0 or after.uncovered_funding_pct_initial_gdp > 0.0 or after.liquidity_repayment_pct_initial_gdp > 0.0:
 		var n: float = after.decision_nominal_gdp_ratio
-		text += "\nFunding (%% meeting GDP): lent %s · uncovered %s · repaid %s." % [DispatchCareer.funding_amount_text(after.liquidity_applied_pct_initial_gdp / n), DispatchCareer.funding_amount_text(after.uncovered_funding_pct_initial_gdp / n), DispatchCareer.funding_amount_text(after.liquidity_repayment_pct_initial_gdp / n)]
+		text += "\nFunding (%% meeting GDP): local cash %s · renewed %s · unmet %s." % [DispatchCareer.funding_amount_text(after.liquidity_new_need_applied_pct_initial_gdp / n), DispatchCareer.funding_amount_text(after.liquidity_refinancing_applied_pct_initial_gdp / n), DispatchCareer.funding_amount_text(after.uncovered_funding_pct_initial_gdp / n)]
+		if after.liquidity_aggregate_applied_pct_initial_gdp > 0.0:
+			text += " Reserve loans %s." % DispatchCareer.funding_amount_text(after.liquidity_aggregate_applied_pct_initial_gdp / n)
 	return text
 
 func check_completed_interval_feedback(game: Control) -> void:
