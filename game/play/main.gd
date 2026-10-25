@@ -632,7 +632,7 @@ func _build_policy(parent: Node, actions: Node) -> void:
 	committee.accessibility_description = committee.tooltip_text
 	box.add_child(committee)
 	keyboard_controls.append(committee)
-	committee.item_selected.connect(func(_i: int): _committee_brief())
+	committee.item_selected.connect(_committee_selected)
 	_button(box, "Stage committee proposal", _stage_committee, KEY_K)
 	committee_note = _label(box, "", 11, MUTED)
 	committee_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -913,6 +913,11 @@ func _decision_briefing() -> String:
 		text += "Q+1 long yield %s; credit spread %s\nQ+8 inflation %s; unemployment %s; credibility %s; support %s\n\n" % [_change_text(first.long_yield_pct - reference_first.long_yield_pct, 3, "pp"), _change_text(first.credit_spread_pct - reference_first.credit_spread_pct, 3, "pp"), _change_text(last.four_quarter_inflation_pct - reference_last.four_quarter_inflation_pct, 3, "pp"), _change_text(last.unemployment_rate_pct - reference_last.unemployment_rate_pct, 3, "pp"), _change_text(100 * (last.credibility - reference_last.credibility), 2), _change_text(last.public_support - reference_last.public_support, 2)]
 	text += "REFERENCE AND LIMITS\nHold today's rate, guide to that rate with data dependence, and request no new asset flows or loans. Both paths use the same current shock and no new future shocks. After this meeting, each holds its own applied rate and portfolio switches, with no new asset flows or loans. Principal, short-loan repayment, reserve maintenance and policy lags still operate. The HOLD reference uses default reinvestment/maintenance and no sterilization.\n\nThese are combined effects of the staged controls, not an optimal-policy recommendation or a confidence interval. Positive differences mean a higher value, not necessarily a better outcome. Policy lags can leave first-quarter inflation unchanged even when later outcomes differ."
 	return text
+
+func _committee_selected(_index: int) -> void:
+	if routine.active:
+		_finish_follow_up("Committee priority changed", false)
+	_committee_brief()
 
 func _committee_brief() -> void:
 	if not is_instance_valid(committee) or not is_instance_valid(committee_note):
