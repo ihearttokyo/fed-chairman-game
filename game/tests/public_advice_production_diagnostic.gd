@@ -20,6 +20,11 @@ func check(ok: bool, message: String) -> void:
 		failures += 1
 		printerr("FAIL: ", message)
 func _initialize() -> void:
+	# Historical broad-model substitution needs its original production seams.
+	if FileAccess.get_sha256("res://play/main.gd") != "0d45d3ef54181e5cf22610376865552ed724c76cb7637061f4fcd31282511ae7" or FileAccess.get_sha256("res://play/routine_follow_up.gd") != "7411c198472b6688f14813a7de6a14f7543b791c016e0f8306c5133e37898c17":
+		printerr("Historical production screen requires source commit f801aa9; not runnable on changed advice integration.")
+		quit(2)
+		return
 	call_deferred("run")
 func run() -> void:
 	for scenario in ["policy_career", "lower_bound_slump", "stagflation_bank_run"]:

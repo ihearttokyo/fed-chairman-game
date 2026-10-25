@@ -91,8 +91,14 @@ func run() -> void:
 	check(game.career.decisions.size() == 4 and not game.routine.active, "quiet follow-up stops after four total outcomes")
 	check(not game.follow_up_toggle.button_pressed and not game.stop_follow_up.visible, "return requires a fresh delegation choice")
 	check(game.last_follow_up_reasons == ["QUOTA_EXHAUSTED", "CURRENT_NEWS"], "scheduled return retains simultaneous current-news reasons")
-	for policy in game.career.decisions.slice(1):
+	for index in range(1, game.career.decisions.size()):
+		var policy: Dictionary = game.career.decisions[index]
 		check(policy.asset_flow_request_pct_initial_gdp == 0 and policy.liquidity_request_pct_initial_gdp == 0 and not policy.reinvest_principal, "one-shots reset while false portfolio switches persist")
+		var observed: Dictionary = game.career.history[index]
+		var params: Dictionary = game.career.params
+		var rate: float = params.initial_r_star_pct + float("%.2f" % observed.expected_long_inflation_pct) + params.policy_inflation_response * (float("%.2f" % observed.four_quarter_inflation_pct) - params.inflation_target_pct) + params.policy_output_gap_response * float("%.2f" % observed.output_gap_pct)
+		rate = floorf(rate / params.minimum_rate_increment_pct + 0.5) * params.minimum_rate_increment_pct
+		check(policy.policy_rate_request_pct == rate and policy.guidance_rate_pct == rate and policy.guidance_inflation_sensitivity == params.policy_inflation_response and policy.guidance_output_gap_sensitivity == params.policy_output_gap_response, "actual paced automatic decisions match independently calculated public-data staff advice and guidance")
 	check(game.consequence.text.begins_with("Q1–Q4 outcome") and game.consequence.text.contains("Promise %.1f/100" % (100 * game.career.state.guidance_followthrough_score)) and game.outcome_drivers.visible and game.outcome_drivers.details_text.contains("Q1–Q4") and game.outcome_drivers.details_text.contains("not isolated policy effects") and not game.consequence.text.contains("Equation contributions"), "returned graphic covers the whole completed segment and keeps reconciliation behind Details")
 	game.follow_up_toggle.button_pressed = true
 	game._advance()

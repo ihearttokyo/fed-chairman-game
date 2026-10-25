@@ -2,9 +2,9 @@ extends SceneTree
 
 # Exploratory integration coverage, separate from the frozen D474 pilot.
 const Explanation = preload("res://play/transition_explanation.gd")
-const CASES := ["base", "demand_boom", "funding_stress", "lower_bound_slump", "mixed_crises", "policy_career", "supply_shock", "unanchored_inflation"]
+const CASES := ["base", "demand_boom", "funding_stress", "lower_bound_slump", "mixed_crises", "policy_career", "stagflation_bank_run", "supply_shock", "unanchored_inflation"]
 const SEEDS := [1, 17]
-const EXPECTED_STEPS := 11520 # 16 pairs × (480 actual + 240 replay).
+const EXPECTED_STEPS := 12960 # 18 pairs × (480 actual + 240 replay).
 
 class CountedEconomy:
 	extends "res://model/economy.gd"
@@ -63,19 +63,19 @@ func _initialize() -> void:
 				if not run_pair(case_id, seed_number):
 					finish()
 					return
-	require(rows.size() == 16 and CountedEconomy.attempts == EXPECTED_STEPS and CountedEconomy.confirmed == EXPECTED_STEPS and CountedEconomy.actual == 7680 and CountedEconomy.replay == 3840 and CountedEconomy.rejected == 0 and CountedEconomy.unexpected == 0, "complete exact native ledger; no rejected, unknown or hidden transitions")
+	require(rows.size() == 18 and CountedEconomy.attempts == EXPECTED_STEPS and CountedEconomy.confirmed == EXPECTED_STEPS and CountedEconomy.actual == 8640 and CountedEconomy.replay == 4320 and CountedEconomy.rejected == 0 and CountedEconomy.unexpected == 0, "complete exact native ledger; no rejected, unknown or hidden transitions")
 	finish()
 
 func finish() -> void:
 	print("ROUTINE_CAREER_REPORT: ", JSON.stringify({"checks": checks, "failures": failures, "attempts": CountedEconomy.attempts, "confirmed": CountedEconomy.confirmed, "actual": CountedEconomy.actual, "replay": CountedEconomy.replay, "rejected": CountedEconomy.rejected, "unknown": CountedEconomy.attempts - CountedEconomy.confirmed - CountedEconomy.rejected, "unexpected": CountedEconomy.unexpected, "rows": rows, "scope": "fixed development seeds; not held-out, human fun or Main input timing evidence"}))
 	if failures == 0:
-		print("PASS: all eight starting scenarios / two seeds / 240 quarters; routine parity and full Career replay")
+		print("PASS: all nine starting scenarios / two seeds / 240 quarters; routine parity and full Career replay")
 	quit(0 if failures == 0 else 1)
 
 # Independent actor: detached current data only; no Career or future tape.
 func ordinary_policy(state: Dictionary, shock: Dictionary, params: Dictionary) -> Dictionary:
-	var rate: float = state.r_star_pct + state.expected_short_inflation_pct + params.policy_inflation_response * (state.four_quarter_inflation_pct - params.inflation_target_pct) + params.policy_output_gap_response * state.output_gap_pct
-	rate = roundf(rate / params.minimum_rate_increment_pct) * params.minimum_rate_increment_pct
+	var rate: float = params.initial_r_star_pct + float("%.2f" % state.expected_long_inflation_pct) + params.policy_inflation_response * (float("%.2f" % state.four_quarter_inflation_pct) - params.inflation_target_pct) + params.policy_output_gap_response * float("%.2f" % state.output_gap_pct)
+	rate = floorf(rate / params.minimum_rate_increment_pct + 0.5) * params.minimum_rate_increment_pct
 	return {"policy_rate_request_pct": rate, "guidance_rate_pct": rate, "guidance_inflation_sensitivity": params.policy_inflation_response, "guidance_output_gap_sensitivity": params.policy_output_gap_response, "asset_flow_request_pct_initial_gdp": 0.0, "liquidity_request_pct_initial_gdp": shock.get("funding_need_pct_initial_gdp", 0.0) + minf(shock.get("refinancing_need_pct_initial_gdp", 0.0), state.outstanding_liquidity_pct_initial_gdp), "reinvest_principal": true, "maintain_ample_reserves": true, "sterilize_purchases": false}
 
 func observe(career: RefCounted) -> Dictionary:

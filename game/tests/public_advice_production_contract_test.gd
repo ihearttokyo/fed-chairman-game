@@ -34,7 +34,7 @@ func run() -> void:
 		check(game.career.model._validate_state(game.career.state, game.career.params).ok, "shortcut observer twin valid")
 		var before := var_to_bytes(game.career.state)
 		game._staff_rule()
-		check(game.rate.value != first.policy_rate_request_pct, "production shortcut currently reads hidden " + hidden)
+		check(game.rate.value == first.policy_rate_request_pct, "production staff estimate excludes hidden " + hidden)
 		check(var_to_bytes(game.career.state) == before, "shortcut staging preserves native state")
 	game.career.state = original.duplicate(true)
 	game.assets.value = 0.0
@@ -56,8 +56,8 @@ func run() -> void:
 		var twin := state.duplicate(true)
 		twin[hidden] += 1.0
 		var response: Dictionary = routine.proposal(twin, quiet, {}, game.career.params, 1, 2, 2)
-		check(not response.policy.is_empty() and response.policy.policy_rate_request_pct != baseline, "routine proposal currently reads hidden " + hidden)
-		check("BENCHMARK_DRIFT" in response.reasons, "hidden change can trigger attendance return")
+		check(not response.policy.is_empty() and response.policy.policy_rate_request_pct == baseline, "routine proposal excludes hidden " + hidden)
+		check(not "BENCHMARK_DRIFT" in response.reasons, "hidden change cannot trigger staff-rate drift return")
 	routine.arm(state, game.career.params, attended, 1)
 	var need := quiet.duplicate(true)
 	need.funding_need_pct_initial_gdp = 0.1
@@ -69,5 +69,5 @@ func run() -> void:
 	var deadline := Time.get_ticks_msec() + 100
 	while Time.get_ticks_msec() < deadline:
 		await process_frame
-	print("%s: production advice contract %d checks, %d failures; oracle dependence characterized, not fixed" % ["PASS" if failures == 0 else "FAIL", checks, failures])
+	print("%s: production advice contract %d checks, %d failures; public advice integrated; full-information diagnostic remains separate" % ["PASS" if failures == 0 else "FAIL", checks, failures])
 	quit(0 if failures == 0 else 1)

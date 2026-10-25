@@ -126,12 +126,12 @@ func check_text_reports(game: Control) -> void:
 		await check_report_body(dialog, [])
 		if method == "_help":
 			var help_text: TextEdit = dialog.get_child(0)
-			check(help_text.text.contains("R model benchmark") and help_text.text.contains("full-information") and help_text.text.contains("true neutral rate") and help_text.text.contains("short inflation expectations"), "help identifies the benchmark shortcut and its model-only information assumptions")
+			check(help_text.text.contains("R staff estimate") and help_text.text.contains("initial neutral-rate prior") and help_text.text.contains("two-decimal published") and help_text.text.contains("true neutral rate") and help_text.text.contains("short inflation expectations"), "help distinguishes the published-data staff shortcut from the hidden-input diagnostic benchmark")
 			check(help_text.text.contains(BENCHMARK_FINANCING_LIMIT), "help discloses the benchmark financing limitation")
 			check(help_text.text.contains("inflation reacts with a lag"), "help retains the inflation transmission lag explanation")
-			check(help_text.text.contains("Routine follow-up") and help_text.text.contains("three benchmark rate/guidance updates") and help_text.text.contains("four outcomes"), "help explains the optional staged decision and bounded benchmark follow-ups")
+			check(help_text.text.contains("Routine follow-up") and help_text.text.contains("three staff rate/guidance updates") and help_text.text.contains("four outcomes"), "help explains the optional staged decision and bounded benchmark follow-ups")
 			check(help_text.text.contains("Off by default and not saved") and help_text.text.contains("Stop or Escape") and help_text.text.contains("editing, reports, New and Load cancel"), "help explains transient follow-up permission and cancellation")
-			check(help_text.text.contains("including Tab and arrows") and help_text.text.contains("Save, Quit and the benchmark action"), "help includes navigation keys and command cancellation of follow-up")
+			check(help_text.text.contains("including Tab and arrows") and help_text.text.contains("Save, Quit and the staff estimate action"), "help includes navigation keys and command cancellation of follow-up")
 			check(help_text.text.contains("A firm promise is easier to understand") and help_text.text.contains("missing it reduces follow-through credit"), "help preserves the firm-pledge understandability and delivery tradeoff")
 			check(help_text.text.contains("target-range midpoint") and help_text.text.contains("not the market's effective rate") and help_text.text.contains("a real chair acts with the committee"), "help distinguishes the target midpoint from the effective market rate and sole-chair authority")
 			check(help_text.text.contains("The preview holds a rate") and help_text.text.contains("does not predict adaptive follow-up"), "help distinguishes the conditional preview from automatic benchmark updates")
@@ -583,6 +583,38 @@ func check_unrestricted_rate_controls(game: Control) -> void:
 	game.guidance.value = original.guidance_rate_pct
 	check(game.career.encode() == preserved and game._policy() == original, "native quote inspection restores controls without mutating the career")
 
+func reference_staff_rate(state: Dictionary, params: Dictionary) -> float:
+	var rate: float = params.initial_r_star_pct + float("%.2f" % state.expected_long_inflation_pct) + params.policy_inflation_response * (float("%.2f" % state.four_quarter_inflation_pct) - params.inflation_target_pct) + params.policy_output_gap_response * float("%.2f" % state.output_gap_pct)
+	return floorf(rate / params.minimum_rate_increment_pct + 0.5) * params.minimum_rate_increment_pct
+
+func check_staff_information(game: Control) -> void:
+	game._start_career("base", 17)
+	var original: Dictionary = game.career.state.duplicate(true)
+	game.assets.value = 1.25
+	game.liquidity.value = 2.0
+	game.reinvestment.button_pressed = false
+	game.sterilization.button_pressed = true
+	game._staff_rule()
+	var expected := reference_staff_rate(original, game.career.params)
+	check(game.rate.value == expected and game.guidance.value == expected, "actual staff action stages the independently calculated fixed-prior published-data rate and matching guidance")
+	for field in ["r_star_pct", "expected_short_inflation_pct"]:
+		var changed: Dictionary = original.duplicate(true)
+		changed[field] += 0.75
+		check(game.career.model._validate_state(changed, game.career.params).ok, "actual staff hidden-information fixture is native-valid: " + field)
+		game.career.state = changed
+		var preserved := var_to_bytes([game.career.state, game.career.history, game.career.decisions, game.career.shocks])
+		game._staff_rule()
+		check(game.rate.value == expected and game.guidance.value == expected, "actual player-facing staff advice ignores hidden " + field)
+		check(game.career.model.benchmark_policy(changed, game.career.params).policy_rate_request_pct != game.career.model.benchmark_policy(original, game.career.params).policy_rate_request_pct, "full-information diagnostic retains hidden-input sensitivity: " + field)
+		check(var_to_bytes([game.career.state, game.career.history, game.career.decisions, game.career.shocks]) == preserved, "staging advice is read-only even when diagnostic inputs differ")
+	var changed: Dictionary = original.duplicate(true)
+	changed.expected_long_inflation_pct += 0.02
+	game.career.state = changed
+	game._staff_rule()
+	check(game.rate.value == reference_staff_rate(changed, game.career.params) and game.rate.value != expected, "published long-expectations positive control changes actual staged staff advice")
+	check(game.assets.value == 1.25 and game.liquidity.value == 2.0 and not game.reinvestment.button_pressed and game.sterilization.button_pressed, "staff rate/guidance staging preserves every independently staged tool and portfolio switch")
+	game._start_career("supply_shock", 1)
+
 func check_custom_guidance(game: Control) -> void:
 	check(game.commitment.item_count == 3, "player can choose custom conditional guidance")
 	if game.commitment.item_count != 3:
@@ -628,14 +660,14 @@ func check_custom_guidance(game: Control) -> void:
 	game.assets.value = 1.25
 	game.liquidity.value = 2.0
 	game._staff_rule()
-	var benchmark_buttons: Array = game.keyboard_controls.filter(func(control): return control is Button and control.text == "Stage model benchmark")
-	check(benchmark_buttons.size() == 1, "the action names a staged model benchmark rather than operational staff advice")
-	if benchmark_buttons.size() == 1:
-		check(benchmark_buttons[0].tooltip_text.contains("full-information") and benchmark_buttons[0].tooltip_text.contains("true neutral rate") and benchmark_buttons[0].tooltip_text.contains("short inflation expectations"), "benchmark tooltip exposes the exact hidden inputs without adding dashboard prose")
-		check(benchmark_buttons[0].tooltip_text.contains(BENCHMARK_FINANCING_LIMIT), "benchmark tooltip discloses the financing limitation")
-		check(benchmark_buttons[0].accessibility_description.contains(BENCHMARK_FINANCING_LIMIT), "native benchmark assistive help discloses the financing limitation")
-		check(benchmark_buttons[0].accessibility_description == benchmark_buttons[0].tooltip_text, "native assistive help exposes the same benchmark assumptions as its tooltip")
-	check(game.status_label.text.contains("Full-information benchmark staged"), "keyboard and pointer staging feedback disclose the full-information assumption")
+	var advice_buttons: Array = game.keyboard_controls.filter(func(control): return control is Button and control.text == "Stage staff estimate")
+	check(advice_buttons.size() == 1, "the player action identifies a staged staff estimate rather than the diagnostic oracle")
+	if advice_buttons.size() == 1:
+		check(advice_buttons[0].tooltip_text.contains("initial neutral-rate prior") and advice_buttons[0].tooltip_text.contains("two-decimal published") and advice_buttons[0].tooltip_text.contains("long expectations"), "staff tooltip discloses the fixed prior and published observation precision")
+		check(advice_buttons[0].tooltip_text.contains("do not know the evolving neutral rate") and advice_buttons[0].tooltip_text.contains("short expectations"), "staff tooltip explicitly excludes hidden oracle inputs")
+		check(advice_buttons[0].tooltip_text.contains(BENCHMARK_FINANCING_LIMIT) and advice_buttons[0].accessibility_description.contains(BENCHMARK_FINANCING_LIMIT), "staff tooltip and native assistive detail retain the credit-spread, term-premium and negative-transmission limitation")
+		check(advice_buttons[0].accessibility_description == advice_buttons[0].tooltip_text, "native staff help exposes the same assumptions as its tooltip")
+	check(game.status_label.text.contains("Staff estimate staged"), "keyboard and pointer staging feedback names the public-data staff estimate")
 	check(game.commitment.selected == 0 and game.assets.value == 1.25 and game.liquidity.value == 2.0, "staff selection restores its guidance rule without changing other tools")
 	game._start_career("base", 417)
 	check(game.commitment.selected == 0 and game.inflation_response.value == game.career.params.policy_inflation_response, "new career restores known guidance defaults")
@@ -1708,6 +1740,14 @@ func run() -> void:
 		if label.text == "Preview: this decision, then hold its rate for seven more quarters. No new future shocks. This is a conditional path, not a confidence interval.":
 			preview_explanation = label
 	check(preview_explanation != null, "preview explanation describes the current decision plus seven more quarters and preserves conditional-path limits")
+	if OS.get_cmdline_user_args().has("--staff-estimate-only"):
+		check_staff_information(game)
+		check_custom_guidance(game)
+		if failures == 0:
+			print("PASS: actual public-data staff staging, independent arithmetic and hidden-oracle separation")
+		game.free()
+		await _finish()
+		return
 	if OS.get_cmdline_user_args().has("--backaudit-ui-only"):
 		await check_terminal_career(game)
 		check_backaudit_readouts(game)
@@ -1859,6 +1899,7 @@ func run() -> void:
 	await check_review_access(game)
 	await check_review_staff_dialog(game)
 	await check_text_reports(game)
+	check_staff_information(game)
 	check_custom_guidance(game)
 	await check_persistent_actions(game)
 	var compare_button: Button
