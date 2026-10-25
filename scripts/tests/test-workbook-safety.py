@@ -19,6 +19,57 @@ spec = importlib.util.spec_from_file_location('build_workbook', ROOT / 'scripts/
 builder = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(builder)
 assert list(builder.CASES) == [case['id'] for case in json.loads((ROOT / 'game/model/scenarios.json').read_text())], 'Workbook must cover every shipped scenario in its stable order'
+author_source = (ROOT / 'scripts/spreadsheet/build-policy-lab.mjs').read_text()
+author_cases = re.search(r'^const ids = (\[.*\]);$', author_source, re.MULTILINE)
+assert author_cases, 'Workbook author must declare its scenario inventory'
+assert ast.literal_eval(author_cases[1]) == list(builder.CASES), 'Workbook author must consume every exported scenario in the same order'
+
+# Exercise the actual checker binding and file-mutation address resolver without
+# authoring a workbook or trusting a cached calculation.
+checker_path = ROOT / 'scripts/spreadsheet/check-workbook.py'
+checker_nodes = ast.parse(checker_path.read_text()).body
+binding_assignment = next(node for node in checker_nodes if isinstance(node, ast.Assign)
+                          and any(isinstance(target, ast.Name) and target.id == 'expected_cases'
+                                  for target in node.targets))
+binding_guard = checker_nodes[checker_nodes.index(binding_assignment) + 1].value.args[0]
+binding_scope = {'Path': Path, 'json': json, '__file__': str(checker_path)}
+exec(compile(ast.Module(body=[binding_assignment], type_ignores=[]), '<actual scenario binding>', 'exec'), binding_scope)
+for names, accepted in [(builder.CASES, True), (builder.CASES[:-1], False),
+                        (builder.CASES[:-1] + ('invented_case',), False),
+                        (builder.CASES + ('invented_case',), False)]:
+    binding_scope['reference_hashes'] = dict.fromkeys(names, 'fixture-digest')
+    assert eval(compile(ast.Expression(binding_guard), '<actual scenario guard>', 'eval'), binding_scope) is accepted
+for bad in (None, [], 9):
+    binding_scope['reference_hashes'] = bad
+    assert not eval(compile(ast.Expression(binding_guard), '<actual scenario guard>', 'eval'), binding_scope)
+file_nodes = ast.parse((ROOT / 'scripts/tests/test-workbook-file.py').read_text()).body
+target_functions = [node for node in file_nodes if isinstance(node, ast.FunctionDef)
+                    and node.name in ('require', 'scenario_mutation_targets')]
+target_scope = {'json': json}
+exec(compile(ast.Module(body=target_functions, type_ignores=[]), '<actual scenario mutation targets>', 'exec'), target_scope)
+with tempfile.TemporaryDirectory(prefix='fed-scenario-mutations-') as directory:
+    row_map = Path(directory) / 'map.json'
+    for count in (8, 9, 10):
+        stride = count + 2
+        initial_rows = {'inflation': 96, 'credibility': 96 + 6 * stride}
+        inventory = {'case_order': [*builder.CASES[:count], *(['future_case'] if count == 10 else [])],
+                     'upstream_cache_layout': {'case_stride': stride,
+                         'initial_rows': initial_rows,
+                         'shock_rows': {'demand_shock_pct': 6, 'potential_growth_pct': 6 + 2 * stride,
+                                        'rrp_encumbered_collateral_pct_initial_gdp': 6 + 14 * stride},
+                         'source_start': 266 + (count - 8) * 17},
+                     'literal_inputs': {'Assumptions': {'D97': 2, f'D{initial_rows["credibility"] + 3}': 0.3}}}
+        row_map.with_suffix('.formulas.json').write_text(json.dumps(inventory))
+        targets = target_scope['scenario_mutation_targets'](row_map)
+        assert targets['campaign-note'] == f'B{8 + 15 * stride}'
+        assert targets['shock-last-formula'] == f'AZ{6 + 14 * stride}'
+        assert targets['shock-last'] == f'AZ{6 + 14 * stride + count}'
+        assert targets['shock-blank-zero'] == f'E{9 + 2 * stride}'
+        assert targets['initial-first'] == 'D97'
+        assert targets['initial-last'] == f'D{initial_rows["credibility"] + 3}'
+        start = inventory['upstream_cache_layout']['source_start']
+        assert [targets[key] for key in ('source-first', 'source-last', 'source-constant')] == [f'C{start}', f'C{start + 119}', f'C{start - 4}']
+print('PASS: exact shipped-scenario binding and dynamic 8/9/10-case file-mutation targets (actual Python guards; synthetic inventories)')
 
 
 def rejected_output(path, message):

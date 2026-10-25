@@ -160,7 +160,7 @@ a link to managed dependencies. References, logs, previews and source hashes
 stay beside the new workbook rather than entering Git. Failed builds are kept
 for diagnosis; rerun with a new destination instead of replacing one.
 
-Eight seed-1, 48-quarter careers, four one-variable policy edits, three price,
+Nine seed-1, 48-quarter careers (including Stagflation & bank run), four one-variable policy edits, three price,
 seven signed-rate and fifteen balance-sheet boundary traces come from the
 current Godot equations. Balance fixtures cover natural/capped runoff, large
 offers, full/partial sterilization, actual tagged maturity, loan refinancing,
