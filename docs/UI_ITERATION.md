@@ -32,3 +32,17 @@ player save or running player app was used.
 This pass changes presentation, not economic coefficients or difficulty.
 Whole-dashboard hierarchy, preview graphics and concise Help navigation remain
 useful subsequent design work; this is not whole-game usability acceptance.
+
+## Completed outcome drivers
+
+The routine-stop footer no longer appends the equation dump. Five signed,
+zero-centered bars sit beside the history charts; the header names the completed
+interval, gap change and common scale. Positive means an upward gap contribution,
+not a welfare gain. Tiny values retain direction without scientific notation or
+full-width numerical-noise bars. Details retains the complete equation explanation
+and its attribution limits.
+
+The strip uses completed history only and makes no forecasts or economic steps.
+Valid refreshes keep keyboard focus; New/Load and invalid results clear stale
+attribution. The graph stays out of the pinned footer so compact-window adoption
+remains reachable. Economic coefficients and save format are unchanged.

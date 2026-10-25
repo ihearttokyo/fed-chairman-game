@@ -7,6 +7,7 @@ const PolicyReview = preload("res://play/policy_review.gd")
 const Music = preload("res://play/music.gd")
 const RoutineFollowUp = preload("res://play/routine_follow_up.gd")
 const TransitionExplanation = preload("res://play/transition_explanation.gd")
+const OutcomeDrivers = preload("res://play/outcome_drivers.gd")
 const PolicyCommittee = preload("res://play/policy_committee.gd")
 const FOLLOW_UP_INTERVAL_SECONDS := 2.0
 const FOLLOW_UP_MAX_FRAME_CREDIT_SECONDS := 0.1
@@ -22,6 +23,7 @@ var case_title: Label
 var case_detail: Label
 var briefing: Label
 var consequence: Label
+var outcome_drivers: OutcomeDrivers
 var mandate_label: Label
 var forecast_label: Label
 var status_label: Label
@@ -180,6 +182,10 @@ func _ready() -> void:
 	briefing = _label(brief_box, "", 14)
 	briefing.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	briefing.mouse_filter = Control.MOUSE_FILTER_PASS
+	outcome_drivers = OutcomeDrivers.new()
+	left.add_child(outcome_drivers)
+	outcome_drivers.details_requested.connect(_driver_details)
+	keyboard_controls.append(outcome_drivers.details_button)
 	var chart_row := BoxContainer.new()
 	chart_layout = chart_row
 	chart_row.add_theme_constant_override("separation", 20)
@@ -715,6 +721,7 @@ func _start_career(case_id: String, seed_number: int) -> void:
 		status_label.text = result.error
 		return
 	clean_career = career.encode()
+	outcome_drivers.clear()
 	_refresh(true)
 	consequence.text = "Review current conditions, stage policy, then adopt."
 	status_label.text = "New unsaved career · %s · seed %d" % [career.cases[case_id].label, seed_number]
@@ -1021,7 +1028,20 @@ func _show_outcome(before: Dictionary) -> void:
 		consequence.text += "\nFunding (%% meeting GDP): lent %s · uncovered %s · repaid %s." % [Career.funding_amount_text(s.liquidity_applied_pct_initial_gdp / n), Career.funding_amount_text(s.uncovered_funding_pct_initial_gdp / n), Career.funding_amount_text(s.liquidity_repayment_pct_initial_gdp / n)]
 	if before.guidance_active:
 		consequence.text += "\nPrevious promise follow-through: %.1f / 100." % (100 * s.guidance_followthrough_score)
+	_update_outcome_drivers(int(before.quarter_index))
 	status_label.text = "Quarter %d completed. Unsaved changes · %s" % [s.quarter_index, career.cases[career.scenario_id].label]
+
+func _update_outcome_drivers(first: int) -> void:
+	var last := career.decisions.size()
+	var result := TransitionExplanation.segment(career.history, career.shocks, first, last, career.params)
+	outcome_drivers.update_result(result, first + 1, last)
+	_link_focus(_keyboard_focus_order())
+
+func _driver_details() -> void:
+	if routine.active:
+		_finish_follow_up("Driver details opened", false)
+	if not outcome_drivers.details_text.is_empty():
+		_text_dialog("Output-gap drivers", outcome_drivers.details_text)
 
 func _finish_follow_up(reason: String, reset_controls := true, focus_decision := false, reasons: Array[String] = []) -> void:
 	var was_active: bool = routine.active
@@ -1041,8 +1061,6 @@ func _finish_follow_up(reason: String, reset_controls := true, focus_decision :=
 	last_follow_up_reasons.assign(reasons if not reasons.is_empty() else [reason])
 	_refresh(reset_controls)
 	_show_outcome(career.history[first])
-	var explanation := TransitionExplanation.segment(career.history, career.shocks, first, career.decisions.size(), career.params)
-	consequence.text += "\n" + (explanation.text if explanation.ok else explanation.error)
 	status_label.text = "Q%d: %s. Unsaved changes." % [career.state.quarter_index, reason]
 	if int(career.state.quarter_index) / 12 > first / 12:
 		status_label.text += " Review available in Data & journal."
@@ -1130,6 +1148,7 @@ func _load() -> void:
 		var result: Dictionary = career.load_from(save_path)
 		if result.ok:
 			clean_career = career.encode()
+			outcome_drivers.clear()
 			_refresh(true)
 			consequence.text = "Saved career restored with its decisions, economic history and policy lags."
 		status_label.text = "Loaded quarter %d." % career.state.quarter_index if result.ok else result.error
