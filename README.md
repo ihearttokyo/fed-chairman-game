@@ -6,6 +6,7 @@ previous Swift implementation is retired to Git history; installed copies and
 existing saves remain separate and are not replaced or migrated.
 
 This is an early public alpha, not a market-ready release.
+[Website and screenshots](https://the-chair.jaymoney.chatgpt.site).
 [Download an Apple Silicon build](https://github.com/ihearttokyo/fed-chairman-game/releases).
 Developer ID signing, Apple notarization, accessibility validation and
 representative human playtesting are distinct release gates. The project has no
@@ -13,7 +14,7 @@ Federal Reserve affiliation, sponsorship or endorsement.
 
 ## Play
 
-Choose one of eight hypothetical economies. At each quarterly meeting, inspect
+Choose one of nine hypothetical economies. At each quarterly meeting, inspect
 inflation, employment, expectations and financial conditions; stage a target-rate
 midpoint, conditional guidance, asset flow and liquidity request; compare the
 applied decision with holding policy; then adopt and inspect the outcome.
