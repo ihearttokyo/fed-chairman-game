@@ -20,6 +20,36 @@ def require(condition, message):
         raise AssertionError(message)
 
 
+def scenario_mutation_targets(row_map):
+    """Locate scenario-dependent fixtures from the trusted authored inventory."""
+    inventory = json.loads(row_map.with_suffix('.formulas.json').read_text())
+    layout = inventory['upstream_cache_layout']
+    count = len(inventory['case_order'])
+    require(count > 0 and layout['case_stride'] == count + 2, 'Scenario mutation layout stride')
+    literals = inventory['literal_inputs']['Assumptions']
+    initial_literals = sorted(
+        (f'D{row + offset}' for row in layout['initial_rows'].values()
+         for offset in range(1, count + 1)
+         if type(literals.get(f'D{row + offset}')) in (int, float)),
+        key=lambda address: int(address[1:]))
+    require(initial_literals, 'Scenario mutation layout needs numeric initial overrides')
+    first_shock = min(layout['shock_rows'].values())
+    last_shock = max(layout['shock_rows'].values())
+    active_offset = inventory['case_order'].index('supply_shock') + 1
+    start = layout['source_start']
+    return {
+        'campaign-note': f'B{last_shock + layout["case_stride"] + 2}',
+        'shock-last-formula': f'AZ{last_shock}',
+        'initial-first': initial_literals[0], 'initial-last': initial_literals[-1],
+        'source-first': f'C{start}', 'source-last': f'C{start + 119}',
+        'source-constant': f'C{start - 4}',
+        'shock-active': f'E{first_shock + active_offset}',
+        'shock-nonactive': f'E{first_shock + 1}',
+        'shock-last': f'AZ{last_shock + count}',
+        'shock-blank-zero': f'E{layout["shock_rows"]["potential_growth_pct"] + active_offset}',
+    }
+
+
 def validate_policy_inputs(archive):
     sheets = ET.fromstring(archive.read('xl/workbook.xml')).find('s:sheets', NS)
     policy = next(sheet for sheet in sheets if sheet.attrib['name'] == 'Policy')
@@ -1329,7 +1359,8 @@ def review_mutations(source, defect, row_map):
     if defect in CAMPAIGN_CASES:
         import copy
         path = 'xl/worksheets/sheet5.xml'; part = ET.fromstring(source.read(path))
-        cell = part.find('.//s:c[@r="B158"]', NS)
+        address = scenario_mutation_targets(row_map)['campaign-note']
+        cell = part.find(f'.//s:c[@r="{address}"]', NS)
         require(cell is not None and cell.get('t') == 'str', 'Campaign mutation requires the actual saved string note')
         note = cell.findtext('s:v', namespaces=NS)
         require(note and note.startswith('Recurring crises: '), 'Campaign mutation requires the actual explanation')
@@ -1459,7 +1490,7 @@ def review_mutations(source, defect, row_map):
             check = next(cell for cell in cells.values() if 'COUNT(' in (cell.findtext('s:f', '', NS)))
             address = check.get('r') if defect.endswith('check') else 'D' + str(int(check.get('r')[1:]) + 1)
         else:
-            address = 'AZ146' if defect == 'upstream45-shock-last' else 'F6' if defect == 'upstream45-shock-shared-backward' else 'E6'
+            address = scenario_mutation_targets(row_map)['shock-last-formula'] if defect == 'upstream45-shock-last' else 'F6' if defect == 'upstream45-shock-shared-backward' else 'E6'
         cell = cells[address]; formula = cell.find('s:f', NS)
         require(formula is not None, 'upstream45 must mutate the actual upstream authored formula')
         if '-shared' in defect:
@@ -1816,15 +1847,16 @@ NEW_CASES.update(INPUT54_CASES)
 
 def input54_mutations(source, defect, row_map):
     kind = defect.removeprefix('input54-')
+    layout = scenario_mutation_targets(row_map)
     targets = {
         'policy-first': (2, 'E20', 'formula'), 'policy-last': (2, 'AZ39', 'formula'), 'policy-middle': (2, 'AA30', 'formula'),
         'parameter-first': (3, 'C6', 'number'), 'parameter-last': (3, 'C79', 'number'),
         'parameter-formula': (3, 'C6', 'add-formula'), 'parameter-string': (3, 'C6', 'string'),
-        'initial-first': (3, 'D97', 'number'), 'initial-last': (3, 'D159', 'number'),
-        'source-first': (3, 'C266', 'number'), 'source-last': (3, 'C385', 'number'),
-        'source-constant': (3, 'C262', 'number'), 'fixed-weight': (3, 'D83', 'number'),
-        'shock-active': (5, 'E9', 'number'), 'shock-nonactive': (5, 'E7', 'number'), 'shock-last': (5, 'AZ154', 'number'),
-        'shock-blank-zero': (5, 'E29', 'zero'),
+        'initial-first': (3, layout['initial-first'], 'number'), 'initial-last': (3, layout['initial-last'], 'number'),
+        'source-first': (3, layout['source-first'], 'number'), 'source-last': (3, layout['source-last'], 'number'),
+        'source-constant': (3, layout['source-constant'], 'number'), 'fixed-weight': (3, 'D83', 'number'),
+        'shock-active': (5, layout['shock-active'], 'number'), 'shock-nonactive': (5, layout['shock-nonactive'], 'number'), 'shock-last': (5, layout['shock-last'], 'number'),
+        'shock-blank-zero': (5, layout['shock-blank-zero'], 'zero'),
         'selector-case': (1, 'C4', 'number'), 'selector-quarter': (1, 'C5', 'number'), 'selector-policy': (1, 'C6', 'number'),
         'policy-blank-zero': (2, 'E6', 'zero'), 'policy-zero-blank': (2, 'E10', 'blank'),
         'policy-bool-number': (2, 'E12', 'numeric-type'), 'policy-bool-flip': (2, 'E13', 'flip'),

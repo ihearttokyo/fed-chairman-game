@@ -263,7 +263,10 @@ for field in formula_inventory['state_fields']:
 
 # Exact full-set binding catches layout changes in nonactive cases as well.
 reference_hashes = formula_inventory.get('reference_sha256', {})
-require(isinstance(reference_hashes, dict) and len(reference_hashes) == 8, 'reference input binding: expected eight cases')
+expected_cases = [case['id'] for case in json.loads(
+    (Path(__file__).resolve().parents[2] / 'game/model/scenarios.json').read_text())]
+require(isinstance(reference_hashes, dict) and set(reference_hashes) == set(expected_cases),
+        'reference input binding: expected every shipped scenario exactly once')
 reference_cases = {}
 for case, digest in reference_hashes.items():
     require(isinstance(case, str) and re.fullmatch(r'[a-z_]+', case) is not None, 'reference input binding: invalid case')

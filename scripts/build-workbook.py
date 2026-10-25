@@ -11,7 +11,8 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 CASES = ('base', 'demand_boom', 'supply_shock', 'funding_stress',
-         'unanchored_inflation', 'lower_bound_slump', 'mixed_crises', 'policy_career')
+         'unanchored_inflation', 'lower_bound_slump', 'mixed_crises', 'policy_career',
+         'stagflation_bank_run')
 BUILD_PHASES = ('main', 'hold', 'responsive')
 
 
