@@ -7,7 +7,7 @@ import tempfile
 root = Path(__file__).resolve().parents[2]
 music = (root / 'game/play/music.gd').read_text()
 assert music.index('FileAccess.set_unix_permissions(pending, permissions)') < music.index('file.store_buffer(payload)'), 'Restrict staged preference permissions before copying private data'
-baseline_marker = 'PASS: 187 release-safe checks; eight 20-quarter careers, lossless replay, main scene and city'
+baseline_marker = 'PASS: 210 release-safe checks; nine 20-quarter careers, lossless replay, main scene and city'
 if f'print("{baseline_marker}")' not in (root / 'game/play/build_check.gd').read_text():
     raise ValueError('Release fixture marker differs from the actual build-check producer')
 assert not any((root / path).exists() for path in (
@@ -31,11 +31,11 @@ mandate_marker = 'PASS: bundled mandate assessment and realized feedback'
 music_marker = 'PASS: persisted music off survives process relaunch'
 atomic_music_marker = 'PASS: native size-limited preference update preserves the previous file and reports failure'
 incomplete_completions = (
-    ('missing mandate', 'PASS: 187 release-safe checks; eight 20-quarter careers, lossless replay, main scene and city\n' + guidance_marker + '\n'),
-    ('suffixed mandate', 'PASS: 187 release-safe checks; eight 20-quarter careers, lossless replay, main scene and city\n' + guidance_marker + '\n' + mandate_marker + '; incomplete\n'),
-    ('baseline only', 'PASS: 187 release-safe checks; eight 20-quarter careers, lossless replay, main scene and city\n'),
+    ('missing mandate', 'PASS: 210 release-safe checks; nine 20-quarter careers, lossless replay, main scene and city\n' + guidance_marker + '\n'),
+    ('suffixed mandate', 'PASS: 210 release-safe checks; nine 20-quarter careers, lossless replay, main scene and city\n' + guidance_marker + '\n' + mandate_marker + '; incomplete\n'),
+    ('baseline only', 'PASS: 210 release-safe checks; nine 20-quarter careers, lossless replay, main scene and city\n'),
     ('guidance only', guidance_marker + '\n'),
-    ('suffixed guidance', 'PASS: 187 release-safe checks; eight 20-quarter careers, lossless replay, main scene and city\n' + guidance_marker + '; incomplete\n'),
+    ('suffixed guidance', 'PASS: 210 release-safe checks; nine 20-quarter careers, lossless replay, main scene and city\n' + guidance_marker + '; incomplete\n'),
 )
 workflow = (root / '.github/workflows/godot.yml').read_text()
 ci_step = workflow.split('      - name: Import and test playable Godot game\n', 1)[1].split('\n      - ', 1)[0]
@@ -80,7 +80,7 @@ with tempfile.TemporaryDirectory(prefix='fed-runtime-error-guards-') as director
         rejected = bool(marker or exit_code)
         log.write_text((marker + ' synthetic runtime failure\n' if marker else '')
                        + 'PASS: isolated Godot user storage verified before fixture writes; synthetic output only\n'
-                       + 'PASS: 187 release-safe checks; eight 20-quarter careers, lossless replay, main scene and city\n'
+                       + 'PASS: 210 release-safe checks; nine 20-quarter careers, lossless replay, main scene and city\n'
                        + guidance_marker + '\n'
                        + mandate_marker + '\n'
                        + music_marker + '\n'
@@ -137,7 +137,7 @@ with tempfile.TemporaryDirectory(prefix='fed-runtime-error-guards-') as director
     log.write_text('PASS: isolated Godot user storage verified before fixture writes; synthetic output only\n'
                    + music_marker + '\n'
                    + atomic_music_marker + '\n'
-                   + 'PASS: 187 release-safe checks; eight 20-quarter careers, lossless replay, main scene and city\n')
+                   + 'PASS: 210 release-safe checks; nine 20-quarter careers, lossless replay, main scene and city\n')
     environment['FED_TEST_EXIT'] = '0'
     incomplete = subprocess.run(['bash', str(root / 'scripts/test-game.sh')],
                                 env=environment, capture_output=True, text=True)
@@ -163,7 +163,7 @@ with tempfile.TemporaryDirectory(prefix='fed-release-userdata-guard-') as direct
     binary = app / 'Contents/MacOS/candidate'
     binary.write_bytes(b'\xcf\xfa\xed\xfe')
     engine_homes = []
-    release_output = 'PASS: 187 release-safe checks; eight 20-quarter careers, lossless replay, main scene and city\n' + guidance_marker + '\n' + mandate_marker + '\n'
+    release_output = 'PASS: 210 release-safe checks; nine 20-quarter careers, lossless replay, main scene and city\n' + guidance_marker + '\n' + mandate_marker + '\n'
     def fake_release_tool(command, **kwargs):
         if '--headless' not in command:
             assert Path((kwargs.get('env') or os.environ)['HOME']) == home, 'signing tools retain normal HOME'
@@ -212,10 +212,10 @@ embedded_headers = {'embedded_mh32_be': 'feedface', 'embedded_mh32_le': 'cefaedf
 info = {'CFBundleExecutable': 'candidate', 'CFBundleIdentifier': 'local.fed-chairman-game.policy-lab'}
 if case == 'bundle': info['CFBundleIdentifier'] = 'wrong.bundle'
 (app / 'Contents/Info.plist').write_bytes(plistlib.dumps(info))
-log = 'PASS: 187 release-safe checks; eight 20-quarter careers, lossless replay, main scene and city\nPASS: bundled guidance continuation and comparison\nPASS: bundled mandate assessment and realized feedback\n'
+log = 'PASS: 210 release-safe checks; nine 20-quarter careers, lossless replay, main scene and city\nPASS: bundled guidance continuation and comparison\nPASS: bundled mandate assessment and realized feedback\n'
 for marker in ('SCRIPT ERROR:', 'ERROR:', 'FAIL:'):
     if case == marker: log += marker + ' zero-exit failure\n'
-for label, marker in (('baseline', 'PASS: 187 release-safe checks; eight 20-quarter careers, lossless replay, main scene and city'), ('guidance', 'PASS: bundled guidance continuation and comparison'), ('mandate', 'PASS: bundled mandate assessment and realized feedback')):
+for label, marker in (('baseline', 'PASS: 210 release-safe checks; nine 20-quarter careers, lossless replay, main scene and city'), ('guidance', 'PASS: bundled guidance continuation and comparison'), ('mandate', 'PASS: bundled mandate assessment and realized feedback')):
     if case == label: log = log.replace(marker + '\n', '')
     if case == label + '_suffix': log = log.replace(marker + '\n', marker + '; incomplete\n')
 signature = 'TeamIdentifier=TESTTEAM\nAuthority=Developer ID Application: Fixture\n(runtime)\nTimestamp=fixture\n'

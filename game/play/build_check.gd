@@ -24,7 +24,7 @@ func run(game: Control) -> int:
 		check(restored.state == career.state, "exact replay state")
 	check(game.career.state.quarter_index == 0, "main scene starts")
 	check(game.city.get_child_count() > 0, "original city resource loads")
-	var baseline_ok := failures == 0 and checks == 187
+	var baseline_ok := failures == 0 and checks == 210
 	for signed in [false, true]:
 		var career := Career.new()
 		check(career.start("base", 1).ok, "guidance release fixture starts")
@@ -39,10 +39,10 @@ func run(game: Control) -> int:
 			"reinvest_principal":false, "maintain_ample_reserves":false, "sterilize_purchases":true}, true)
 		_check_guidance(career, policy)
 	_check_report(game)
-	var guidance_ok := failures == 0 and checks == 246
+	var guidance_ok := failures == 0 and checks == 269
 	_check_mandate(game)
-	if baseline_ok and guidance_ok and failures == 0 and checks == 258:
-		print("PASS: 187 release-safe checks; eight 20-quarter careers, lossless replay, main scene and city")
+	if baseline_ok and guidance_ok and failures == 0 and checks == 281:
+		print("PASS: 210 release-safe checks; nine 20-quarter careers, lossless replay, main scene and city")
 		print("PASS: bundled guidance continuation and comparison")
 		print("PASS: bundled mandate assessment and realized feedback")
 		print("RELEASE_CHECKS ", checks)

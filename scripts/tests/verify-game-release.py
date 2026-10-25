@@ -39,7 +39,7 @@ with tempfile.TemporaryDirectory(prefix='fed-release-check-') as home:
     log = run(str(binary), '--headless', '--quit-after', '600', '--', '--verify-build',
               env=dict(os.environ, HOME=home))
 require(not any(marker in log for marker in ('SCRIPT ERROR:', 'ERROR:', 'FAIL:')), log)
-require('PASS: 187 release-safe checks; eight 20-quarter careers, lossless replay, main scene and city' in log.splitlines(), log)
+require('PASS: 210 release-safe checks; nine 20-quarter careers, lossless replay, main scene and city' in log.splitlines(), log)
 require('PASS: bundled guidance continuation and comparison' in log.splitlines(), log)
 require('PASS: bundled mandate assessment and realized feedback' in log.splitlines(), log)
 print(log.strip())

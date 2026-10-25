@@ -206,6 +206,14 @@ func mandate_assessment() -> Dictionary:
 func model_digest() -> String:
 	return (FileAccess.get_sha256("res://model/economy.gd") + FileAccess.get_sha256("res://model/parameters.json") + FileAccess.get_sha256("res://model/scenarios.json") + FileAccess.get_sha256("res://model/exogenous_shocks.json") + FileAccess.get_sha256("res://model/portfolio_reference.json")).sha256_text()
 
+# Exact additive-campaign compatibility only. Existing eight scenario definitions,
+# equations and RNG call order are unchanged. Any later source/parameter/catalogue
+# change disables this bridge unless separately qualified; unknown digests refuse.
+func _compatible_saved_model(data: Dictionary) -> bool:
+	return model_digest() == "06714dc18908afbd2805c5f2ed0f97bc9ede6ab53c111ee73aa0413724ca49a6" \
+		and data.get("model_digest") == "ff431fc6f24cbc90339055340ede21cc1db7677a8a5f4011633ca59016205cdc" \
+		and data.get("scenario_id") in ["base", "demand_boom", "supply_shock", "funding_stress", "unanchored_inflation", "lower_bound_slump", "mixed_crises", "policy_career"]
+
 func payload() -> Dictionary:
 	return {"version": 1, "model_digest": model_digest(), "scenario_id": scenario_id,
 		"seed": seed_value, "shocks": shocks.duplicate(true), "episodes": episodes.duplicate(true), "decisions": decisions.duplicate(true)}
@@ -215,7 +223,7 @@ func encode() -> PackedByteArray:
 	return var_to_bytes(payload())
 
 func restore(data: Variant) -> Dictionary:
-	if typeof(data) != TYPE_DICTIONARY or data.get("version") != 1 or data.get("model_digest") != model_digest():
+	if typeof(data) != TYPE_DICTIONARY or data.get("version") != 1 or (data.get("model_digest") != model_digest() and not _compatible_saved_model(data)):
 		return {"ok": false, "error": "Save is invalid or belongs to another model version. Current career is unchanged."}
 	if typeof(data.get("scenario_id")) != TYPE_STRING or not cases.has(data.scenario_id):
 		return {"ok": false, "error": "Save has an unknown scenario."}
