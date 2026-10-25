@@ -93,7 +93,13 @@ offer. Compare the conditional path before adopting.
 New career → **Stagflation & bank run** starts with 7% inflation, a −3% output gap
 and immediate funding pressure. Curated events begin within three quarters and
 recur every8–10 quarters, including conditional normalization. This is an authored
-challenge, not a historically calibrated crisis frequency. Existing career paths,
+challenge, not a historically calibrated crisis frequency. **Recovery v1** measures
+current stabilization: at least12 completed quarters, latest12-quarter mean
+absolute inflation miss ≤1 pp, employment shortfall ≤1 pp, and ≥95% coverage of
+cumulative eligible local funding. New shocks can end stabilization; the career
+continues throughQ240. Inherited inflation is not a lifetime-average penalty.
+This is separate from the unchanged60-year Mandate v1 award. Custom completed
+shock paths remain practice. Existing career paths and
 economic transmission equations are unchanged. The exact prior model digest is
 accepted for the original eight scenarios only, and only while this release's
 source digest matches the reviewed compatibility bridge. Loading replays the

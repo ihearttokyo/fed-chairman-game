@@ -66,6 +66,31 @@ func run() -> void:
 	root.add_child(game)
 	await process_frame
 	game._start_career("stagflation_bank_run", 1)
+	check(game.mandate_label.text.begins_with("RECOVERY v1") and game.mandate_label.tooltip_text.contains("separate fictional stabilization"), "crisis HUD exposes its distinct objective and rules")
+	var recovery: Dictionary = game.career.recovery_assessment()
+	check(game._recovery_summary(recovery).contains("Build 0/12") and game._recovery_summary(recovery).contains("Funding n.a."), "empty window and absent eligible funding are explicit")
+	recovery.window_quarters = 1
+	recovery.funding_active = true
+	recovery.funding_coverable = 20.0
+	recovery.funding_applied = 0.0
+	check(game._recovery_summary(recovery).contains("Funding 0.000/95%"), "early funding failure is visible before the window fills")
+	recovery.window_quarters = 12
+	recovery.inflation_miss = 1.0
+	recovery.employment_shortfall = 1.0
+	for coverable in [3.0, 82.0]:
+		recovery.funding_coverable = coverable
+		var required: float = game.career.MANDATE_FUNDING_COVERAGE_MIN * coverable
+		for delta in [-0.00000001, 0.0, 0.00000001]:
+			recovery.funding_applied = required + delta
+			recovery.funding_coverage = recovery.funding_applied / coverable
+			recovery.stabilized = recovery.funding_applied >= required
+			var relation := "<" if delta < 0.0 else ">" if delta > 0.0 else ""
+			check(game._recovery_summary(recovery).contains("Funding %s95.000/95%%" % relation), "recovery funding display uses principal comparison, not rounded division")
+	for delta in [-0.0000001, 0.0, 0.0000001]:
+		recovery.inflation_miss = 1.0 + delta
+		recovery.employment_shortfall = 1.0 + delta
+		var relation := "<" if delta < 0.0 else ">" if delta > 0.0 else ""
+		check(game._recovery_summary(recovery).contains("prices %s1.000/1 pp" % relation) and game._recovery_summary(recovery).contains("Jobs %s1.000/1 pp" % relation), "recovery display preserves sub-display price and job threshold distinctions")
 	var before: PackedByteArray = game.career.encode()
 	game.assets.value = 0.75
 	game.liquidity.value = 0.2
