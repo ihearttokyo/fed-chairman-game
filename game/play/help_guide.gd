@@ -10,9 +10,13 @@ static func partition(text: String) -> Array:
 	var result: Array = []
 	for title in TITLES:
 		result.append({"title":title,"blocks":[]})
+	if text.begins_with("Bank workout\n"):
+		result.append({"title": "Bank workout", "blocks": []})
 	for block in text.split("\n\n", false):
 		var destination := 5 # Unknown future paragraphs remain accessible, never dropped.
-		if block.begins_with("Start a career\n") or block.begins_with("1. Read the dispatch"):
+		if block.begins_with("Bank workout\n") and result.size() > TITLES.size():
+			destination = TITLES.size()
+		elif block.begins_with("Start a career\n") or block.begins_with("1. Read the dispatch"):
 			destination = 0
 		elif block.begins_with("Policy committee\n") or block.begins_with("Routine follow-up"):
 			destination = 1
@@ -36,8 +40,8 @@ func build(text: String, reader: TextEdit) -> void:
 	topics.accessibility_description = "Choose a topic. Tab moves to its readable text; Escape closes help."
 	topics.fit_to_longest_item = false
 	topics.clip_text = true
-	for title in TITLES:
-		topics.add_item(title)
+	for page in pages:
+		topics.add_item(page.title)
 	add_child(topics)
 	body.custom_minimum_size = Vector2.ZERO
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -49,7 +53,10 @@ func show_topic(index: int) -> void:
 	if index < 0 or index >= pages.size():
 		return
 	topics.select(index)
-	body.text = TITLES[index] + "\n\n" + (INTRO if index == 0 else "\n\n".join(pages[index].blocks))
+	var content := "\n\n".join(pages[index].blocks)
+	if index >= TITLES.size():
+		content = content.trim_prefix(pages[index].title + "\n")
+	body.text = pages[index].title + "\n\n" + (INTRO if index == 0 else content)
 	# Starting mechanics stay in the same topic without front-loading their detail.
 	if index == 0:
 		body.text += "\n\nDetails\n\n" + "\n\n".join(pages[index].blocks)

@@ -34,6 +34,14 @@ const PARAMETER_KEYS := [
 	"initial_reserves_pct_initial_gdp", "initial_currency_pct_initial_gdp", "initial_treasury_account_pct_initial_gdp",
 	"reserve_buffer_pct_current_gdp", "reserve_clear_pct_current_gdp", "reserve_scarcity_sensitivity_pct",
 ]
+const BANK_WORKOUT_RECIPE_KEYS := [
+	"bank_workout_initial_deposits_pct_initial_gdp", "bank_workout_initial_cash_pct_initial_gdp",
+	"bank_workout_reference_yield_pct", "bank_workout_short_face_pct_initial_gdp",
+	"bank_workout_short_maturity_quarter", "bank_workout_middle_face_pct_initial_gdp",
+	"bank_workout_middle_maturity_quarter", "bank_workout_long_face_pct_initial_gdp",
+	"bank_workout_long_maturity_quarter", "bank_workout_haircut_pct", "bank_workout_pledgeable_share",
+	"bank_workout_first_withdrawal_pct_initial_gdp", "bank_workout_following_withdrawal_pct_initial_gdp",
+]
 const POLICY_KEYS := [
 	"policy_rate_request_pct", "guidance_rate_pct", "guidance_inflation_sensitivity",
 	"guidance_output_gap_sensitivity", "asset_flow_request_pct_initial_gdp",
@@ -294,6 +302,10 @@ func initial_state(params: Dictionary, override: Dictionary = {}) -> Dictionary:
 
 
 func step(state: Dictionary, policy: Dictionary, shocks: Dictionary, params: Dictionary) -> Dictionary:
+	return _step_internal(state, policy, shocks, params)
+
+
+func _step_internal(state: Dictionary, policy: Dictionary, shocks: Dictionary, params: Dictionary, workout_context: Dictionary = {}) -> Dictionary:
 	var param_check := _validate_parameters(params)
 	if not param_check.ok:
 		return param_check
@@ -312,7 +324,7 @@ func step(state: Dictionary, policy: Dictionary, shocks: Dictionary, params: Dic
 	var next: Dictionary = state.duplicate(true)
 	var rate_request: float = policy.policy_rate_request_pct
 	var rate: float = rate_request
-	var balance := _balance_sheet_step(state, policy, shocks, params)
+	var balance := _balance_sheet_step(state, policy, shocks, params) if workout_context.is_empty() else _balance_sheet_step(state, policy, shocks, params, workout_context)
 	if not balance.ok:
 		return balance
 	var ledger: Dictionary = balance.updates
@@ -632,7 +644,12 @@ func _validate_balance_state(state: Dictionary) -> Dictionary:
 	return {"ok":true}
 
 
-func _balance_sheet_step(state: Dictionary, policy: Dictionary, shocks: Dictionary, params: Dictionary) -> Dictionary:
+func _balance_sheet_step(state: Dictionary, policy: Dictionary, shocks: Dictionary, params: Dictionary, workout_context: Dictionary = {}) -> Dictionary:
+	var workout: Dictionary = {}
+	if not workout_context.is_empty():
+		if not _bw_schema(workout_context, ["bank_result"]) or typeof(workout_context.bank_result) != TYPE_DICTIONARY or not workout_context.bank_result.get("ok", false):
+			return {"ok": false, "error": "Invalid internal workout settlement context"}
+		workout = workout_context.bank_result
 	var n := nominal_gdp_ratio(state)
 	var reinvest: bool = policy.get("reinvest_principal", POLICY_SWITCHES.reinvest_principal)
 	var maintain: bool = policy.get("maintain_ample_reserves", POLICY_SWITCHES.maintain_ample_reserves)
@@ -674,24 +691,44 @@ func _balance_sheet_step(state: Dictionary, policy: Dictionary, shocks: Dictiona
 	var currency: float = params.initial_currency_pct_initial_gdp * n
 	var currency_conversion: float = currency - state.currency_pct_initial_gdp
 	var old_loan_due: float = state.outstanding_liquidity_pct_initial_gdp
+	if not workout.is_empty():
+		old_loan_due = _bw_net([workout.repayment, workout.renewal])
 	# Treasury redemption and its assumed private funding leg exactly net at TGA.
 	var reserve_base := _principal_net([state.reserves_pct_initial_gdp, state.reverse_repo_pct_initial_gdp, purchase, -runoff, -old_loan_due, -currency_conversion])
+	if not workout.is_empty():
+		# Renewed contracts retire and originate gross principal but move no cash.
+		reserve_base = _principal_net([state.reserves_pct_initial_gdp, state.reverse_repo_pct_initial_gdp, purchase, -runoff, -workout.repayment, -currency_conversion])
 	var offer: float = policy.liquidity_request_pct_initial_gdp
 	var new_need: float = shocks.get("funding_need_pct_initial_gdp", 0.0)
 	var refinancing_request: float = shocks.get("refinancing_need_pct_initial_gdp", 0.0)
 	var refinancing_need := minf(refinancing_request, old_loan_due)
+	if not workout.is_empty():
+		refinancing_need = workout.old_exposure_remaining
 	var collateral: float = shocks.get("eligible_collateral_pct_initial_gdp", 0.0)
 	var eligibility: float = shocks.get("liquidity_eligibility_pct", 0.0) / 100.0
 	var capacity: float = collateral * (1.0 - float(shocks.get("collateral_haircut_pct", 0.0)) / 100.0) * eligibility
+	if not workout.is_empty():
+		capacity = workout.capacity # Same authority/order as the private calculation.
 	var eligible_refinancing := refinancing_need * eligibility
 	var eligible_new := new_need * eligibility
 	var eligible_local := eligible_refinancing + eligible_new
 	var local: float = minf(offer, minf(capacity, eligible_local))
+	if not workout.is_empty():
+		local = _bw_net([workout.renewal, workout.new_cash])
 	var local_refinancing := minf(local, eligible_refinancing)
+	if not workout.is_empty():
+		local_refinancing = workout.renewal
 	var local_new := local - local_refinancing
+	if not workout.is_empty():
+		local_new = workout.new_cash
 	var uncovered_new := new_need - local_new
 	var uncovered_refinancing := refinancing_need - local_refinancing
+	if not workout.is_empty():
+		uncovered_new = workout.remaining_queue
+		uncovered_refinancing = workout.loan_arrears
 	var uncovered := uncovered_new + uncovered_refinancing
+	if not workout.is_empty():
+		uncovered = _bw_net([uncovered_new, uncovered_refinancing])
 	var buffer: float = params.reserve_buffer_pct_current_gdp * n
 	var clear: float = params.reserve_clear_pct_current_gdp * n
 	var aggregate := 0.0
@@ -699,14 +736,25 @@ func _balance_sheet_step(state: Dictionary, policy: Dictionary, shocks: Dictiona
 	var maintenance := 0.0
 	var absorption := planned_absorption
 	var local_after_absorption := _principal_net([reserve_base, local, -planned_absorption])
+	if not workout.is_empty():
+		local_after_absorption = _principal_net([reserve_base, workout.new_cash, -planned_absorption])
 	if maintain:
 		maintenance = maxf(0.0, _principal_net([buffer, -local_after_absorption]))
 	else:
 		aggregate_need = maxf(0.0, _principal_net([clear, -local_after_absorption]))
 		aggregate = minf(maxf(0.0, offer - local), minf(maxf(0.0, capacity - local), aggregate_need))
+		if not workout.is_empty():
+			aggregate = 0.0 # This collateral belongs to one explicit local counterparty.
 		absorption = minf(planned_absorption, maxf(0.0, _principal_net([reserve_base, local, aggregate])))
+		if not workout.is_empty():
+			absorption = minf(planned_absorption, maxf(0.0, _principal_net([reserve_base, workout.new_cash])))
 	var loans := local + aggregate
+	var advances := loans
+	if not workout.is_empty():
+		loans = workout.state.central_bank_loan # Includes unretired overdue principal.
 	var reserves := _principal_net([reserve_base, local, aggregate, -absorption, maintenance])
+	if not workout.is_empty():
+		reserves = _principal_net([reserve_base, workout.new_cash, -absorption, maintenance])
 	if not is_finite(reserves) or not is_finite(currency) or not is_finite(buffer) or not is_finite(clear) or clear <= 0.0 or not is_finite(eligible_local) or not is_finite(uncovered) or not is_finite(loans):
 		return {"ok":false,"error":"unrepresentable principal ledger quantity"}
 	if reserves < 0.0 or state.treasury_account_pct_initial_gdp < 0.0:
@@ -727,7 +775,7 @@ func _balance_sheet_step(state: Dictionary, policy: Dictionary, shocks: Dictiona
 		"asset_stock_pct_initial_gdp":securities, "asset_flow_applied_pct_initial_gdp":purchase - runoff,
 		"term_premium_pct":_portfolio_premium(duration - state.initial_duration_equivalent_pct_initial_gdp, n, state.initial_portfolio_premium_pct, params),
 		"outstanding_liquidity_pct_initial_gdp":loans, "liquidity_repayment_pct_initial_gdp":old_loan_due,
-		"liquidity_applied_pct_initial_gdp":loans, "uncovered_funding_pct_initial_gdp":uncovered,
+		"liquidity_applied_pct_initial_gdp":advances, "uncovered_funding_pct_initial_gdp":uncovered,
 		"decision_nominal_gdp_ratio":n, "duration_equivalent_pct_initial_gdp":duration,
 		"total_assets_pct_initial_gdp":assets, "total_asset_change_pct_initial_gdp":assets - state.total_assets_pct_initial_gdp,
 		"principal_due_pct_initial_gdp":due, "treasury_redemption_pct_initial_gdp":treasury_due,
@@ -1002,7 +1050,7 @@ func _rate_conditions(state: Dictionary, rate: float, guide: float, premium: flo
 
 func _validate_parameters(params: Dictionary) -> Dictionary:
 	for key in params:
-		if key not in PARAMETER_KEYS:
+		if key not in PARAMETER_KEYS and key not in BANK_WORKOUT_RECIPE_KEYS:
 			return {"ok":false,"error":"unknown parameter: %s" % key}
 	for key in PARAMETER_KEYS:
 		if not params.has(key) or typeof(params[key]) not in [TYPE_INT, TYPE_FLOAT] or not is_finite(float(params[key])):
@@ -1410,7 +1458,7 @@ static func bank_workout_step(prior: Variant, order: Variant) -> Dictionary:
 		return _bw_fail("Workout equity bridge does not reconcile")
 	var distress := queue > 0.0 or arrears > 0.0
 	var result := {"ok": true, "state": next, "repayment": repayment, "renewal": renewal,
-		"new_cash": fresh, "withdrawals_paid": paid, "remaining_queue": queue, "loan_arrears": arrears,
+		"new_cash": fresh, "deposit_due": requested, "withdrawals_paid": paid, "remaining_queue": queue, "loan_arrears": arrears,
 		"capacity": capacity, "permitted_exposure": permitted, "old_exposure_remaining": old_remaining,
 		"net_cb_flow": net_cb, "matured_principal": due, "old_market_value": old_mark.market_value,
 		"remaining_market_value": new_mark.market_value, "equity_before": before, "equity_after": after,
@@ -1422,3 +1470,147 @@ static func bank_workout_step(prior: Variant, order: Variant) -> Dictionary:
 	if is_finite(reference):
 		result.prequote_reference_need = maxf(0.0, reference)
 	return result
+
+
+static func bank_workout_briefing(bank: Variant, order: Variant) -> Dictionary:
+	# Before-policy mark and zero-offer projection only, not accepted bank state.
+	var valid := _bw_validate(bank)
+	if not valid.ok:
+		return valid
+	if not _bw_schema(order, ["new_withdrawals", "haircut_pct", "pledgeable_share"]):
+		return _bw_fail("Invalid or unknown coupled workout order schema")
+	var bank_order := {"annual_yield_pct": bank.annual_yield_pct, "new_withdrawals": order.new_withdrawals,
+		"liquidity_offer": 0.0, "haircut_pct": order.haircut_pct, "pledgeable_share": order.pledgeable_share}
+	var projection := bank_workout_step(bank, bank_order)
+	if not projection.ok:
+		return projection
+	var collateral: float = projection.remaining_market_value * order.pledgeable_share
+	if not is_finite(collateral) or (projection.remaining_market_value > 0.0 and order.pledgeable_share > 0.0 and collateral == 0.0):
+		return _bw_fail("Unrepresentable current workout collateral")
+	return {"ok": true, "bank_result": projection, "shocks": {
+		"funding_need_pct_initial_gdp": projection.remaining_queue,
+		"refinancing_need_pct_initial_gdp": projection.old_exposure_remaining,
+		"eligible_collateral_pct_initial_gdp": collateral, "collateral_haircut_pct": order.haircut_pct,
+		"liquidity_eligibility_pct": 100.0}}
+
+
+func bank_workout_transition(state: Dictionary, policy: Dictionary, shocks: Dictionary, params: Dictionary, bank: Variant, order: Variant) -> Dictionary:
+	# This optional facade owns no Career, future tape, save or household account.
+	# Every provisional/final calculation starts from the same valid native frame.
+	var valid := _validate_parameters(params)
+	if not valid.ok:
+		return valid
+	valid = _validate_state(state, params)
+	if not valid.ok:
+		return valid
+	valid = _validate_policy(policy, params)
+	if not valid.ok:
+		return valid
+	valid = _validate_shocks(shocks)
+	if not valid.ok:
+		return valid
+	valid = _bw_validate(bank)
+	if not valid.ok:
+		return valid
+	if bank.quarter_index != state.quarter_index or bank.central_bank_loan != state.outstanding_liquidity_pct_initial_gdp:
+		return _bw_fail("Workout bank and native opening clock/principal disagree")
+	var briefing := bank_workout_briefing(bank, order)
+	if not briefing.ok:
+		return briefing
+	var current := shocks.duplicate(true)
+	current.merge(briefing.shocks, true)
+	var quote_policy := policy.duplicate(true)
+	quote_policy.maintain_ample_reserves = true
+	# Quote the same persistent-claim ledger with zero provisional advances.
+	# The ordinary automatic-retirement ledger is not a valid workout proxy;
+	# its subtractive gross allocation can also manufacture tiny negative needs.
+	var provisional := _step_internal(state.duplicate(true), quote_policy, current, params, {"bank_result": briefing.bank_result})
+	if not provisional.ok:
+		return provisional
+	var quote: float = provisional.state.long_yield_pct
+	var bank_order := {"annual_yield_pct": quote, "new_withdrawals": order.new_withdrawals,
+		"liquidity_offer": policy.liquidity_request_pct_initial_gdp,
+		"haircut_pct": order.haircut_pct, "pledgeable_share": order.pledgeable_share}
+	var accepted := bank_workout_step(bank, bank_order)
+	if not accepted.ok:
+		return accepted
+	current.eligible_collateral_pct_initial_gdp = accepted.remaining_market_value * order.pledgeable_share
+	var retired := _bw_net([accepted.repayment, accepted.renewal])
+	var gross := _bw_net([accepted.renewal, accepted.new_cash])
+	if not is_finite(retired) or not is_finite(gross):
+		return _bw_fail("Workout gross contract flows cannot be represented")
+	var final := _step_internal(state, policy, current, params, {"bank_result": accepted})
+	if not final.ok:
+		return final
+	if final.state.long_yield_pct != quote:
+		return _bw_fail("Workout funding changed its own discount quote")
+	if final.state.quarter_index != accepted.state.quarter_index or final.state.outstanding_liquidity_pct_initial_gdp != accepted.state.central_bank_loan:
+		return _bw_fail("Workout/native closing clock or principal does not reconcile")
+	return {"ok": true, "state": final.state, "trace": final.trace,
+		"bank_state": accepted.state, "bank_result": accepted, "discount_yield_pct": quote}
+
+
+static func bank_workout_opening(params: Variant) -> Dictionary:
+	# Optional authored recipe only. Normal macro initialization/step never reads
+	# these values, and PARAMETER_KEYS deliberately does not require them.
+	if typeof(params) != TYPE_DICTIONARY:
+		return _bw_fail("Workout opening requires a parameter dictionary")
+	for key in BANK_WORKOUT_RECIPE_KEYS:
+		if not params.has(key) or not _bw_number(params[key]):
+			return _bw_fail("Missing or invalid optional workout input: %s" % key)
+	var deposits := float(params.bank_workout_initial_deposits_pct_initial_gdp)
+	var cash := float(params.bank_workout_initial_cash_pct_initial_gdp)
+	var quote := float(params.bank_workout_reference_yield_pct)
+	var haircut := float(params.bank_workout_haircut_pct)
+	var share := float(params.bank_workout_pledgeable_share)
+	var first := float(params.bank_workout_first_withdrawal_pct_initial_gdp)
+	var following := float(params.bank_workout_following_withdrawal_pct_initial_gdp)
+	if deposits < 0.0 or cash < 0.0 or quote <= -200.0 or haircut < 0.0 or haircut > 100.0 or share < 0.0 or share > 1.0 or first < 0.0 or following < 0.0:
+		return _bw_fail("Optional workout recipe outside its physical domain")
+	var claims: Array = []
+	var faces: Array = []
+	for pair in [["bank_workout_short_maturity_quarter", "bank_workout_short_face_pct_initial_gdp"],
+		["bank_workout_middle_maturity_quarter", "bank_workout_middle_face_pct_initial_gdp"],
+		["bank_workout_long_maturity_quarter", "bank_workout_long_face_pct_initial_gdp"]]:
+		var maturity: Variant = params[pair[0]]
+		var face := float(params[pair[1]])
+		# Parameter JSON decodes integral numbers as floats. Convert only after
+		# validating exact positive integer metadata, never after unsafe coercion.
+		if maturity <= 0.0 or maturity > 9007199254740992 or maturity != floor(maturity) or face < 0.0:
+			return _bw_fail("Invalid optional workout maturity or face")
+		claims.append({"maturity_quarter": int(maturity), "face": face})
+		faces.append(face)
+	var initial_face := _bw_net(faces)
+	var requests: Array = [first, following, following, following, 0.0, 0.0, 0.0, 0.0]
+	# Q4's nominal display amount is replaced by all then-unrequested deposits.
+	# Only the preceding fixed waves are additional contractual requests here.
+	var total_requests := _bw_net([first, following, following])
+	if not is_finite(initial_face) or not is_finite(total_requests) or total_requests > deposits:
+		return _bw_fail("Unrepresentable workout book or requests exceeding opening deposits")
+	var bank := {"quarter_index": 0, "cash": cash, "deposits": deposits,
+		"withdrawal_queue": 0.0, "central_bank_loan": 0.0, "loan_arrears": 0.0,
+		"annual_yield_pct": quote, "claims": claims, "initial_face": initial_face, "matured_face": 0.0}
+	var valid := _bw_validate(bank)
+	if not valid.ok:
+		return valid
+	var marked := bank_workout_value(bank, quote)
+	if not marked.ok:
+		return marked
+	var equity_legs: Array = [cash, -deposits]
+	equity_legs.append_array(marked.claim_values)
+	if not is_finite(_bw_net(equity_legs)):
+		return _bw_fail("Unrepresentable optional opening equity")
+	return {"ok": true, "bank": bank, "requests": requests, "remaining_request_index": 3,
+		"haircut_pct": haircut, "pledgeable_share": share}
+
+
+static func bank_workout_remaining_request(bank: Variant) -> Dictionary:
+	# A new request for actual unrequested deposits, not a correction to existing
+	# liabilities, queued claims, repayments or floating-point settlement results.
+	var valid := _bw_validate(bank)
+	if not valid.ok:
+		return valid
+	var request := _bw_difference(float(bank.deposits), float(bank.withdrawal_queue))
+	if not is_finite(request):
+		return _bw_fail("Unrepresentable remaining unrequested deposits")
+	return {"ok": true, "request": request}

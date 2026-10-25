@@ -1,7 +1,8 @@
 # Bank-workout episode — in development
 
-The accounting component and read-only panel are implemented. They are **not yet
-connected to a playable episode**. Alpha 614 remains the installed/public game.
+The optional eight-meeting laboratory is connected in current source. Choose
+New career → Bank workout. Alpha 614 remains the installed/public game until
+this candidate completes publication and release qualification.
 
 ## Mechanism
 
@@ -32,13 +33,14 @@ no forecasting, settlement, saving or regulatory-capital calculation.
 
 ## Compatibility evidence
 
-The original 74,423-byte economic core remains an exact prefix; only unused
-workout static methods were appended. Default equations, cases, parameters and
-RNG order were not edited. Nevertheless, source-integrity hashing changes the
-model digest. The bridge therefore admits the previous current digest only for
-nine explicit existing scenarios and preserves the older eight-only whitelist.
-Both bridges require the exact new source digest and reject future drift.
-Unknown/lab headers are not admitted. The digest algorithm is not filtered.
+The public four-argument economic step now delegates to an internal step with
+an optional workout context. Normal careers take the unchanged default ledger
+branch; workout calls supply actual repayment, renewal, advances and retained
+debt. Source-integrity hashing still changes the model digest. The compatibility
+bridge admits the previous current digest only for nine explicit existing
+scenarios and preserves the older eight-only whitelist. Both bridges require
+the exact newly qualified source digest and reject future drift. Unknown/lab
+headers are not admitted. The digest algorithm is not filtered.
 
 Before implementation, genuine seed-417 feedback-policy Q240 payloads and complete
 state/history/decision/shock bytes were generated for all nine scenarios. The
@@ -46,21 +48,47 @@ new implementation replays every byte identically in the retained fixtures;
 loading never rewrites them. Explicit new encoding uses the new header. This is
 selected-path compatibility evidence, not a universal numerical-parity proof.
 
-Current native checks: 119 accounting checks across 52 public steps, 98 full
-compatibility checks and 149 synthetic presentation/layout checks. Independent
-reviews identified the native meter precision issue; it was fixed and rerun.
+Native checks cover the accounting component (119), presentation (149), coupled
+transition (276), authored opening (112), controller (867, including 32 varied
+eight-turn policy paths), Main integration (28) and original-career compatibility
+(98). Independent review and native regressions caught two actual freeze cases:
+a rounded final withdrawal mismatch and a negative residual in the ordinary
+ledger used for a provisional quote. The final wave now requests actual
+unrequested deposits; the quote uses the same persistent-claim ledger as the
+accepted frame. Strict claim validation and default equations remain intact.
 Captures, original fixtures and detailed receipts remain outside Git.
 
-## Remaining integration
+## Coupled episode integration
 
-The native Fed ledger still assumes automatic old-loan retirement. A complete
-workout adapter must instead preserve overdue principal, balance actual cash and
-contract renewals, price the same remaining bank cashflows and retain both input
-states across previews. It must not reuse the earlier atomic-failure or gross
-funding-pressure mapping as a substitute. Normal career save slots and awards
-must remain protected.
+The optional transition couples the bank calendar to the Fed's actual loan and
+reserve ledger. Cash repayments reduce reserves; cashless renewal does not.
+Unpaid principal remains on both balance sheets. Existing funding-spread
+coefficients are unchanged. The one-bank exercise cannot reuse its collateral
+for an additional aggregate borrower. A detached provisional frame determines
+the discount quote; the final frame must produce exactly the same quote or the
+transition is refused. No numerical fixed-point iteration conceals circularity.
 
-A short, player-operated episode, its financial/macro tradeoffs, meaningful
-keyboard play and current-source GUI validation remain unfinished. Passing these
-components does not qualify new difficulty, enjoyment, empirical calibration,
-workbook integration or release readiness.
+The in-memory eight-quarter controller advances both histories atomically. Its
+previews carry maturities, arrears and queued withdrawals, but never read future
+withdrawal requests. Diagnostic paths beyond the playable eighth quarter are
+explicitly marked. Current funding briefings use the actual bank, not inherited
+scenario funding amounts. Laboratory payloads cannot read or write normal
+career slots or earn normal career awards. Historical benchmark comparisons are
+explicitly unavailable until their coupled replay is implemented.
+
+The authored opening holds 2.7% initial-GDP deposits against a .52/.55/2.97
+face-value ladder due at Q2/Q5/Q20, with a 4% haircut and five-sixths
+pledgeability. The request waves culminate in all remaining unrequested
+depositors; this is not a tolerance that erases old queued claims. These are
+optional design assumptions, not an estimated bank.
+
+Main now exposes the eight-meeting laboratory in New career, with the separate
+bank ledger, compact current conditions and a dedicated Help topic. Source-native
+qualification includes background Computer Use: partial lending, renewal, retained
+arrears, a negative-rate decision, chart inspection, Return/Escape dismissal and
+focus restoration. Bank and policy panels remain side by side at1050 logical
+points, with locally stacked charts; narrower windows use the existing stacked
+cockpit. All native instances used private storage and were verified exited.
+Captures and exact source hashes are retained outside Git. These checks do not qualify
+new difficulty, enjoyment, empirical calibration, workbook integration or
+release readiness. Alpha 614 remains the public/installed version.

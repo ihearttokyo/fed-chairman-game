@@ -29,7 +29,7 @@ static func series(current: Dictionary, selected: Dictionary, held: Dictionary) 
 		result.append(row)
 	return result
 
-func build(points: Array, complete: bool, beyond_career: bool = false) -> void:
+func build(points: Array, complete: bool, beyond_career: bool = false, playable_horizon: int = 240) -> void:
 	horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	follow_focus = true
 	size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -42,7 +42,7 @@ func build(points: Array, complete: bool, beyond_career: bool = false) -> void:
 	if complete:
 		note.text = "Career complete · diagnostic continuation only\n" + note.text
 	elif beyond_career:
-		note.text = "Includes post-Q240 diagnostic points · no extra playable turns\n" + note.text
+		note.text = "Includes post-Q%d diagnostic points · no extra playable turns\n" % playable_horizon + note.text
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(note)
 	if points.is_empty():
