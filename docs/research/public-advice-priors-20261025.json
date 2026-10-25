@@ -1,0 +1,476 @@
+{
+  "script_sha256": "21813b463fdfaea37eccb0638884716f9a8703598b02ae57eafeed4e69207a09",
+  "careers": 30,
+  "transitions": 7200,
+  "failures": 0,
+  "adopted": false,
+  "means": [
+    {
+      "scenario": "policy_career",
+      "policy": "hold",
+      "average_inflation_distance_pp": 5.622932927642784,
+      "average_employment_shortfall_pp": 2.790310267209625e-05,
+      "ending_credibility": 16.5235711294664
+    },
+    {
+      "scenario": "policy_career",
+      "policy": "oracle",
+      "average_inflation_distance_pp": 0.5712948795467869,
+      "average_employment_shortfall_pp": 0.1528777009323985,
+      "ending_credibility": 84.14681490681795
+    },
+    {
+      "scenario": "policy_career",
+      "policy": "public_reference",
+      "average_inflation_distance_pp": 0.598954534294993,
+      "average_employment_shortfall_pp": 0.1325397914902065,
+      "ending_credibility": 86.0466839919784
+    },
+    {
+      "scenario": "policy_career",
+      "policy": "public_low_prior",
+      "average_inflation_distance_pp": 1.09855330076462,
+      "average_employment_shortfall_pp": 0.10180170796112095,
+      "ending_credibility": 55.97698480385485
+    },
+    {
+      "scenario": "policy_career",
+      "policy": "public_high_prior",
+      "average_inflation_distance_pp": 0.5616303478544795,
+      "average_employment_shortfall_pp": 0.2512736957374775,
+      "ending_credibility": 58.885385012025054
+    },
+    {
+      "scenario": "stagflation_bank_run",
+      "policy": "hold",
+      "average_inflation_distance_pp": 10.545449749252104,
+      "average_employment_shortfall_pp": 0.0248495993489167,
+      "ending_credibility": 11.3127915973387
+    },
+    {
+      "scenario": "stagflation_bank_run",
+      "policy": "oracle",
+      "average_inflation_distance_pp": 0.9909735873857085,
+      "average_employment_shortfall_pp": 0.285414122198355,
+      "ending_credibility": 80.77763181405724
+    },
+    {
+      "scenario": "stagflation_bank_run",
+      "policy": "public_reference",
+      "average_inflation_distance_pp": 1.0527074634877254,
+      "average_employment_shortfall_pp": 0.2517730116682205,
+      "ending_credibility": 88.32460080621665
+    },
+    {
+      "scenario": "stagflation_bank_run",
+      "policy": "public_low_prior",
+      "average_inflation_distance_pp": 1.664075670804195,
+      "average_employment_shortfall_pp": 0.2427864916978485,
+      "ending_credibility": 49.750687797686254
+    },
+    {
+      "scenario": "stagflation_bank_run",
+      "policy": "public_high_prior",
+      "average_inflation_distance_pp": 0.940393214914285,
+      "average_employment_shortfall_pp": 0.35361210168337553,
+      "ending_credibility": 59.31468124032145
+    },
+    {
+      "scenario": "supply_shock",
+      "policy": "hold",
+      "average_inflation_distance_pp": 0.1920430424291745,
+      "average_employment_shortfall_pp": 0.01658746198384285,
+      "ending_credibility": 93.1587569241689
+    },
+    {
+      "scenario": "supply_shock",
+      "policy": "oracle",
+      "average_inflation_distance_pp": 0.09137372803209814,
+      "average_employment_shortfall_pp": 0.0378561210582824,
+      "ending_credibility": 98.45045790495016
+    },
+    {
+      "scenario": "supply_shock",
+      "policy": "public_reference",
+      "average_inflation_distance_pp": 0.09692253817401915,
+      "average_employment_shortfall_pp": 0.03172510114929475,
+      "ending_credibility": 98.28332387124084
+    },
+    {
+      "scenario": "supply_shock",
+      "policy": "public_low_prior",
+      "average_inflation_distance_pp": 0.3144487746230895,
+      "average_employment_shortfall_pp": 0.0032095023488909,
+      "ending_credibility": 59.17519804407025
+    },
+    {
+      "scenario": "supply_shock",
+      "policy": "public_high_prior",
+      "average_inflation_distance_pp": 0.208694811630069,
+      "average_employment_shortfall_pp": 0.12463577811068449,
+      "ending_credibility": 59.24876199961515
+    }
+  ],
+  "rows": [
+    {
+      "average_employment_shortfall_pp": 5.58062053441925e-05,
+      "average_inflation_distance_pp": 4.97408267013672,
+      "average_uncovered_funding_pct_meeting_gdp": 0.0,
+      "ending_credibility": 17.5446381925454,
+      "ending_support": 33.0541863878185,
+      "mandate_achieved": false,
+      "policy": "hold",
+      "recovery_stabilized": false,
+      "scenario": "policy_career",
+      "seed": 63239
+    },
+    {
+      "average_employment_shortfall_pp": 0.126707481582218,
+      "average_inflation_distance_pp": 0.532795230717675,
+      "average_uncovered_funding_pct_meeting_gdp": 0.0,
+      "ending_credibility": 92.0131618912536,
+      "ending_support": 69.2775408396285,
+      "mandate_achieved": true,
+      "policy": "oracle",
+      "recovery_stabilized": false,
+      "scenario": "policy_career",
+      "seed": 63239
+    },
+    {
+      "average_employment_shortfall_pp": 0.108514248852204,
+      "average_inflation_distance_pp": 0.554799454791607,
+      "average_uncovered_funding_pct_meeting_gdp": 0.0,
+      "ending_credibility": 92.3662645144458,
+      "ending_support": 69.2650982441056,
+      "mandate_achieved": true,
+      "policy": "public_reference",
+      "recovery_stabilized": false,
+      "scenario": "policy_career",
+      "seed": 63239
+    },
+    {
+      "average_employment_shortfall_pp": 0.0767797037193869,
+      "average_inflation_distance_pp": 1.01535965658426,
+      "average_uncovered_funding_pct_meeting_gdp": 0.0,
+      "ending_credibility": 55.1681742575765,
+      "ending_support": 69.2762131799393,
+      "mandate_achieved": false,
+      "policy": "public_low_prior",
+      "recovery_stabilized": false,
+      "scenario": "policy_career",
+      "seed": 63239
+    },
+    {
+      "average_employment_shortfall_pp": 0.219936882614002,
+      "average_inflation_distance_pp": 0.524280194331474,
+      "average_uncovered_funding_pct_meeting_gdp": 0.0,
+      "ending_credibility": 58.8780152364043,
+      "ending_support": 68.3791799909264,
+      "mandate_achieved": true,
+      "policy": "public_high_prior",
+      "recovery_stabilized": false,
+      "scenario": "policy_career",
+      "seed": 63239
+    },
+    {
+      "average_employment_shortfall_pp": 0.0,
+      "average_inflation_distance_pp": 6.27178318514885,
+      "average_uncovered_funding_pct_meeting_gdp": 0.00394690416399576,
+      "ending_credibility": 15.5025040663874,
+      "ending_support": 20.3661021254047,
+      "mandate_achieved": false,
+      "policy": "hold",
+      "recovery_stabilized": false,
+      "scenario": "policy_career",
+      "seed": 90389
+    },
+    {
+      "average_employment_shortfall_pp": 0.179047920282579,
+      "average_inflation_distance_pp": 0.609794528375899,
+      "average_uncovered_funding_pct_meeting_gdp": 0.00398997466432,
+      "ending_credibility": 76.2804679223823,
+      "ending_support": 69.0244711786367,
+      "mandate_achieved": true,
+      "policy": "oracle",
+      "recovery_stabilized": false,
+      "scenario": "policy_career",
+      "seed": 90389
+    },
+    {
+      "average_employment_shortfall_pp": 0.156565334128209,
+      "average_inflation_distance_pp": 0.643109613798379,
+      "average_uncovered_funding_pct_meeting_gdp": 0.00398477891124351,
+      "ending_credibility": 79.727103469511,
+      "ending_support": 69.0365159007067,
+      "mandate_achieved": true,
+      "policy": "public_reference",
+      "recovery_stabilized": false,
+      "scenario": "policy_career",
+      "seed": 90389
+    },
+    {
+      "average_employment_shortfall_pp": 0.126823712202855,
+      "average_inflation_distance_pp": 1.18174694494498,
+      "average_uncovered_funding_pct_meeting_gdp": 0.00397802226934399,
+      "ending_credibility": 56.7857953501332,
+      "ending_support": 67.8324612857466,
+      "mandate_achieved": false,
+      "policy": "public_low_prior",
+      "recovery_stabilized": false,
+      "scenario": "policy_career",
+      "seed": 90389
+    },
+    {
+      "average_employment_shortfall_pp": 0.282610508860953,
+      "average_inflation_distance_pp": 0.598980501377485,
+      "average_uncovered_funding_pct_meeting_gdp": 0.00399147475486652,
+      "ending_credibility": 58.8927547876458,
+      "ending_support": 68.9991576434195,
+      "mandate_achieved": true,
+      "policy": "public_high_prior",
+      "recovery_stabilized": false,
+      "scenario": "policy_career",
+      "seed": 90389
+    },
+    {
+      "average_employment_shortfall_pp": 0.0130161566662072,
+      "average_inflation_distance_pp": 0.149794751006579,
+      "average_uncovered_funding_pct_meeting_gdp": 0.0,
+      "ending_credibility": 92.4669482470477,
+      "ending_support": 69.8855474026873,
+      "mandate_achieved": false,
+      "policy": "hold",
+      "recovery_stabilized": false,
+      "scenario": "supply_shock",
+      "seed": 63239
+    },
+    {
+      "average_employment_shortfall_pp": 0.0325629253039329,
+      "average_inflation_distance_pp": 0.0808072967649623,
+      "average_uncovered_funding_pct_meeting_gdp": 0.0,
+      "ending_credibility": 98.4822205650292,
+      "ending_support": 69.8900320146328,
+      "mandate_achieved": false,
+      "policy": "oracle",
+      "recovery_stabilized": false,
+      "scenario": "supply_shock",
+      "seed": 63239
+    },
+    {
+      "average_employment_shortfall_pp": 0.0269147960407398,
+      "average_inflation_distance_pp": 0.0853324419984433,
+      "average_uncovered_funding_pct_meeting_gdp": 0.0,
+      "ending_credibility": 98.0257836423415,
+      "ending_support": 69.8905801352093,
+      "mandate_achieved": false,
+      "policy": "public_reference",
+      "recovery_stabilized": false,
+      "scenario": "supply_shock",
+      "seed": 63239
+    },
+    {
+      "average_employment_shortfall_pp": 0.00291820709844749,
+      "average_inflation_distance_pp": 0.291802779443731,
+      "average_uncovered_funding_pct_meeting_gdp": 0.0,
+      "ending_credibility": 59.0401858289515,
+      "ending_support": 69.045014951024,
+      "mandate_achieved": false,
+      "policy": "public_low_prior",
+      "recovery_stabilized": false,
+      "scenario": "supply_shock",
+      "seed": 63239
+    },
+    {
+      "average_employment_shortfall_pp": 0.115407651662507,
+      "average_inflation_distance_pp": 0.209194289329098,
+      "average_uncovered_funding_pct_meeting_gdp": 0.0,
+      "ending_credibility": 59.4627203847583,
+      "ending_support": 68.9793631390882,
+      "mandate_achieved": false,
+      "policy": "public_high_prior",
+      "recovery_stabilized": false,
+      "scenario": "supply_shock",
+      "seed": 63239
+    },
+    {
+      "average_employment_shortfall_pp": 0.0201587673014785,
+      "average_inflation_distance_pp": 0.23429133385177,
+      "average_uncovered_funding_pct_meeting_gdp": 0.0,
+      "ending_credibility": 93.8505656012901,
+      "ending_support": 69.7350919810001,
+      "mandate_achieved": false,
+      "policy": "hold",
+      "recovery_stabilized": false,
+      "scenario": "supply_shock",
+      "seed": 90389
+    },
+    {
+      "average_employment_shortfall_pp": 0.0431493168126319,
+      "average_inflation_distance_pp": 0.101940159299234,
+      "average_uncovered_funding_pct_meeting_gdp": 0.0,
+      "ending_credibility": 98.4186952448711,
+      "ending_support": 69.7354538394286,
+      "mandate_achieved": false,
+      "policy": "oracle",
+      "recovery_stabilized": false,
+      "scenario": "supply_shock",
+      "seed": 90389
+    },
+    {
+      "average_employment_shortfall_pp": 0.0365354062578497,
+      "average_inflation_distance_pp": 0.108512634349595,
+      "average_uncovered_funding_pct_meeting_gdp": 0.0,
+      "ending_credibility": 98.5408641001402,
+      "ending_support": 69.737951338211,
+      "mandate_achieved": false,
+      "policy": "public_reference",
+      "recovery_stabilized": false,
+      "scenario": "supply_shock",
+      "seed": 90389
+    },
+    {
+      "average_employment_shortfall_pp": 0.00350079759933431,
+      "average_inflation_distance_pp": 0.337094769802448,
+      "average_uncovered_funding_pct_meeting_gdp": 0.0,
+      "ending_credibility": 59.310210259189,
+      "ending_support": 69.0168902142278,
+      "mandate_achieved": false,
+      "policy": "public_low_prior",
+      "recovery_stabilized": false,
+      "scenario": "supply_shock",
+      "seed": 90389
+    },
+    {
+      "average_employment_shortfall_pp": 0.133863904558862,
+      "average_inflation_distance_pp": 0.20819533393104,
+      "average_uncovered_funding_pct_meeting_gdp": 0.0,
+      "ending_credibility": 59.034803614472,
+      "ending_support": 68.7146334381808,
+      "mandate_achieved": false,
+      "policy": "public_high_prior",
+      "recovery_stabilized": false,
+      "scenario": "supply_shock",
+      "seed": 90389
+    },
+    {
+      "average_employment_shortfall_pp": 0.0258570535003657,
+      "average_inflation_distance_pp": 9.68110716929261,
+      "average_uncovered_funding_pct_meeting_gdp": 0.0,
+      "ending_credibility": 12.5734946302509,
+      "ending_support": 0.0102952449638248,
+      "mandate_achieved": false,
+      "policy": "hold",
+      "recovery_stabilized": false,
+      "scenario": "stagflation_bank_run",
+      "seed": 63239
+    },
+    {
+      "average_employment_shortfall_pp": 0.245559538920966,
+      "average_inflation_distance_pp": 0.916125932790647,
+      "average_uncovered_funding_pct_meeting_gdp": 0.0,
+      "ending_credibility": 91.5981254565036,
+      "ending_support": 69.31965140462,
+      "mandate_achieved": false,
+      "policy": "oracle",
+      "recovery_stabilized": true,
+      "scenario": "stagflation_bank_run",
+      "seed": 63239
+    },
+    {
+      "average_employment_shortfall_pp": 0.215866922038908,
+      "average_inflation_distance_pp": 0.970052539599801,
+      "average_uncovered_funding_pct_meeting_gdp": 0.0,
+      "ending_credibility": 92.3423158582371,
+      "ending_support": 69.3192308214607,
+      "mandate_achieved": false,
+      "policy": "public_reference",
+      "recovery_stabilized": true,
+      "scenario": "stagflation_bank_run",
+      "seed": 63239
+    },
+    {
+      "average_employment_shortfall_pp": 0.206453903611993,
+      "average_inflation_distance_pp": 1.53100166598251,
+      "average_uncovered_funding_pct_meeting_gdp": 0.0,
+      "ending_credibility": 53.205434603355,
+      "ending_support": 67.81820521428,
+      "mandate_achieved": false,
+      "policy": "public_low_prior",
+      "recovery_stabilized": true,
+      "scenario": "stagflation_bank_run",
+      "seed": 63239
+    },
+    {
+      "average_employment_shortfall_pp": 0.313022624641272,
+      "average_inflation_distance_pp": 0.903596614689299,
+      "average_uncovered_funding_pct_meeting_gdp": 0.0,
+      "ending_credibility": 60.8324546555182,
+      "ending_support": 69.2578761430297,
+      "mandate_achieved": false,
+      "policy": "public_high_prior",
+      "recovery_stabilized": true,
+      "scenario": "stagflation_bank_run",
+      "seed": 63239
+    },
+    {
+      "average_employment_shortfall_pp": 0.0238421451974677,
+      "average_inflation_distance_pp": 11.4097923292116,
+      "average_uncovered_funding_pct_meeting_gdp": 0.00393116795936203,
+      "ending_credibility": 10.0520885644265,
+      "ending_support": 1.06181952550236e-05,
+      "mandate_achieved": false,
+      "policy": "hold",
+      "recovery_stabilized": false,
+      "scenario": "stagflation_bank_run",
+      "seed": 90389
+    },
+    {
+      "average_employment_shortfall_pp": 0.325268705475744,
+      "average_inflation_distance_pp": 1.06582124198077,
+      "average_uncovered_funding_pct_meeting_gdp": 0.00397469457148597,
+      "ending_credibility": 69.9571381716109,
+      "ending_support": 66.9803863451426,
+      "mandate_achieved": false,
+      "policy": "oracle",
+      "recovery_stabilized": true,
+      "scenario": "stagflation_bank_run",
+      "seed": 90389
+    },
+    {
+      "average_employment_shortfall_pp": 0.287679101297533,
+      "average_inflation_distance_pp": 1.13536238737565,
+      "average_uncovered_funding_pct_meeting_gdp": 0.00396451986326231,
+      "ending_credibility": 84.3068857541962,
+      "ending_support": 67.2507323782832,
+      "mandate_achieved": false,
+      "policy": "public_reference",
+      "recovery_stabilized": true,
+      "scenario": "stagflation_bank_run",
+      "seed": 90389
+    },
+    {
+      "average_employment_shortfall_pp": 0.279119079783704,
+      "average_inflation_distance_pp": 1.79714967562588,
+      "average_uncovered_funding_pct_meeting_gdp": 0.00396036035289336,
+      "ending_credibility": 46.2959409920175,
+      "ending_support": 64.7882653790262,
+      "mandate_achieved": false,
+      "policy": "public_low_prior",
+      "recovery_stabilized": false,
+      "scenario": "stagflation_bank_run",
+      "seed": 90389
+    },
+    {
+      "average_employment_shortfall_pp": 0.394201578725479,
+      "average_inflation_distance_pp": 0.977189815139271,
+      "average_uncovered_funding_pct_meeting_gdp": 0.00396871281554658,
+      "ending_credibility": 57.7969078251247,
+      "ending_support": 67.0056422958296,
+      "mandate_achieved": false,
+      "policy": "public_high_prior",
+      "recovery_stabilized": true,
+      "scenario": "stagflation_bank_run",
+      "seed": 90389
+    }
+  ]
+}

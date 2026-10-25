@@ -365,6 +365,9 @@ func run() -> void:
 	start = game.career.encode()
 	await key(root, KEY_R, true)
 	check(game.career.encode() == start, "staff accelerator stages advice without adopting")
+	var published_rate: float = game.career.params.initial_r_star_pct + float("%.2f" % game.career.state.expected_long_inflation_pct) + game.career.params.policy_inflation_response * (float("%.2f" % game.career.state.four_quarter_inflation_pct) - game.career.params.inflation_target_pct) + game.career.params.policy_output_gap_response * float("%.2f" % game.career.state.output_gap_pct)
+	published_rate = floorf(published_rate / game.career.params.minimum_rate_increment_pct + 0.5) * game.career.params.minimum_rate_increment_pct
+	check(game.rate.value == published_rate and game.guidance.value == published_rate and game.status_label.text.contains("Staff estimate staged"), "keyboard staff shortcut stages the independent published-data estimate, not the model oracle")
 	game.rate.get_line_edit().grab_focus()
 	var projected: Dictionary = game.career.forecast(game._policy())
 	await key(root, KEY_ENTER, true)

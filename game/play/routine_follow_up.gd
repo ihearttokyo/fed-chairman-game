@@ -1,5 +1,6 @@
 extends RefCounted
 
+const Advice = preload("res://play/policy_advice.gd")
 const Economy = preload("res://model/economy.gd")
 var active := false
 var generation := 0
@@ -40,7 +41,9 @@ func arm(state: Dictionary, params: Dictionary, committed_policy: Dictionary, fr
 			return _malformed("Committed policy requires three explicit boolean switches.")
 	if frame < 0 or state.quarter_index < 1 or state.quarter_index > 240:
 		return _malformed("Arm requires a completed attended adoption and a valid frame.")
-	var policy := _model.benchmark_policy(state, params)
+	var policy := Advice.policy(state, params)
+	if not policy.get("ok", true):
+		return _malformed(policy.error)
 	valid = _model._validate_policy(policy, params)
 	if not valid.ok:
 		return _malformed(valid.error)
@@ -75,7 +78,9 @@ func proposal(state: Dictionary, current_shock: Dictionary, current_phase: Dicti
 	if not current_phase.is_empty():
 		if current_phase.size() != 2 or typeof(current_phase.get("title")) != TYPE_STRING or typeof(current_phase.get("policy_dilemma")) != TYPE_STRING or current_phase.title.is_empty() or current_phase.policy_dilemma.is_empty():
 			return _malformed("Current phase must contain only its title and policy dilemma.")
-	var policy := _model.benchmark_policy(state, params)
+	var policy := Advice.policy(state, params)
+	if not policy.get("ok", true):
+		return _malformed(policy.error)
 	policy.merge(switches)
 	valid = _model._validate_policy(policy, params)
 	if not valid.ok:

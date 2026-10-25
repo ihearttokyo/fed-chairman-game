@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-tests=(dispatch_brief_test dispatch_ui_test outcome_drivers_test outcome_ui_test tooltip_test policy_review_test policy_committee_test crisis_campaign_test crisis_objectives_test music_test varied_career_test mandate_test mandate_ui_test challenge_test late_challenge_test compound_policy_test sustained_toolkit_test balance_sheet_test balance_career_test balance_ui_test recovery_test rate_transmission_test shock_catalogue_test campaign_save_slot_test career_test chart_test keyboard_test compact_ui_test ui_test transition_explanation_test routine_follow_up_test routine_ui_test comparison_performance_test music_shutdown_test)
+tests=(public_advice_production_contract_test policy_advice_test dispatch_brief_test dispatch_ui_test outcome_drivers_test outcome_ui_test tooltip_test policy_review_test policy_committee_test crisis_campaign_test crisis_objectives_test music_test varied_career_test mandate_test mandate_ui_test challenge_test late_challenge_test compound_policy_test sustained_toolkit_test balance_sheet_test balance_career_test balance_ui_test recovery_test rate_transmission_test shock_catalogue_test campaign_save_slot_test career_test chart_test keyboard_test compact_ui_test ui_test transition_explanation_test routine_follow_up_test routine_ui_test comparison_performance_test music_shutdown_test)
 if (( $# )); then
   # Full-career qualification is opt-in, not repeated by the default UI suite.
-  case " ${tests[*]} routine_career_test " in
+  case " ${tests[*]} routine_career_test public_advice_integration_test " in
     *" $1 "*) tests=("$1"); shift ;;
     *) echo "Unknown game test: $1" >&2; exit 2 ;;
   esac
@@ -32,6 +32,7 @@ for test in "${tests[@]}"; do
   if [[ "$test" == ui_test ]]; then engine_flags+=(--max-fps 60); fi
   if [[ "$test" == keyboard_test ]]; then frames=900; fi
   if [[ "$test" == comparison_performance_test ]]; then frames=6000; fi
+  if [[ "$test" == public_advice_integration_test ]]; then frames=12000; fi
   log="$HOME/$test.log"
   "${godot[@]}" "${engine_flags[@]}" --path game --log-file "$HOME/$test-engine.log" --script "res://tests/$test.gd" --quit-after "$frames" -- "$@" 2>&1 | tee "$log"
   if grep -Eq 'SCRIPT ERROR:|ERROR:|FAIL:' "$log"; then exit 1; fi

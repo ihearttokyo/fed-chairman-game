@@ -109,7 +109,7 @@ Unknown digests and future source changes remain rejected.
 ## Routine follow-up candidate
 
 `Include routine follow-up (4 quarters total)` adopts the staged decision, then
-allows up to three current-state benchmark rate/guidance updates. Portfolio
+allows up to three public-data staff rate/guidance updates. Portfolio
 switches persist; new asset and loan offers do not. Funding, current events,
 material drift and scheduled check-in return control. Escape, Stop or an edit
 cancels follow-up. New, Load and reports never restore automatic permission.
@@ -666,16 +666,18 @@ release gates.
 
 ## Playable career
 
-Choose one of eight scenarios, inspect the current meeting dispatch and stage a
+Choose one of nine scenarios, inspect the current meeting dispatch and stage a
 rate, guidance, asset-flow and lending decision. The preview uses the known
 current shock, then assumes no new shocks and holds the rate and staged portfolio
 switches for eight quarters. One-time offers do not repeat. Principal, loan
 repayment and optional reserve maintenance still operate.
-It cannot read the realized future shock path. The model-benchmark action stages
-rate and matching guidance from the full current model state, including true
-neutral rate and short inflation expectations. Those two inputs are not shown in
-the ordinary indicators or journal. This is a model reference, not an operational
-forecast or proof of optimal policy.
+It cannot read the realized future shock path. Stage staff estimate uses the
+two-decimal published inflation, output gap and long expectations with a fixed
+initial neutral-rate prior (shown in How to play). The same estimate powers
+routine follow-up. Neither reads the evolving neutral rate or short expectations.
+Manual staging preserves other tools; routine follow-up resets one-shot offers.
+The full-information model benchmark remains a diagnostic comparison only.
+See [public staff advice](../docs/PUBLIC_STAFF_ADVICE.md) for the rule and limits.
 
 The rate formula does not directly adjust for credit spreads, term premiums or
 weaker negative-rate transmission. For example, from the default neutral state

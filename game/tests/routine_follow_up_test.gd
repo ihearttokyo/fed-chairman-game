@@ -53,7 +53,7 @@ func _initialize() -> void:
 	var state: Dictionary = model.initial_state(params, {}).state
 	# Synthetic post-adoption observer: native validation, but no economic transition.
 	state.quarter_index = 1
-	var policy: Dictionary = model.benchmark_policy(state, params)
+	var policy: Dictionary = reference_policy(state, params)
 	policy.merge({"reinvest_principal": false, "maintain_ample_reserves": true, "sterilize_purchases": false})
 	var helper := FollowUp.new()
 	var armed: Dictionary = helper.arm(state, params, policy, 10)
@@ -137,7 +137,7 @@ func check_helpers(model: RefCounted, state: Dictionary, params: Dictionary, pol
 	var terminal: Dictionary = state.duplicate(true)
 	terminal.quarter_index = 240
 	check(observe(terminal, params, policy).reasons.has("CAREER_END"), "retirement never proposes another economic transition")
-	for pair in [["four_quarter_inflation_pct", "INFLATION_DRIFT"], ["output_gap_pct", "OUTPUT_GAP_DRIFT"], ["expected_long_inflation_pct", "LONG_EXPECTATIONS_DRIFT"], ["expected_short_inflation_pct", "BENCHMARK_DRIFT"]]:
+	for pair in [["four_quarter_inflation_pct", "INFLATION_DRIFT"], ["output_gap_pct", "OUTPUT_GAP_DRIFT"], ["expected_long_inflation_pct", "LONG_EXPECTATIONS_DRIFT"]]:
 		for amount in [0.249, 0.25]:
 			helper.arm(state, params, policy, 10)
 			var changed: Dictionary = state.duplicate(true)
@@ -147,9 +147,22 @@ func check_helpers(model: RefCounted, state: Dictionary, params: Dictionary, pol
 			if pair[0] == "output_gap_pct":
 				changed.actual_output_index = changed.potential_output_index * (1.0 + changed.output_gap_pct / 100.0)
 			var result: Dictionary = helper.proposal(changed, {}, {}, params, 1, 2, 11)
-			# Benchmark rounding can reach .25 before an unrounded .249 input.
-			if pair[1] != "BENCHMARK_DRIFT" or amount == 0.25:
-				check(result.reasons.has(pair[1]) == (amount == 0.25), "fixed-anchor .25 boundary: %s / %s" % [pair[1], amount])
+			check(result.reasons.has(pair[1]) == (amount == 0.25), "fixed-anchor .25 boundary: %s / %s" % [pair[1], amount])
+	for field in ["r_star_pct", "expected_short_inflation_pct"]:
+		for amount in [0.249, 0.25]:
+			helper.arm(state, params, policy, 10)
+			var changed: Dictionary = state.duplicate(true)
+			changed[field] += amount
+			check(model._validate_state(changed, params).ok, "hidden-state control remains native-valid: " + field)
+			var result: Dictionary = helper.proposal(changed, {}, {}, params, 1, 2, 11)
+			check(result.ok and result.reasons.is_empty() and var_to_bytes(result.policy) == var_to_bytes(expected), "hidden neutral/short-expectation changes cannot alter gameplay advice or trigger staff drift: " + field)
+			check(model.benchmark_policy(changed, params).policy_rate_request_pct != model.benchmark_policy(state, params).policy_rate_request_pct, "diagnostic oracle remains sensitive to the hidden positive control: " + field)
+	for amount in [0.244, 0.246]:
+		helper.arm(state, params, policy, 10)
+		var changed: Dictionary = state.duplicate(true)
+		changed.expected_long_inflation_pct += amount
+		var result: Dictionary = helper.proposal(changed, {}, {}, params, 1, 2, 11)
+		check(result.reasons.has("BENCHMARK_DRIFT") == (amount == 0.246) and not result.reasons.has("LONG_EXPECTATIONS_DRIFT"), "published staff-quote drift keeps the exact .25 grid boundary before raw observation drift")
 	var promise: Dictionary = state.duplicate(true)
 	promise.guidance_active = true
 	promise.guidance_inflation_sensitivity = 1.0
@@ -201,7 +214,12 @@ func check_helpers(model: RefCounted, state: Dictionary, params: Dictionary, pol
 	overflow.r_star_pct = 1e308
 	overflow.expected_short_inflation_pct = 1e308
 	var overflow_arm: Dictionary = helper.arm(overflow, params, policy, 10)
-	check(not overflow_arm.ok and overflow_arm.policy.is_empty() and not helper.active, "finite native inputs with unrepresentable benchmark cannot arm an infinite anchor")
+	check(model._validate_state(overflow, params).ok and overflow_arm.ok and helper.active and helper.anchor.benchmark_rate_pct == expected.policy_rate_request_pct, "unrepresentable hidden oracle inputs cannot contaminate a finite public staff anchor")
+	var visible_overflow: Dictionary = state.duplicate(true)
+	visible_overflow.expected_long_inflation_pct = 1e308
+	check(model._validate_state(visible_overflow, params).ok, "public overflow fixture has finite native-valid observations")
+	overflow_arm = helper.arm(visible_overflow, params, policy, 10)
+	check(not overflow_arm.ok and overflow_arm.policy.is_empty() and not helper.active, "finite public inputs with unrepresentable staff quote precision cannot arm an infinite anchor")
 	check(var_to_bytes([state, params, policy]) == original, "all helper checks leave caller native values byte-for-byte unchanged")
 	var restore_host := MeteredCareer.new()
 	var isolated = restore_host.get_script().new()
@@ -214,8 +232,8 @@ func check_malformed(helper: RefCounted, base: Dictionary, params: Dictionary, p
 	check(not result.ok and result.reasons == ["MALFORMED_OBSERVER"] and result.policy.is_empty() and result.token.is_empty() and not helper.active, "malformed observer safely disarms: " + label)
 
 func reference_policy(state: Dictionary, params: Dictionary) -> Dictionary:
-	var rate: float = state.r_star_pct + state.expected_short_inflation_pct + params.policy_inflation_response * (state.four_quarter_inflation_pct - params.inflation_target_pct) + params.policy_output_gap_response * state.output_gap_pct
-	rate = roundf(rate / params.minimum_rate_increment_pct) * params.minimum_rate_increment_pct
+	var rate: float = params.initial_r_star_pct + float("%.2f" % state.expected_long_inflation_pct) + params.policy_inflation_response * (float("%.2f" % state.four_quarter_inflation_pct) - params.inflation_target_pct) + params.policy_output_gap_response * float("%.2f" % state.output_gap_pct)
+	rate = floorf(rate / params.minimum_rate_increment_pct + 0.5) * params.minimum_rate_increment_pct
 	return {"policy_rate_request_pct": rate, "guidance_rate_pct": rate, "guidance_inflation_sensitivity": params.policy_inflation_response, "guidance_output_gap_sensitivity": params.policy_output_gap_response, "asset_flow_request_pct_initial_gdp": 0.0, "liquidity_request_pct_initial_gdp": 0.0, "reinvest_principal": false, "maintain_ample_reserves": true, "sterilize_purchases": false}
 
 func tape() -> Array:
