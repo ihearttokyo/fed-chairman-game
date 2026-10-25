@@ -32,8 +32,8 @@
  * the parent must separately hash these modules in the build provenance.
  */
 import { createHash } from 'node:crypto';
-import { ModelCompileError, modelConstants, builtinValue, binaryValue, modelArithmetic, modelNumber, isModelNumber, rawNumber, numericKind, coerceTyped, gdType, variantType, VARIANT_TYPES, validFloatString, irFingerprint, COMPILER_VERSION } from './model-compiler.mjs';
-export const EXCEL_BACKEND_VERSION='gd-excel-8';
+import { ModelCompileError, modelConstants, builtinValue, binaryValue, modelArithmetic, modelNumber, isModelNumber, rawNumber, numericKind, dictionaryEntries, coerceTyped, gdType, variantType, VARIANT_TYPES, validFloatString, irFingerprint, COMPILER_VERSION } from './model-compiler.mjs';
+export const EXCEL_BACKEND_VERSION='gd-excel-13';
 // Root output paths and source identifiers may legally be __proto__. Define
 // own data properties rather than invoking Object.prototype's legacy setter.
 const setOwn=(target,key,value)=>{Object.defineProperty(target,key,{value,writable:true,enumerable:true,configurable:true});return value;};
@@ -117,7 +117,7 @@ export function emitExcel(ir,cellBindings={}){
   };
   const bool=(v,c,n)=>{
     if(primitive(v))return Boolean(rawNumber(v));
-    if(ref(v))return true;
+    if(ref(v)){const o=c.heap.get(v.id);return o.kind==='array'?compare('>',o.length,0,c,n):[...o.entries.values()].reduce((found,e)=>or(found,e.present,c,n),false);}
     if(choice(v))return select(v.condition,bool(v.yes,c,n),bool(v.no,c,n),c,n);
     if(uncertainCategory(v)){
       const cat=category(v,c,n);
@@ -249,8 +249,8 @@ export function emitExcel(ir,cellBindings={}){
     if(['==','!=','<','>','<=','>='].includes(op))return compare(op,a,b,c,n);
     if(op==='in'||op==='not in'){
       let found=false;
-      if(ref(b)){const o=c.heap.get(b.id);if(o.kind==='array'){o.items.forEach((v,i)=>{found=or(found,and(compare('<',i,o.length,c,n),compare('==',a,v,c,n),c,n),c,n);});}else{stringKey(a,c,n);for(const [key,e] of o.entries)found=or(found,and(compare('==',a,key,c,n),e.present,c,n),c,n);}}
-      else if(primitive(a)&&primitive(b))found=binaryValue('in',a,b);else error('membership requires a finite container or literal string',n);
+      if(ref(b)){const o=c.heap.get(b.id);if(o.kind==='array'){found=arrayContains(b,a,c,n);}else{stringKey(a,c,n);for(const [key,e] of o.entries)found=or(found,and(compare('==',a,key,c,n),e.present,c,n),c,n);}}
+      else if(primitive(a)&&primitive(b)){try{found=binaryValue('in',a,b);}catch(e){error(e.message,n);}}else error('membership requires a finite container or literal string receiver',n);
       return op==='not in'?not(found,c,n):found;
     }
     if(a===ABSENT||b===ABSENT||a===null||b===null){markUnavailable(c,n);return modelNumber(0,'float');}
@@ -294,10 +294,18 @@ export function emitExcel(ir,cellBindings={}){
       if(primitive(key)){const e=o.entries.get(key)??{present:false,value:ABSENT};if(!optional)markUnavailable(c,n,and(c.active,not(e.present,c,n),c,n));return optional?e:select(e.present,e.value,0,c,n);}
       let value=ABSENT,present=false;for(const [k,e] of o.entries){const matches=and(compare('==',key,k,c,n),e.present,c,n);value=select(matches,e.value,value,c,n);present=or(present,matches,c,n);}if(!optional)markUnavailable(c,n,and(c.active,not(present,c,n),c,n));return optional?{value,present}:select(present,value,0,c,n);
     }
+    // A source index expression may return guarded numeric alternatives (also
+    // in unoptimized calls). Normalize each captured Array-index value without
+    // re-evaluating the source expression or treating a choice as a raw index.
+    if(choice(key)){
+      const saved=c.active;c.active=and(saved,key.condition,c,n);const a=get(v,key.yes,c,n,optional);
+      c.active=and(saved,not(key.condition,c,n),c,n);const b=get(v,key.no,c,n,optional);c.active=saved;
+      return optional?{present:select(key.condition,a.present,b.present,c,n),value:select(key.condition,a.value,b.value,c,n)}:select(key.condition,a,b,c,n);
+    }
     let index=key;if(typeof index==='number'&&index<0)index=bin('+',o.length,index,c,n);else if(scalar(index))index=select(compare('<',index,0,c,n),bin('+',o.length,index,c,n),index,c,n);
     const valid=and(and(compare('>=',index,0,c,n),compare('<',index,o.length,c,n),c,n),compare('==',index,math('int',[index],c,n),c,n),c,n);
     let value;
-    if(typeof index==='number')value=o.items[index]??ABSENT;
+    if(typeof index==='number')value=Object.hasOwn(o.items,index)?o.items[index]:ABSENT;
     else {const pick=(lo,hi)=>{if(lo===hi)return o.items[lo];const mid=Math.floor((lo+hi)/2);return select(compare('<=',index,mid,c,n),pick(lo,mid),pick(mid+1,hi),c,n);};value=o.items.length?pick(0,o.items.length-1):ABSENT;}
     if(!optional)markUnavailable(c,n,and(c.active,not(valid,c,n),c,n));return optional?{present:valid,value}:select(valid,value===ABSENT?0:value,0,c,n);
   };
@@ -312,8 +320,15 @@ export function emitExcel(ir,cellBindings={}){
       if(!primitive(key)){
         error('dynamic dictionary output key has no finite literal key schema',n);
       }
-      const old=o.entries.get(key)??{present:false,value:ABSENT};o.entries.set(key,{present:or(guard,old.present,c,n),value:select(guard,value,old.value,c,n)});return;
+      const old=o.entries.get(key)??{present:false,value:ABSENT};
+      if(o.entries.has(key)&&!implies(guard,old.present)){
+        // A capacity key can still be absent on this source path. Creating it
+        // now places it AFTER later owned keys, not at its old Map position.
+        let after=false;for(const [k,e]of o.entries){if(k===key){after=true;continue;}if(after&&e.present!==false){o.orderUnproved=true;break;}}
+      }
+      o.entries.set(key,{present:or(guard,old.present,c,n),value:select(guard,value,old.value,c,n)});return;
     }
+    if(choice(key)){put(v,key.yes,value,c,n,and(guard,key.condition,c,n));put(v,key.no,value,c,n,and(guard,not(key.condition,c,n),c,n));return;}
     let index=key;if(typeof index==='number'&&index<0)index=bin('+',o.length,index,c,n);else if(scalar(index))index=select(compare('<',index,0,c,n),bin('+',o.length,index,c,n),index,c,n);
     const valid=and(and(compare('>=',index,0,c,n),compare('<',index,o.length,c,n),c,n),compare('==',index,math('int',[index],c,n),c,n),c,n);
     markUnavailable(c,n,and(guard,not(valid,c,n),c,n));guard=and(guard,valid,c,n);
@@ -327,13 +342,41 @@ export function emitExcel(ir,cellBindings={}){
       // above may still belong to an outer sibling and must copy on first write.
       target.owned.add(id);
       if(x.kind==='array')heap.set(id,{kind:'array',structureVersion:Math.max(x.structureVersion,y.structureVersion),origin:x.origin===y.origin?x.origin:null,rankInfo:x.rankInfo&&y.rankInfo&&x.rankInfo.base===y.rankInfo.base?{base:x.rankInfo.base,events:[...new Map([...x.rankInfo.events,...y.rankInfo.events].map(e=>[e.id,e])).values()]}:null,length:select(condition,x.length,y.length,target,n),items:Array.from({length:Math.max(x.items.length,y.items.length)},(_,i)=>select(condition,i<x.items.length?x.items[i]:0,i<y.items.length?y.items[i]:0,target,n))});
-      else {const entries=new Map();for(const k of new Set([...x.entries.keys(),...y.entries.keys()])){const xx=x.entries.get(k)??{present:false,value:ABSENT},yy=y.entries.get(k)??{present:false,value:ABSENT};entries.set(k,{present:select(condition,xx.present,yy.present,target,n),value:select(condition,xx.value,yy.value,target,n)});}heap.set(id,{kind:'dictionary',entries});}}
+      else {
+        const xKeys=[...x.entries.keys()],yKeys=[...y.entries.keys()],keys=[...new Set([...xKeys,...yKeys])];
+        // A single union order is sound only if both source branch orders are
+        // subsequences. Otherwise retain uncertainty through all heap copies;
+        // keys/values/for/merge must refuse rather than observe an invented order.
+        const agrees=branch=>{const have=new Set(branch),filtered=keys.filter(k=>have.has(k));return filtered.every((k,i)=>k===branch[i]);};
+        const entries=new Map();for(const k of keys){const xx=x.entries.get(k)??{present:false,value:ABSENT},yy=y.entries.get(k)??{present:false,value:ABSENT};entries.set(k,{present:select(condition,xx.present,yy.present,target,n),value:select(condition,xx.value,yy.value,target,n)});}
+        heap.set(id,{kind:'dictionary',entries,orderUnproved:!!(x.orderUnproved||y.orderUnproved||!agrees(xKeys)||!agrees(yKeys))});
+      }}
   };
   const mergeContexts=(target,a,b,condition,n)=>{
     mergeHeap(target,a,b,condition,n);const env={};for(const k of new Set([...Object.keys(a.env),...Object.keys(b.env)]))setOwn(env,k,select(condition,Object.hasOwn(a.env,k)?a.env[k]:ABSENT,Object.hasOwn(b.env,k)?b.env[k]:ABSENT,target,n));target.env=env;target.active=or(a.active,b.active,target,n);
   };
   const math=(name,args,c,n)=>{
     const alternative=args.findIndex(choice);if(alternative>=0){const v=args[alternative],saved=c.active;c.active=and(saved,v.condition,c,n);const a=math(name,args.map((x,i)=>i===alternative?v.yes:x),c,n);c.active=and(saved,not(v.condition,c,n),c,n);const b=math(name,args.map((x,i)=>i===alternative?v.no:x),c,n);c.active=saved;return select(v.condition,a,b,c,n);}
+    if(name==='str'){
+      const v=args[0];if(c.active===false)return '';
+      // Preserve source int/float tags through constant folding. Unsupported
+      // formatting is an explicit guarded refusal, never a host-formatted value.
+      if(primitive(v)){try{return builtinValue('str',[v]);}catch{markUnavailable(c,n);return '';}}
+      if(v===ABSENT||ref(v)||unprovedType(v)){markUnavailable(c,n);return '';}
+      if(!uncertainCategory(v)){
+        if(v.type==='string')return v;
+        if(v.type==='boolean')return emit(`IF(${code(v)},"true","false")`,'string',c,n);
+        markUnavailable(c,n);return ''; // no qualified dynamic numeric formatter
+      }
+      // Runtime type predicates alone would classify an error as String. Keep
+      // upstream availability, use source category (including pre-phi NIL), and
+      // construct Boolean/NIL text explicitly, not spreadsheet General format.
+      const valid=emit(`IFERROR(${code(v)}=${code(v)},FALSE)`,'boolean',c,n);
+      markUnavailable(c,n,and(c.active,not(valid,c,n),c,n));
+      const cat=category(v,c,n),logical=compare('==',cat,'boolean',c,n),text=compare('==',cat,'string',c,n),nil=compare('==',cat,'null',c,n),supported=or(logical,or(text,nil,c,n),c,n);
+      markUnavailable(c,n,and(c.active,not(supported,c,n),c,n));
+      return emit(`IF(${code(logical)},IF(${code(v)},"true","false"),IF(${code(nil)},"<null>",IF(${code(text)},${code(v)},"")))`,'string',c,n);
+    }
     if(name==='typeof'){
       const v=args[0];if(choice(v))return select(v.condition,math(name,[v.yes],c,n),math(name,[v.no],c,n),c,n);
       if(unprovedType(v))return modelNumber(VARIANT_TYPES.TYPE_INT,'int');
@@ -370,7 +413,6 @@ export function emitExcel(ir,cellBindings={}){
       const value=numeric(args[0],c,n),result=emit(`SIGN(${code(value)})*INT(ABS(${code(value)}))`,'number',c,n),valid=compare('<=',math('abs',[result],c,n),Number.MAX_SAFE_INTEGER,c,n);
       markUnavailable(c,n,and(c.active,not(valid,c,n),c,n));return withNumberType(result,'int');
     }
-    if(name==='str')return emit(`${code(args[0])}&""`,'string',c,n);
     if(name==='range')error('range bound must specialize to finite integers, not an editable scalar',n);
     if(name==='lerpf'){
       // The intrinsic signature is (float,float,float)->float. Do not let
@@ -419,11 +461,21 @@ export function emitExcel(ir,cellBindings={}){
     if(choice(b)){const saved=c.active;c.active=and(saved,b.condition,c,n);const yes=arrayMemberSame(a,b.yes,c,n);c.active=and(saved,not(b.condition,c,n),c,n);const no=arrayMemberSame(a,b.no,c,n);c.active=saved;return select(b.condition,yes,no,c,n);}
     if(ref(a)||ref(b)||a===ABSENT||b===ABSENT)error('Array.has membership supports scalar values only',n);
     const ca=category(a,c,n),cb=category(b,c,n),ka=numberType(a),kb=numberType(b);
-    for(const [v,cat,kind]of [[a,ca,ka],[b,cb,kb]])if(kind==='unknown'){
-      if(primitive(v)&&gdType(v)==='number')error('Array.has membership requires exact numeric provenance',n);
-      if(scalar(v))markUnavailable(c,n,and(c.active,compare('==',cat,'number',c,n),c,n));
+    const sameCategory=compare('==',ca,cb,c,n),numericPair=and(sameCategory,compare('==',ca,'number',c,n),c,n);
+    for(const [v,kind]of [[a,ka],[b,kb]])if(kind==='unknown'){
+      if(primitive(v)&&gdType(v)==='number'&&numericPair===true)error('Array.has membership requires exact numeric provenance',n);
+      if(scalar(v)||primitive(v)&&gdType(v)==='number')markUnavailable(c,n,and(c.active,numericPair,c,n));
     }
-    return and(and(compare('==',ca,cb,c,n),select(compare('==',ca,'number',c,n),ka===kb, true,c,n),c,n),compare('==',a,b,c,n),c,n);
+    return and(and(sameCategory,select(compare('==',ca,'number',c,n),ka===kb,true,c,n),c,n),compare('==',a,b,c,n),c,n);
+  };
+  // One path for Array.has, in and not in, preserving current active slots,
+  // source categories, exact numeric tags and guarded unsupported alternatives.
+  const arrayContains=(object,needle,c,n)=>{
+    const o=c.heap.get(object.id);let found=false;
+    for(let i=0;i<o.items.length;i++){
+      const saved=c.active,present=compare('<',i,o.length,c,n);c.active=and(saved,present,c,n);
+      const matches=arrayMemberSame(o.items[i],needle,c,n);c.active=saved;found=or(found,and(present,matches,c,n),c,n);
+    }return found;
   };
   const method=(object,name,args,c,n)=>{
     const invalid=()=>{markUnavailable(c,n);c.active=false;return ['get','size','pop_front','pop_back'].includes(name)?0:['has','is_empty'].includes(name)?false:['slice','duplicate','keys','values'].includes(name)?ABSENT:null;};
@@ -439,15 +491,12 @@ export function emitExcel(ir,cellBindings={}){
     }
     if(!ref(object))return invalid();
     const o=['merge','resize','fill','append_array','append','pop_back','pop_front','sort'].includes(name)?writable(object,c):c.heap.get(object.id);
-    if(name==='has'&&o.kind==='array'){
-      let found=false;for(let i=0;i<o.items.length;i++){
-        const saved=c.active,present=compare('<',i,o.length,c,n);c.active=and(saved,present,c,n);
-        const matches=arrayMemberSame(o.items[i],args[0],c,n);c.active=saved;found=or(found,and(present,matches,c,n),c,n);
-      }return found;
-    }
+    if(name==='has'&&o.kind==='array')return arrayContains(object,args[0],c,n);
+    if(name==='get'&&o.kind==='array'){if(args.length!==1)error('Array.get requires one index argument',n);return get(object,args[0],c,n);}
     if(name==='get'||name==='has'){const e=get(object,args[0],c,n,true);return name==='has'?e.present:select(e.present,e.value,args[1]??null,c,n);}
     if(name==='size'||name==='is_empty'){const length=o.kind==='array'?o.length:[...o.entries.values()].reduce((sum,e)=>bin('+',sum,numeric(e.present,c,n),c,n),0);return name==='size'?withNumberType(length,'int'):compare('==',length,0,c,n);}
     if(name==='keys'||name==='values'){
+      if(o.orderUnproved)error('external or branch-dependent Dictionary insertion order is unproved',n);
       if(o.kind!=='dictionary')error(`${name} requires a dictionary`,n);
       if([...o.entries.values()].some(e=>e.present!==true))error('iteration over conditionally present dictionary keys needs explicit shape specialization',n);
       return array([...o.entries].map(([k,e])=>name==='keys'?k:e.value),c);
@@ -458,11 +507,12 @@ export function emitExcel(ir,cellBindings={}){
         // A choice is not an immutable leaf: its container alternatives must be
         // disconnected too. One memo preserves sharing *within* the deep copy.
         if(choice(v))return {...v,yes:copy(v.yes,memo),no:copy(v.no,memo)};
-        if(!ref(v))return v;if(memo.has(v.id))return memo.get(v.id);const q=c.heap.get(v.id),r=q.kind==='array'?array([],c):dict([],c);memo.set(v.id,r);const target=c.heap.get(r.id);if(q.kind==='array'){target.length=q.length;target.rankInfo=q.rankInfo;target.items=q.items.map(x=>args[0]?copy(x,memo):x);}else target.entries=new Map([...q.entries].map(([k,e])=>[k,{...e,value:args[0]?copy(e.value,memo):e.value}]));return r;
+        if(!ref(v))return v;if(memo.has(v.id))return memo.get(v.id);const q=c.heap.get(v.id),r=q.kind==='array'?array([],c):dict([],c);memo.set(v.id,r);const target=c.heap.get(r.id);if(q.kind==='array'){target.length=q.length;target.rankInfo=q.rankInfo;target.items=q.items.map(x=>args[0]?copy(x,memo):x);}else {target.orderUnproved=q.orderUnproved;target.entries=new Map([...q.entries].map(([k,e])=>[k,{...e,value:args[0]?copy(e.value,memo):e.value}]));}return r;
       };return copy(object);
     }
     if(name==='merge'){
       const other=c.heap.get(args[0]?.id);if(o.kind!=='dictionary'||other?.kind!=='dictionary'){markUnavailable(c,n);c.active=false;return null;}
+      if(other.orderUnproved)error('external or branch-dependent Dictionary insertion order is unproved',n);
       for(const [key,e] of other.entries){const old=o.entries.get(key)??{present:false,value:ABSENT},write=and(c.active,and(e.present,or(bool(args[1]??false,c,n),not(old.present,c,n),c,n),c,n),c,n);put(object,key,e.value,c,n,write);}return null;
     }
     if(o.kind!=='array')error(`array method ${name} on dictionary`,n);
@@ -473,7 +523,11 @@ export function emitExcel(ir,cellBindings={}){
     if(name==='resize'){
       const length=rawNumber(args[0]);if(!Number.isSafeInteger(length)||length<0||length>maxArray)error('resize bound must be a finite specialization integer',n);
       if(length!==o.length)o.structureVersion=++nextEvent;
-      const items=Array.from({length},(_,i)=>i<o.items.length?o.items[i]:null);
+      const previousLength=o.length,previousItems=o.items.slice();
+      // Allocated capacity may retain dead values after a predicated pop/shrink.
+      // Only a slot within the OLD logical length can survive resize; every
+      // newly exposed slot is owned source NIL, never stale storage or zero.
+      const items=Array.from({length},(_,i)=>select(compare('<',i,previousLength,c,n),i<previousItems.length?previousItems[i]:null,null,c,n));
       if(c.active===true||c.active===o.origin){o.items=items;o.length=length;o.rankInfo={base:length,events:[]};}
       else {o.items=Array.from({length:Math.max(length,o.items.length)},(_,i)=>select(c.active,i<items.length?items[i]:0,i<o.items.length?o.items[i]:0,c,n));o.length=select(c.active,length,o.length,c,n);o.rankInfo=null;}return null;
     }
@@ -513,17 +567,27 @@ export function emitExcel(ir,cellBindings={}){
       default:error(`unsupported expression ${n.kind}`,n);
     }
   };
-  const location=(target,c,n)=>{if(target.kind==='name')return {read:()=>c.env[target.name],write:value=>setOwn(c.env,target.name,select(c.active,value,Object.hasOwn(c.env,target.name)?c.env[target.name]:ABSENT,c,n))};const object=expression(target.object,c),key=target.kind==='member'?target.name:expression(target.index,c);return {read:()=>get(object,key,c,n),write:value=>put(object,key,value,c,n)};};
+  // Native4.7.2 evaluates receiver first, then RHS, then the index once.
+  // A compound target is read only after those effects. get/put retain live
+  // ownership, bounds and negative-index normalization; no pre-RHS snapshots.
+  const location=(target,c,n)=>{
+    if(target.kind==='name')return ()=>({read:()=>c.env[target.name],write:value=>setOwn(c.env,target.name,select(c.active,value,Object.hasOwn(c.env,target.name)?c.env[target.name]:ABSENT,c,n))});
+    const object=expression(target.object,c);
+    return ()=>{
+      const key=target.kind==='member'?target.name:expression(target.index,c);
+      return {read:()=>get(object,key,c,n),write:value=>put(object,key,value,c,n)};
+    };
+  };
   const statements=(body,c,returns)=>{
     for(const n of body){limit();if(c.active===false)break;coverage.add(n.id);
       switch(n.kind){
         case 'declare':{const value=n.value?expression(n.value,c):null;setOwn(c.env,n.name,typed(value,n.storageType,c,n));break;}
-        case 'assign':{const target=location(n.target,c,n),v=n.op==='='?expression(n.value,c):bin(n.op[0],target.read(),expression(n.value,c),c,{...n,type:n.operationType});target.write(typed(v,n.storageType,c,n));break;}
+        case 'assign':{const resolve=location(n.target,c,n),rhs=expression(n.value,c),target=resolve(),v=n.op==='='?rhs:bin(n.op[0],target.read(),rhs,c,{...n,type:n.operationType});target.write(typed(v,n.storageType,c,n));break;}
         case 'expression':expression(n.value,c);break;
         case 'return':{const value=expression(n.value,c);returns.push({guard:c.active,value,source:n.source});c.active=false;break;}
         case 'if':{const condition=bool(expression(n.condition,c),c,n);if(typeof condition==='boolean'){statements(condition?n.yes:n.no,c,returns);break;}const a=branch(c,and(c.active,condition,c,n)),b=branch(c,and(c.active,not(condition,c,n),c,n));statements(n.yes,a,returns);statements(n.no,b,returns);mergeContexts(c,a,b,condition,n);break;}
         case 'for':{const v=expression(n.iterable,c);const iterate=(v,c)=>{if(choice(v)){const a=branch(c,and(c.active,v.condition,c,n)),b=branch(c,and(c.active,not(v.condition,c,n),c,n));iterate(v.yes,a);iterate(v.no,b);mergeContexts(c,a,b,v.condition,n);return;}if(!ref(v)){markUnavailable(c,n);c.active=false;return;}const o=c.heap.get(v.id);let items;
-          if(o.kind==='dictionary')items=[...o.entries.keys()];
+          if(o.kind==='dictionary'){if(o.orderUnproved)error('external or branch-dependent Dictionary insertion order is unproved',n);items=[...o.entries.keys()];}
           else items=o.items.slice();if(items.length>maxLoops)error('for loop exceeds specialization budget',n);loopProofs.push({node:n.id,iterations:items.length,kind:'finite-container'});
           const initialLength=o.length,initialVersion=o.structureVersion,initialKeys=o.kind==='dictionary'?[...o.entries].map(([key,e])=>[key,e.present]):null;
           for(let i=0;i<items.length&&c.active!==false;i++){
@@ -569,7 +633,7 @@ export function emitExcel(ir,cellBindings={}){
       return result;
     }
     if(Array.isArray(v))return array(v.map(x=>input(x,c)),c);
-    if(v&&typeof v==='object')return dict(Object.entries(v).map(([key,value])=>{
+    if(v&&typeof v==='object'){const source=dictionaryEntries(v),result=dict(source.entries.map(([key,value])=>{
       if(value&&typeof value==='object'&&value.$optional===true){
         if(Object.keys(value).sort().join(',')!=='$optional,present,value')error('optional binding requires exactly $optional/present/value');
         const rawPresent=input(value.present,c);if(typeof rawPresent!=='boolean'&&(!scalar(rawPresent)||rawPresent.type!=='boolean'))error('optional presence needs a Boolean binding');
@@ -586,7 +650,7 @@ export function emitExcel(ir,cellBindings={}){
         c.active=and(saved,present,c);const bound=input(value.value,c);c.active=saved;return [key,{present,value:bound}];
       }
       return [key,{present:true,value:input(value,c)}];
-    }),c);
+    }),c);c.heap.get(result.id).orderUnproved=!source.orderProved;return result;}
     if(!primitive(v))error('unsupported input shape');return typeof v==='number'?modelNumber(v,cellBindings.numericInputs??'unknown'):v;
   };
   const globals=Object.fromEntries(Object.entries(modelConstants(ir,{preserveNumericTypes:true})).map(([k,v])=>[k,input(v,ctx)]));

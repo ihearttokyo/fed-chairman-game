@@ -11,7 +11,7 @@
  */
 import { createHash } from 'node:crypto';
 
-export const COMPILER_VERSION = 'gd-model-ir-6';
+export const COMPILER_VERSION = 'gd-model-ir-12';
 export class ModelCompileError extends Error {
   constructor(message, at) { super(`${at ? `L${at.line}:${at.column}: ` : ''}${message}`); this.name = 'ModelCompileError'; this.source = at; }
 }
@@ -21,6 +21,30 @@ const hash = text => createHash('sha256').update(text).digest('hex');
 // on a fresh {} would invoke the inherited prototype setter instead of storing
 // that legal Dictionary key. Public dictionaries remain ordinary JS objects.
 const setOwn=(target,key,value)=>{Object.defineProperty(target,key,{value,writable:true,enumerable:true,configurable:true});return value;};
+// Source Dictionary order is independent of JavaScript's index-key ordering.
+// A sidecar keeps ordinary own-key public records (including __proto__) and
+// preserves source order internally without changing JSON/value interfaces.
+// Raw external JS index-key order is irretrievable: lookups remain valid, but
+// order-observing operations refuse instead of guessing the original order.
+const dictionaryOrders=new WeakMap();
+const indexKey=key=>/^(0|[1-9][0-9]*)$/.test(key)&&Number(key)<4294967295;
+const dictionaryKeys=(value,observe=false)=>{
+  const info=dictionaryOrders.get(value),keys=Object.keys(value);
+  if(info&&(keys.length!==info.keys.length||info.keys.some(k=>!Object.hasOwn(value,k))))throw new TypeError('ordered Dictionary was structurally changed outside the interpreter');
+  if(observe&&(info?.unknown??keys.some(indexKey)))throw new TypeError('external Dictionary insertion order is unproved for numeric-looking String keys');
+  return info?info.keys.slice():keys;
+};
+// Code-owned bridge for source-created constants passed to the emitter. It
+// exposes entries/proof data only, never callbacks or caller-selected schemas.
+export function dictionaryEntries(value){
+  // Only code-owned, recursively frozen constant records may carry an ordering
+  // proof across this public bridge. Mutable external data is re-admitted from
+  // its actual own properties, never from an old sidecar history.
+  const info=Object.isFrozen(value)?dictionaryOrders.get(value):undefined,keys=info?dictionaryKeys(value):Object.keys(value);
+  return {entries:keys.map(k=>[k,value[k]]),orderProved:!(info?.unknown??keys.some(indexKey))};
+}
+const dictionarySet=(value,key,item)=>{const info=dictionaryOrders.get(value);if(info&&!Object.hasOwn(value,key))info.keys.push(key);return setOwn(value,key,item);};
+const dictionary=(entries=[],unknown=false)=>{const result={};dictionaryOrders.set(result,{keys:[],unknown});for(const [key,value]of entries)dictionarySet(result,key,value);return result;};
 export function irFingerprint(ir){const {irSha256,...body}=ir;return hash(JSON.stringify(body,(_,v)=>typeof v==='number'&&!Number.isFinite(v)?{$number:String(v)}:v));}
 const TYPES = new Set(['Variant', 'float', 'int', 'bool', 'String', 'Array', 'Dictionary', 'void']);
 const BUILTINS = new Set(['float','int','str','typeof','is_finite','pow','abs','min','max','minf','maxf','clamp','exp','log','tanh','lerpf','round','roundf','signf','floor','range']);
@@ -344,15 +368,36 @@ const same=(a,b)=>{a=rawNumber(a);b=rawNumber(b);if(typeof a!==typeof b)return f
 function arrayMemberSame(a,b){
   for(const value of [a,b]){
     if(['array','dictionary'].includes(gdType(value)))throw new TypeError('Array.has membership supports scalar values only');
-    if(gdType(value)==='number'&&numericKind(value)==='unknown')throw new TypeError('Array.has membership requires exact numeric provenance');
   }
+  // A category mismatch is false without asking whether an unknown number was
+  // int or float. Subtype provenance is needed only for an actual numeric pair.
+  if(gdType(a)!==gdType(b))return false;
+  if(gdType(a)==='number'&&[a,b].some(v=>numericKind(v)==='unknown'))throw new TypeError('Array.has membership requires exact numeric provenance');
   return variantType(a)===variantType(b)&&same(a,b);
 }
 const dictionaryKey=key=>{if(typeof key!=='string')throw new TypeError('dictionary key must be String; heterogeneous keys are outside the admitted subset');return key;};
+// Bounded source str contract (Godot 4.6 Variant::stringify / num_real).
+// Do not erase ModelNumber provenance or use host String for arbitrary Variant.
+// Integral floats are deliberately restricted to a simple decimal domain; the
+// general bounded-decimal/scientific formatter and signed-zero spelling are
+// unqualified. This bound is formatting noncoverage, not a model/input limit.
+function sourceString(value){
+  if(value===null)return '<null>';
+  if(typeof value==='string')return value;
+  if(typeof value==='boolean')return value?'true':'false';
+  if(gdType(value)==='number'){
+    const kind=numericKind(value),number=rawNumber(value);
+    if(kind==='unknown')throw new TypeError('str numeric value requires exact int/float provenance');
+    if(kind==='int'&&Number.isSafeInteger(number))return String(number);
+    if(kind==='float'&&Number.isSafeInteger(number)&&Math.abs(number)<=1000000&&!Object.is(number,-0))return String(number)+'.0';
+    throw new TypeError('str numeric formatting domain is unqualified (finite safe int or simple integral float only)');
+  }
+  throw new TypeError('str container/Variant formatting domain is unqualified');
+}
 export function builtinValue(name,a,limit=100000){
   const numeric=x=>{if(typeof x==='boolean')return Number(x);if(typeof x==='number')return x;if(typeof x==='string'&&x.trim()!==''&&!Number.isNaN(Number(x)))return Number(x);throw new TypeError('invalid numeric conversion');};
   switch(name){
-    case 'float':return numeric(a[0]);case 'int':return coerceTyped(numeric(a[0]),'int');case 'str':return String(a[0]);case 'typeof':return variantType(a[0]);case 'is_finite':return typeof a[0]==='number'&&Number.isFinite(a[0]);
+    case 'float':return numeric(a[0]);case 'int':return coerceTyped(numeric(a[0]),'int');case 'str':return sourceString(a[0]);case 'typeof':return variantType(a[0]);case 'is_finite':return typeof a[0]==='number'&&Number.isFinite(a[0]);
     case 'pow':return Math.pow(...a);case 'abs':return Math.abs(a[0]);case 'min':case 'minf':return Math.min(...a);case 'max':case 'maxf':return Math.max(...a);case 'clamp':return Math.min(a[2],Math.max(a[1],a[0]));
     case 'exp':return Math.exp(a[0]);case 'log':return Math.log(a[0]);case 'tanh':return Math.tanh(a[0]);case 'lerpf':return a[0]+(a[1]-a[0])*a[2];case 'round':case 'roundf':return roundAway(a[0]);case 'floor':return Math.floor(a[0]);case 'signf':return Math.sign(a[0]);
     case 'range':{const [start,end,step]=a.length===1?[0,a[0],1]:[a[0],a[1],a[2]??1];if(![start,end,step].every(Number.isSafeInteger)||!step)throw new RangeError('range needs finite integer bounds and a nonzero step');const count=Math.max(0,Math.ceil((end-start)/step));if(count>limit)throw new RangeError('range exceeds finite specialization limit');return Array.from({length:count},(_,i)=>start+i*step);}
@@ -360,25 +405,35 @@ export function builtinValue(name,a,limit=100000){
   }
 }
 export function binaryValue(op,a,b){
+  // Dispatch before unboxing: Variant-sensitive membership needs int/float tags.
+  if(op==='in'||op==='not in'){
+    let found;
+    if(Array.isArray(b))found=b.some(x=>arrayMemberSame(x,a));
+    else if(typeof b==='string'){if(typeof a!=='string')throw new TypeError('String membership requires a String needle');found=b.includes(a);}
+    else if(dictionaryValue(b))found=Object.hasOwn(b,dictionaryKey(a));
+    else throw new TypeError('membership requires an Array, Dictionary or String receiver');
+    return op==='not in'?!found:found;
+  }
   a=rawNumber(a);b=rawNumber(b);
   switch(op){case '+':if(typeof a==='string'&&typeof b==='string'||typeof a==='number'&&typeof b==='number')return a+b;throw new TypeError('mixed String/non-numeric arithmetic requires explicit conversion');case '-':return a-b;case '*':return a*b;case '/':return a/b;case '**':return a**b;
     case '%':{if(typeof a!=='string')return a%b;let i=0;const args=Array.isArray(b)?b:[b];return a.replace(/%(?:\.(\d+))?([sdf%])/g,(whole,digits,type)=>type==='%'?'%':type==='s'?String(args[i++]):type==='d'?String(Math.trunc(args[i++])):Number(args[i++]).toFixed(Number(digits??6)));}
     case '==':return same(a,b);case '!=':return !same(a,b);case '<':return a<b;case '>':return a>b;case '<=':return a<=b;case '>=':return a>=b;
-    case 'in':return Array.isArray(b)?b.some(x=>same(a,x)):typeof b==='string'?b.includes(a):Object.hasOwn(b,dictionaryKey(a));case 'not in':return !binaryValue('in',a,b);case 'is':return gdType(a)===b;default:throw new Error(`unsupported operator ${op}`);}
+    case 'is':return gdType(a)===b;default:throw new Error(`unsupported operator ${op}`);}
 }
 
 /** Pure reference interpreter of the very same IR. Not a Godot qualification. */
-export function evaluateModel(ir,entrypoint,args=[],options={}){
+function evaluateModelInternal(ir,entrypoint,args=[],options={},constantBridge=false){
   if(ir.irSha256!==irFingerprint(ir))fail('IR fingerprint mismatch; recompile canonical source rather than editing IR');
   if(options.numericInputs!==undefined&&options.numericInputs!=='float')fail('numericInputs must be explicit float (JSON-number domain); otherwise use modelNumber tags');
   const globals={...PREDEFINED,...Object.fromEntries(Object.entries(VARIANT_TYPES).map(([name,value])=>[name,modelNumber(value,'int')])),INF:modelNumber(Infinity,'float'),NAN:modelNumber(NaN,'float')};let fuel=options.maxOperations??1000000;
   const structureVersions=new WeakMap(),resized=obj=>structureVersions.set(obj,(structureVersions.get(obj)??0)+1);
   const charge=n=>{if(--fuel<0)fail('pure interpreter operation budget exhausted',n?.source);};
-  const copy=(value,convertNumbers=false,memo=new Map())=>{if(isModelNumber(value))return value;if(typeof value==='number')return convertNumbers?modelNumber(value,options.numericInputs??'unknown'):value;if(!value||typeof value!=='object')return value;if(!Array.isArray(value)&&!dictionaryValue(value))fail('copy/input requires an Array or plain String-key Dictionary');if(memo.has(value))return memo.get(value);const result=Array.isArray(value)?[]:{};memo.set(value,result);for(const [k,v] of Object.entries(value))setOwn(result,k,copy(v,convertNumbers,memo));return result;};
-  const unbox=(value,memo=new Map())=>{if(isModelNumber(value))return value.value;if(!value||typeof value!=='object')return value;if(memo.has(value))return memo.get(value);const result=Array.isArray(value)?[]:{};memo.set(value,result);for(const [k,v]of Object.entries(value))setOwn(result,k,unbox(v,memo));return result;};
-  const truth=value=>isModelNumber(value)?value.value!==0:Boolean(value);
+  const copy=(value,convertNumbers=false,memo=new Map())=>{if(isModelNumber(value))return value;if(typeof value==='number')return convertNumbers?modelNumber(value,options.numericInputs??'unknown'):value;if(!value||typeof value!=='object')return value;if(!Array.isArray(value)&&!dictionaryValue(value))fail('copy/input requires an Array or plain String-key Dictionary');if(memo.has(value))return memo.get(value);const isArray=Array.isArray(value),info=!convertNumbers||Object.isFrozen(value)?dictionaryOrders.get(value):undefined,keys=isArray||!info?Object.keys(value):dictionaryKeys(value),result=isArray?[]:dictionary([],info?.unknown??keys.some(indexKey));memo.set(value,result);for(const k of keys)isArray?setOwn(result,k,copy(value[k],convertNumbers,memo)):dictionarySet(result,k,copy(value[k],convertNumbers,memo));return result;};
+  const unbox=(value,memo=new Map())=>{if(isModelNumber(value))return value.value;if(!value||typeof value!=='object')return value;if(memo.has(value))return memo.get(value);const isArray=Array.isArray(value),result=isArray?[]:dictionary([],dictionaryOrders.get(value)?.unknown??Object.keys(value).some(indexKey));memo.set(value,result);for(const k of isArray?Object.keys(value):dictionaryKeys(value))isArray?setOwn(result,k,unbox(value[k],memo)):dictionarySet(result,k,unbox(value[k],memo));return result;};
+  const truth=value=>isModelNumber(value)?value.value!==0:Array.isArray(value)?value.length>0:dictionaryValue(value)?dictionaryKeys(value).length>0:Boolean(value);
   const typed=(value,target)=>{if(['int','float'].includes(target))return modelNumber(coerceTyped(value,target),target);return coerceTyped(value,target);};
   const builtin=(name,values)=>{
+    if(name==='str')return sourceString(values[0]);
     if(name==='typeof')return modelNumber(variantType(values[0]),'int');
     if(name==='is_finite')return gdType(values[0])==='number'&&Number.isFinite(rawNumber(values[0]));
     if(['pow','abs','min','max','minf','maxf','clamp','exp','log','tanh','lerpf','round','roundf','signf','floor'].includes(name)&&values.some(v=>gdType(v)!=='number'))fail('Boolean/non-numeric math requires explicit numeric conversion');
@@ -388,11 +443,25 @@ export function evaluateModel(ir,entrypoint,args=[],options={}){
     const kinds=values.map(numericKind),kind=name==='int'?'int':name==='float'||['pow','exp','log','tanh','lerpf','minf','maxf','roundf','signf'].includes(name)?'float':kinds.every(k=>k==='int')?'int':kinds.every(k=>k==='float')?'float':'unknown';
     return modelNumber(value,kind);
   };
+  // Source property access is not JS boxing. Admit the receiver BEFORE any
+  // own-property lookup or write; private ModelNumber fields are never source
+  // Dictionary keys. Method calls retain their separate closed dispatch below.
+  const arrayIndex=(obj,index,n)=>{
+    if(gdType(index)!=='number'||!Number.isSafeInteger(rawNumber(index)))fail('array index requires a finite safe integral numeric value',n.source);
+    let key=rawNumber(index);if(key<0)key+=obj.length;
+    if(key<0||key>=obj.length)fail('array index out of bounds',n.source);return key;
+  };
+  const accessReceiver=(obj,member,n)=>{
+    if(dictionaryValue(obj))return false;
+    if(!member&&Array.isArray(obj))return true;
+    fail(`${member?'member':'index'} access receiver must be ${member?'a plain Dictionary':'an Array or plain Dictionary'}`,n.source);
+  };
+  const accessKey=(obj,index,member,n)=>accessReceiver(obj,member,n)?arrayIndex(obj,index,n):dictionaryKey(index);
   const expr=(n,env)=>{charge(n);switch(n.kind){
     case 'literal':return typeof n.value==='number'?modelNumber(n.value,n.type):n.value;case 'name':if(Object.hasOwn(env,n.name))return env[n.name];if(Object.hasOwn(globals,n.name))return globals[n.name];fail(`unbound variable ${n.name}`,n.source);break;
-    case 'array':return n.items.map(x=>expr(x,env));case 'dictionary':return Object.fromEntries(n.entries.map(x=>[dictionaryKey(expr(x.key,env)),expr(x.value,env)]));
-    case 'member':{const obj=expr(n.object,env);if(!Object.hasOwn(obj,n.name))fail(`missing member ${n.name}`,n.source);return obj[n.name];}
-    case 'index':{const obj=expr(n.object,env),index=expr(n.index,env);let key=Array.isArray(obj)?rawNumber(index):dictionaryKey(index);if(Array.isArray(obj)&&key<0)key+=obj.length;if(!Object.hasOwn(obj,key))fail(`missing index ${key}`,n.source);return obj[key];}
+    case 'array':return n.items.map(x=>expr(x,env));case 'dictionary':return dictionary(n.entries.map(x=>[dictionaryKey(expr(x.key,env)),expr(x.value,env)]));
+    case 'member':{const obj=expr(n.object,env),key=accessKey(obj,n.name,true,n);if(!Object.hasOwn(obj,key))fail(`missing member ${key}`,n.source);return obj[key];}
+    case 'index':{const obj=expr(n.object,env),index=expr(n.index,env),key=accessKey(obj,index,false,n);if(!Object.hasOwn(obj,key))fail(`missing index ${key}`,n.source);return obj[key];}
     case 'unary':{const v=expr(n.value,env);if(n.op==='not')return !truth(v);if(gdType(v)!=='number')fail('Boolean/non-numeric unary arithmetic requires explicit conversion',n.source);return modelNumber(n.op==='-'?-rawNumber(v):+rawNumber(v),numericKind(v));}
     case 'binary':{const a=expr(n.left,env);if(n.op==='and')return truth(a)&&truth(expr(n.right,env));if(n.op==='or')return truth(a)||truth(expr(n.right,env));const b=expr(n.right,env);return ['+','-','*','/','%','**'].includes(n.op)?modelArithmetic(n.op,a,b):binaryValue(n.op,a,b);}
     case 'conditional':return expr(truth(expr(n.condition,env))?n.yes:n.no,env);
@@ -403,16 +472,30 @@ export function evaluateModel(ir,entrypoint,args=[],options={}){
       if(!METHOD_RECEIVERS[name]?.includes(receiverKind))fail(`method ${name} has invalid receiver kind ${receiverKind}`,n.source);
       if(name==='merge'&&!dictionaryValue(a[0]))fail('merge requires a Dictionary source',n.source);
       if(name==='append_array'&&!Array.isArray(a[0]))fail('append_array requires an Array source',n.source);
-      switch(name){case 'get':{const key=Array.isArray(obj)?rawNumber(a[0]):dictionaryKey(a[0]);return Object.hasOwn(obj,key)?obj[key]:a[1]??null;}case 'has':return Array.isArray(obj)?obj.some(value=>arrayMemberSame(value,a[0])):Object.hasOwn(obj,dictionaryKey(a[0]));case 'size':return modelNumber(Array.isArray(obj)||typeof obj==='string'?obj.length:Object.keys(obj).length,'int');case 'is_empty':return (Array.isArray(obj)?obj.length:Object.keys(obj).length)===0;
-        case 'duplicate':return truth(a[0])?copy(obj):Array.isArray(obj)?obj.slice():{...obj};case 'slice':return obj.slice(...a.map(rawNumber));case 'append':resized(obj);obj.push(a[0]);return null;case 'append_array':if(a[0].length)resized(obj);obj.push(...a[0]);return null;case 'fill':obj.fill(a[0]);return null;
+      switch(name){case 'get':{if(Array.isArray(obj)){if(a.length!==1)fail('Array.get requires one index argument',n.source);const key=arrayIndex(obj,a[0],n);return obj[key];}const key=dictionaryKey(a[0]);return Object.hasOwn(obj,key)?obj[key]:a[1]??null;}case 'has':return Array.isArray(obj)?obj.some(value=>arrayMemberSame(value,a[0])):Object.hasOwn(obj,dictionaryKey(a[0]));case 'size':return modelNumber(Array.isArray(obj)||typeof obj==='string'?obj.length:Object.keys(obj).length,'int');case 'is_empty':return (Array.isArray(obj)?obj.length:Object.keys(obj).length)===0;
+        case 'duplicate':return truth(a[0])?copy(obj):Array.isArray(obj)?obj.slice():dictionary(dictionaryKeys(obj).map(k=>[k,obj[k]]),dictionaryOrders.get(obj)?.unknown??false);case 'slice':return obj.slice(...a.map(rawNumber));case 'append':resized(obj);obj.push(a[0]);return null;case 'append_array':if(a[0].length)resized(obj);obj.push(...a[0]);return null;case 'fill':obj.fill(a[0]);return null;
         case 'resize':{const length=rawNumber(a[0]);if(!Number.isSafeInteger(length)||length<0||length>(options.maxArrayLength??10000))fail('invalid/beyond-budget array resize',n.source);if(length!==obj.length)resized(obj);while(obj.length<length)obj.push(null);obj.length=length;return null;}
         case 'pop_back':if(!obj.length)fail('pop from empty array',n.source);resized(obj);return obj.pop();case 'pop_front':if(!obj.length)fail('pop from empty array',n.source);resized(obj);return obj.shift();case 'sort':obj.sort((a,b)=>a<b?-1:a>b?1:0);return null;
-        case 'merge':for(const [k,v] of Object.entries(a[0]))if(truth(a[1])||!Object.hasOwn(obj,k))setOwn(obj,k,v);return null;case 'values':return Object.values(obj);case 'keys':return Object.keys(obj);case 'is_valid_float':return validFloatString(obj);default:fail(`unsupported method ${name}`,n.source);}
+        case 'merge':for(const k of dictionaryKeys(a[0],true))if(truth(a[1])||!Object.hasOwn(obj,k))dictionarySet(obj,k,a[0][k]);return null;case 'values':return dictionaryKeys(obj,true).map(k=>obj[k]);case 'keys':return dictionaryKeys(obj,true);case 'is_valid_float':return validFloatString(obj);default:fail(`unsupported method ${name}`,n.source);}
     }default:fail(`unsupported expression ${n.kind}`,n.source);}};
-  const location=(target,env)=>{if(target.kind==='name')return {read:()=>env[target.name],write:value=>setOwn(env,target.name,value)};const obj=expr(target.object,env),index=target.kind==='member'?target.name:expr(target.index,env);let key=Array.isArray(obj)?rawNumber(index):dictionaryKey(index);if(Array.isArray(obj)){if(key<0)key+=obj.length;if(!Number.isSafeInteger(key)||key<0||key>=obj.length)fail('array assignment out of bounds',target.source);}return {read:()=>{if(!Object.hasOwn(obj,key))fail('missing compound assignment target',target.source);return obj[key];},write:value=>setOwn(obj,key,value)};};
-  const run=(body,env)=>{for(const n of body){charge(n);switch(n.kind){case 'declare':setOwn(env,n.name,typed(n.value?expr(n.value,env):null,n.storageType));break;case 'assign':{const target=location(n.target,env);const value=n.op==='='?expr(n.value,env):modelArithmetic(n.op[0],target.read(),expr(n.value,env));target.write(typed(value,n.storageType));break;}
+  // Native4.7.2 assignment order: receiver, RHS, index, compound read, write.
+  // Capture only the receiver now; resolve the index/location AFTER the RHS.
+  const location=(target,env)=>{
+    if(target.kind==='name')return ()=>({read:()=>env[target.name],write:value=>setOwn(env,target.name,value)});
+    const obj=expr(target.object,env),member=target.kind==='member';
+    accessReceiver(obj,member,target); // unsupported receivers never expose JS fields
+    return ()=>{
+      const index=member?target.name:expr(target.index,env),key=accessKey(obj,index,member,target);
+      return {read:()=>{if(!Object.hasOwn(obj,key))fail('missing compound assignment target',target.source);return obj[key];},write:value=>{
+        // Bounds and negative normalization use the live Array after RHS AND
+        // index effects. Recheck before defineProperty; never append a ghost slot.
+        return Array.isArray(obj)?setOwn(obj,arrayIndex(obj,index,target),value):dictionarySet(obj,key,value);
+      }};
+    };
+  };
+  const run=(body,env)=>{for(const n of body){charge(n);switch(n.kind){case 'declare':setOwn(env,n.name,typed(n.value?expr(n.value,env):null,n.storageType));break;case 'assign':{const resolve=location(n.target,env),rhs=expr(n.value,env),target=resolve(),value=n.op==='='?rhs:modelArithmetic(n.op[0],target.read(),rhs);target.write(typed(value,n.storageType));break;}
       case 'expression':expr(n.value,env);break;case 'return':return {value:expr(n.value,env)};case 'if':{const r=run(truth(expr(n.condition,env))?n.yes:n.no,env);if(r)return r;break;}
-      case 'for':{const values=expr(n.iterable,env),isArray=Array.isArray(values),keys=Object.keys(values),length=values.length,version=structureVersions.get(values)??0,count=isArray?length:keys.length;
+      case 'for':{const values=expr(n.iterable,env),isArray=Array.isArray(values),keys=isArray?Object.keys(values):dictionaryKeys(values,true),length=values.length,version=structureVersions.get(values)??0,count=isArray?length:keys.length;
         for(let i=0;i<count;i++){setOwn(env,n.name,isArray?values[i]:keys[i]);const r=run(n.body,env);
           if(isArray&&(values.length!==length||(structureVersions.get(values)??0)!==version))fail('for iterable is resized/mutated: no finite iteration proof',n.source);
           if(!isArray&&(Object.keys(values).length!==keys.length||keys.some(k=>!Object.hasOwn(values,k))))fail('for dictionary iterable key set is mutated: no finite iteration proof',n.source);
@@ -421,7 +504,16 @@ export function evaluateModel(ir,entrypoint,args=[],options={}){
   const call=(name,values)=>{const boundary=Object.hasOwn(ir.boundaries,name)?ir.boundaries[name]:undefined;if(boundary){const supplied=options.inputs?.[boundary.input];if(supplied===undefined)fail(`missing input-only boundary ${boundary.input}`);const value=copy(supplied,true),valid=call(boundary.validator,[value]);return valid.ok?{ok:true,value}:valid;}
     const fn=ir.functions[name];if(!fn)fail(`unresolved function ${name}`);if(values.length>fn.params.length)fail(`too many arguments to ${name}`,fn.source);const env={};fn.params.forEach((p,i)=>{if(i<values.length)setOwn(env,p.name,typed(values[i],p.type));else if(p.value)setOwn(env,p.name,typed(expr(p.value,env),p.type));else fail(`missing argument ${name}.${p.name}`,p.source);});return typed(run(fn.body,env)?.value??null,fn.returns);};
   for(const n of ir.constants)setOwn(globals,n.name,typed(expr(n.value,globals),n.storageType));
-  const result=call(entrypoint,copy(args,true));return options.preserveNumericTypes?result:unbox(result);
+  const internal=call(entrypoint,copy(args,true)),result=options.preserveNumericTypes?internal:unbox(internal);
+  const finish=(value,seen=new Set())=>{
+    if(!value||typeof value!=='object'||isModelNumber(value)||seen.has(value))return;seen.add(value);
+    if(!constantBridge)dictionaryOrders.delete(value);
+    for(const key of Object.keys(value))finish(value[key],seen);
+    if(constantBridge)Object.freeze(value);
+  };
+  finish(result);return result;
 }
 
-export function modelConstants(ir,options={}){const wrapper={...ir,functions:{...ir.functions,__constants:{name:'__constants',params:[],body:[{kind:'return',value:{kind:'dictionary',entries:ir.constants.map(n=>({key:{kind:'literal',value:n.name},value:{kind:'name',name:n.name}}))}}]}},boundaries:{}};wrapper.irSha256=irFingerprint(wrapper);return evaluateModel(wrapper,'__constants',[],options);}
+export function evaluateModel(ir,entrypoint,args=[],options={}){return evaluateModelInternal(ir,entrypoint,args,options,false);}
+
+export function modelConstants(ir,options={}){const wrapper={...ir,functions:{...ir.functions,__constants:{name:'__constants',params:[],body:[{kind:'return',value:{kind:'dictionary',entries:ir.constants.map(n=>({key:{kind:'literal',value:n.name},value:{kind:'name',name:n.name}}))}}]}},boundaries:{}};wrapper.irSha256=irFingerprint(wrapper);return evaluateModelInternal(wrapper,'__constants',[],options,true);}

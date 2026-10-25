@@ -60,6 +60,277 @@ let checks=1;
 const emittedFunctions=new Set();
 const recordCoverage=program=>program.coverage.functions.forEach(name=>emittedFunctions.add(name));
 const test=(name,run)=>{if(process.env.FED_MODEL_TEST_FILTER&&!name.includes(process.env.FED_MODEL_TEST_FILTER))return;run();checks++;console.log('PASS '+name);};
+// BEGIN FED597 additions: native4.7.2 receiver -> RHS -> index -> read/write.
+// Source: /private/tmp/fed596-language-oracle/project/oracle.gd
+// result.json SHA256: 15ec4ef21c886c9cb40a1524e113f9d9ad6f814930a1e1a48c45abb31df2e9bf
+const nativeSource597="extends SceneTree\nfunc _receiver(a: Array, events: Array) -> Array:\n\tevents.append(\"receiver\")\n\treturn a\nfunc _index(events: Array, index: int) -> int:\n\tevents.append(\"index\")\n\treturn index\nfunc _rhs(a: Array, events: Array) -> Variant:\n\tevents.append(\"rhs\")\n\treturn a.pop_back()\nfunc assignment(index: int, compound: bool) -> Dictionary:\n\tvar a := [1, 7]\n\tvar events: Array = []\n\tif compound:\n\t\t_receiver(a, events)[_index(events, index)] += _rhs(a, events)\n\telse:\n\t\t_receiver(a, events)[_index(events, index)] = _rhs(a, events)\n\treturn {\"array\": a, \"events\": events}\nfunc order(flag: bool) -> Array:\n\tvar d := {}\n\tif flag:\n\t\td[\"2\"] = \"two\"\n\t\td[\"1\"] = \"one\"\n\telse:\n\t\td[\"1\"] = \"one\"\n\t\td[\"2\"] = \"two\"\n\tvar out: Array = []\n\tfor k in d:\n\t\tout.append(k)\n\treturn out\nfunc run(i: int, c: bool) -> Dictionary:\n\treturn assignment(i,c)\n";
+const nativeCases597=[{"index":0,"compound":false,"expected":{"array":[7],"events":["receiver","rhs","index"]}},{"index":0,"compound":true,"expected":{"array":[8],"events":["receiver","rhs","index"]}},{"index":-1,"compound":false,"expected":{"array":[7],"events":["receiver","rhs","index"]}},{"index":-1,"compound":true,"expected":{"array":[8],"events":["receiver","rhs","index"]}}];
+const receiverRhsIndex597=op=>'func receiver(holder: Dictionary,e: Array) -> Array:\n\te.append("receiver")\n\treturn holder.a\nfunc rhs(a: Array,holder: Dictionary,e: Array) -> int:\n\te.append("rhs")\n\ta[0] = 99\n\tholder.a = [1000]\n\treturn a[0]\nfunc index(a: Array,e: Array) -> int:\n\te.append("index")\n\ta[0] = 100.0\n\treturn 0\nfunc run() -> Array:\n\tvar a := [7]\n\tvar holder := {"a":a}\n\tvar e := []\n\treceiver(holder,e)[index(a,e)] '+op+' rhs(a,holder,e)\n\treturn [a[0],typeof(a[0]),holder.a[0],e]\n';
+const emptyGrowth597=(op,index,erase=false)=>'func receiver(a: Array,e: Array) -> Array:\n\te.append("receiver")\n\treturn a\nfunc rhs(a: Array,e: Array) -> int:\n\te.append("rhs")\n\ta.append(5)\n\treturn 3\nfunc index(a: Array,e: Array) -> int:\n\te.append("index")\n\t'+(erase?'a.resize(0)':'a.append(9)')+'\n\treturn '+index+'\nfunc run() -> Array:\n\tvar a := []\n\tvar e := []\n\treceiver(a,e)[index(a,e)] '+op+' rhs(a,e)\n\treturn [a,e]\n';
+const member597=(key,indexed)=>'func receiver(d: Dictionary,e: Array) -> Dictionary:\n\te.append("receiver")\n\treturn d\nfunc rhs(d: Dictionary,e: Array) -> int:\n\te.append("rhs")\n\td["'+key+'"] = 9.0\n\treturn 2\nfunc index(d: Dictionary,e: Array) -> String:\n\te.append("index")\n\td["'+key+'"] = 12.0\n\treturn "'+key+'"\nfunc run() -> Array:\n\tvar d := {}\n\tvar e := []\n\treceiver(d,e)'+(indexed?'[index(d,e)]':'.'+key)+' /= rhs(d,e)\n\treturn [d["'+key+'"],typeof(d["'+key+'"]),e]\n';
+const flatten597=(v,p='',out={})=>{if(Array.isArray(v))v.forEach((x,i)=>flatten597(x,`${p||'result'}[${i}]`,out));else if(v&&typeof v==='object')for(const [key,x]of Object.entries(v))flatten597(x,p?p+'.'+key:key,out);else out[p||'result']=v;return out;};
+const nativeHand597=(program,values,expected)=>{const want=flatten597(expected),actual=evaluate(program,values,{coerceBlankSelections:true});for(const [path,value]of Object.entries(want))assert.equal(actual.output(path),value,path);for(const path of Object.keys(program.outputs))if(!Object.hasOwn(want,path))assert.equal(actual.output(path),'#N/A','unavailable capacity '+path);};
+const numericTag597=(p,values,d)=>{if(typeof d==='string')return d;const condition=evaluate({...p,outputs:{tag:'='+d.condition}},values).output('tag');assert.equal(typeof condition,'boolean','numeric tag guard must be available');return numericTag597(p,values,condition?d.yes:d.no);};
+test('FED597 actual native assignment outputs and event order match both formula modes',()=>{
+  const ir=compileModel(nativeSource597,{entrypoints:['run']});for(const optimize of [true,false]){const p=emitExcel(ir,{entrypoint:'run',optimize,arguments:{i:{cell:"'Policy'!E6",type:'number',numericType:'int'},c:{cell:"'Policy'!E7",type:'boolean'}}});for(const row of nativeCases597){const values={"'Policy'!E6":row.index,"'Policy'!E7":row.compound};nativeHand597(p,values,row.expected);assert.equal(numericTag597(p,values,p.outputNumericTypes['array[0]']),'int');}}
+});
+test('FED597 captured receiver RHS value and post-index target type survive both modes',()=>{
+  for(const optimize of [true,false])for(const op of ['=','+='])nativeHand597(emitExcel(compileModel(receiverRhsIndex597(op),{entrypoints:['run']}),{entrypoint:'run',optimize}),{},[op==='='?99:199,op==='='?2:3,1000,['receiver','rhs','index']]);
+});
+test('FED597 initially empty Array live growth and index side effects preserve ownership',()=>{
+  for(const optimize of [true,false])for(const op of ['=','+=']){
+    for(const i of ['0','-1'])nativeHand597(emitExcel(compileModel(emptyGrowth597(op,i),{entrypoints:['run']}),{entrypoint:'run',optimize}),{},[i==='0'?[op==='='?3:8,9]:[5,op==='='?3:12],['receiver','rhs','index']]);
+    const p=emitExcel(compileModel(emptyGrowth597(op,'0',true),{entrypoints:['run']}),{entrypoint:'run',optimize});for(const path of Object.keys(p.outputs))assert.equal(evaluate(p).output(path),'#N/A');
+  }
+});
+test('FED597 legal Dictionary members and indices read post-RHS post-index numeric tags',()=>{
+  for(const optimize of [true,false])for(const key of ['value','numericType','__proto__','constructor','toString'])for(const indexed of [true,false])nativeHand597(emitExcel(compileModel(member597(key,indexed),{entrypoints:['run']}),{entrypoint:'run',optimize}),{},[indexed?6:4.5,3,indexed?['receiver','rhs','index']:['receiver','rhs']]);
+});
+test('FED597 typed name assignments preserve integer truncation float provenance and RHS events',()=>{
+  const source='func rhs(e: Array) -> float:\n\te.append("rhs")\n\treturn 2.0\nfunc run() -> Array:\n\tvar e := []\n\tvar n: int = 7\n\tn /= rhs(e)\n\tvar f: float = 7.0\n\tf /= rhs(e)\n\treturn [n,typeof(n),f,typeof(f),e]\n';for(const optimize of [true,false])nativeHand597(emitExcel(compileModel(source,{entrypoints:['run']}),{entrypoint:'run',optimize}),{},[3,2,3.5,3,['rhs','rhs']]);
+});
+test('FED597 lazy assignments preserve event absence and receiver refusals in both modes',()=>{
+  const source=nativeSource597+'func guarded(flag: bool,i: int,c: bool) -> Dictionary:\n\tvar a := [1,7]\n\tvar e := []\n\tif flag:\n\t\tif c:\n\t\t\t_receiver(a,e)[_index(e,i)] += _rhs(a,e)\n\t\telse:\n\t\t\t_receiver(a,e)[_index(e,i)] = _rhs(a,e)\n\treturn {"array":a,"events":e}\n';
+  for(const optimize of [true,false]){const ir=compileModel(source,{entrypoints:['guarded']}),p=emitExcel(ir,{entrypoint:'guarded',optimize,arguments:{flag:{cell:"'Policy'!E6",type:'boolean'},i:{cell:"'Policy'!E7",type:'number',numericType:'int'},c:{cell:"'Policy'!E8",type:'boolean'}}});for(const row of nativeCases597)for(const flag of [true,false])nativeHand597(p,{"'Policy'!E6":flag,"'Policy'!E7":row.index,"'Policy'!E8":row.compound},flag?row.expected:{array:[1,7],events:[]});}
+});
+// END FED597 additions.
+
+// BEGIN FED596 additions; all prior120 groups remain byte-identical below.
+const hand596=(p,values,expected)=>{const got=evaluate(p,values,{coerceBlankSelections:true});for(const [key,value]of Object.entries(expected))assert.equal(got.output(key),value,key);};
+const array596=expected=>Object.fromEntries(expected.map((v,i)=>[`result[${i}]`,v]));
+test('FED596 live Array write emptying RHS stays unavailable in both formula modes',()=>{
+  for(const optimize of [true,false])for(const op of ['=','+='])for(const receiver of ['a','alias','holder.a'])for(const rhs of ['a','alias','holder.a']){
+    const s=`func run() -> Array:\n\tvar a := [7]\n\tvar alias := a\n\tvar holder := {"a":a}\n\t${receiver}[0] ${op} ${rhs}.pop_back()\n\treturn [a.size(),a[0]]\n`,p=emitExcel(compileModel(s,{entrypoints:['run']}),{entrypoint:'run',optimize});hand596(p,{},array596(['#N/A','#N/A']));
+  }
+});
+test('FED596 native post-RHS Array values preserve valid writes and NIL arithmetic refusal',()=>{
+  for(const optimize of [true,false])for(const [op,shrink,grow,regrow]of [['=',11,5,3],['+=',18,12,null]]){
+    const sources=[`func run() -> Array:\n\tvar a := [7,11]\n\ta[0] ${op} a.pop_back()\n\treturn [a.size(),a[0]]\n`,`func grow(a: Array) -> int:\n\ta.append(9)\n\treturn 5\nfunc run() -> Array:\n\tvar a := [7]\n\tvar alias := a\n\ta[0] ${op} grow(alias)\n\treturn [a.size(),a[0],a[1]]\n`,`func regrow(a: Array) -> int:\n\ta.pop_back()\n\ta.resize(1)\n\treturn 3\nfunc run() -> Array:\n\tvar a := [7]\n\ta[0] ${op} regrow(a)\n\treturn [a.size(),a[0],typeof(a[0])]\n`];
+    sources.forEach((s,i)=>hand596(emitExcel(compileModel(s,{entrypoints:['run']}),{entrypoint:'run',optimize}),{},array596(i===2&&op==='+='?['#N/A','#N/A','#N/A']:[[1,shrink],[2,grow,9],[1,regrow,2]][i])));hand596(emitExcel(compileModel(sources[2].replace('a[0] '+op,'a[-1] '+op),{entrypoints:['run']}),{entrypoint:'run',optimize}),{},array596(op==='+='?['#N/A','#N/A','#N/A']:[1,regrow,2]));
+  }
+});
+test('FED596 native RHS precedes index and compound target read',()=>{
+  const source='func receiver(a: Array,c: Array) -> Array:\n\tc[0] += 1\n\treturn a\nfunc index(c: Array) -> int:\n\tc[1] += 1\n\treturn 0\nfunc rhs(a: Array,c: Array) -> int:\n\tc[2] += 1\n\ta[0] = 99\n\treturn 1\nfunc run() -> Array:\n\tvar a := [7]\n\tvar c := [0,0,0]\n\treceiver(a,c)[index(c)] += rhs(a,c)\n\treturn [a[0],c[0],c[1],c[2]]\n';
+  const mutation='func index(a: Array,c: Array) -> int:\n\tc[0] += 1\n\ta.pop_back()\n\treturn -1\nfunc run() -> Array:\n\tvar a := [7,11]\n\tvar c := [0]\n\ta[index(a,c)] = 3\n\treturn [a.size(),a[0],c[0]]\n';
+  for(const optimize of [true,false])for(const [s,expected]of [[source,[100,1,1,1]],[mutation,[1,3,1]]])hand596(emitExcel(compileModel(s,{entrypoints:['run']}),{entrypoint:'run',optimize}),{},array596(expected));
+});
+test('FED596 native live negative normalization supports final valid bounds',()=>{
+  for(const optimize of [true,false])for(const op of ['=','+=']){
+    const shrink=`func run() -> Array:\n\tvar a := [7,11]\n\tvar alias := a\n\ta[-1] ${op} alias.pop_back()\n\treturn [a.size(),a[0]]\n`,grow=`func grow(a: Array) -> int:\n\ta.append(9)\n\treturn 5\nfunc run() -> Array:\n\tvar a := [7,11]\n\ta[-1] ${op} grow(a)\n\treturn [a.size(),a[0]]\n`;
+    for(const [s,expected] of [[shrink,[1,op==='='?11:18]],[grow,[3,7]]])hand596(emitExcel(compileModel(s,{entrypoints:['run']}),{entrypoint:'run',optimize}),{},array596(expected));
+    const plain=`func run() -> Array:\n\tvar a := [7,11]\n\ta[-1] ${op} 3\n\treturn a\n`;hand596(emitExcel(compileModel(plain,{entrypoints:['run']}),{entrypoint:'run',optimize}),{},array596([7,op==='='?3:14]));
+  }
+  const initial='func grow(a: Array) -> int:\n\ta.append(9)\n\treturn 5\nfunc run() -> Array:\n\tvar a := [7]\n\ta[1] = grow(a)\n\treturn [a.size(),a[0]]\n';for(const optimize of [true,false])hand596(emitExcel(compileModel(initial,{entrypoints:['run']}),{entrypoint:'run',optimize}),{},array596([2,7]));
+});
+test('FED596 native live writes preserve inactive branches',()=>{
+  for(const optimize of [true,false])for(const op of ['=','+=']){
+    const s=`func run(flag: bool) -> Array:\n\tvar a := [7]\n\tif flag:\n\t\ta[0] ${op} a.pop_back()\n\treturn [a.size(),a[0]]\n`,p=emitExcel(compileModel(s,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{flag:{cell:"'Policy'!E6",type:'boolean'}}});hand596(p,{"'Policy'!E6":false},array596([1,7]));hand596(p,{"'Policy'!E6":true},array596(['#N/A','#N/A']));
+    const n=`func run(flag: bool) -> Array:\n\tvar a := [7,11]\n\ta[-1] ${op} (a.pop_back() if flag else 3)\n\treturn [a.size(),a[0],a[-1]]\n`,q=emitExcel(compileModel(n,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{flag:{cell:"'Policy'!E6",type:'boolean'}}});hand596(q,{"'Policy'!E6":false},array596([2,7,op==='='?3:14]));hand596(q,{"'Policy'!E6":true},array596([1,op==='='?11:18,op==='='?11:18]));
+  }
+  for(const optimize of [true,false]){
+    for(const index of ['0','-1'])for(const op of ['=','+=']){const s=`func run(flag: bool) -> Array:\n\tvar a := [7]\n\tvar b := [11]\n\tvar target = a if flag else b\n\ttarget[${index}] ${op} a.pop_back()\n\treturn [a.size(),b.size(),b[0]]\n`,p=emitExcel(compileModel(s,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{flag:{cell:"'Policy'!E6",type:'boolean'}}});hand596(p,{"'Policy'!E6":false},array596([0,1,op==='='?7:18]));hand596(p,{"'Policy'!E6":true},array596(['#N/A','#N/A','#N/A']));}
+    const s='func grow(a: Array) -> int:\n\ta.append(9)\n\treturn 5\nfunc run(flag: bool) -> Array:\n\tvar a := [7]\n\tif flag:\n\t\ta[1] = grow(a)\n\treturn [a.size(),a[0]]\n',p=emitExcel(compileModel(s,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{flag:{cell:"'Policy'!E6",type:'boolean'}}});hand596(p,{"'Policy'!E6":false},array596([1,7]));hand596(p,{"'Policy'!E6":true},array596([2,7]));
+  }
+});
+test('FED596 Dictionary creation order overwrites and compound reads are unchanged',()=>{
+  const source='func create(d: Dictionary) -> int:\n\td.numericType = 5\n\treturn 7\nfunc overwrite(d: Dictionary) -> int:\n\td.value = 99\n\treturn 1\nfunc run() -> Array:\n\tvar d := {}\n\td.value = create(d)\n\td.value += overwrite(d)\n\treturn [d.keys(),d.value,d.numericType]\n';
+  for(const optimize of [true,false])hand596(emitExcel(compileModel(source,{entrypoints:['run']}),{entrypoint:'run',optimize}),{},{'result[0][0]':'numericType','result[0][1]':'value','result[1]':100,'result[2]':5});
+});
+// END FED596 additions.
+
+// BEGIN FED594 additions; all prior108 groups remain byte-identical below.
+const hand594=(p,values,expected)=>{const got=evaluate(p,values,{coerceBlankSelections:true});for(const [key,value]of Object.entries(expected))assert.equal(got.output(key),value,key);};
+const array594=expected=>Object.fromEntries(expected.map((v,i)=>[`result[${i}]`,v]));
+test('FED594 numeric receiver member and index reads remain unavailable in both modes',()=>{
+  for(const optimize of [true,false])for(const literal of ['7','7.0'])for(const access of ['.value','.numericType','["value"]','["numericType"]']){
+    hand594(emitExcel(compileModel(`func run() -> Variant:\n\treturn (${literal})${access}\n`,{entrypoints:['run']}),{entrypoint:'run',optimize}),{},{result:'#N/A'});
+    hand594(emitExcel(compileModel(`func run(v: Variant) -> Variant:\n\treturn v${access}\n`,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{v:modelNumber(7,literal==='7'?'int':'float')}}),{},{result:'#N/A'});
+  }
+});
+test('FED594 numeric receiver lazy reads preserve inactive and valid conditional Dictionary arms',()=>{
+  for(const optimize of [true,false])for(const literal of ['7','7.0'])for(const access of ['.value','.numericType','["value"]','["numericType"]']){
+    const p=emitExcel(compileModel(`func run(flag: bool) -> Variant:\n\tvar v := ${literal}\n\treturn v${access} if flag else "safe"\n`,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{flag:{cell:"'Policy'!E6",type:'boolean'}}});hand594(p,{"'Policy'!E6":false},{result:'safe'});hand594(p,{"'Policy'!E6":true},{result:'#N/A'});
+    const key=access.includes('numericType')?'numericType':'value',q=emitExcel(compileModel(`func run(flag: bool) -> Variant:\n\tvar v = ${literal} if flag else {"${key}":"visible"}\n\treturn v${access}\n`,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{flag:{cell:"'Policy'!E6",type:'boolean'}}});hand594(q,{"'Policy'!E6":false},{result:'visible'});hand594(q,{"'Policy'!E6":true},{result:'#N/A'});
+  }
+  for(const optimize of [true,false])hand594(emitExcel(compileModel('func run() -> Array:\n\tif false:\n\t\tvar hidden = (7).value\n\treturn [false and (7).value>0,true or (7.0).value>0,(7).numericType if false else "safe"]\n',{entrypoints:['run']}),{entrypoint:'run',optimize}),{},array594([false,true,'safe']));
+});
+test('FED594 numeric receiver writes and compounds remain unavailable only when active',()=>{
+  for(const optimize of [true,false])for(const literal of ['7','7.0'])for(const access of ['.value','.numericType','["value"]','["numericType"]'])for(const op of ['=','+=']){
+    const p=emitExcel(compileModel(`func run(flag: bool) -> String:\n\tvar v := ${literal}\n\tif flag:\n\t\tv${access} ${op} 1\n\treturn "safe"\n`,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{flag:{cell:"'Policy'!E6",type:'boolean'}}});hand594(p,{"'Policy'!E6":false},{result:'safe'});hand594(p,{"'Policy'!E6":true},{result:'#N/A'});
+  }
+  for(const optimize of [true,false])for(const literal of ['7','7.0'])for(const access of ['.value','.numericType','["value"]','["numericType"]'])for(const op of ['=','+=']){
+    const key=access.includes('numericType')?'numericType':'value',p=emitExcel(compileModel(`func run(flag: bool) -> Variant:\n\tvar v = ${literal} if flag else {"${key}":5}\n\tv${access} ${op} 1\n\treturn v${access}\n`,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{flag:{cell:"'Policy'!E6",type:'boolean'}}});hand594(p,{"'Policy'!E6":false},{result:op==='='?1:6});hand594(p,{"'Policy'!E6":true},{result:'#N/A'});
+  }
+});
+test('FED594 legal Dictionary value numericType and prototype-like keys are not blacklisted',()=>{
+  const s='func run() -> Array:\n\tvar d := {"value":7,"numericType":"int","__proto__":2,"constructor":"ctor","toString":"text"}\n\tvar alias := d\n\talias.value += 1\n\td["numericType"] = "float"\n\talias.__proto__ += 3\n\td["constructor"] = "new"\n\td.toString = "kept"\n\treturn [d.value,d["value"],d.numericType,d["numericType"],d.__proto__,d["__proto__"],d.constructor,d.toString,d.get("value"),d.has("numericType"),d.size()]\n';
+  for(const optimize of [true,false])hand594(emitExcel(compileModel(s,{entrypoints:['run']}),{entrypoint:'run',optimize}),{},array594([8,8,'float','float',5,5,'new','kept',8,true,5]));
+});
+test('FED594 admitted Array indices and existing method dispatch retain hand expectations',()=>{
+  const s='func run(i: int) -> Array:\n\tvar a := [2,4,null]\n\tvar alias := a\n\talias[-3] += 1\n\ta[1] = 8\n\treturn [a[0],a[-2],a.get(-3),a.get(1),a[i],a[0.0],a.get(-2.0),a.size(),a.has(8),a[-1]==null,"7.5".is_valid_float()]\n';
+  for(const optimize of [true,false]){const p=emitExcel(compileModel(s,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{i:{cell:"'Policy'!E6",type:'number',numericType:'int'}}});for(const [i,value]of [[0,3],[1,8],[-3,3],[-2,8]])hand594(p,{"'Policy'!E6":i},array594([3,8,3,8,value,3,8,3,true,true,true]));}
+});
+test('FED594 unsupported receiver and index domains remain unavailable or explicit compile refusal',()=>{
+  const expressions=['(true).length','(null).length','("abc").length','([1,2]).length','(true)["0"]','(null)["0"]','("abc")["0"]'];
+  for(const optimize of [true,false]){
+    for(const expr of expressions)hand594(emitExcel(compileModel(`func run() -> Variant:\n\treturn ${expr}\n`,{entrypoints:['run']}),{entrypoint:'run',optimize}),{},{result:'#N/A'});
+    for(const value of ['true','null','"abc"','[1,2]'])hand594(emitExcel(compileModel(`func run() -> int:\n\tvar v = ${value}\n\tv.length = 1\n\treturn 9\n`,{entrypoints:['run']}),{entrypoint:'run',optimize}),{},{result:'#N/A'});
+
+    for(const index of ['"0"','"length"','true','null','0.5','3','-4','INF','NAN'])for(const use of [`return a[${index}]`,`a[${index}] = 9\n\treturn 1`,`a[${index}] += 1\n\treturn 1`,`return a.get(${index})`])hand594(emitExcel(compileModel('func run() -> Variant:\n\tvar a := [1,2,3]\n\t'+use+'\n',{entrypoints:['run']}),{entrypoint:'run',optimize}),{},{result:'#N/A'});
+    for(const index of ['0','true','null'])assert.throws(()=>emitExcel(compileModel(`func run() -> Variant:\n\treturn {"0":"zero"}[${index}]\n`,{entrypoints:['run']}),{entrypoint:'run',optimize}),e=>e.name==='ModelCompileError'&&/dictionary key must be String/.test(e.message));
+    for(const value of ['7','7.0'])hand594(emitExcel(compileModel(`func run() -> Variant:\n\treturn (${value}).get(0)\n`,{entrypoints:['run']}),{entrypoint:'run',optimize}),{},{result:'#N/A'});
+  }
+});
+// END FED594 additions.
+
+// BEGIN FED593 additions; all prior93 groups remain byte-identical below.
+const hand593=(p,values,expected)=>{const got=evaluate(p,values,{coerceBlankSelections:true});for(const [key,value]of Object.entries(expected))assert.equal(got.output(key),value,key);};
+const array593=expected=>Object.fromEntries(expected.map((v,i)=>[`result[${i}]`,v]));
+test('FED593 str simple source literals are hand-derived not shared parity',()=>{
+  const s='func run() -> Array:\n\treturn [str(null),str(true),str(false),str(7),str(7.0),str(-7),str(-7.0),str(0),str(0.0),str("MiXeD"),str("7.00"),typeof(str(1)),typeof(str(null)),str(7)==str(7.0),str(1e0),str(1000000.0)]\n';
+  for(const optimize of [true,false]){const p=emitExcel(compileModel(s,{entrypoints:['run']}),{entrypoint:'run',optimize});hand593(p,{},array593(['<null>','true','false','7','7.0','-7','-7.0','0','0.0','MiXeD','7.00',4,4,false,'1.0','1000000.0']));}
+});
+test('FED593 str typed constants casts and canonical metadata remain correct',()=>{
+  for(const optimize of [true,false]){
+    const p=emitExcel(compileModel('const S = str(7.0)\nfunc run() -> Array:\n\treturn [S,str(float(7)),str(int(7.0)),str(7/2),str(7.0+0.0)]\n',{entrypoints:['run']}),{entrypoint:'run',optimize});hand593(p,{},array593(['7.0','7.0','7','3','7.0']));
+    const row={key:'policy_rate',source:'https://example.invalid/Source',unit:'Percent',description:'CaSe and "quotes"',id:'scenario_id'};
+    const q=emitExcel(compileModel('func run(row: Dictionary) -> Array:\n\treturn [str(row.key),str(row.source),str(row.unit),str(row.description),str(row.id)]\n',{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{row}});hand593(q,{},array593(Object.values(row)));
+  }
+});
+test('FED593 str unqualified numeric formatting stays unavailable including unknown provenance',()=>{
+  for(const optimize of [true,false]){
+    for(const value of ['0.1','7.5','-0.0','1000001.0','INF','NAN']){const p=emitExcel(compileModel(`func run() -> String:\n\treturn str(${value})\n`,{entrypoints:['run']}),{entrypoint:'run',optimize});hand593(p,{},{result:'#N/A'});assert.ok(p.diagnostics.some(d=>d.kind==='unavailable-guard'));}
+    const ir=compileModel('func run(v: Variant) -> String:\n\treturn str(v)\n',{entrypoints:['run']});
+    for(const [v,expected]of [[modelNumber(7,'int'),'7'],[modelNumber(7,'float'),'7.0'],[7,'#N/A'],[modelNumber(7,'unknown'),'#N/A']])hand593(emitExcel(ir,{entrypoint:'run',optimize,arguments:{v}}),{},{result:expected});
+    hand593(emitExcel(ir,{entrypoint:'run',optimize,numericInputs:'float',arguments:{v:7}}),{},{result:'7.0'});
+    for(const binding of [{type:'number'},{type:'number',numericType:'int'},{type:'number',numericType:'float'},{type:'variant'}]){const p=emitExcel(ir,{entrypoint:'run',optimize,arguments:{v:{cell:"'Policy'!E6",...binding}}});for(const value of [7,7.0,7.5])hand593(p,{"'Policy'!E6":value},{result:'#N/A'});}
+  }
+});
+test('FED593 str containers decline on active paths but inactive unsupported branches are lazy',()=>{
+  for(const optimize of [true,false]){
+    for(const value of ['[10,20,30]','[]','{}','{"v":7}'])hand593(emitExcel(compileModel(`func run() -> String:\n\treturn str(${value})\n`,{entrypoints:['run']}),{entrypoint:'run',optimize}),{},{result:'#N/A'});
+    const lit='func run() -> Array:\n\treturn [str([1]) if false else "safe",false and str({})=="x",true or str(0.1)=="x",str(null) if true else str([1])]\n';hand593(emitExcel(compileModel(lit,{entrypoints:['run']}),{entrypoint:'run',optimize}),{},array593(['safe',false,true,'<null>']));
+    for(const value of ['[1]','{}','0.1','log(-1.0)']){const p=emitExcel(compileModel(`func run(flag: bool) -> String:\n\treturn str(${value}) if flag else "safe"\n`,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{flag:{cell:"'Policy'!E6",type:'boolean'}}});hand593(p,{"'Policy'!E6":false},{result:'safe'});hand593(p,{"'Policy'!E6":true},{result:'#N/A'});}
+  }
+});
+test('FED593 str dynamic Boolean String NIL avoids spreadsheet General format and case coercion',()=>{
+  for(const optimize of [true,false]){
+    const p=emitExcel(compileModel('func run(v: Variant) -> String:\n\treturn str(v)\n',{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{v:{cell:"'Policy'!E6",type:'variant'}}});
+    const formulas=[...Object.values(p.formulas),...Object.values(p.outputs)].join('\n');assert.doesNotMatch(formulas,/&""|\bTEXT\(/,'no spreadsheet General/locale formatting');assert.match(formulas,/"true","false"/,'Boolean text uses explicit lowercase source spellings');assert.match(formulas,/"<null>"/,'NIL uses explicit source spelling');
+    for(const [value,expected]of [[true,'true'],[false,'false'],[null,'<null>'],['MiXeD','MiXeD'],['TRUE','TRUE'],['FaLsE','FaLsE'],['',''],['7.0','7.0'],[new CellError('#REF!'),'#N/A']])hand593(p,{"'Policy'!E6":value},{result:expected});
+    for(const [kind,source,valid,invalid]of [['boolean','bool',true,7],['string','String','MiXeD',true]]){const q=emitExcel(compileModel(`func run(v: ${source}) -> String:\n\treturn str(v)\n`,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{v:{cell:"'Policy'!E6",type:kind}}});hand593(q,{"'Policy'!E6":valid},{result:kind==='boolean'?'true':'MiXeD'});hand593(q,{"'Policy'!E6":invalid},{result:'#N/A'});hand593(q,{"'Policy'!E6":new CellError('#VALUE!')},{result:'#N/A'});}
+  }
+});
+test('FED593 str optional NIL absent defaults active errors and inactive values stay distinct',()=>{
+  for(const optimize of [true,false]){
+    const p=emitExcel(compileModel('func run(d: Dictionary) -> Array:\n\treturn [str(d.get("v")),str(d.get("v","default"))]\n',{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{d:{v:{$optional:true,present:{cell:"'Policy'!E6",type:'boolean'},value:{cell:"'Policy'!E7",type:'variant'}}}}});
+    for(const value of [new CellError('#REF!'),7,null])hand593(p,{"'Policy'!E6":false,"'Policy'!E7":value},array593(['<null>','default']));
+    hand593(p,{"'Policy'!E6":true,"'Policy'!E7":null},array593(['<null>','<null>']));hand593(p,{"'Policy'!E6":true,"'Policy'!E7":new CellError('#REF!')},array593(['#N/A','#N/A']));
+    for(const invalid of [0,3,null,'',new CellError('#REF!')])hand593(p,{"'Policy'!E6":invalid,"'Policy'!E7":'x'},array593(['#N/A','#N/A']));
+    const q=emitExcel(compileModel('func run(flag: bool,v: Variant) -> String:\n\treturn str(v) if flag else "safe"\n',{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{flag:{cell:"'Policy'!E6",type:'boolean'},v:{cell:"'Policy'!E7",type:'variant'}}});for(const value of [7,new CellError('#REF!')]){hand593(q,{"'Policy'!E6":false,"'Policy'!E7":value},{result:'safe'});hand593(q,{"'Policy'!E6":true,"'Policy'!E7":value},{result:'#N/A'});}
+  }
+});
+test('FED593 str NIL produces an owned String without changing unavailable direct NIL output',()=>{
+  for(const optimize of [true,false]){
+    const p=emitExcel(compileModel('func run() -> Array:\n\tvar a := [null]\n\ta.resize(2)\n\treturn [str(a[0]),str(a.get(-1)),typeof(str(null)),str(null)=="<null>",null]\n',{entrypoints:['run']}),{entrypoint:'run',optimize});hand593(p,{},array593(['<null>','<null>',4,true,'#N/A']));
+    const bad=emitExcel(compileModel('func run() -> String:\n\treturn str({}.missing)\n',{entrypoints:['run']}),{entrypoint:'run',optimize});hand593(bad,{},{result:'#N/A'});
+  }
+});
+test('FED593 str runtime choices and earlier unavailable access cannot be sanitized',()=>{
+  const source='func run(flag: bool,v: Variant) -> Array:\n\treturn [str(7 if flag else 7.0),str(null if flag else v),str(flag),str("ABC" if flag else "def"),str(v==null)]\n';
+  for(const optimize of [true,false]){
+    const p=emitExcel(compileModel(source,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{flag:{cell:"'Policy'!E6",type:'boolean'},v:{cell:"'Policy'!E7",type:'variant'}}});
+    for(const flag of [true,false])hand593(p,{"'Policy'!E6":flag,"'Policy'!E7":'MiXeD'},array593(flag?['7','<null>','true','ABC','false']:['7.0','MiXeD','false','def','false']));
+    const q=emitExcel(compileModel('func run(flag: bool) -> String:\n\tvar d := {} if flag else {"v":null}\n\treturn str(d.v)\n',{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{flag:{cell:"'Policy'!E6",type:'boolean'}}});hand593(q,{"'Policy'!E6":false},{result:'<null>'});hand593(q,{"'Policy'!E6":true},{result:'#N/A'});
+  }
+});
+// END FED593 additions.
+
+// BEGIN FED591 additions; all prior84 groups remain byte-identical below.
+const hand591=(p,values,expected)=>{const got=evaluate(p,values,{coerceBlankSelections:true});for(const [key,value]of Object.entries(expected))assert.equal(got.output(key),value,key);};
+const array591=expected=>Object.fromEntries(expected.map((v,i)=>[`result[${i}]`,v]));
+test('FED591 branch-order every observer copy and merge refuses invented union order',()=>{
+  const pre='func run(flag: bool) -> Array:\n\tvar d := {}\n\tif flag:\n\t\td["2"] = "two"\n\t\td["1"] = "one"\n\telse:\n\t\td["1"] = "one"\n\t\td["2"] = "two"\n',loop='\tvar out := []\n\tfor k in d:\n\t\tout.append(k)\n\treturn out\n';
+  for(const optimize of [true,false]){
+    for(const tail of [loop,'\treturn d.keys()\n','\treturn d.values()\n','\td = d.duplicate(true)\n'+loop,'\tvar e := {}\n\te.merge(d,true)\n\td = e\n'+loop,'\tvar e := {}\n\te.merge(d.duplicate(true),true)\n\td = e\n'+loop])assert.throws(()=>emitExcel(compileModel(pre+tail,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{flag:{cell:"'Policy'!E6",type:'boolean'}}}),/order.*unproved|unproved.*order/);
+    const reinsert='func run(flag: bool) -> Array:\n\tvar d := {}\n\tif flag:\n\t\td["2"] = "two"\n\td["1"] = "one"\n';
+    for(const insertion of ['\td["2"] = "two"\n','\td.merge({"2":"two"},true)\n'])assert.throws(()=>emitExcel(compileModel(reinsert+insertion+loop,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{flag:{cell:"'Policy'!E6",type:'boolean'}}}),/order.*unproved|unproved.*order/);
+    const good=emitExcel(compileModel('func run(flag: bool) -> Array:\n\tvar d := {"2":"two","1":"one"} if flag else {"1":"one","2":"two"}\n\tvar out := []\n\tfor k in d:\n\t\tout.append(k)\n\treturn out\n',{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{flag:{cell:"'Policy'!E6",type:'boolean'}}});for(const flag of [true,false])hand591(good,{"'Policy'!E6":flag},array591(flag?['2','1']:['1','2']));
+  }
+});
+test('FED591 external-reinput rereads own properties and constants cannot retain mutable proofs',()=>{
+  const make=compileModel('func run() -> Dictionary:\n\treturn {"a":"A","b":"B","nested":{"a":"A","b":"B"}}\n',{entrypoints:['run']}),keys=compileModel('func run(d: Dictionary) -> Array:\n\treturn d.keys()\n',{entrypoints:['run']}),nested=compileModel('func run(d: Dictionary) -> Array:\n\treturn d.nested.keys()\n',{entrypoints:['run']});
+  for(const optimize of [true,false])for(const preserveNumericTypes of [true,false]){const d=evaluateModel(make,'run',[],{preserveNumericTypes});delete d.a;d.a='A';delete d.nested.a;d.nested.a='A';hand591(emitExcel(keys,{entrypoint:'run',optimize,arguments:{d}}),{},array591(['b','nested','a']));hand591(emitExcel(nested,{entrypoint:'run',optimize,arguments:{d}}),{},array591(['b','a']));}
+  const d=evaluateModel(compileModel('func run() -> Dictionary:\n\treturn {"2":"two","1":"one"}\n',{entrypoints:['run']}),'run');for(const optimize of [true,false])assert.throws(()=>emitExcel(keys,{entrypoint:'run',optimize,arguments:{d}}),/external.*order|order.*external/);
+  for(const optimize of [true,false])hand591(emitExcel(compileModel('const D = {"2":"two","1":"one"}\nfunc run() -> Array:\n\treturn D.keys()\n',{entrypoints:['run']}),{entrypoint:'run',optimize}),{},array591(['2','1']));
+});
+test('FED591 logical-resize uses prior length not retained capacity in both modes',()=>{
+  for(const optimize of [true,false]){
+    for(const mutation of ['alias.pop_back()','alias.resize(1)'])for(const innerGrow of [true,false]){const s='func run(flag: bool) -> Array:\n\tvar a := [1,7]\n\tvar alias := a\n\tif flag:\n\t\t'+mutation+'\n'+(innerGrow?'\t\talias.resize(2)\n':'\ta.resize(2)\n')+'\treturn [typeof(a[1]),a[1]==null,9 if a[1]==null else a[1]]\n',p=emitExcel(compileModel(s,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{flag:{cell:"'Policy'!E6",type:'boolean'}}});for(const flag of [true,false])hand591(p,{"'Policy'!E6":flag},array591(flag?[0,true,9]:[2,false,7]));}
+    const p=emitExcel(compileModel('func run(p: bool,q: bool) -> Array:\n\tvar a := [1,7]\n\tif p:\n\t\ta.pop_back()\n\tif q:\n\t\ta.resize(2)\n\treturn [a.size(),typeof(a[-1]),a[-1]==null]\n',{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{p:{cell:"'Policy'!E6",type:'boolean'},q:{cell:"'Policy'!E7",type:'boolean'}}});for(const x of [true,false])for(const y of [true,false])hand591(p,{"'Policy'!E6":x,"'Policy'!E7":y},array591([x&&!y?1:2,x&&y?0:2,x&&y]));
+    const e=emitExcel(compileModel('func run(flag: bool) -> Array:\n\tvar a := []\n\tif flag:\n\t\ta.append(7)\n\ta.pop_back()\n\ta.resize(1)\n\treturn [typeof(a[0]),a[0]==null]\n',{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{flag:{cell:"'Policy'!E6",type:'boolean'}}});hand591(e,{"'Policy'!E6":true},array591([0,true]));hand591(e,{"'Policy'!E6":false},array591(['#N/A','#N/A']));
+  }
+});
+test('FED591 membership-receiver cannot inspect numeric wrappers in either mode',()=>{
+  for(const optimize of [true,false]){
+    for(const receiver of ['7','7.0','true','null'])for(const op of ['in','not in'])for(const key of ['value','numericType'])assert.throws(()=>emitExcel(compileModel(`func run() -> bool:\n\treturn "${key}" ${op} ${receiver}\n`,{entrypoints:['run']}),{entrypoint:'run',optimize}),e=>e.name==='ModelCompileError'&&/membership.*receiver|receiver.*membership/.test(e.message));
+    assert.throws(()=>emitExcel(compileModel('func run() -> bool:\n\treturn 1 in "1"\n',{entrypoints:['run']}),{entrypoint:'run',optimize}),/String.*membership|membership.*String/);
+    hand591(emitExcel(compileModel('func run() -> Array:\n\treturn ["Tag" in "Taggy","tag" in "Taggy","X" not in "Taggy","__proto__" in {"__proto__":7},7 in [7.0],7 not in [7.0]]\n',{entrypoints:['run']}),{entrypoint:'run',optimize}),{},array591([true,false,true,true,false,true]));
+    hand591(emitExcel(compileModel('func run() -> int:\n\tif false:\n\t\tvar unused = "value" in 7\n\treturn 9\n',{entrypoints:['run']}),{entrypoint:'run',optimize}),{}, {result:9});
+  }
+});
+// END FED591 additions.
+
+// BEGIN FED590 additions; prior70 groups below remain byte-identical.
+const hand590=(p,values,expected)=>{const got=evaluate(p,values,{coerceBlankSelections:true});for(const [key,value]of Object.entries(expected))assert.equal(got.output(key),value,key);};
+const array590=expected=>Object.fromEntries(expected.map((v,i)=>[`result[${i}]`,v]));
+test('FED590 4369440164 shared Variant-sensitive has in not-in in both modes',()=>{
+  for(const optimize of [true,false]){
+    const p=emitExcel(compileModel('func run() -> Array:\n\treturn [7 in [7.0],7 not in [7.0],7 in [7],7.0 in [7.0],true in [1],null in [null],"Tag" in ["tag"],7==7.0]\n',{entrypoints:['run']}),{entrypoint:'run',optimize});hand590(p,{},array590([false,true,true,true,false,true,false,true]));
+    for(const numericType of ['int','float']){const p=emitExcel(compileModel('func run(v: Variant) -> Array:\n\treturn [[7].has(v),v in [7],v not in [7]]\n',{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{v:{cell:"'Policy'!E6",type:'variant',numericType}}});for(const [v,hand]of [[7,numericType==='int'?[true,true,false]:[false,false,true]],[true,[false,false,true]],[null,[false,false,true]]])hand590(p,{"'Policy'!E6":v},array590(hand));}
+    const q=emitExcel(compileModel('func run(flag: bool) -> Array:\n\tvar a := [1]\n\tif flag:\n\t\ta.append(7.0)\n\treturn [7 in a,7.0 in a,7.0 not in a]\n',{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{flag:{cell:"'Policy'!E6",type:'boolean'}}});for(const flag of [true,false])hand590(q,{"'Policy'!E6":flag},array590([false,flag,!flag]));
+    assert.throws(()=>emitExcel(compileModel('func run() -> bool:\n\treturn [1] in [[1]]\n',{entrypoints:['run']}),{entrypoint:'run',optimize}),/membership.*scalar|scalar.*membership/);
+  }
+});
+test('FED590 4369440168 ordered String keys updates merge copies and for in both modes',()=>{
+  const s='func run() -> Array:\n\tvar d := {"2":"a","1":"b","01":"c","4294967294":"d","4294967295":"e","__proto__":"p","constructor":"k","toString":"t"}\n\tvar alias := d\n\talias["1"] = "B"\n\td.merge({"2":"wrong","new":"n","01":"wrong"},false)\n\tvar shallow := d.duplicate(false)\n\tvar deep := d.duplicate(true)\n\tdeep["1"] = "deep"\n\tshallow["tail"] = "s"\n\tvar visits := []\n\tfor k in d:\n\t\tvisits.append(k)\n\treturn [d.keys(),d.values(),visits,shallow.keys(),deep.keys(),d["1"],deep["1"]]\n',keys=['2','1','01','4294967294','4294967295','__proto__','constructor','toString','new'];
+  for(const optimize of [true,false]){const p=emitExcel(compileModel(s,{entrypoints:['run']}),{entrypoint:'run',optimize}),expected={};[keys,['a','B','c','d','e','p','k','t','n'],keys,keys.concat('tail'),keys].forEach((a,i)=>a.forEach((v,j)=>expected[`result[${i}][${j}]`]=v));Object.assign(expected,{'result[5]':'B','result[6]':'deep'});hand590(p,{},expected);}
+});
+test('FED590 4369440169 null literal dynamic negative get resize and defaults in both modes',()=>{
+  const s='func run() -> Array:\n\tvar a := [null,7,null]\n\ta.resize(4)\n\tvar d := {"v":null}\n\treturn [typeof(a[0]),a[0]==null,typeof(a[-1]),a.get(-1)==null,a.get(-3)==7,typeof(a.get(0)),a.get(0)==null,typeof(d.get("v",9)),d.get("v",9)==null,d.get("missing",9),d.get("missing",null)==null]\n';
+  for(const optimize of [true,false]){
+    hand590(emitExcel(compileModel(s,{entrypoints:['run']}),{entrypoint:'run',optimize}),{},array590([0,true,0,true,true,0,true,0,true,9,true]));
+    const p=emitExcel(compileModel('func run(i: int) -> Array:\n\tvar a := [null,7]\n\tvar v = a[i]\n\tvar g = a.get(i)\n\treturn [typeof(v),v==null,typeof(g),g==null,9 if v==null else v]\n',{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{i:{cell:"'Policy'!E6",type:'number',numericType:'int'}}});for(const i of [0,-2,1,-1])hand590(p,{"'Policy'!E6":i},array590([i===0||i===-2?0:2,i===0||i===-2,i===0||i===-2?0:2,i===0||i===-2,i===0||i===-2?9:7]));
+    hand590(p,{"'Policy'!E6":3},array590(['#N/A','#N/A','#N/A','#N/A','#N/A']));
+    const raw=emitExcel(compileModel('func run() -> Variant:\n\treturn [null][0]\n',{entrypoints:['run']}),{entrypoint:'run',optimize});hand590(raw,{}, {result:'#N/A'});
+    assert.throws(()=>emitExcel(compileModel('func run() -> Variant:\n\treturn [null].get(0,9)\n',{entrypoints:['run']}),{entrypoint:'run',optimize}),/get.*argument|argument.*get/);
+  }
+});
+test('FED590 4369440171 empty live Array and Dictionary Boolean contexts both modes',()=>{
+  for(const optimize of [true,false]){
+    const p=emitExcel(compileModel('func run() -> Array:\n\treturn [not [],not {},1 if [] else 2,1 if {} else 2,[] and log(-1.0)>0,[1] or log(-1.0)>0,{} or false,{"v":null} and true]\n',{entrypoints:['run']}),{entrypoint:'run',optimize});hand590(p,{},array590([true,true,2,2,false,true,false,true]));
+    const s='func run(flag: bool) -> Array:\n\tvar a := []\n\tvar alias := a\n\tvar before = not a\n\tif flag:\n\t\talias.append(null)\n\tvar middle = not a\n\tif flag:\n\t\talias.pop_back()\n\tvar d := {}\n\tvar other := d\n\tvar empty = not d\n\tother.merge({"v":null},true)\n\treturn [before,middle,not a,empty,not d,1 if d else 2,a and true,a or false]\n',q=emitExcel(compileModel(s,{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{flag:{cell:"'Policy'!E6",type:'boolean'}}});for(const flag of [true,false])hand590(q,{"'Policy'!E6":flag},array590([true,!flag,true,true,false,1,false,false]));
+    const d=emitExcel(compileModel('func run(flag: bool) -> Array:\n\tvar d := {}\n\tif flag:\n\t\td["v"] = null\n\treturn [not d,1 if d else 2,d and true,d or false]\n',{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{flag:{cell:"'Policy'!E6",type:'boolean'}}});for(const flag of [true,false])hand590(d,{"'Policy'!E6":flag},array590([!flag,flag?1:2,flag,flag]));
+  }
+});
+test('FED590 source constants preserve numeric-looking key order across module boundaries',()=>{
+  for(const optimize of [true,false]){const p=emitExcel(compileModel('const D = {"2":"first","1":"second","01":"third"}\nfunc run() -> Array:\n\treturn [D.keys(),D.values()]\n',{entrypoints:['run']}),{entrypoint:'run',optimize});hand590(p,{}, {'result[0][0]':'2','result[0][1]':'1','result[0][2]':'01','result[1][0]':'first','result[1][1]':'second','result[1][2]':'third'});}
+});
+test('FED590 external numeric-looking input order refuses observation and preserves lookup',()=>{
+  const d=JSON.parse('{"2":"first","1":"second","01":"third"}');
+  for(const optimize of [true,false]){
+    for(const action of ['return d.keys()','return d.values()','var out := []\n\tfor k in d:\n\t\tout.append(k)\n\treturn out','var c := d.duplicate(true)\n\treturn c.keys()'])assert.throws(()=>emitExcel(compileModel('func run(d: Dictionary) -> Variant:\n\t'+action+'\n',{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{d}}),/external.*order|order.*external/);
+    hand590(emitExcel(compileModel('func run(d: Dictionary) -> Array:\n\treturn [d["2"],d["1"],d.has("01"),not d]\n',{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{d}}),{},array590(['first','second',true,false]));
+  }
+});
+test('FED590 optional Dictionary truth uses active presence not capacity or null values',()=>{
+  for(const optimize of [true,false]){
+    const p=emitExcel(compileModel('func run(d: Dictionary) -> Array:\n\treturn [not d,1 if d else 2,d and true,d or false]\n',{entrypoints:['run']}),{entrypoint:'run',optimize,arguments:{d:{v:{$optional:true,present:{cell:"'Policy'!E6",type:'boolean'},value:null}}}});for(const flag of [true,false])hand590(p,{"'Policy'!E6":flag},array590([!flag,flag?1:2,flag,flag]));for(const bad of [0,3,null,new CellError('#REF!')])hand590(p,{"'Policy'!E6":bad},array590(['#N/A','#N/A','#N/A','#N/A']));
+    hand590(emitExcel(compileModel('func run() -> Array:\n\tvar a := [null]\n\tvar d := {"v":null}\n\treturn [not a,not a[0],not d,not d.v,d.get("v",true)==null,d.get("missing",true)]\n',{entrypoints:['run']}),{entrypoint:'run',optimize}),{},array590([false,true,false,true,true,true]));
+  }
+});
+// END FED590 additions.
+
 test('FED586 optional presence is strictly Boolean under enclosing parent guards',()=>{
   const presence={cell:"'Policy'!E6",type:'boolean'},leaf={cell:"'Policy'!E7",type:'number',numericType:'int'},child={cell:"'Policy'!E8",type:'boolean'},invalid=[0,3,null,'','TRUE','text',new CellError('#REF!')];
   for(const optimize of [true,false]){
