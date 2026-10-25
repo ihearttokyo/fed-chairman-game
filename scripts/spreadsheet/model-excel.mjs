@@ -3,7 +3,8 @@
  * formulas; containers and bounded control flow are specialized at authoring.
  *
  * emitExcel(IR, {entrypoint, arguments, inputs?, outputs?, helperSheet?,
- *   helperColumn?, helperStartRow?, maxCells?, maxArrayLength?}) returns data;
+ *   helperColumn?, helperStartRow?, maxCells?, maxArrayLength?,
+ *   includeOutputStructure?}) returns data;
  * it never constructs, calculates, reads or writes a workbook. Argument/input
  * trees are finite JS dictionaries/arrays with literals or {cell,type} leaves.
  * Types are number/boolean/string/variant; numeric cells additionally carry
@@ -17,6 +18,9 @@
  * Output paths are state.field, state.array[0], etc. (scalar root: result).
  * `outputs` optionally maps those paths to admitted local destination cells;
  * other output formulas remain in the returned data, not helper cells.
+ * includeOutputStructure:true additionally describes source container/choice
+ * shape, live length and known/unproved insertion order, including empty nodes.
+ * This opt-in metadata is NOT an input reconstruction or round-trip proof.
  * The caller must reserve a free helper rectangle and bind canonical units.
  * Literal source numeric strings are supported; arbitrary editable text-number
  * validation is rejected rather than approximated with Excel coercion.
@@ -700,12 +704,49 @@ export function emitExcel(ir,cellBindings={}){
     if(uncertainCategory(value))available=and(available,not(compare('==',category(value,ctx,fn),'null',ctx,fn),ctx,fn),ctx,fn);
     setOwn(outputFormulas,path,`=IF(${code(available)},${code(value)},NA())`);
   }
-  if(cellBindings.outputs){const occupied=new Set(Object.keys(formulas).map(normalizedCell));for(const [path,address] of Object.entries(cellBindings.outputs)){if(!Object.hasOwn(outputs,path))error(`unknown output binding ${path}`,fn);if(!localCell(address))error(`invalid local output binding ${address}`,fn);const key=normalizedCell(address);if(occupied.has(key)||reservedInputs.has(key))error(`output/helper/input collision ${address}`,fn);occupied.add(key);formulas[address]=outputFormulas[path];sourceMap.push({cell:address,node:fn.id,source:fn.source,type:type(outputs[path]),output:path});}}
   const presenceFormulas=Object.fromEntries(Object.entries(outputPresence).map(([k,v])=>[k,code(v)]));
   const numericDescriptor=v=>choice(v)?{condition:code(v.condition),yes:numericDescriptor(v.yes),no:numericDescriptor(v.no)}:type(v)==='number'?numberType(v):null;
   const outputNumericTypes=Object.fromEntries(Object.entries(outputs).map(([path,v])=>[path,numericDescriptor(v)]).filter(([,tag])=>tag!==null));
   const descriptorPredicates=d=>d&&typeof d==='object'?[d.condition,...descriptorPredicates(d.yes),...descriptorPredicates(d.no)]:[];
   const numericPredicates=Object.values(outputNumericTypes).flatMap(descriptorPredicates);
+  // Opt-in structural provenance for source composition. Scalar leaf paths
+  // alone cannot encode empty containers, live array length or Dictionary order.
+  // This describes the source heap; it does NOT certify a reconstructed input.
+  let outputStructure;
+  const walkStructure=(v,segments=[],present=true,seen=new Set())=>{
+    const common={segments,presence:code(present)};
+    if(choice(v))return {...common,kind:'choice',condition:code(v.condition),
+      yes:walkStructure(v.yes,segments,and(present,v.condition,ctx,fn),new Set(seen)),
+      no:walkStructure(v.no,segments,and(present,not(v.condition,ctx,fn),ctx,fn),new Set(seen))};
+    if(v===ABSENT)return {...common,kind:'absent',presence:'FALSE'};
+    if(ref(v)){
+      if(seen.has(v.id))error('cyclic output structure unsupported',fn);seen.add(v.id);
+      const o=ctx.heap.get(v.id);
+      if(o.kind==='dictionary')return {...common,kind:'dictionary',order:o.orderUnproved?'unproved':'source-insertion',
+        entries:[...o.entries].map(([key,e])=>({key,node:walkStructure(e.value,[...segments,key],and(present,e.present,ctx,fn),new Set(seen))}))};
+      return {...common,kind:'array',length:code(o.length),
+        items:o.items.map((item,index)=>walkStructure(item,[...segments,index],and(present,compare('<',index,o.length,ctx,fn),ctx,fn),new Set(seen)))};
+    }
+    return {...common,kind:'scalar',type:type(v),numericType:numericDescriptor(v)};
+  };
+  const mapStructure=(node,rewrite)=>{
+    const next={...node,presence:rewrite(node.presence)};
+    if(node.kind==='choice'){next.condition=rewrite(node.condition);next.yes=mapStructure(node.yes,rewrite);next.no=mapStructure(node.no,rewrite);}
+    if(node.kind==='array'){next.length=rewrite(node.length);next.items=node.items.map(n=>mapStructure(n,rewrite));}
+    if(node.kind==='dictionary')next.entries=node.entries.map(e=>({key:e.key,node:mapStructure(e.node,rewrite)}));
+    if(node.kind==='scalar'){
+      const tags=d=>d&&typeof d==='object'?{condition:rewrite(d.condition),yes:tags(d.yes),no:tags(d.no)}:d;
+      next.numericType=tags(node.numericType);
+    }
+    return next;
+  };
+  if(cellBindings.includeOutputStructure===true)outputStructure={schema:'gd-output-structure-v1',
+    availability:code(not(unavailable,ctx,fn)),root:walkStructure(result),
+    qualification:'Source-derived structural metadata only. Unproved order remains unproved; no input reconstruction or workbook qualification.'};
+  const structurePredicates=[];
+  if(outputStructure){structurePredicates.push(outputStructure.availability);mapStructure(outputStructure.root,p=>{structurePredicates.push(p);return p;});}
+  // Validate destinations after ALL scalar and structural helper allocation.
+  if(cellBindings.outputs){const occupied=new Set(Object.keys(formulas).map(normalizedCell));for(const [path,address] of Object.entries(cellBindings.outputs)){if(!Object.hasOwn(outputs,path))error(`unknown output binding ${path}`,fn);if(!localCell(address))error(`invalid local output binding ${address}`,fn);const key=normalizedCell(address);if(occupied.has(key)||reservedInputs.has(key))error(`output/helper/input collision ${address}`,fn);occupied.add(key);formulas[address]=outputFormulas[path];sourceMap.push({cell:address,node:fn.id,source:fn.source,type:type(outputs[path]),output:path});}}
   let emittedFormulas=formulas,emittedMap=sourceMap;
   if(optimize){
     // Reachability, not economic dead-code guesses: every output, its presence,
@@ -715,7 +756,7 @@ export function emitExcel(ir,cellBindings={}){
     const tokens=/"(?:[^"]|"")*"|'[^']+'![A-Z]+[1-9][0-9]*/g;
     const references=formula=>[...formula.matchAll(tokens)].map(m=>m[0]).filter(x=>!x.startsWith('"')&&Object.hasOwn(formulas,x));
     const keep=new Set(),byCell=new Map(sourceMap.map(x=>[x.cell,x]));
-    const pending=[...Object.values(outputFormulas),...Object.values(presenceFormulas),...numericPredicates,...diagnostics.map(x=>x.condition),...Object.values(cellBindings.outputs??{}).map(x=>'='+x)].flatMap(references);
+    const pending=[...Object.values(outputFormulas),...Object.values(presenceFormulas),...numericPredicates,...structurePredicates,...diagnostics.map(x=>x.condition),...Object.values(cellBindings.outputs??{}).map(x=>'='+x)].flatMap(references);
     while(pending.length){const cell=pending.pop();if(keep.has(cell))continue;keep.add(cell);pending.push(...references(formulas[cell]),...references(byCell.get(cell)?.active??''));}
     // Pack single-use scalar DAG nodes without changing a single operator or
     // parenthesis. Guard/diagnostic references are materialized roots. This
@@ -727,7 +768,7 @@ export function emitExcel(ir,cellBindings={}){
     const destination=location=>{const path=[];while(location.redirect){path.push(location);location=location.redirect;}for(const old of path)old.redirect=location;return location;};
     for(const cell of keep){const location={kind:'helper',key:cell};formulaLocations.set(cell,location);addUse(formulas[cell],location);}
     for(const [path,f] of Object.entries(outputFormulas))addUse(f,{kind:'output',key:path});
-    for(const f of [...Object.values(presenceFormulas),...numericPredicates,...diagnostics.map(x=>x.condition),...sourceMap.filter(x=>keep.has(x.cell)).map(x=>x.active??'')])addUse(f,{kind:'root'});
+    for(const f of [...Object.values(presenceFormulas),...numericPredicates,...structurePredicates,...diagnostics.map(x=>x.condition),...sourceMap.filter(x=>keep.has(x.cell)).map(x=>x.active??'')])addUse(f,{kind:'root'});
     const destinations=new Set(Object.values(cellBindings.outputs??{}));
     const fits=formula=>{if(formula.length>4096)return false;let depth=0,maximum=0;for(const ch of formula.replace(/"(?:[^"]|"")*"/g,'')){if(ch==='(')maximum=Math.max(maximum,++depth);else if(ch===')')depth--;}return maximum<=48;};
     for(const entry of sourceMap){const cell=entry.cell,locations=uses.get(cell)??[];if(!keep.has(cell)||destinations.has(cell)||locations.length!==1)continue;
@@ -750,12 +791,13 @@ export function emitExcel(ir,cellBindings={}){
     for(const key of Object.keys(outputFormulas))outputFormulas[key]=rewrite(outputFormulas[key]);
     for(const key of Object.keys(presenceFormulas))presenceFormulas[key]=rewrite(presenceFormulas[key]);
     for(const d of diagnostics)d.condition=rewrite(d.condition);
+    if(outputStructure)outputStructure={...outputStructure,availability:rewrite(outputStructure.availability),root:mapStructure(outputStructure.root,rewrite)};
     const rewriteDescriptor=d=>{if(!d||typeof d!=='object')return d;return {condition:rewrite(d.condition),yes:rewriteDescriptor(d.yes),no:rewriteDescriptor(d.no)};};
     for(const key of Object.keys(outputNumericTypes))outputNumericTypes[key]=rewriteDescriptor(outputNumericTypes[key]);
     emittedMap=sourceMap.filter(x=>keep.has(x.cell)||x.output).map(x=>({...x,cell:remap.get(x.cell)??x.cell,...(x.active?{active:rewrite(x.active)}:{}),...(x.inlinedSources?{inlinedSources:x.inlinedSources.map(origin=>({...origin,active:rewrite(origin.active??'TRUE')}))}:{})}));
   }
   const requiredFunctions=[...new Set(Object.values(emittedFormulas).concat(Object.values(outputFormulas)).flatMap(f=>[...f.replace(/"(?:[^"]|"")*"/g,'').matchAll(/\b([A-Z][A-Z0-9_]*)\(/g)].map(m=>m[1])))].sort();
-  return {formulas:emittedFormulas,outputs:outputFormulas,outputPresence:presenceFormulas,outputNumericTypes,sourceMap:emittedMap,diagnostics,
+  return {formulas:emittedFormulas,outputs:outputFormulas,outputPresence:presenceFormulas,outputNumericTypes,...(outputStructure?{outputStructure}:{}),sourceMap:emittedMap,diagnostics,
     coverage:{functions:[...calls].sort(),nodes:[...coverage].filter(Number.isInteger).sort((a,b)=>a-b),loopProofs,outputPaths:Object.keys(outputs)},
     provenance:{canonicalSourceSha256:ir.canonicalSourceSha256,compilerVersion:ir.compilerVersion,backendVersion:EXCEL_BACKEND_VERSION,
       irSha256:ir.irSha256,bindingSha256:digest(JSON.stringify(cellBindings))},

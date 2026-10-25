@@ -60,6 +60,59 @@ let checks=1;
 const emittedFunctions=new Set();
 const recordCoverage=program=>program.coverage.functions.forEach(name=>emittedFunctions.add(name));
 const test=(name,run)=>{if(process.env.FED_MODEL_TEST_FILTER&&!name.includes(process.env.FED_MODEL_TEST_FILTER))return;run();checks++;console.log('PASS '+name);};
+// Structural provenance is opt-in and is not itself a composition contract.
+const schema608=(source,arguments_={},optimize=true)=>emitExcel(compileModel(source,{entrypoints:['run']}),{entrypoint:'run',arguments:arguments_,optimize,includeOutputStructure:true});
+const predicate608=(p,inputs,raw)=>evaluate({...p,outputs:{probe:'='+raw}},inputs).output('probe');
+const activeStructure608=(p,inputs,node)=>node.kind==='choice'?activeStructure608(p,inputs,predicate608(p,inputs,node.condition)?node.yes:node.no):node;
+test('FED608 source structure retains empty Dictionary descendants and empty Array elements',()=>{
+  for(const optimize of [true,false]){
+    const p=schema608('func run() -> Dictionary:\n\treturn {"a":1,"empty":{},"items":[1,{}],"empty_array":[]}\n',{},optimize),r=p.outputStructure.root;
+    assert.equal(p.outputStructure.schema,'gd-output-structure-v1');assert.equal(r.kind,'dictionary');assert.equal(r.order,'source-insertion');
+    const entries=new Map(r.entries.map(e=>[e.key,e.node]));
+    assert.deepEqual(entries.get('empty').entries,[]);assert.equal(entries.get('items').length,'2');assert.equal(entries.get('items').items[1].kind,'dictionary');assert.deepEqual(entries.get('items').items[1].entries,[]);assert.equal(entries.get('empty_array').length,'0');
+    assert.deepEqual(entries.get('items').items[1].segments,['items',1]);assert.equal(predicate608(p,{},entries.get('empty').presence),true);
+    assert.ok(!Object.hasOwn(p.outputs,'empty'),'leaf outputs alone are not a whole-object schema');
+  }
+});
+test('FED608 numeric-looking Dictionary keys retain source order not JS property enumeration',()=>{
+  for(const optimize of [true,false]){
+    const p=schema608('func run() -> Dictionary:\n\treturn {"2":"first","1":"second"}\n',{},optimize);
+    assert.deepEqual(p.outputStructure.root.entries.map(e=>e.key),['2','1']);assert.equal(p.outputStructure.root.order,'source-insertion');
+  }
+});
+test('FED608 branch-dependent Dictionary order remains explicitly unproved',()=>{
+  const source='func run(flag: bool) -> Dictionary:\n\tvar d := {}\n\tif flag:\n\t\td["a"] = 1\n\t\td["b"] = 2\n\telse:\n\t\td["b"] = 2\n\t\td["a"] = 1\n\treturn d\n';
+  for(const optimize of [true,false]){
+    const p=schema608(source,{flag:{cell:"'Policy'!E6",type:'boolean'}},optimize);
+    for(const flag of [true,false]){const root=activeStructure608(p,{"'Policy'!E6":flag},p.outputStructure.root);assert.equal(root.order,'unproved');assert.equal(predicate608(p,{"'Policy'!E6":flag},p.outputStructure.availability),true);for(const e of root.entries)assert.equal(predicate608(p,{"'Policy'!E6":flag},e.node.presence),true);}
+  }
+});
+test('FED608 live Array length and item presence survive optimization and remapping',()=>{
+  const source='func run(flag: bool) -> Array:\n\tvar a := [1,{}]\n\tif flag:\n\t\ta.pop_back()\n\treturn a\n';
+  for(const optimize of [true,false]){
+    const p=schema608(source,{flag:{cell:"'Policy'!E6",type:'boolean'}},optimize);
+    for(const flag of [true,false]){const inputs={"'Policy'!E6":flag},r=activeStructure608(p,inputs,p.outputStructure.root);assert.equal(r.kind,'array');assert.equal(predicate608(p,inputs,r.length),flag?1:2);assert.equal(predicate608(p,inputs,r.items[1].presence),!flag);}
+  }
+});
+test('FED608 output structure is opt-in and preserves scalar output observations',()=>{
+  const source='func run(x: float) -> Dictionary:\n\treturn {"a":x*2.0,"empty":[]}\n',ir=compileModel(source,{entrypoints:['run']}),args={x:{cell:"'Policy'!E6",type:'number',numericType:'float'}};
+  for(const optimize of [true,false]){
+    const plain=emitExcel(ir,{entrypoint:'run',arguments:args,optimize}),structured=emitExcel(ir,{entrypoint:'run',arguments:args,optimize,includeOutputStructure:true});
+    assert.ok(!Object.hasOwn(plain,'outputStructure'));for(const x of [-3.5,0,7])assert.equal(evaluate(plain,{"'Policy'!E6":x}).output('a'),evaluate(structured,{"'Policy'!E6":x}).output('a'));
+  }
+});
+test('FED608 structural helper allocation cannot overwrite a fixed output destination',()=>{
+  const source='func run(a: bool,b: bool) -> Dictionary:\n\tvar d := {"x":{}}\n\tif a:\n\t\td["x"] = []\n\treturn {"nested":d if b else {},"answer":7}\n',ir=compileModel(source,{entrypoints:['run']}),args={a:{cell:"'Policy'!E6",type:'boolean'},b:{cell:"'Policy'!E7",type:'boolean'}};
+  for(const optimize of [true,false]){
+    const base={entrypoint:'run',arguments:args,optimize},plain=emitExcel(ir,base),destination=`'Economy'!B${2000+plain.statistics.allocatedHelpersBeforeLiveness}`;
+    const old=emitExcel(ir,{...base,outputs:{answer:destination}});assert.equal(evaluate(old,{"'Policy'!E6":true,"'Policy'!E7":true}).output('answer'),7);
+    assert.throws(()=>emitExcel(ir,{...base,includeOutputStructure:true,outputs:{answer:destination}}),/output\/helper\/input collision/,'new structural cells must not silently replace a destination');
+    const safe=emitExcel(ir,{...base,includeOutputStructure:true,outputs:{answer:"'Policy'!D20"}});
+    assert.equal(predicate608(safe,{"'Policy'!E6":true,"'Policy'!E7":true},"'Policy'!D20"),7);
+  }
+});
+// END FED608 structural provenance.
+
 // BEGIN FED597 additions: native4.7.2 receiver -> RHS -> index -> read/write.
 // Source: /private/tmp/fed596-language-oracle/project/oracle.gd
 // result.json SHA256: 15ec4ef21c886c9cb40a1524e113f9d9ad6f814930a1e1a48c45abb31df2e9bf
