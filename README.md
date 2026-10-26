@@ -7,7 +7,7 @@ existing saves remain separate and are not replaced or migrated.
 
 This is an early public alpha, not a market-ready release.
 [Website and screenshots](https://the-chair.jaymoney.chatgpt.site).
-[Download an Apple Silicon build](https://github.com/ihearttokyo/fed-chairman-game/releases).
+[Download Alpha 620 for Apple Silicon](https://github.com/ihearttokyo/fed-chairman-game/releases/tag/v0.1.0-alpha.620).
 Developer ID signing, Apple notarization, accessibility validation and
 representative human playtesting are distinct release gates. The project has no
 Federal Reserve affiliation, sponsorship or endorsement.
@@ -86,3 +86,17 @@ permissions. The full project license and component notices appear in Credits.
 - [Clean-room rules](CLEANROOM.md)
 
 The game runs locally, with no telemetry, accounts, backend or live-data feed.
+
+## Next major upgrades
+
+[Implementation plan](docs/MAJOR-UPGRADE-PLAN-2026-10-26.md) · [Delivery standard](FEATURE-DELIVERY.md)
+
+[Private learning desk](https://the-chair-walkthrough.jaymoney.chatgpt.site): eight
+source-linked lessons, 21 policy choices and native-engine eight-quarter paths.
+Explore rates, guidance, portfolios, liquidity, credibility, recovery and borrowing
+costs; then follow the matching native control sequence. This is a precomputed
+rehearsal, not a browser port, live career or a claim of greater economic depth.
+It never reads or writes player saves.
+
+Walkthrough data qualification and provenance: [DATA.md](walkthrough/DATA.md).
+UI contracts: `node --test walkthrough/test_walkthrough.mjs`.
