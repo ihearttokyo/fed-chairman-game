@@ -296,3 +296,45 @@ This opt-in test leaves the frozen 480-transition pilot and default UI suite
 unchanged. It checks numerical integration, not Main's input pacing, assistive
 technology, unused-seed custody or human enjoyment. No economic mechanism or
 claim of greater decision value follows from this result.
+
+
+## Alpha 620: later-event sensitivity and fire-sale screen
+
+The registered event-window diagnostic used unchanged native economics at
+`96c10bc`: 72 transitions with exact predecessor/onset replay and pure previews.
+Its first eligible named funding onset was Q12, a private-deposit normalization
+follow-up, not a newly selected crisis. A 2.4% initial-annual-GDP loan offer applied
+0.7 and cleared that unmet need. Q8 inflation/employment spans were only
+0.005889/0.023850 pp, below the fixed 0.10 pp macro screen. The Q11 predecessor
+had no lending effect. This funding-only result does not justify more events.
+
+A separate bank-ledger prototype tested discounted asset sales against emergency
+credit, based on the qualitative funding-run/forced-sale channel in the
+[Federal Reserve financial-stability framework](https://www.federalreserve.gov/publications/2026-may-financial-stability-report-purpose-and-framework.htm).
+Books, discounts, borrower response and credit terms were authored, not estimated
+Fed behavior. A loan supplied liquidity and an equal liability, not bank equity;
+sales removed dated face and booked actual proceeds and discount loss. No original
+face reset, fake maturity, forgiven debt or invented equity plug was permitted.
+
+Independent source review caught two precision defects: maturity cash could mask
+sale-relative rounding, and historical sale splits lacked the live strict audit.
+Both were repaired without weakening helpers; native rejection/valid-control tests
+passed and independent delta review found no remaining repair defect. The isolated
+campaign completed 1,475 conservatively counted transition equivalents; both
+fresh-process GREENs passed 12,816 checks and matched complete matrices including
+native-byte path hashes. Sixty distinct paths executed per GREEN; 48 duplicate
+non-sale discount rows reused verified identical inputs, not extra executions.
+
+**The gameplay screen failed.** Seven comparison pairs reversed preference as
+future yields changed, but none met both the 0.10% initial-GDP payment/queue and
+0.05% initial-GDP equity materiality thresholds. The largest liquidity difference
+among reversal pairs was 0.061428% initial GDP. Equity effects alone did not pass.
+The original thinner-cash case was impossible with zero opening cash and remains
+NOT_EVALUABLE; a separately frozen, pre-execution v2 used the same bank with 50%
+collateral readiness. V2 failed; it does not retrospectively pass the old protocol.
+
+[Retained screen and source identities](research/FIRE_SALE_620_SCREEN.json) record
+the result. Do not retune this screen after its outcome or promote this mechanism
+into normal careers. Bank accounting success does not establish macro spillovers,
+held-out improvement or enjoyable play. The native game, saves and walkthrough
+outcomes are unchanged. Stronger ordinary-career decision variety remains open.

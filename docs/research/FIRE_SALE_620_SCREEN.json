@@ -1,0 +1,68 @@
+{
+  "baseline_commit": "96c10bc3889d39a2b987cd49afd2481a2876aeae",
+  "classification": "REJECTED ordinary-career adoption; private bank-ledger research only",
+  "experimental_module_sha256": "f71c3ec1b0fb163a74987e87ce4ce1c610800d5e49e675ab19cbf174042672c4",
+  "prospective_spec_v2_sha256": "69366ac879e1e2e86ba1d03b46cf1849947ef7ea17afb4d5aea19113f0702263",
+  "native_engine": "Godot 4.7.2 official ARM64, headless isolated storage",
+  "design": {
+    "horizon": 8,
+    "contexts": [
+      "native opening",
+      "opening yield +2pp",
+      "longer duration, equal opening market value",
+      "same native book, 50% collateral readiness"
+    ],
+    "quote_paths": [
+      "flat",
+      "+2pp after first meeting",
+      "-2pp after first meeting"
+    ],
+    "sale_discounts_pct": [
+      0,
+      5,
+      15
+    ],
+    "strategies": [
+      "no loan / no sale",
+      "loan only",
+      "loan plus first-meeting sale of half nonmaturing claims"
+    ],
+    "cashless_reuse": "Only non-sale duplicate discount labels; inputs verified identical, traces deep-copied. Every distinct sale/quote/context path executed."
+  },
+  "qualification": {
+    "conservative_native_transition_equivalents": 1475,
+    "checks_per_green": 12816,
+    "failures_per_green": 0,
+    "unique_matrix_paths_per_green": 60,
+    "duplicate_non_sale_rows_per_green": 48,
+    "labeled_rows_per_green": 108,
+    "full_results_and_native_byte_hash_replay": true,
+    "prior_static_findings": [
+      "Sale cash fidelity diluted by genuine maturity",
+      "Historical price-split validation weaker than live settlement"
+    ],
+    "fix_regressions": "Both counterexamples and admissible controls passed native tests; independent final source delta review found no remaining defect in repairs."
+  },
+  "screen": {
+    "payment_or_queue_threshold_pct_initial_annual_gdp": 0.1,
+    "equity_threshold_pct_initial_annual_gdp": 0.05,
+    "preference_reversal_pairs": 7,
+    "qualifying_pairs": 0,
+    "largest_liquidity_delta_among_reversal_pairs_pct_initial_annual_gdp": 0.06142806190896987,
+    "v2_result": "FAIL",
+    "original_result": "NOT_EVALUABLE: zero opening cash made strictly thinner cash impossible; original specification retained. V2 replacement prospectively frozen before engine execution."
+  },
+  "decision": "Retain failure. Do not adopt, retune thresholds after results, or claim normal-career/macro/fun improvement.",
+  "limits": [
+    "Authored bank books, paths, discount and contract assumptions, not empirical calibration",
+    "External sale buyer outside bank ledger; no endogenous contagion or macro transmission",
+    "No normal-career or save integration; no held-out confirmation; no GUI/human play qualification"
+  ],
+  "evidence_sha256": {
+    "campaign-v2-result.json": "443a173f481ff7aa257ff7e940b60af0a83bdbb5aea875cdd92fc5cf160206cc",
+    "red-v2.json": "fcb3f57a0804421eea423181f98de50ecaf7db12e8f119c115fbfbf1ac20ec79",
+    "green-v2.json": "82292967a4f91a6fbec879638049effeccc708c2198a190f8205e7e9d49a1af0",
+    "final-v2.json": "89d218f9cac6fb0c43539055a9d32412df17bf54dafe34ce06cb28199aec3b82",
+    "final-v2-summary.json": "2124156b13e6cd2826ef31e88142dc1e2b7a05b37a7e2139c4a4a8ce3ddab1a4"
+  }
+}

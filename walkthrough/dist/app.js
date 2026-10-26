@@ -73,6 +73,56 @@
       unpaidToFed: read(claims, 'payable', true), unpaidFromFed: read(claims, 'receivable', true)
     };
   }
+  // Verified in native main.gd: _spin, custom guidance, _policy and _committee_range_value.
+  // These are entry/display grids, NOT forecast or policy-transmission equations.
+  const ENTRY_NUMBERS = ['policy_rate_request_pct', 'guidance_rate_pct', 'guidance_inflation_sensitivity',
+    'guidance_output_gap_sensitivity', 'asset_flow_request_pct_initial_gdp', 'liquidity_request_pct_initial_gdp'];
+  const ENTRY_SWITCHES = ['reinvest_principal', 'maintain_ample_reserves', 'sterilize_purchases'];
+  function nativeQuote(value, step, digits, origin = 0) {
+    const units = (value - origin) / step;
+    // Native raw-input setter uses minimum-offset, half-away-from-zero rounding.
+    const rounded = Math.sign(units) * Math.floor(Math.abs(units) + .5);
+    if (!finite(value) || !finite(units) || !Number.isSafeInteger(rounded)) return null;
+    const snapped = rounded * step + origin;
+    if (!finite(snapped)) return null;
+    const text = snapped.toFixed(digits);
+    return Number(text) === 0 ? (0).toFixed(digits) : text;
+  }
+  function nativeEntryHandoff(lesson, option) {
+    const unavailable = reason => ({ ok: false, reason });
+    const entry = lesson?.native_entry;
+    const ratio = entry?.nominal_gdp_ratio;
+    if (!finite(ratio) || ratio <= 0) return unavailable('Missing or invalid decision-state nominal GDP ratio.');
+    if (!Number.isSafeInteger(entry.decision_quarter) || entry.decision_quarter < 0 ||
+        option?.path?.[0]?.quarter !== entry.decision_quarter + 1) return unavailable('Missing or mismatched decision quarter.');
+    const policy = option?.policy;
+    if (!policy || typeof policy !== 'object' || Array.isArray(policy) ||
+        !ENTRY_NUMBERS.every(key => finite(policy[key])) || !ENTRY_SWITCHES.every(key => typeof policy[key] === 'boolean') ||
+        Object.keys(policy).some(key => !ENTRY_NUMBERS.includes(key) && !ENTRY_SWITCHES.includes(key)) ||
+        policy.liquidity_request_pct_initial_gdp < 0 ||
+        Math.abs(policy.guidance_inflation_sensitivity) > 2 || Math.abs(policy.guidance_output_gap_sensitivity) > 2) {
+      return unavailable('Invalid or incomplete exported policy; no control defaults substituted.');
+    }
+    for (const key of ['policy_rate_request_pct', 'guidance_rate_pct']) {
+      const units = policy[key] / .01;
+      if (!finite(units) || Math.abs(units - Math.round(units)) >= 1e-6) return unavailable('Invalid native rate/guidance grid.');
+    }
+    const purchase = policy.asset_flow_request_pct_initial_gdp / ratio;
+    const loan = policy.liquidity_request_pct_initial_gdp / ratio;
+    if (!finite(purchase) || !finite(loan) ||
+        (purchase === 0 && policy.asset_flow_request_pct_initial_gdp !== 0) ||
+        (loan === 0 && policy.liquidity_request_pct_initial_gdp !== 0)) return unavailable('Current-GDP conversion overflow or underflow.');
+    const quotes = {
+      rate: nativeQuote(policy.policy_rate_request_pct, .01, 2),
+      guidance: nativeQuote(policy.guidance_rate_pct, .01, 2),
+      inflationResponse: nativeQuote(policy.guidance_inflation_sensitivity, .01, 2, -2),
+      outputResponse: nativeQuote(policy.guidance_output_gap_sensitivity, .01, 2, -2),
+      purchase: nativeQuote(purchase, .01, 2, -2), loan: nativeQuote(loan, .0001, 4)
+    };
+    if (Object.values(quotes).some(value => value === null)) return unavailable('Native entry quote exceeds reliable grid precision.');
+    return { ok: true, decisionQuarter: entry.decision_quarter, ratio, quotes,
+      switches: Object.fromEntries(ENTRY_SWITCHES.map(key => [key, policy[key]])) };
+  }
   function sourceURL(commit, path) {
     if (!/^[a-f0-9]{7,40}$/i.test(commit) || typeof path !== 'string' ||
         !/^[a-zA-Z0-9_./-]+$/.test(path) || path.startsWith('/') || path.split('/').some(p => !p || p === '.' || p === '..')) return null;
@@ -130,7 +180,7 @@
     const pad = hi === lo ? Math.max(Math.abs(lo) * .05, .1) : (hi - lo) * .12;
     return [lo - pad, hi + pad];
   }
-  const api = { formatValue, difference, sourceURL, validateDataset, parseProgress, extent, defaultMetrics, fundingPeak, fundingRelevant, firstCreditSettlement, ATLAS, STORAGE_KEY };
+  const api = { formatValue, difference, sourceURL, validateDataset, parseProgress, extent, defaultMetrics, fundingPeak, fundingRelevant, firstCreditSettlement, nativeEntryHandoff, ATLAS, STORAGE_KEY };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (typeof document === 'undefined') return;
 
@@ -214,7 +264,7 @@
     for (const step of steps) $('native-steps').append(element('li', step));
     $('lesson-context').textContent = `Scenario: ${lesson.scenario}. Seed: ${lesson.seed}. Mode: ${lesson.mode}.`;
     $('lesson-sources').replaceChildren();
-    for (const path of [...new Set([...lesson.source_paths, 'game/model/parameters.json', 'docs/MODEL_CONTRACT.md'])]) {
+    for (const path of [...new Set([...lesson.source_paths, 'game/play/main.gd', 'game/model/parameters.json', 'docs/MODEL_CONTRACT.md'])]) {
       const li = element('li'); addLink(li, path, path); $('lesson-sources').append(li);
     }
     $('provenance').replaceChildren();
@@ -291,9 +341,39 @@
     $('ledger-details').hidden = !Object.values(raw).some(entry => Object.keys(entry).length);
     $('ledger-raw').textContent = JSON.stringify(raw, null, 2);
   }
+  function renderNativeEntry(lesson, option) {
+    const box = $('native-entry'); box.replaceChildren();
+    if (!option) { box.append(element('p', 'Choose a policy above for native entry quotes.')); return; }
+    const handoff = nativeEntryHandoff(lesson, option);
+    box.append(element('h4', `Entry quotes: ${option.label}`));
+    if (!handoff.ok) { box.append(element('p', `Native entry unavailable. ${handoff.reason}`)); return; }
+    const q = handoff.quotes;
+    const controls = element('dl', null, { class: 'native-quotes native-quotes--primary' });
+    for (const [label, value] of [
+      ['Target midpoint', `${q.rate}%`], ['Next-quarter guidance', `${q.guidance}%`],
+      ['Purchases / runoff cap', `${q.purchase}%`], ['Liquidity offer', `${q.loan}%`]
+    ]) controls.append(element('dt', label), element('dd', value));
+    box.append(controls, element('p', 'Offers: % current annual GDP. Rounded quotes; paths may differ.'));
+    const details = element('details');
+    details.append(element('summary', 'Guidance, switches & entry units'));
+    const settings = element('dl', null, { class: 'native-quotes' });
+    for (const [label, value] of [
+      ['Guidance commitment', 'Custom conditional guidance'],
+      ['Inflation / output-gap responses', `${q.inflationResponse} / ${q.outputResponse} rate pp per 1 pp change`],
+      ['Reinvest principal', handoff.switches.reinvest_principal ? 'On' : 'Off'],
+      ['Maintain ample reserves', handoff.switches.maintain_ample_reserves ? 'On' : 'Off'],
+      ['Sterilize purchases', handoff.switches.sterilize_purchases ? 'On' : 'Off']
+    ]) settings.append(element('dt', label), element('dd', value));
+    details.append(settings);
+    details.append(element('p', `Decision Q${handoff.decisionQuarter}; current/initial nominal GDP = ${handoff.ratio}.`));
+    details.append(element('p', 'Type quotes: rates/guidance 1 bp; purchases 0.01; loans 0.0001. Rate, guidance, purchase and loan arrows move 0.25.'));
+    details.append(element('p', 'Offers = raw initial-GDP policy ÷ decision ratio. Rounded native quotes may yield slightly different paths; this rehearsal does not reproduce unknown future events or every decimal. Compare before adopting.'));
+    box.append(details);
+  }
   function renderResults() {
     const lesson = data.lessons[state.index], option = lesson.options.find(o => o.id === state.choices[lesson.id]), reference = lesson.options[0];
     [...$('options').children].forEach((button, i) => button.setAttribute('aria-pressed', String(lesson.options[i] === option)));
+    renderNativeEntry(lesson, option);
     $('results').hidden = !option; $('empty-path').hidden = !!option; $('takeaway-section').hidden = !option;
     $('progress').textContent = `${Object.keys(state.choices).length} of 8 lessons have a chosen policy`;
     $('path-context').textContent = option ? `${option.label} against ${reference.label}. Same lesson, matched quarters; separate vertical scales.` : 'Choose a policy to reveal its exported path. Nothing is calculated by an economic engine here.';

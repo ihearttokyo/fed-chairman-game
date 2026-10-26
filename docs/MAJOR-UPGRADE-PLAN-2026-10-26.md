@@ -16,8 +16,8 @@ Baseline: Alpha 620, game source `a91d7dfc8ee2ac04e408285b20203a047711ebd2`.
 | Economics | Negative-rate transmission, expectations/credibility, deferred demand, balance-sheet settlement, collateral-backed lending | Stronger later-career decisions supported by prospective experiments, not arbitrary extra volatility |
 | Shocks and objectives | Fifty accepted event concepts, seeded careers, current dispatch, Mandate/Recovery objectives | Measure realized event cadence, persistence and decision relevance before tuning |
 | Bank laboratories | Original workout and borrowing-cost lab; debt/equity distinction and diminishing negative-rate loan quote | Teach the ledger in a guided decision sequence; these labs remain separate from normal saves |
-| Art and music | Original Blender city, retained sources, local looping JRB-1 with persistent off switch | Intended-size art audit and coherent upgrades where there is a substantial visible gain |
-| Delivery | Public Alpha 620, signed/notarized ARM64, installed app and public download page | Private interactive learning desk and source-linked coverage of finalized mechanics |
+| Art and music | Original Blender city accepted at cockpit size; retained sources; local looping JRB-1 with persistent off switch | Preserve accepted city; assess remaining presentation only where a substantial visible gain is demonstrated |
+| Delivery | Public Alpha 620, signed/notarized ARM64, installed app, public download page and owner-private interactive learning desk | Keep walkthrough and future native releases aligned with finalized mechanics |
 
 Native tests establish specific behaviors, not human comprehension, empirical
 forecast accuracy, sustained fun or whole-game visual acceptance. Existing
@@ -26,8 +26,9 @@ experiments retrospectively or reintroduce runtime AI.
 
 ## Release sequence
 
-### 1. Private learning desk — implement now
-Eight interactive lessons use actual native-engine conditional paths: committee,
+### 1. Private learning desk — delivered and frozen
+The [owner-private learning desk](https://the-chair-walkthrough.jaymoney.chatgpt.site)
+contains eight interactive lessons using actual native-engine conditional paths: committee,
 rates/negative rates, guidance, portfolios/reserves, secured liquidity,
 expectations/credibility, recovery and the priced bank workout. Each presents a
 choice, a graphic, a short consequence and the matching native control sequence.
@@ -39,12 +40,33 @@ or fabricated outcomes. Source identity, units and conditional assumptions stay
 inspectable. The walkthrough is owner-private; the existing public download page
 stays public. Native game export to Web is a separate option, not a prerequisite.
 
+The shipped desk covers 21 choices and 168 native forecast steps. Its consumer
+comparison checked 3,867 numerical values with no nonzero differences; 18 signed
+zero differences were explicitly classified. Offline data and UI checks passed
+22 and 20 tests respectively. Actual browser checks covered all eight lessons
+and keyboard navigation. This is not VoiceOver, universal viewport or human
+comprehension acceptance. The native-entry correction now converts initial-GDP
+offers to current-GDP control quotes using each lesson's decision state; the
+existing outcome paths are unchanged. Full guidance/switch settings stay in
+keyboard-accessible Details. Do not reopen accepted design for polish.
+
 ### 2. Make later decisions matter
 Start from the retained cadence reconnaissance and known null depth findings.
 The retained reconnaissance identifies 8–14-quarter normal-career event spacing,
-with current-only previews and separate ambient disturbances. Run its prospective
-event-window sensitivity diagnostic before changing incidence; sparse sampling
-may miss episodes, but does not excuse the prior null depth results.
+with current-only previews and separate ambient disturbances. The registered
+event-window diagnostic is complete: the first eligible named funding onset
+was a Q12 normalization follow-up, retained rather than replaced after inspection.
+A 2.4% initial-GDP lending offer cleared 0.7% initial-GDP unmet funding, but the
+Q8 inflation/employment spans stayed below the fixed 0.10 pp macro screen.
+This funding-only result does not rescue the prior null depth findings or justify
+more frequent events.
+
+The isolated fire-sale/credit prototype also failed its prospectively frozen
+decision-value screen despite passing accounting and exact replay checks. Retain
+the [failure and evidence](GAMEPLAY_DEPTH.md#alpha-620-later-event-sensitivity-and-fire-sale-screen);
+do not adopt it as normal-career depth or tune thresholds after inspecting results.
+The next mechanism must add central-bank decisions, not bank-treasurer busywork.
+
 Compare at most three distinct mechanisms against an unchanged baseline. Register
 material decision outcomes and failure criteria before running. Measure later
 tradeoffs and policy-response differences, not merely higher volatility or lower
@@ -62,8 +84,12 @@ Do not rewrite the engine merely to replace a screen.
 Inventory runtime assets at their intended size and function before generating
 replacements. Compare a small number of deliberate art directions. Preserve
 originals and editable Blender sources; use Blender background CLI. Runtime art
-must communicate the intended economic state without implying a geographic model.
-Keep accepted assets fixed. Generated concepts are not production assets, editable
+must serve its intended function without implying a geographic or economic model.
+The original city has now passed an independent intended-size review using the
+installed Alpha 620 cockpit and six source renders across three angles and two
+sizes. Retain it as a small illustrative identity, not a geographic or economic
+state display. Source renders do not establish runtime FPS or source/export byte
+parity. Keep accepted assets fixed. Generated concepts are not production assets, editable
 Blender files or native-resolution masters until those outputs actually exist.
 
 ### 5. Deliver the actual upgrade
