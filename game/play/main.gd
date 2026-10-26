@@ -3,6 +3,7 @@ extends Control
 const Career = preload("res://play/career.gd")
 const Workout = preload("res://play/workout_career.gd")
 const WorkoutPanel = preload("res://play/bank_workout_panel.gd")
+const FundingPlan = preload("res://play/funding_plan.gd")
 const WORKOUT_CASE := "__bank_workout"
 const WORKOUT_HELP := "Eight meetings. Rate decisions change inflation, activity and the market value of the bank's securities. Lending can pay withdrawals or renew debt; it cannot create equity. Unpaid withdrawals and overdue loans carry forward. A final withdrawal wave requests all remaining unrequested deposits. Maturing securities turn into cash and stop serving as collateral.\n\nThis authored exercise uses zero loan interest and automatic cash-first repayment of CB principal, then deposit withdrawals. That is a teaching assumption, not statutory insolvency priority. Securities use one flat semiannual discount yield. Quantities are % of initial annual GDP; policy offers remain % of current GDP.\n\nPreviews include known maturities and today's request, not future withdrawal requests or shocks. Paths beyond meeting eight are diagnostics, not additional playable meetings. Normal career saves and awards are unavailable in this unsaved laboratory."
 const Chart = preload("res://play/history_chart.gd")
@@ -47,6 +48,7 @@ var rate: SpinBox
 var guidance: SpinBox
 var assets: SpinBox
 var liquidity: SpinBox
+var funding_plan: FundingPlan
 var reinvestment: CheckBox
 var reserve_maintenance: CheckBox
 var sterilization: CheckBox
@@ -687,6 +689,8 @@ func _build_policy(parent: Node, actions: Node) -> void:
 	liquidity.step = 0.0001
 	liquidity.allow_greater = true
 	_label(box, "Asset and loan units: % of current annual GDP", 11, MUTED)
+	funding_plan = FundingPlan.new()
+	box.add_child(funding_plan)
 	var benchmark_button := _button(box, "Stage staff estimate", _staff_rule, KEY_R)
 	benchmark_button.tooltip_text = STAFF_HELP
 	benchmark_button.accessibility_description = benchmark_button.tooltip_text
@@ -836,6 +840,8 @@ func _start_career(case_id: String, seed_number: int) -> void:
 	status_label.text = "New unsaved career · %s · seed %d" % ["Bank workout · 8 meetings" if _is_workout() else career.cases[case_id].label, seed_number]
 
 func _refresh(reset_controls := false, update_preview := true) -> void:
+	if funding_plan != null:
+		funding_plan.update_plan({}, 0.0, 1.0)
 	var s: Dictionary = career.state
 	_committee_brief()
 	var complete := career.decisions.size() >= _active_horizon()
@@ -958,11 +964,15 @@ func _reset_policy_controls() -> void:
 	loading_controls = false
 
 func _policy_error(error: String) -> String:
+	if error == "unrepresentable fractional refinancing advance":
+		return "Loan split exceeds numeric precision. Reduce the offer and check the preview."
 	if error == "infeasible mandatory settlement after simultaneous principal netting":
 		return "Insufficient reserves for settlement. Enable Maintain ample reserves, or adjust purchases/runoff and check the preview."
 	return error
 
 func _preview() -> void:
+	if funding_plan != null:
+		funding_plan.update_plan({}, 0.0, 1.0)
 	if loading_controls or forecast_label == null or career.state.is_empty():
 		return
 	if routine.active:
@@ -974,7 +984,8 @@ func _preview() -> void:
 	if career.decisions.size() >= _active_horizon():
 		forecast_label.text = "Episode complete. Review the retained bank ledger." if _is_workout() else "CAREER COMPLETE\nFinal outcomes at Q240. Compare paths is diagnostic only; no further decisions."
 		return
-	var result: Dictionary = career.forecast(_policy())
+	var policy := _policy()
+	var result: Dictionary = career.forecast(policy)
 	if not result.ok:
 		forecast_label.text = "Preview unavailable: " + _policy_error(result.error)
 		return
@@ -988,7 +999,8 @@ func _preview() -> void:
 	if first.policy_rate_pct < 0.0:
 		rate_text += " (effective %.2f%%)" % first.effective_policy_rate_pct
 	var n: float = first.decision_nominal_gdp_ratio
-	forecast_label.text = "IF ADOPTED NOW\n%s · assets %+.2f · lending %s\nRunoff %s · RMP %s · RRP %s\nUnsterilized %s · uncovered funding %s\n\nCONDITIONAL Q+8\nInflation %.2f%% · unemployment %.2f%% · output gap %+.2f%%" % [rate_text, first.asset_flow_applied_pct_initial_gdp / n, Career.funding_amount_text(first.liquidity_applied_pct_initial_gdp / n), Career.funding_amount_text(first.long_securities_runoff_pct_initial_gdp / n), Career.funding_amount_text(first.reserve_maintenance_purchase_pct_initial_gdp / n), Career.funding_amount_text(first.sterilization_applied_pct_initial_gdp / n), Career.funding_amount_text(first.sterilization_unfulfilled_pct_initial_gdp / n), Career.funding_amount_text(first.uncovered_funding_pct_initial_gdp / n), last.four_quarter_inflation_pct, last.unemployment_rate_pct, last.output_gap_pct]
+	funding_plan.update_plan(first, policy.liquidity_request_pct_initial_gdp, n)
+	forecast_label.text = "IF ADOPTED NOW\n%s · assets %+.2f\nRunoff %s · RMP %s · RRP %s\nUnsterilized %s\n\nCONDITIONAL Q+8\nInflation %.2f%% · unemployment %.2f%% · output gap %+.2f%%" % [rate_text, first.asset_flow_applied_pct_initial_gdp / n, Career.funding_amount_text(first.long_securities_runoff_pct_initial_gdp / n), Career.funding_amount_text(first.reserve_maintenance_purchase_pct_initial_gdp / n), Career.funding_amount_text(first.sterilization_applied_pct_initial_gdp / n), Career.funding_amount_text(first.sterilization_unfulfilled_pct_initial_gdp / n), last.four_quarter_inflation_pct, last.unemployment_rate_pct, last.output_gap_pct]
 
 func _decision_briefing() -> String:
 	comparison_series = []
@@ -1163,6 +1175,7 @@ func _advance() -> void:
 		if armed.ok:
 			follow_up_wait_seconds = FOLLOW_UP_INTERVAL_SECONDS
 			forecast_label.text = "Preview paused during routine follow-up."
+			funding_plan.update_plan({}, 0.0, 1.0)
 			stop_follow_up.visible = true
 			status_label.text = "Routine follow-up: Q%d completed. Updates wait 2 s; Escape or Stop returns control." % career.state.quarter_index
 			_link_focus(_keyboard_focus_order())
@@ -1195,7 +1208,9 @@ func _show_outcome(before: Dictionary) -> void:
 		consequence.text += "\nBank advances %s · Cash repaid %s · Renewed %s (%% initial GDP)." % [Career.funding_amount_text(settled.new_cash), Career.funding_amount_text(settled.repayment), Career.funding_amount_text(settled.renewal)]
 	elif s.liquidity_applied_pct_initial_gdp > 0.0 or s.uncovered_funding_pct_initial_gdp > 0.0 or s.liquidity_repayment_pct_initial_gdp > 0.0:
 		var n: float = s.decision_nominal_gdp_ratio
-		consequence.text += "\nFunding (%% meeting GDP): lent %s · uncovered %s · repaid %s." % [Career.funding_amount_text(s.liquidity_applied_pct_initial_gdp / n), Career.funding_amount_text(s.uncovered_funding_pct_initial_gdp / n), Career.funding_amount_text(s.liquidity_repayment_pct_initial_gdp / n)]
+		consequence.text += "\nFunding (%% meeting GDP): local cash %s · renewed %s · unmet %s." % [Career.funding_amount_text(s.liquidity_new_need_applied_pct_initial_gdp / n), Career.funding_amount_text(s.liquidity_refinancing_applied_pct_initial_gdp / n), Career.funding_amount_text(s.uncovered_funding_pct_initial_gdp / n)]
+		if s.liquidity_aggregate_applied_pct_initial_gdp > 0.0:
+			consequence.text += " Reserve loans %s." % Career.funding_amount_text(s.liquidity_aggregate_applied_pct_initial_gdp / n)
 	_update_outcome_drivers(int(before.quarter_index))
 	status_label.text = "Quarter %d completed. Unsaved changes · %s" % [s.quarter_index, "Bank workout" if _is_workout() else career.cases[career.scenario_id].label]
 

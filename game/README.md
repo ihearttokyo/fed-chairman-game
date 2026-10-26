@@ -100,7 +100,7 @@ cumulative eligible local funding. New shocks can end stabilization; the career
 continues throughQ240. Inherited inflation is not a lifetime-average penalty.
 This is separate from the unchanged60-year Mandate v1 award. Custom completed
 shock paths remain practice. Existing career paths and
-economic transmission equations are unchanged. The Alpha 614 model digest is
+economic transmission equations are unchanged. The Alpha 614 and Alpha 615 model digests are
 accepted for all nine existing scenarios; the older compatibility bridge stays
 limited to the original eight. Both require this release's exact reviewed source
 digest. Loading replays the
@@ -904,3 +904,19 @@ against their limits. The most binding career/recent constraint is labelled.
 Color is paired with numeric values and status words; Details retains the rules.
 A dash means no observations, not perfect performance. Practice is unscored, and
 Recovery uses its rolling 12-quarter window rather than a lifetime penalty.
+
+### Fractional refinancing qualification
+
+Fully funded decimal refinancing must not stall a decision because subtracting
+renewed principal rounds a fresh advance above the new request. The allocator
+bounds that accepted leg before booking only where the previous aggregate
+shortfall was negative (an invalid transition). Previously accepted paths retain
+their arithmetic. If gross principal cannot represent the fresh leg within
+1e-12 relative error measured against that leg, the decision is refused without
+mutation, rather than reporting cash that was not booked. This is numerical
+validation, not a lending ceiling or forgiveness of unpaid principal.
+
+`funding_compatibility_test` is an opt-in native replay check. Set
+`FED_FUNDING_EVIDENCE` to the external genuine Alpha615 pre-edit fixture directory
+containing nine Q240 payloads and their complete-history SHA256 manifest; it fails
+when that evidence is absent and never generates replacement goldens.

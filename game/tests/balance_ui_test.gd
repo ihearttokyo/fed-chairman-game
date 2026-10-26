@@ -68,7 +68,7 @@ func check_small_funding_readouts(game: Control) -> void:
 		game._preview()
 		check(game.dispatch_details_text.contains("Funding need %s (new)" % pair[1]), "dispatch details preserve small positive funding rather than round it to zero: " + str(pair[0]))
 		check(game.briefing.text.contains("Funding (%% current GDP): new %s · refi need 0.00 · eligible need %s · secured value 0.0040" % [pair[1], pair[1]]), "compact funding essentials preserve the actual small amount, eligibility and adjusted collateral in current GDP: " + str(pair[0]))
-		check(game.forecast_label.text.contains("uncovered funding %s" % pair[1]), "preview distinguishes small uncovered funding from zero: " + str(pair[0]))
+		check(game.funding_plan.snapshot.get("ok", false) and (game.funding_plan.unmet_label.text == "Unmet local " + pair[1] if pair[0] > 0 else not game.funding_plan.visible), "preview distinguishes small uncovered funding from zero: " + str(pair[0]))
 		check(game._decision_briefing().contains("Uncovered funding %s vs %s" % [pair[1], pair[1]]), "comparison preserves small funding on both paths: " + str(pair[0]))
 		check(game.career.encode() == before, "small-funding displays and comparisons remain read-only")
 	shock.funding_need_pct_initial_gdp = 0.004 * n
@@ -82,14 +82,14 @@ func check_small_funding_readouts(game: Control) -> void:
 	var forecast: Dictionary = game.career.forecast(policy)
 	game._preview()
 	check(forecast.ok and game.career.encode() == before, "small lending preview is feasible and read-only")
-	check(game.forecast_label.text.contains("lending 0.0040") and game.forecast_label.text.contains("uncovered funding 0.00\n"), "preview shows the accepted small loan and actual zero residual")
+	check(game.funding_plan.visible and game.funding_plan.heading.text.contains("0.0040 applied") and game.funding_plan.snapshot.unmet_initial_gdp == 0.0 and not game.funding_plan.unmet_label.visible, "preview shows the accepted small loan and actual zero residual")
 	var report: String = game._decision_briefing()
 	for fragment in ["Requested lending 0.0040", "Applied lending 0.0040", "Lending value 0.0040", "Eligible local demand 0.0040", "new local lending 0.0040"]:
 		check(report.contains(fragment), "comparison retains " + fragment)
 	if forecast.ok:
 		game._advance()
 		check(game.career.state == forecast.states[0] and game.career.decisions.size() == 5, "small quote adopts the exact preview once")
-		check(game.consequence.text.contains("lent 0.0040"), "outcome retains the small loan")
+		check(game.consequence.text.contains("local cash 0.0040"), "outcome retains the small loan")
 		check(game.dispatch_details_text.contains("Last decision: lending 0.0040"), "next dispatch details retain the small prior loan")
 		check(not game.case_detail.text.contains("Loans 0.00%"), "ending stock does not present a small positive loan as zero")
 		game._journal()
