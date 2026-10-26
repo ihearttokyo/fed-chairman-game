@@ -1,11 +1,16 @@
-# Priced-credit experiment — not adopted
+# Priced-credit experiment — optional mode released in Alpha618
 
-The released bank workout still uses zero contractual interest. This local
-candidate adds optional, explicitly collectible-credit accounting to the native
-bank and macro transition. No released controller or UI enables it. The exact
-current-source normal-save bridge is qualified separately below.
+**Current status — 2026-10-26:** merged at `356abf5` (PR #140) and released
+in Alpha618. New career → **Bank workout · borrowing costs** enables optional,
+explicitly collectible-credit accounting in the native bank and macro transition.
+The original Bank workout remains zero-interest; neither laboratory uses normal
+career save slots or awards. The normal-save compatibility evidence is below.
 
-## Candidate A
+The historical sections retain rejected and unexposed milestones recorded by
+2026-10-26, before release. Their holds and unfinished gates describe those stages,
+not the current release; individual milestone dates were not separately recorded.
+
+## Candidate A (historical pre-release, recorded by 2026-10-26)
 
 An external context supplies annual APR, whole days, separate payable/receivable
 claims, collectibility and negative-rate opt-in. Accrual uses opening principal,
@@ -26,7 +31,7 @@ priority are authored assumptions, not exact US discount-window terms or statuto
 insolvency priority. External collectibility is a boundary, not an estimated CECL
 or nonaccrual model. Unsupported noncollectible inputs refuse atomically.
 
-## Evidence and decision
+## Evidence and decision (historical pre-release, recorded by 2026-10-26)
 
 Native tests passed 126 checks after independent review found two active-context
 status errors. The final paired study passed 3,017 checks across 64 frozen-policy
@@ -39,7 +44,7 @@ All 64 pairs retained identical inflation-distance, employment-shortfall, ending
 withdrawal-queue and principal-arrears metrics. Eight negative-APR cases transferred
 cash to banks; ten positive-cost cases paid interest only in the held-out maturity
 variant. These are cash/accounting effects, not pooled evidence of better gameplay.
-**Hold adoption.** Full receipts and rejected harness versions remain outside Git.
+**Historical decision: hold adoption of A.** Full receipts and rejected harness versions remain outside Git.
 
 The next hypothesis is funding completeness: allow an explicitly offered,
 collateral-supported cash advance to settle interest due, rather than allocating
@@ -48,7 +53,7 @@ retain unpaid claims when financing is unavailable. It is not automatic interest
 capitalization. All previously observed cases become development cases for that
 revision; new held-out cases must be frozen before testing.
 
-## Revision B: actual debt-service financing
+## Revision B: actual debt-service financing (historical pre-release, recorded by 2026-10-26)
 
 An optional `finance_interest=true` context allows actual collateral/offer-backed
 cash advances for interest due, before deposit payments. Existing principal still
@@ -69,7 +74,7 @@ After that repair, 64 development cases passed 4,361 checks and 32 independently
 frozen held-out cases passed 2,181 checks, with zero refused paths. Legacy full
 frames and zero-APR legacy fields matched independently of priced-arm success.
 The A suite, nine original Q240 manual histories and the unchanged controller's
-867 checks also passed. A new playable UI remains unqualified.
+867 checks also passed. At this stage, a new playable UI was not yet qualified.
 
 The exact composite source digest admits the prior Alpha616/617 header for the
 same nine explicit normal scenarios. Genuine Q240 saves restored byte-identically
@@ -85,7 +90,8 @@ of initial GDP. Macro inflation/employment effects were much smaller (below
 0.001 percentage point), not evidence of dramatically harder macro gameplay.
 Negative-APR transfers and zero/no-borrowing controls are reported separately.
 These are bounded cash-flow results, not an optimal-policy, empirical calibration
-or enjoyment claim. B remains unshipped; player-facing integration is documented below.
+or enjoyment claim. B was unshipped at this milestone; its later player-facing
+integration and release are documented below and in the current status above.
 
 [Discount Window general information](https://www.frbdiscountwindow.org/Pages/General-Information/The-Discount-Window)
 supports the accrual/claim distinction. [Primary-credit program guidance](https://www.frbdiscountwindow.org/pages/general-information/primary-and-secondary-credit-programs)
@@ -94,7 +100,7 @@ this experiment's payment priority. [FAM Chapter 8](https://www.federalreserve.g
 requires separate attention to expected loss and collectibility. No empirical,
 full-Fed-accounting or enjoyment claim follows from these tests.
 
-## Controller qualification and original minimum-loan failure
+## Controller qualification and original minimum-loan failure (historical pre-release, recorded by 2026-10-26)
 
 Before the numeric repair, the unexposed controller passed 250 native checks: synchronized ledgers,
 byte-pure previews, first-step preview/adoption equality, both interest signs,
@@ -103,7 +109,7 @@ are explicitly labelled separately from staged rates. Today's nonfunding shocks
 are copied directly into preview/adoption; a failed presentation quote cannot
 silently remove them. A fault-injected quote failure was RED before that fix.
 
-**The mode remains unexposed.** A subsequent real-input diagnostic
+**Historical status: unexposed, not ready to ship.** A subsequent real-input diagnostic
 found a normal, not extreme, precision failure. Borrow 0.0001% of initial GDP at
 the first meeting, then hold either +4% or -4%. At the next security maturity,
 interest settlement was refused by transaction-relative floating-point guards.
@@ -132,7 +138,7 @@ headless regression evidence, not visual usability acceptance. No GUI, installed
 app, release asset or user save was changed. That cohort did not establish
 minimum-loan coverage; the separate RED diagnostic identified the missing case.
 
-## Stock-booking repair
+## Stock-booking repair (historical pre-release, recorded by 2026-10-26)
 
 The cause was numerical, not an economic constraint: a normal cash movement was
 being held to interest-claim-relative accuracy even after larger maturity,
@@ -174,7 +180,7 @@ and 2,181 checks with no refused paths after this repair. These are reruns of
 previously frozen cases, not new independent gameplay discoveries. Normal nine-
 scenario Q240 histories again replay byte-identically. Native regression and
 numeric correctness do not establish enjoyment or visual usability. The later player-facing integration and native Computer Use are documented below;
-release qualification remains unfinished.
+release qualification was still unfinished at that milestone.
 
 Final-source verification: the default native headless suite passed with 55 PASS
 markers, including the 262-check controller and 85-check stock suite. Original
@@ -185,7 +191,7 @@ laboratory saves still fail closed. No original save was rewritten. Independent
 correctness and test/evidence reviews found and closed the gross-cash and stale-
 documentation issues; they did not substitute static review for native execution.
 
-## Player-facing integration (unreleased)
+## Player-facing integration (historical pre-release qualification, recorded by 2026-10-26)
 
 Main now offers the priced variant separately from the original lab. A compact
 cash-flow panel keeps first-staged terms apart from the last actual settlement;
@@ -207,11 +213,74 @@ preference hashes were unchanged. Current-size captures remain outside Git.
 The full default headless suite passed with 57 PASS markers, including all current
 priced component/controller/integration tests. These results do not qualify every
 possible window size, actual VoiceOver use, a second Mac, measured difficulty or
-human enjoyment. ARM64 export, matching packaged-runtime checks, reviewed PR
-publication/merge and release remain separate unfinished delivery work.
+human enjoyment. At this pre-release milestone, ARM64 export, matching packaged-runtime
+checks, reviewed PR publication/merge and release were separate unfinished delivery
+work. The mode subsequently merged and shipped as recorded in the current status above.
 
 The final source also passed the full macro model suite and the current curated
 career diagnostic: 1,100 completed careers, 264,000 transitions, 100 paired
 comparisons, all 50 curated events observed and zero diagnostic failures. This
 normal-career regression is separate from the 96 priced-bank cases and does not
 establish human difficulty or optimality of the feedback reference.
+
+## Uncapped negative-APR counterfactual — 2026-10-26 diagnostic
+
+One installed Godot 4.7.2 headless process, with private temporary HOME and a
+90-second limit, ran two matched seed-1 episodes through the actual priced
+controller. Q1 used rate/guidance 8% and a 2.4% current-GDP liquidity offer
+(equal to initial-GDP units at opening). Q2 used −10% versus −1000%, with no
+offer; Q3 returned both to 8%, still with no offer. Guidance matched each chosen
+rate with default data-dependent sensitivities; reinvestment and ample reserves
+were on, sterilization off, asset offers zero. This is an explicitly staged
+policy assumption, not a claim that changing the rate field also changes guidance.
+Q1 encoded ledgers and Q2 observed briefings matched byte-for-byte. Neither
+choice used future information; the results below are realized, not forecasts.
+
+Amounts below are percent of **initial annual GDP**; equity includes separate
+interest claims. Figures are rounded only for display.
+
+| Actual result | Q2: −10% | Q2: −1000% | Q3 after −10% | Q3 after −1000% |
+| --- | ---: | ---: | ---: | ---: |
+| Negative interest accrued and paid to bank | 0.059836 | 5.983562 | 0 | 0 |
+| Positive interest accrued | 0 | 0 | 0.037909 | 0.037909 |
+| Positive interest paid | 0 | 0 | 0 | 0.037909 |
+| Closing bank cash | 0 | 5.883562 | 0 | 3.865653 |
+| Closing combined bank equity | 1.469573 | 7.393299 | 0.454523 | 6.378249 |
+| Closing loan principal / overdue principal | 1.880000 | 1.880000 | 1.880000 | 0 |
+| Closing unpaid interest | 0 | 0 | 0.037909 | 0 |
+| Closing withdrawal queue | 0.040164 | 0 | 0.140164 | 0 |
+| Macro uncovered funding (principal, queue and interest) | 1.920164 | 1.880000 | 2.058073 | 0 |
+
+Q1 advanced and paid withdrawals of 2.4, with zero closing cash and no interest
+on its zero opening principal. Q2's 0.52 security maturity repaid principal
+before reverse interest arrived: both branches therefore retained 1.88 overdue
+principal that meeting despite the larger subsidy. Q3's larger-subsidy branch
+then repaid that 1.88 from cash, paid interest and paid 0.1 of withdrawals; the
+other branch paid none of those cash legs. No fresh advance or renewal occurred
+in Q2 or Q3. Q3 core Fed capital was −0.059836 versus −5.945653: the bank's
+transfer income has a central-bank cost, not free aggregate wealth.
+
+The source accrues `opening_principal * abs(APR)/100 * days/365`: Q2 uses 91 days,
+so −1000% pays exactly 100 times −10%. Negative APR therefore provides an
+**uncapped linear bank subsidy** for fixed principal/days, subject to finite
+representation and existing validity guards. Macro rate transmission instead
+saturates at `s*tanh(i/s)`, with `s=1pp`: Q2 effective rates were
+−0.999999995878% and −1%. Funding relief still changes credit spreads, so this
+does not make the complete macro paths identical.
+
+Q2 four-quarter inflation was 6.794678% in both branches. At Q3, −10% versus
+−1000% histories produced inflation 6.671826913% versus 6.671829938%, unemployment
+5.545624790% versus 5.544661600%, and output gaps −0.918481323% versus −0.910846941%.
+Credibility was 0.285375735 versus 0.285375188; support 59.270028507 versus
+59.270658278. Thus the large cash/equity gain did not proportionately improve
+macro outcomes; inflation remained well above 2%, and credibility was slightly
+lower. This bounded accounting counterfactual establishes no overall policy win,
+optimality, empirical Fed behavior or human enjoyment. No coefficients, rate caps
+or model version changed.
+
+All six adoptions completed and 20 diagnostic checks passed, but the engine also
+logged a macOS system-CA-certificate error on exit. This is diagnostic execution
+evidence, **not a clean regression-suite pass** under the wrapper's error policy.
+Script, source hashes, JSON results and logs remain outside Git in temporary
+evidence. NOT RUN: computer-use GUI validation (headless accounting diagnostic
+only; no UI changes or usability claim). No user saves or GUI were accessed.
