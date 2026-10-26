@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light">
+  <meta name="color-scheme" content="dark">
   <title>The Chair — decision walkthrough</title>
   <link rel="stylesheet" href="style.css">
   <script src="app.js" defer></script>
@@ -11,46 +11,47 @@
 <body>
   <a class="skip" href="#desk">Skip to decision desk</a>
   <header class="masthead">
-    <div><p class="identity">The Chair <span> / private companion</span></p><h1>Rehearse the decision.<br>Read the tradeoff.</h1></div>
-    <div class="native-links"><a href="https://github.com/ihearttokyo/fed-chairman-game/releases/tag/v0.1.0-alpha.620">Download native Alpha 620</a><small>Alpha 620 release · Apple Silicon</small><a href="https://the-chair.jaymoney.chatgpt.site/">Public project page</a><a href="https://github.com/ihearttokyo/fed-chairman-game">Source repository</a></div>
+    <div class="identity-block"><h1>The Chair</h1><p>Policy atlas <span>Private companion</span></p></div>
+    <div class="native-links"><a href="https://github.com/ihearttokyo/fed-chairman-game/releases/tag/v0.1.0-alpha.620">Download native Alpha 620</a><small>Apple Silicon</small><a href="https://the-chair.jaymoney.chatgpt.site/">Public project page</a><a href="https://github.com/ihearttokyo/fed-chairman-game">Source repository</a></div>
   </header>
   <main>
     <p class="disclosure"><strong>Precomputed native-engine rehearsal.</strong> Not the live game or a full simulator. No player save is read or written.</p>
     <p id="status" role="status" aria-live="polite">Loading the local lesson dataset…</p>
     <noscript><p>JavaScript is needed to choose a precomputed path. No engine runs here. Use the native download above instead.</p></noscript>
     <div id="experience" hidden>
-      <nav aria-label="Eight lessons"><ol id="lesson-nav" class="lesson-nav"></ol></nav>
+      <nav class="atlas-rail" aria-label="Eight lessons"><h2>Eight decisions</h2><p>Choose a lesson<span class="strip-hint"> · Scroll for more</span></p><p id="topic-current" class="topic-current"></p><ol id="lesson-nav" class="lesson-nav"></ol></nav>
       <section id="desk" tabindex="-1" aria-labelledby="lesson-title">
         <header class="lesson-heading"><p id="lesson-position"></p><h2 id="lesson-title"></h2><p id="task" class="task"></p></header>
-        <dl id="before" class="conditions" aria-label="Conditions before the decision"></dl>
+        <div class="opening-conditions"><h3>Before the decision</h3><dl id="before" class="conditions" aria-label="Conditions before the decision"></dl><details class="condition-notes"><summary>About the /100 indices</summary><p>Credibility: 0–1 index ×100. Public support: 0–100 index; no rescaling. Both display /100; differences are index points.</p></details></div>
         <div class="desk-layout">
           <aside class="decision-rail" aria-labelledby="decision-title">
             <h3 id="decision-title">Choose a policy path</h3><p id="reference-label"></p>
             <div id="options" class="options"></div>
-            <details><summary>Policy controls &amp; option notes</summary><div id="policy-details"></div></details>
+            <section id="choice-outcomes" hidden aria-labelledby="choice-outcomes-title"><h3 id="choice-outcomes-title">From opening to outcome</h3><p class="meter-key">Hollow marker: opening. Filled marker: chosen endpoint.</p><div id="outcome-meters"></div><p class="metric-note">Opening and chosen endpoint; not a score. Each graphic has its own scale. Scale endpoints include padding, not extra observations.</p></section>
             <section id="takeaway-section" hidden><h3>What to notice</h3><p id="takeaway"></p></section>
-            <section><h3>Try it in the native app</h3><ol id="native-steps"></ol><div id="native-entry"></div><p>This desk cannot stage or adopt a native decision.</p></section>
+            <details class="native-handoff" id="native-handoff"><summary>Try it in the native app</summary><ol id="native-steps"></ol><div id="native-entry"></div><p>This desk cannot stage or adopt a native decision.</p></details>
+            <details><summary>Policy controls &amp; option notes</summary><div id="policy-details"></div></details>
           </aside>
           <section class="plot-sheet" aria-labelledby="path-title">
-            <header><h3 id="path-title">Eight quarters, two tradeoffs</h3><p id="path-context">Choose a policy to reveal its exported path. Nothing is calculated by an economic engine here.</p></header>
-            <fieldset class="metric-controls"><legend>Primary chart metrics</legend><label for="metric-0">Upper lane<select id="metric-0" aria-controls="chart endpoints"></select></label><label for="metric-1">Lower lane<select id="metric-1" aria-controls="chart endpoints"></select></label></fieldset><p id="metric-note" class="metric-note"></p>
+            <header><h3 id="path-title">Compare the consequences</h3><p id="path-context">Choose a policy to reveal its exported path. Nothing is calculated by an economic engine here.</p></header>
+            <fieldset class="metric-controls"><legend>Compare two metrics</legend><label for="metric-0">First metric<select id="metric-0" aria-controls="chart endpoints outcome-meters"></select></label><label for="metric-1">Second metric<select id="metric-1" aria-controls="chart endpoints outcome-meters"></select></label></fieldset><p id="metric-note" class="metric-note"></p>
             <div id="results" hidden>
-              <p class="legend"><span class="chosen-key">Solid: chosen policy</span><span class="reference-key">Dashed: reference</span></p>
+              <p class="legend"><span class="chosen-key">Chosen policy</span><span class="reference-key">Reference</span></p>
               <div id="chart"></div>
               <div id="endpoints"></div>
               <section id="workout-ledger" hidden aria-labelledby="credit-heading"><h4 id="credit-heading">Borrowing cost by quarter</h4><label for="ledger-quarter">Settlement quarter<select id="ledger-quarter"></select></label><div id="credit-summary"></div><p class="metric-note">Exported settlement, not a live quote. Cash and unpaid claims: % initial GDP; APR: annual %. Payments are not netted; unpaid interest excludes principal.</p><details id="ledger-details" hidden><summary>Inspect optional native ledger arrays</summary><pre id="ledger-raw"></pre></details></section>
               <p class="interpretation">Changes are chosen minus reference, not scores. Lower inflation is not always better; unemployment and funding involve tradeoffs.</p>
               <details><summary>Inspect all eight quarters of macro data</summary><div id="data-table" class="table-scroll" tabindex="0" role="region" aria-label="Quarterly path data, horizontally scrollable"></div></details>
             </div>
-            <p id="empty-path" class="empty-path">Your decision goes here.<br><span>Pick a policy on the decision rail to unfold the evidence.</span></p>
+            <p id="empty-path" class="empty-path">Which tradeoff will you accept?<span>Choose a policy path to compare eight exported quarters against the reference.</span></p>
           </section>
         </div>
         <details class="provenance"><summary>Assumptions, provenance &amp; lesson source</summary><p id="lesson-context"></p><p>The paths are deterministic native exports, not empirical forecasts or optimal policies. Authored coefficients are game assumptions, not estimated Federal Reserve behavior. The reference is the first listed option, not a recommendation. Only the provided eight quarters are shown.</p><p>Inflation, unemployment and output gap are displayed in percent; their differences are percentage points. Credibility is a 0–1 index, displayed multiplied by 100. Public support is already a 0–100 index, displayed without rescaling. Both use /100 labels and differences in index points. Assets, loans and uncovered funding are % initial GDP; their differences are percentage points of initial GDP. Absent optional ledger values are “Unavailable,” never zero.</p><ul id="lesson-sources"></ul><dl id="provenance"></dl></details>
         <div class="lesson-actions"><button id="back" type="button">Previous lesson</button><p id="progress"></p><button id="next" type="button">Next lesson</button></div>
+        <details class="atlas"><summary>Logic atlas — find the native mechanism</summary><p>A reading map, not additional interactive simulation. Links are pinned to the dataset’s source commit.</p><ul id="atlas"></ul></details>
       </section>
-      <details class="atlas"><summary>Logic atlas — find the native mechanism</summary><p>A reading map, not additional interactive simulation. Links are pinned to the dataset’s source commit.</p><ul id="atlas"></ul></details>
     </div>
-    <footer><p id="storage-note">Progress stays in this browser only. No account, analytics, cloud save or game-save access.</p><button id="reset" type="button" disabled>Reset walkthrough progress</button><p>Reset clears only this companion’s lesson choices, not native careers.</p></footer>
+    <footer><p id="storage-note">Progress stays in this browser only. No analytics, cloud progress or game-save access.</p><button id="reset" type="button" disabled>Reset walkthrough progress</button><p>Reset clears only this companion’s lesson choices, not native careers.</p></footer>
   </main>
 </body>
 </html>

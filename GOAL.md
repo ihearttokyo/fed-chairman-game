@@ -1,13 +1,13 @@
 # The Chair — major feature goal
 
-Deliver a challenging, polished economic strategy game with:
+Deliver major upgrades to The Chair:
 
-- Meaningful policy tradeoffs, varied crises and credible economic consequences.
-- A graphical, compact, responsive cockpit with intuitive keyboard controls and readable contextual help.
+- Challenging, varied economic decisions: policy timing, investment, recovery, inflation expectations, credibility and balance-sheet tradeoffs that visibly matter.
+- A graphical, compact, responsive cockpit: less prose, clear visual feedback, intuitive keyboard controls and readable contextual help.
 - Cohesive visuals, refined assets and music.
-- An owner-private interactive walkthrough reflecting the finalized game mechanics.
+- An owner-private interactive walkthrough linking the finalized mechanics to practical play.
 - Reviewed, merged upgrades and reliable Apple Silicon releases with working download links.
 
-Independently assess each feature against an intended-use quality rubric. Freeze accepted features at 9.2/10; give implementers concrete fixes without revealing ratings. Prioritize substantial improvements, not endless minor polish.
+Assess gameplay, UI/UX, assets and release quality with independent adversarial testing. Stop iterating a feature at 9.2/10; give implementers concrete fixes without revealing ratings. Prioritize major improvements and deployment over endless minor polish.
 
-Build on the shipped Alpha 620 and private walkthrough. Preserve unfinished work; the whole-game goal remains active, without a token ceiling.
+Qualify experimental economic improvements before adopting them. Build on the shipped game and walkthrough, preserve unfinished work, and deliver reviewed, merged upgrades with matching playable releases. Continue without a token ceiling.
