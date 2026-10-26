@@ -406,3 +406,19 @@ test('native handoff keeps four primary quotes visible and folds the full recipe
   assert.match(children.filter(node => node !== details).map(node => node.textContent).join(' '), /Offers: % current annual GDP/);
   assert.doesNotMatch(primary.textContent, /nominal GDP =/);
 });
+
+test('half-away entry rounding does not add a tick below half or to odd integral counts', () => {
+  for (const [field, amount, expected] of [
+    ['liquidity_request_pct_initial_gdp', .000049999999999999996, '0.0000'],
+    ['liquidity_request_pct_initial_gdp', .00005, '0.0001'],
+    ['liquidity_request_pct_initial_gdp', 450359962737.0497, '450359962737.0497'],
+    ['asset_flow_request_pct_initial_gdp', -45035996273706.97, '-45035996273706.97']
+  ]) {
+    const lesson = entryFixture(0, 1).lessons[0], option = lesson.options[0];
+    option.policy[field] = amount;
+    const before = JSON.stringify(lesson), handoff = api.nativeEntryHandoff(lesson, option);
+    assert.equal(handoff.ok, true);
+    assert.equal(handoff.quotes[field.startsWith('liquidity') ? 'loan' : 'purchase'], expected);
+    assert.equal(JSON.stringify(lesson), before);
+  }
+});

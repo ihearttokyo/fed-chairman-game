@@ -81,7 +81,7 @@
   function nativeQuote(value, step, digits, origin = 0) {
     const units = (value - origin) / step;
     // Native raw-input setter uses minimum-offset, half-away-from-zero rounding.
-    const rounded = Math.sign(units) * Math.floor(Math.abs(units) + .5);
+    const rounded = Math.sign(units) * Math.round(Math.abs(units));
     if (!finite(value) || !finite(units) || !Number.isSafeInteger(rounded)) return null;
     const snapped = rounded * step + origin;
     if (!finite(snapped)) return null;

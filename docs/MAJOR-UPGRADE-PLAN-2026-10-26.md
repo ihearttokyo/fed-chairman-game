@@ -40,7 +40,7 @@ or fabricated outcomes. Source identity, units and conditional assumptions stay
 inspectable. The walkthrough is owner-private; the existing public download page
 stays public. Native game export to Web is a separate option, not a prerequisite.
 
-The shipped desk covers 21 choices and 168 native forecast steps. Its consumer
+The original delivery covers 21 choices and 168 native forecast steps. Its consumer
 comparison checked 3,867 numerical values with no nonzero differences; 18 signed
 zero differences were explicitly classified. Offline data and UI checks passed
 22 and 20 tests respectively. Actual browser checks covered all eight lessons

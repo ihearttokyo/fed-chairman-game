@@ -20,7 +20,7 @@ The fresh export added only these eight metadata records; all prior lesson
 fields, policies, paths and ledgers were unchanged. Python qualification covers
 all 3,875 native floats, with zero nonzero differences and 18 explicitly allowed
 signed-zero equivalents. Native lookup/forecast purity guards ran. Strict metadata
-schema/clock/source checks, 24 validator self-tests and 28 UI contracts pass.
+schema/clock/source checks, 24 validator self-tests and 29 UI contracts pass.
 Browser checks verify the Q4 3% initial-GDP offer becomes 2.8758% current GDP,
 with the complete guidance/switch recipe accessible by keyboard. This does not
 establish human comprehension, VoiceOver or arbitrary viewport acceptance.
