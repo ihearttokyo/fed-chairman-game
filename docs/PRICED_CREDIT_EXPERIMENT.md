@@ -1,12 +1,15 @@
-# Priced-credit experiment — optional mode released in Alpha618
+# Priced-credit experiment — optional mode released in Alpha618; loan quote updated in Alpha619
 
 **Alpha618 release baseline — 2026-10-26:** merged at `356abf5` (PR #140) and released
 in Alpha618. New career → **Bank workout · borrowing costs** enables optional,
 explicitly collectible-credit accounting in the native bank and macro transition.
 The original Bank workout remains zero-interest; neither laboratory uses normal
 career save slots or awards. The normal-save compatibility evidence is below.
-The current-source loan-quote candidate is described in the final addendum;
-historical release evidence does not validate that candidate.
+**Current status — Alpha619:** the former diminishing-negative-loan-quote
+candidate is now released, merged at `ea6dbfa` and published as
+[Alpha619 — Negative-rate tradeoffs](https://github.com/ihearttokyo/fed-chairman-game/releases/tag/v0.1.0-alpha.619).
+The final addendum records that implementation and its pre-release evidence;
+Alpha618 results remain historical, not validation of the changed mapping.
 
 The historical sections retain rejected and unexposed milestones recorded by
 2026-10-26, before release. Their holds and unfinished gates describe those stages,
@@ -287,9 +290,9 @@ Script, source hashes, JSON results and logs remain outside Git in temporary
 evidence. NOT RUN: computer-use GUI validation (headless accounting diagnostic
 only; no UI changes or usability claim). No user saves or GUI were accessed.
 
-## Current-status addendum — diminishing negative loan transmission candidate, 2026-10-26
+## Alpha619 addendum — diminishing negative loan transmission (pre-release evidence retained), 2026-10-26
 
-The current-source candidate changes only the optional priced controller's
+The loan-quote change released in Alpha619 changes only the optional priced controller's
 authored loan quote. Contract/payload version 2 identifies
 `Economy._effective_rate(requested_policy_rate_pct,negative_rate_efficacy_scale_pct)`.
 For requested policy `i` and the existing positive efficacy scale `s`, APR is
@@ -301,10 +304,10 @@ primitive, coefficients, save schema, compatibility bridge or award is changed.
 
 This is an authored US counterfactual, not an empirical Federal Reserve lending
 rule. It reuses the existing nonlinear macro transmission channel rather than
-adding an unrelated subsidy penalty or hard input cap. It is a bounded candidate
+adding an unrelated subsidy penalty or hard input cap. It is a bounded authored
 design, not a claim of optimality, measured difficulty or measured enjoyment.
 The Alpha618 table above remains historical evidence of the original raw-APR
-mapping, not an expected result under this candidate.
+mapping, not an expected result under Alpha619.
 
 At scale 1, independent analytic loan-APR points are
 `-1 → -0.7615941559557649`, `-10 → -0.9999999958776927` and `-1000 → -1` percent.
@@ -332,7 +335,7 @@ guidance, future-shock exclusion and original laboratory/normal payload isolatio
 Updated negative-APR expectations use the new authored contract, not relaxed
 accounting invariants. No native old-baseline RED was executed.
 
-Candidate validation: the child wrapper stopped at its private-HOME storage
+Historical pre-release validation: the child wrapper stopped at its private-HOME storage
 preflight with a system-CA access error. The parent used the unchanged wrapper
 in its owning execution context; no CA error occurred. That run found a new-test
 GDScript type-inference error, repaired by an explicit Dictionary type. Independent
@@ -352,9 +355,11 @@ requests-10 and-1000 both displayed approximately-1% loan APR and0.0060 reverse
 cash; inputs were not capped. Staged versus actual terms, F1 Help, Escape and
 terminal refusal were inspected. Original-resolution pixels were readable; no
 user save or preference changed. This GUI run preceded the integer-validation-only
-repair; presenter, Help and normal model files were unchanged. Final matching
-exported-artifact smoke remains separate. These checks do not establish all-window,
+repair; presenter, Help and normal model files were unchanged. At that historical
+checkpoint, final matching exported-artifact smoke remained separate. These checks do not establish all-window,
 actual VoiceOver, second-Mac, empirical accuracy or human-enjoyment acceptance.
 The unchanged normal model/workbook equations do not require a new1100-career
-sweep for this optional controller-only candidate. Integration and release remain
-pending; historical Alpha618 is still the shipped baseline.
+sweep for this optional controller-only change. Integration/release were pending
+at that historical checkpoint, not now: Alpha619 is released at `ea6dbfa` via
+the public release linked above. Pre-release failures and unfinished gates above
+remain historical evidence; this status correction adds no new modeling claims.

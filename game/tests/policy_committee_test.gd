@@ -12,6 +12,26 @@ func check(value: bool, message: String) -> void:
 		failures += 1
 		printerr("FAIL: " + message)
 
+func exact_decimal(value: float) -> String:
+	return String.num(value, 17) + " [" + var_to_bytes(value).hex_encode() + "]"
+
+func decimal_diagnostic(game: Variant, phase: String, captured_assets: float, captured_liquidity: float, advertised: Dictionary) -> void:
+	# Failure-only, bounded output: current-GDP controls versus initial-GDP policy
+	# flows, with exact serialized floats so a last-bit resnap is distinguishable.
+	var n: float = game.career.model.nominal_gdp_ratio(game.career.state)
+	var actual: Dictionary = game._policy()
+	var differences: Array[String] = []
+	for key in advertised:
+		if actual.get(key) != advertised[key]:
+			differences.append(key)
+	printerr("DECIMAL_DIAG phase=%s GDP=%s policy_diff_keys=%s" % [phase, exact_decimal(n), str(differences)])
+	for pair in [["assets", game.assets, captured_assets], ["liquidity", game.liquidity, captured_liquidity]]:
+		var input: SpinBox = pair[1]
+		var quoted: float = game.docket_controls[pair[0]]
+		printerr("DECIMAL_CONTROL %s native=%s captured=%s quoted=%s resnap_native=%s text=%s meta=%s pending=%s" % [pair[0], exact_decimal(input.value), exact_decimal(pair[2]), exact_decimal(quoted), exact_decimal(snappedf(input.value, input.step)), var_to_str(input.get_line_edit().text), var_to_str(input.get_meta("numeric_text")), str(input.get_meta("numeric_text_pending"))])
+	for pair in [["asset_flow_request_pct_initial_gdp", captured_assets], ["liquidity_request_pct_initial_gdp", captured_liquidity]]:
+		printerr("DECIMAL_FLOW %s actual=%s advertised=%s captured_current_GDP_times_n=%s" % [pair[0], exact_decimal(actual[pair[0]]), exact_decimal(advertised[pair[0]]), exact_decimal(pair[1] * n)])
+
 func _initialize() -> void:
 	call_deferred("run")
 
@@ -94,23 +114,98 @@ func run() -> void:
 	var before: PackedByteArray = game.career.encode()
 	game.assets.value = 0.75
 	game.liquidity.value = 0.2
-	game.committee.select(0)
+	# No frame/wait: old canonical text may still be displayed after the setters.
+	var asset_text: String = game.assets.get_line_edit().text
+	var asset_canonical: String = game.assets.get_meta("numeric_text")
+	var asset_pending: bool = game.assets.get_meta("numeric_text_pending")
+	check(asset_pending and asset_text == asset_canonical and asset_text.to_float() != game.assets.value, "fixture exercises canonical old text pending an immediate Range redraw")
+	var immediate: Dictionary = game._committee_draft()
+	check(immediate.ok and immediate.controls.assets == 0.75 and immediate.controls.liquidity == 0.2, "immediate setters preserve committed Range offers before native redraw")
+	game.assets.get_line_edit().text = "1.25"
+	var edited: Dictionary = game._committee_draft()
+	check(edited.ok and edited.controls.assets == 1.25 and edited.controls.liquidity == 0.2 and game.assets.value == 0.75, "genuine valid raw draft overrides pending committed value without submission")
+	for malformed in ["", "garbage", "1 + 2", "nan", "1e999"]:
+		game.assets.get_line_edit().text = malformed
+		game.assets.set_meta("numeric_text", malformed)
+		game.assets.set_meta("numeric_text_pending", true)
+		var refused: Dictionary = game._committee_draft()
+		check(not refused.ok and game.assets.get_line_edit().text == malformed and game.assets.value == 0.75 and game.liquidity.value == 0.2 and game.career.encode() == before, "malformed canonical/pending raw text never falls back or mutates offers/career")
+	game.assets.get_line_edit().text = asset_text
+	game.assets.set_meta("numeric_text", asset_canonical)
+	game.assets.set_meta("numeric_text_pending", asset_pending)
 	await command_key(root, KEY_K)
+	check(game.rate.value == 3.5, "opening docket never stages")
+	game._stage_docket_proposal("prices")
+	await process_frame
 	check(game.rate.value > 3.5 and game.assets.value == 0.75 and game.liquidity.value == 0.2, "price proposal preserves other tool offers")
 	var staged: Dictionary = game._policy().duplicate(true)
 	var report: AcceptDialog = game._text_dialog("Committee modal guard", "Current policy must remain staged.")
-	game.committee.select(1)
 	await command_key(report, KEY_K)
 	check(game._policy() == staged, "committee accelerator cannot stage behind a modal report")
 	report.queue_free()
 	await process_frame
-	game.committee.select(1)
-	game._stage_committee()
+	game._open_committee_docket()
+	game._stage_docket_proposal("jobs")
+	await process_frame
 	check(game.rate.value < 3.5, "employment priority stages opposing rate")
-	game.committee.select(2)
-	game._stage_committee()
+	game._open_committee_docket()
+	game._stage_docket_proposal("funding")
+	await process_frame
 	check(game.rate.value == 3.5 and is_equal_approx(game.liquidity.value, 2.4) and game.assets.value == 0.75, "funding priority stages current-GDP secured offer without changing assets")
 	check(game.career.encode() == before and game.career.decisions.is_empty(), "every proposal stages only: no adoption or save mutation")
+	# A committed decimal can be 0.35000000000000003 while native text is 0.35.
+	# Open immediately, then prove the snapshot survives deferred canonical draw.
+	game.assets.value = 0.35
+	game.liquidity.value = 0.2
+	var decimal_assets: float = game.assets.value
+	var decimal_liquidity: float = game.liquidity.value
+	game._open_committee_docket()
+	var decimal_snapshot: PackedByteArray = game.docket_snapshot.duplicate()
+	var decimal_advertised: Dictionary = game.committee_docket.quote.entries[2].policy.duplicate(true)
+	var decimal_offers_preserved: bool = game.docket_controls.assets == decimal_assets and game.docket_controls.liquidity == decimal_liquidity
+	check(decimal_offers_preserved, "immediate non-binary decimal setter retains committed offers in docket")
+	if not decimal_offers_preserved:
+		decimal_diagnostic(game, "immediate quote", decimal_assets, decimal_liquidity, decimal_advertised)
+	for frame in range(3):
+		await process_frame
+	check(not game.assets.get_meta("numeric_text_pending") and snappedf(game.assets.get_line_edit().text.to_float(), game.assets.step) == snappedf(decimal_assets, game.assets.step), "decimal fixture reaches native canonical text on the declared numeric grid")
+	check(not game._committee_has_raw_draft(game.assets) and game._committee_snapshot() == decimal_snapshot, "0.35 canonical redraw keeps snapshot classification and bytes stable")
+	game._stage_docket_proposal("prices")
+	for frame in range(3):
+		await process_frame
+	var decimal_staged_exactly: bool = game._policy() == decimal_advertised and game.assets.value == decimal_assets and game.liquidity.value == decimal_liquidity
+	check(decimal_staged_exactly, "decimal redraw permits exact advertised staging while preserving other offers")
+	if not decimal_staged_exactly:
+		decimal_diagnostic(game, "after Stage price", decimal_assets, decimal_liquidity, decimal_advertised)
+	check(game.career.encode() == before and game.career.decisions.is_empty(), "decimal staging neither adopts nor mutates career")
+	# A genuine unsubmitted decimal draft must quote the exact native setter
+	# representation too, not merely match to a tolerance or after GDP rounding.
+	game.assets.value = 0.75
+	for frame in range(3):
+		await process_frame
+	var raw_other_tools: Dictionary = game._policy().duplicate(true)
+	var raw_career: PackedByteArray = game.career.encode()
+	game.assets.get_line_edit().text = "0.35"
+	check(game.assets.get_line_edit().text != game.assets.get_meta("numeric_text") and game.assets.value == 0.75, "unsubmitted 0.35 is a genuine raw edit, not a canonical setter update")
+	game._open_committee_docket()
+	var raw_advertised: Dictionary = game.committee_docket.quote.entries[2].policy.duplicate(true)
+	var decimal_gdp: float = game.career.model.nominal_gdp_ratio(game.career.state)
+	var raw_quote_exact: bool = game.docket_controls.assets == decimal_assets and raw_advertised.asset_flow_request_pct_initial_gdp == decimal_assets * decimal_gdp
+	check(raw_quote_exact and game.assets.value == 0.75 and game.assets.get_line_edit().text == "0.35", "raw 0.35 quotes the independently captured native Range representation without committing it")
+	if not raw_quote_exact:
+		decimal_diagnostic(game, "unsubmitted raw 0.35 quote", decimal_assets, decimal_liquidity, raw_advertised)
+	for frame in range(3):
+		await process_frame
+	game._stage_docket_proposal("prices")
+	for frame in range(3):
+		await process_frame
+	var raw_staged_exact: bool = game._policy() == raw_advertised and game.assets.value == decimal_assets
+	check(raw_staged_exact, "unsubmitted raw 0.35 stages exactly the advertised policy and native decimal value")
+	if not raw_staged_exact:
+		decimal_diagnostic(game, "after Stage raw 0.35", decimal_assets, decimal_liquidity, raw_advertised)
+	for key in ["liquidity_request_pct_initial_gdp", "reinvest_principal", "maintain_ample_reserves", "sterilize_purchases"]:
+		check(game._policy()[key] == raw_other_tools[key], "raw decimal staging preserves other tools: " + key)
+	check(game.career.encode() == raw_career and game.career.encode() == before and game.career.decisions.is_empty(), "raw decimal staging never adopts or mutates the career")
 	if failures == 0:
 		print("PASS: opposing committee priorities, current-only information and nonmutating UI staging")
 	await game._quit_app(1 if failures else 0)

@@ -86,9 +86,44 @@ secured funding. Price and employment proposals move the current rate by half
 the published inflation miss or output gap, rounded to the policy grid. Funding
 holds the rate and offers today's eligible collateral-backed need. These are
 fictional decision aids, not optimal policies; they cannot see the neutral rate
-or future shocks. Select a priority, then stage with Cmd/Ctrl+K. Staging never
-adopts a quarter. Rate proposals preserve other tools; funding replaces the loan
-offer. Compare the conditional path before adopting.
+or future shocks. Open the single **Policy committee** button (Cmd/Ctrl+K) for a decision docket.
+It compares the current staged snapshot, Hold and all three proposals on shared
+scales: signed Q8 inflation, Q8 unemployment and Q1–Q8 peak unmet funding
+(% initial annual GDP, not bank losses), with exact text values. The structural
+unemployment marker is a current reference, not a fixed target or welfare score;
+lower inflation is not always better, including deflation.
+
+Tab to **Stage price/jobs/funding**, then Return to stage and close; nothing
+adopts a quarter. Escape cancels and restores the opener. Modified Return cannot
+adopt from the docket. Opening/reading/cancelling preserves numeric text drafts
+and switches; invalid/nonfinite drafts refuse clearly, without silent cleanup.
+Opening stops routine follow-up and discloses that stop. Stale career, quarter
+or control snapshots refuse staging until an explicit Refresh. Staff Cmd/Ctrl+R
+is unchanged.
+
+Rate proposals preserve assets, lending and portfolio switches; funding replaces
+only the lending offer. All three set matching guidance with the existing standard
+data-dependent responses. Quotes use the real active career forecast, including
+both workout laboratories: the same known current shock/request, then no new
+future shocks or withdrawal requests. Each path holds its applied rate after Q1;
+new asset/loan offers are zero and its portfolio switches persist. Hold uses the
+existing default-switch benchmark. No proposal is a winner or empirical forecast.
+Projection availability is separate from stageable control validity; settlement
+is still checked on adoption. Near the horizon, continuation is labelled
+diagnostic and grants no extra turns; completed careers cannot stage.
+
+Each open/explicit Refresh makes five conditional forecast calls (staged, Hold,
+three proposals); reading, focus, drawing and resizing do not recompute them.
+`docket_forecast_calls` records docket calls; actual native latency is not yet
+measured. Compare priorities puts the three actionable graphical cards first,
+side-by-side at desktop width and stacked when narrow, without replacing controls
+or focus. Its preferred 1050-point width stays bounded by the unchanged parent;
+other reports retain their sizing. Staged/Hold use a compact two-row metric table.
+Full controls, switches, tradeoffs and continuation assumptions live in collapsed
+Details. A small Refresh toolbar action recomputes quotes; reading does not.
+Draft signal suppression spans the modal lifetime and restores prior flags on
+close, staging or shutdown, including pointer opening. The headless tests check mechanics, not all-window usability; current
+native pixels, keyboard interaction and density checks remain separate GUI gates.
 
 New career → **Stagflation & bank run** starts with 7% inflation, a −3% output gap
 and immediate funding pressure. Curated events begin within three quarters and
@@ -122,7 +157,7 @@ See [the accounting and qualification record](../docs/BANK_WORKOUT.md).
 separate interest claims, explicit loan-financed debt service and staged/actual
 cash-flow graphics. Negative loan APR is a fictional US counterfactual. The
 original lab stays zero-interest; neither lab uses normal save slots or awards.
-The current-source candidate quotes loan APR through the existing effective-rate
+The Alpha619 release quotes loan APR through the existing effective-rate
 channel: zero/positive requested rates pass through exactly; negative APR is
 `s * tanh(requested_rate / s)`, with `s = negative_rate_efficacy_scale_pct`.
 Requested policy, guidance and loan offers remain uncapped. Preview, actual and

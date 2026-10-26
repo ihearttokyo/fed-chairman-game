@@ -131,7 +131,8 @@ modal restoration and custom-guidance visibility need explicit tests.
   browse long content. Focus-following scroll keeps inputs visible.
 - Escape: close or cancel the current modal, preserving staged decisions.
 - Cmd on macOS / Ctrl elsewhere plus N, S, O, J, P and R: New, Save, Load,
-  journal, Compare and staff rule. Modified Return: adopt one quarter.
+  journal, Compare and staff rule. K opens the Policy committee decision docket,
+  never stages directly. Modified Return: adopt one quarter outside a modal.
 - F1: How to play. Every shortcut has an ordinary Tab-accessible equivalent.
 
 No global unmodified-letter shortcuts, double-tap timing, held-key adoption,
@@ -143,3 +144,34 @@ and the legal footer move out of the main screen; disclosure and notices remain
 in Help and Credits. Immediate metric tooltips retain secondary detail in
 assistive descriptions. Targets, reference values, policy units and forecast
 assumptions stay visible.
+
+## Policy committee decision docket
+
+One main-screen **Policy committee** button replaces the chooser/stage pair and
+explanatory paragraph. Cmd/Ctrl+K opens it without applying numeric text drafts;
+invalid drafts are refused explicitly. Staff Cmd/Ctrl+R remains unchanged.
+Compare priorities opens with three actionable cards on shared signed scales,
+with text values and explicit units. At desktop width they sit side-by-side;
+when narrow the same GridContainer children stack without replacing controls or
+focus. Staged/Hold are two compact metric-table rows below the actions. Full
+controls, switches and assumptions remain in collapsed Details; Refresh is a
+small toolbar button. The preferred 1050-point docket stays bounded by its
+unchanged parent, without changing other reports.
+Tab/Shift+Tab traverse Stage price/jobs/funding, Refresh, Details, Cancel and the
+scroller; focused Return stages exactly the advertised controls and closes.
+Escape cancels; modified Return is consumed and cannot adopt behind the modal.
+Focus returns to the one opener. Page Up/Down and Home/End scroll within the
+existing report bounds, including 800×480 logical points; focusing an offscreen
+Stage action reveals it. Native density and visual usability require separate
+background GUI validation, not just synthetic/headless geometry assertions.
+
+LineEdit signal suppression covers the modal lifetime for keyboard and pointer
+opening, restoring each prior blocking flag on cancellation/staging/shutdown.
+Opening stops and discloses active routine follow-up; inactive outcome feedback
+and the next-adoption follow-up selection remain unchanged. Reading, cancelling, focus,
+resizing and drawing never generate forecasts or submit drafts. Open/explicit
+Refresh alone prepares five cached real-career paths. Staging refuses stale
+career/state identity, quarter or controls; completed careers have no active
+stage actions. Forecast-horizon failure does not invent zero metrics or imply
+that an input-valid first decision cannot be staged. Details retains assumptions
+and tradeoffs; neither unemployment nor signed inflation becomes a welfare rank.
