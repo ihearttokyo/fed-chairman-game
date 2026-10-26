@@ -54,7 +54,7 @@ func run() -> void:
 	var expected_preview: Dictionary = game.career.forecast(game._policy())
 	var shown: Dictionary = game.priced_credit_board.snapshot
 	check(expected_preview.ok and shown.actual.ok and shown.staged.ok, "Actual Main cost board receives both valid actual and staged records")
-	check(shown.actual.basis.contains("4.00% APR") and shown.actual.basis.contains("90d/365") and shown.staged.basis.contains("-1.00% APR") and shown.staged.basis.contains("91d/365"), "Visible board distinguishes actual4percent/90days from stagednegative1percent/91days")
+	check(shown.actual.basis.contains("4.00% APR") and shown.actual.basis.contains("90d/365") and shown.staged.basis.contains("-0.76% APR") and shown.staged.basis.contains("91d/365"), "Visible board distinguishes actual4percent/90days from mappednegative0.76percent/91days")
 	check(shown.staged.paid_negative == expected_preview.credit_results[0].paid_negative and shown.staged.paid_negative > 0.0 and shown.staged.payable == expected_preview.credit_states[0].payable, "Visible reverse payment and separate unpaid claim match the independently read first conditional step")
 	check(shown.staged.purpose_text.contains(game.career.funding_amount_text(expected_preview.credit_results[0].new_cash_for_interest)) and shown.staged.purpose_text.contains(game.career.funding_amount_text(expected_preview.credit_results[0].new_cash_for_withdrawals)), "Visible loan-purpose split binds to actual first-step diagnostics")
 	var actual_lane := var_to_bytes(shown.actual)
@@ -67,7 +67,7 @@ func run() -> void:
 	check(report.contains("Bank pays") and report.contains("Fed pays") and report.contains("staged / held"), "Comparison distinguishes actual opposite cash flows without netting")
 	game._advance()
 	check(game.career.decisions.size() == 2 and game.career.credit_results[-1].paid_negative > 0.0, "Explicit negative-APR staged policy produces the native reverse-interest payment")
-	check(game.priced_credit_board.snapshot.actual.basis.contains("-1.00% APR") and game.priced_credit_board.snapshot.actual.basis.contains("91d/365") and game.priced_credit_board.snapshot.actual.paid_negative == game.career.credit_results[-1].paid_negative, "Actual lane advances to the negative-rate payment only after adoption")
+	check(game.priced_credit_board.snapshot.actual.basis.contains("-0.76% APR") and game.priced_credit_board.snapshot.actual.basis.contains("91d/365") and game.priced_credit_board.snapshot.actual.paid_negative == game.career.credit_results[-1].paid_negative, "Actual lane advances to the negative-rate payment only after adoption")
 	var combined_equity: float = game.career.credit_results[-1].bank_equity_after
 	var equity_label: String = ("+" if combined_equity > 0.0 else "") + game.workout_board._amount(combined_equity)
 	check(game.career.panel_snapshot().equity == combined_equity and game.workout_board.snapshot.equity_text == equity_label, "Current bank board reports combined model equity with its existing signed display convention")

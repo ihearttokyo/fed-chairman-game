@@ -122,6 +122,13 @@ See [the accounting and qualification record](../docs/BANK_WORKOUT.md).
 separate interest claims, explicit loan-financed debt service and staged/actual
 cash-flow graphics. Negative loan APR is a fictional US counterfactual. The
 original lab stays zero-interest; neither lab uses normal save slots or awards.
+The current-source candidate quotes loan APR through the existing effective-rate
+channel: zero/positive requested rates pass through exactly; negative APR is
+`s * tanh(requested_rate / s)`, with `s = negative_rate_efficacy_scale_pct`.
+Requested policy, guidance and loan offers remain uncapped. Preview, actual and
+held-rate quotes share this authored diminishing-transmission rule; the cost
+panel retains nominal requested policy separately from contractual APR. This is
+not an estimated Federal Reserve lending rule or an optimal-policy claim.
 See `../docs/PRICED_CREDIT_EXPERIMENT.md` for limits and qualification.
 
 ## Routine follow-up candidate

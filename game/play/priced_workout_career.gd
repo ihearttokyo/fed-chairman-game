@@ -1,8 +1,9 @@
 extends "res://play/workout_career.gd"
-## Unexposed authored experiment. No default adoption or normal career storage.
+## Optional authored borrowing-cost laboratory. No normal career storage.
 const DAY_SCHEDULE := [90, 91, 92, 92]
 const CREDIT_CONTRACT := {
-	"apr_mapping": "staged_policy_rate_request_pct",
+	"version": 2,
+	"apr_mapping": "Economy._effective_rate(requested_policy_rate_pct,negative_rate_efficacy_scale_pct)",
 	"day_schedule": [90, 91, 92, 92], "day_index": "opening_bank_quarter_modulo_four",
 	"accrual": "opening_principal_times_apr_percent_times_days_over_365",
 	"collectibility": "externally_authored_collectible_only; impairment_unsupported",
@@ -27,9 +28,21 @@ func start_episode(opening: Dictionary, requests: Array, haircut: float, share: 
 	credit_results = []
 	return result
 
+func _loan_apr(rate: Variant) -> Variant:
+	var scale: Variant = params.get("negative_rate_efficacy_scale_pct", NAN)
+	# Preserve native credit-number validation before any conversion: strings/bools
+	# and integers outside the exact +/-2^53 range must never become valid rates.
+	# NAN propagates to the existing atomic credit-context validation on failure.
+	if not Economy._bw_number(rate):
+		return NAN
+	if not Economy._bw_number(scale) or scale <= 0.0:
+		return NAN
+	return rate if rate >= 0.0 else Economy._effective_rate(float(rate), float(scale))
+
 func _credit_context(rate: Variant, opening_quarter: int, claims: Dictionary) -> Dictionary:
-	# This explicit policy-rate mapping/day pattern is a hypothesis, not US terms.
-	return {"annual_rate_pct": rate, "days": DAY_SCHEDULE[posmod(opening_quarter, 4)],
+	# Reuse the nonlinear transmission channel only for this authored loan quote.
+	# Requested policy/guidance and the externally authored raw-APR primitive stay intact.
+	return {"annual_rate_pct": _loan_apr(rate), "days": DAY_SCHEDULE[posmod(opening_quarter, 4)],
 		"payable": claims.get("payable", NAN), "receivable": claims.get("receivable", NAN),
 		"collectible": true, "allow_negative": true, "finance_interest": true}
 
@@ -139,14 +152,16 @@ func credit_snapshot() -> Dictionary:
 		return {}
 	var snapshot := {"ok": true, "has_settlement": not credit_results.is_empty(), "quarter_index": bank_state.quarter_index,
 		"payable": credit_state.payable, "receivable": credit_state.receivable,
-		"annual_rate_pct": null, "days": null, "accrued_positive": null, "accrued_negative": null,
+		"annual_rate_pct": null, "requested_policy_rate_pct": null, "days": null, "accrued_positive": null, "accrued_negative": null,
 		"paid_positive": null, "paid_negative": null, "new_cash_for_interest": null, "new_cash_for_withdrawals": null,
-		"held_annual_rate_pct": state.policy_rate_pct if decisions.size() < EPISODE_QUARTERS else null,
-		"quote_basis": "current_applied_policy_rate_not_staged_controls",
+		"held_annual_rate_pct": _loan_apr(state.policy_rate_pct) if decisions.size() < EPISODE_QUARTERS else null,
+		"held_requested_policy_rate_pct": state.policy_rate_pct if decisions.size() < EPISODE_QUARTERS else null,
+		"quote_basis": "mapped_current_policy_rate_not_staged_controls",
 		"next_days": DAY_SCHEDULE[posmod(bank_state.quarter_index, 4)] if decisions.size() < EPISODE_QUARTERS else null,
 		"externally_collectible_assumption": true, "negative_rate_counterfactual": true, "finance_interest": true}
 	if not credit_results.is_empty():
 		snapshot.annual_rate_pct = credit_contexts[-1].annual_rate_pct
+		snapshot.requested_policy_rate_pct = decisions[-1].policy_rate_request_pct
 		snapshot.days = credit_contexts[-1].days
 		for key in ["accrued_positive", "accrued_negative", "paid_positive", "paid_negative", "new_cash_for_interest", "new_cash_for_withdrawals"]:
 			snapshot[key] = credit_results[-1][key]
@@ -154,7 +169,7 @@ func credit_snapshot() -> Dictionary:
 
 func payload() -> Dictionary:
 	var data := super.payload()
-	data.priced_workout_version = 1
+	data.priced_workout_version = 2
 	data.credit_state = credit_state.duplicate(true)
 	data.credit_history = credit_history.duplicate(true)
 	data.credit_contexts = credit_contexts.duplicate(true)

@@ -5,6 +5,7 @@ const GOLD := Color("e9b76e")
 const MUTED := Color("a4babe")
 const INK := Color("e7eee9")
 const FLOW_FIELDS := ["accrued_positive", "accrued_negative", "paid_positive", "paid_negative", "new_cash_for_interest", "new_cash_for_withdrawals"]
+const APR_DISCLOSURE := "Negative loan APR follows diminishing transmission; zero/positive APR is unchanged. Authored US counterfactual, not Federal Reserve terms."
 
 class CashArrow:
 	extends Control
@@ -139,20 +140,21 @@ static func _amount(value: float) -> String:
 	var text := "<0.0001" if magnitude > 0 and magnitude < 0.0001 else String.num_scientific(magnitude) if magnitude >= 1000000 else ("%.4f" if magnitude > 0 and magnitude < 0.01 else "%.2f") % magnitude
 	return ("-" if value < 0 else "") + text
 
-static func _view(data: Dictionary, claims: Dictionary, prefix: String, rate: float, days: int) -> Dictionary:
+static func _view(data: Dictionary, claims: Dictionary, prefix: String, rate: float, days: int, requested: float) -> Dictionary:
 	return {"ok": true, "settled": true, "paid_positive": float(data.paid_positive), "paid_negative": float(data.paid_negative),
+		"annual_rate_pct": rate, "requested_policy_rate_pct": requested,
 		"payable": float(claims.payable), "receivable": float(claims.receivable),
 		"basis": "%s · %s%% APR · %dd/365" % [prefix, _amount(rate), days],
 		"bank_text": "Bank pays " + _amount(data.paid_positive), "fed_text": "Fed pays " + _amount(data.paid_negative),
 		"unpaid_text": "Unpaid interest · to Fed %s · from Fed %s" % [_amount(claims.payable), _amount(claims.receivable)],
 		"purpose_text": "Fresh loan · interest %s · withdrawals %s" % [_amount(data.new_cash_for_interest), _amount(data.new_cash_for_withdrawals)],
-		"detail": "Accrued to Fed %s; from Fed %s. Fresh loan cash: interest %s; withdrawals %s. Unpaid interest is separate from CB principal." % [_amount(data.accrued_positive), _amount(data.accrued_negative), _amount(data.new_cash_for_interest), _amount(data.new_cash_for_withdrawals)]}
+		"detail": "Requested policy %s%%; loan APR %s%%. Accrued to Fed %s; from Fed %s. Fresh loan cash: interest %s; withdrawals %s. Unpaid interest is separate from CB principal. " % [_amount(requested), _amount(rate), _amount(data.accrued_positive), _amount(data.accrued_negative), _amount(data.new_cash_for_interest), _amount(data.new_cash_for_withdrawals)] + APR_DISCLOSURE}
 
 static func _actual(source: Dictionary) -> Dictionary:
 	var unavailable := {"ok": false, "basis": "Actual unavailable"}
 	if typeof(source.get("ok")) != TYPE_BOOL or not source.ok or typeof(source.get("has_settlement")) != TYPE_BOOL or not _days(source.get("quarter_index")) or not _physical(source.get("payable")) or not _physical(source.get("receivable")):
 		return unavailable
-	for key in FLOW_FIELDS + ["annual_rate_pct", "days"]:
+	for key in FLOW_FIELDS + ["annual_rate_pct", "requested_policy_rate_pct", "days"]:
 		if not source.has(key):
 			return unavailable
 		if not source.has_settlement and source[key] != null:
@@ -160,12 +162,12 @@ static func _actual(source: Dictionary) -> Dictionary:
 	if not source.has_settlement:
 		return {"ok": true, "settled": false, "basis": "Actual · no settlement yet",
 			"unpaid_text": "Unpaid interest · to Fed %s · from Fed %s" % [_amount(source.payable), _amount(source.receivable)]}
-	if not _number(source.annual_rate_pct) or not _days(source.days):
+	if not _number(source.annual_rate_pct) or not _number(source.requested_policy_rate_pct) or not _days(source.days):
 		return unavailable
 	for key in FLOW_FIELDS:
 		if not _physical(source[key]):
 			return unavailable
-	return _view(source, source, "Last actual Q%d" % source.quarter_index, source.annual_rate_pct, source.days)
+	return _view(source, source, "Last actual Q%d" % source.quarter_index, source.annual_rate_pct, source.days, source.requested_policy_rate_pct)
 
 static func _staged(preview: Dictionary, actual: Dictionary) -> Dictionary:
 	var unavailable := {"ok": false, "basis": "Staged unavailable"}
@@ -178,14 +180,14 @@ static func _staged(preview: Dictionary, actual: Dictionary) -> Dictionary:
 	var result: Dictionary = preview.credit_results[0]
 	var claims: Dictionary = preview.credit_states[0]
 	var first: Dictionary = preview.states[0]
-	if not _number(context.get("annual_rate_pct")) or not _days(context.get("days")) or not _days(first.get("quarter_index")) or not _physical(claims.get("payable")) or not _physical(claims.get("receivable")):
+	if not _number(context.get("annual_rate_pct")) or not _number(first.get("policy_rate_pct")) or not _days(context.get("days")) or not _days(first.get("quarter_index")) or not _physical(claims.get("payable")) or not _physical(claims.get("receivable")):
 		return unavailable
 	if actual.get("ok", false) and first.quarter_index != actual.quarter_index + 1:
 		return unavailable
 	for key in FLOW_FIELDS:
 		if not _physical(result.get(key)):
 			return unavailable
-	return _view(result, claims, "Staged Q%d" % first.quarter_index, context.annual_rate_pct, context.days)
+	return _view(result, claims, "Staged Q%d" % first.quarter_index, context.annual_rate_pct, context.days, first.policy_rate_pct)
 
 static func present(actual: Dictionary, preview: Dictionary) -> Dictionary:
 	var last := _actual(actual)
@@ -240,13 +242,13 @@ func update_credit(actual: Dictionary, preview: Dictionary) -> void:
 		return
 	_label(heading, "Borrowing cost")
 	_label(units, "% initial GDP", "Cash and unpaid interest amounts; APR is an annual percentage, not a GDP share.")
-	_label(staged_basis, snapshot.staged.basis, "First staged meeting only. APR follows staged policy controls under an authored rule; negative APR is a counterfactual. Day count uses a 365-day year. Later conditional meetings are not used here.")
+	_label(staged_basis, snapshot.staged.basis, "First staged meeting only. " + (snapshot.staged.detail if snapshot.staged.ok else APR_DISCLOSURE) + " Day count uses a 365-day year. Later conditional meetings are not used here.")
 	if snapshot.staged.ok:
 		staged_flow.display(snapshot.staged, "Staged interest cash")
 		_label(staged_claims, snapshot.staged.unpaid_text, "After the first staged settlement, separate from CB principal. No automatic setoff.")
 		staged_claims.add_theme_color_override("font_color", GOLD if snapshot.staged.payable > 0.0 else MINT if snapshot.staged.receivable > 0.0 else MUTED)
 		_label(staged_purpose, snapshot.staged.purpose_text, snapshot.staged.detail)
-	_label(actual_basis, snapshot.actual.basis, "Last adopted settlement only, never the current held-rate quote or staged controls.")
+	_label(actual_basis, snapshot.actual.basis, "Last adopted settlement only, never the current held-rate quote or staged controls. " + (snapshot.actual.detail if snapshot.actual.ok and snapshot.actual.settled else APR_DISCLOSURE))
 	if snapshot.actual.ok:
 		_label(actual_claims, snapshot.actual.unpaid_text, "Current actual unpaid interest, separate from CB principal; not a new liability added to principal.")
 		actual_claims.add_theme_color_override("font_color", GOLD if actual.payable > 0.0 else MINT if actual.receivable > 0.0 else MUTED)
