@@ -3,6 +3,7 @@ extends Control
 const Career = preload("res://play/career.gd")
 const Workout = preload("res://play/workout_career.gd")
 const WorkoutPanel = preload("res://play/bank_workout_panel.gd")
+const WorkoutDebrief = preload("res://play/workout_debrief.gd")
 const FundingPlan = preload("res://play/funding_plan.gd")
 const WORKOUT_CASE := "__bank_workout"
 const WORKOUT_HELP := "Eight meetings. Rate decisions change inflation, activity and the market value of the bank's securities. Lending can pay withdrawals or renew debt; it cannot create equity. Unpaid withdrawals and overdue loans carry forward. A final withdrawal wave requests all remaining unrequested deposits. Maturing securities turn into cash and stop serving as collateral.\n\nThis authored exercise uses zero loan interest and automatic cash-first repayment of CB principal, then deposit withdrawals. That is a teaching assumption, not statutory insolvency priority. Securities use one flat semiannual discount yield. Quantities are % of initial annual GDP; policy offers remain % of current GDP.\n\nPreviews include known maturities and today's request, not future withdrawal requests or shocks. Paths beyond meeting eight are diagnostics, not additional playable meetings. Normal career saves and awards are unavailable in this unsaved laboratory."
@@ -91,6 +92,8 @@ var committee_note: Label
 var workout_panel: PanelContainer
 var workout_board: WorkoutPanel
 var workout_fed_stock: Label
+var workout_debrief_panel: PanelContainer
+var workout_debrief: WorkoutDebrief
 var city_panel: PanelContainer
 var normal_storage_buttons: Array[Button] = []
 
@@ -210,6 +213,10 @@ func _ready() -> void:
 	workout_board.details_requested.connect(_workout_details)
 	keyboard_controls.append(workout_board.details_button)
 	workout_panel.hide()
+	workout_debrief_panel = _panel(left)
+	workout_debrief = WorkoutDebrief.new()
+	workout_debrief_panel.add_child(workout_debrief)
+	workout_debrief_panel.hide()
 	var brief_box := _vbox(_panel(left), 5)
 	var dispatch_header := HBoxContainer.new()
 	brief_box.add_child(dispatch_header)
@@ -852,6 +859,11 @@ func _refresh(reset_controls := false, update_preview := true) -> void:
 	if _is_workout():
 		quarter_label.text = "EPISODE COMPLETE · 8 MEETINGS" if complete else "BANK WORKOUT · MEETING %d / 8" % (s.quarter_index + 1)
 	workout_panel.visible = _is_workout()
+	workout_debrief_panel.visible = _is_workout() and complete
+	if _is_workout():
+		workout_debrief.update_episode((career as Workout).bank_history, (career as Workout).settlements, complete)
+	else:
+		workout_debrief.update_episode([], [], false)
 	city_panel.visible = not _is_workout()
 	mandate_label.visible = not _is_workout()
 	for button in normal_storage_buttons:

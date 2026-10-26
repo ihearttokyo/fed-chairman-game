@@ -30,6 +30,7 @@ func run() -> void:
 	check(game._is_workout() and game._active_horizon() == 8, "Main enters the eight-meeting optional mode")
 	check(game.normal_storage_buttons.all(func(button): return button.disabled) and not game.city_panel.visible and not game.mandate_label.visible, "Laboratory hides unrelated city/scoring and disables normal storage affordances")
 	check(game.workout_panel.visible and game.workout_board.snapshot.ok, "Main shows valid actual bank data")
+	check(not game.workout_debrief_panel.visible and not game.workout_debrief.snapshot.get("ok", false), "Unfinished episode cannot show a stale terminal debrief")
 	check(game._keyboard_focus_order().has(game.workout_board.details_button), "Bank details participates in the keyboard focus cycle")
 	check(game.follow_up_toggle.disabled and not game.follow_up_toggle.button_pressed, "Laboratory cannot silently run automatic follow-up")
 	game.career.shocks[0].demand_shock_pct = 0.75
@@ -57,6 +58,11 @@ func run() -> void:
 		game._advance()
 	check(game.career.decisions.size() == 8 and game.decision_button.disabled and game.decision_button.text == "Episode complete", "Eight meetings disable adoption without hanging")
 	check(game.forecast_label.text.contains("Episode complete") and game.quarter_label.text.contains("EPISODE COMPLETE"), "Terminal feedback describes the episode, not a sixty-year career")
+	check(game.workout_debrief_panel.visible and game.workout_debrief.snapshot.get("ok", false), "Eighth actual adoption shows a valid completed-payment timeline")
+	check(game.workout_debrief.snapshot.quarters.size() == 8 and game.workout_debrief.snapshot.ending_queue == game.career.bank_state.withdrawal_queue and game.workout_debrief.snapshot.ending_arrears == game.career.bank_state.loan_arrears, "Debrief uses all actual periods and ending retained claims, not cumulative repeated queues")
+	var terminal_before: PackedByteArray = game.career.encode()
+	game._refresh(false, false)
+	check(game.career.encode() == terminal_before, "Refreshing the terminal debrief cannot adopt, settle or rewrite history")
 	frozen = game.career.encode()
 	game._advance()
 	check(game.career.encode() == frozen, "Accelerator cannot advance a ninth meeting")
@@ -86,6 +92,7 @@ func run() -> void:
 	await process_frame
 	game._start_career("policy_career", 1)
 	check(not game._is_workout() and game._active_horizon() == 240 and not game.workout_panel.visible, "Normal career mode and horizon restore")
+	check(not game.workout_debrief_panel.visible and not game.workout_debrief.snapshot.get("ok", false), "Leaving laboratory clears terminal chart and accessibility data")
 	check(game.city_panel.visible and game.mandate_label.visible and game.normal_storage_buttons.all(func(button): return not button.disabled), "Normal city/scoring/storage affordances restore")
 	check(game.body_layout.vertical and game.chart_layout.get_parent().custom_minimum_size.x == 0.0, "Narrow normal mode preserves its original stacked minimum after laboratory exit")
 	root.size = original_size
