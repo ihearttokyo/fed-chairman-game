@@ -13,7 +13,7 @@ func check(condition: bool, message: String) -> void:
 
 func actual() -> Dictionary:
 	return {"ok": true, "has_settlement": true, "quarter_index": 1, "payable": 0.2, "receivable": 0.1,
-		"annual_rate_pct": 2.0, "days": 90, "accrued_positive": 0.3, "accrued_negative": 0.0,
+		"annual_rate_pct": 2.0, "requested_policy_rate_pct": 2.0, "days": 90, "accrued_positive": 0.3, "accrued_negative": 0.0,
 		"paid_positive": 0.1, "paid_negative": 0.2, "new_cash_for_interest": 0.05, "new_cash_for_withdrawals": 0.4,
 		"held_annual_rate_pct": 2.0, "next_days": 91}
 
@@ -23,7 +23,7 @@ func preview() -> Dictionary:
 		"credit_results": [{"accrued_positive": 0.0, "accrued_negative": 0.01, "paid_positive": 0.2, "paid_negative": 0.11,
 			"new_cash_for_interest": 0.1, "new_cash_for_withdrawals": 0.4}, {"paid_positive": INF}],
 		"credit_states": [{"payable": 0.05, "receivable": 0.03}, {"payable": NAN}],
-		"states": [{"quarter_index": 2}, {}], "diagnostic_beyond_episode": true}
+		"states": [{"quarter_index": 2, "policy_rate_pct": -10.0}, {}], "diagnostic_beyond_episode": true}
 
 func opening() -> Dictionary:
 	var source := actual()
@@ -31,7 +31,7 @@ func opening() -> Dictionary:
 	source.quarter_index = 0
 	source.payable = 0.0
 	source.receivable = 0.0
-	for key in CreditPanel.FLOW_FIELDS + ["annual_rate_pct", "days"]:
+	for key in CreditPanel.FLOW_FIELDS + ["annual_rate_pct", "requested_policy_rate_pct", "days"]:
 		source[key] = null
 	return source
 
@@ -46,7 +46,7 @@ func _initialize() -> void:
 	check(shown.actual.bank_text == "Bank pays 0.10" and shown.actual.fed_text == "Fed pays 0.20", "Last actual cash remains distinct from the preview")
 	check(shown.staged.unpaid_text.contains("to Fed 0.05") and shown.staged.unpaid_text.contains("from Fed 0.03") and shown.actual.unpaid_text.contains("to Fed 0.20"), "Separate closing interest claims come directly from their supplied ledgers")
 	check(shown.staged.purpose_text.contains("interest 0.10") and shown.staged.purpose_text.contains("withdrawals 0.40"), "Fresh-loan purposes are copied, not inferred from payments")
-	check(shown.staged.detail.contains("Accrued to Fed 0.00; from Fed 0.01"), "Accrual and paid cash are never confused")
+	check(shown.staged.detail.contains("Requested policy -10.00%; loan APR -1.00%") and shown.staged.requested_policy_rate_pct == -10.0 and shown.staged.annual_rate_pct == -1.0 and shown.staged.detail.contains("diminishing transmission") and shown.staged.detail.contains("Accrued to Fed 0.00; from Fed 0.01"), "Accrual and paid cash are never confused")
 	var changed_future := p.duplicate(true)
 	for key in ["credit_contexts", "credit_results", "credit_states", "states"]:
 		changed_future[key][1] = "untrusted future sentinel"
@@ -99,14 +99,20 @@ func _initialize() -> void:
 		var bad := preview()
 		bad.credit_contexts[0].annual_rate_pct = rate
 		check(not CreditPanel.present(a, bad).staged.ok, "Invalid staged APR refuses without a fabricated rate")
+		bad = preview()
+		bad.states[0].policy_rate_pct = rate
+		check(not CreditPanel.present(a, bad).staged.ok, "Invalid nominal request refuses separately from contractual APR")
+	var no_request := preview()
+	no_request.states[0].erase("policy_rate_pct")
+	check(not CreditPanel.present(a, no_request).staged.ok, "Missing nominal request cannot be inferred from mapped APR")
 	var disconnected := preview()
 	disconnected.states[0].quarter_index = 3
 	check(not CreditPanel.present(a, disconnected).staged.ok, "A stale or disconnected first preview cannot claim to be current")
-	for field in ["payable", "receivable", "quarter_index", "has_settlement", "annual_rate_pct", "days"] + CreditPanel.FLOW_FIELDS:
+	for field in ["payable", "receivable", "quarter_index", "has_settlement", "annual_rate_pct", "requested_policy_rate_pct", "days"] + CreditPanel.FLOW_FIELDS:
 		var bad := actual()
 		bad.erase(field)
 		check(not CreditPanel.present(bad, p).actual.ok and CreditPanel.present(bad, p).staged.ok, "Malformed actual readout clears independently: " + field)
-	for field in ["payable", "receivable", "annual_rate_pct", "days"] + CreditPanel.FLOW_FIELDS:
+	for field in ["payable", "receivable", "annual_rate_pct", "requested_policy_rate_pct", "days"] + CreditPanel.FLOW_FIELDS:
 		for value in [NAN, INF, true, "1"]:
 			var bad := actual()
 			bad[field] = value
@@ -133,6 +139,7 @@ func _test_component(a: Dictionary, p: Dictionary) -> void:
 	check(panel.staged_flow.arrows[0].rightward and not panel.staged_flow.arrows[1].rightward and panel.staged_flow.destinations[0].text == "Fed" and panel.staged_flow.destinations[1].text == "Bank", "Both lanes use the same Bank-left/Fed-right anchors")
 	check(panel.staged_flow.get_child(0).get_child(0) == panel.staged_flow.labels[0] and panel.staged_flow.get_child(1).get_child(0) == panel.staged_flow.destinations[1], "Recipient and sender labels match the arrows spatially")
 	check(panel.has_method("_make_custom_tooltip") and panel.staged_flow.has_method("_make_custom_tooltip") and panel.staged_flow.arrows[0].has_method("_make_custom_tooltip"), "All scripted roots retain wrapped tooltip hooks")
+	check(panel.staged_basis.tooltip_text.contains("Requested policy -10.00%; loan APR -1.00%") and panel.staged_basis.tooltip_text.contains("diminishing transmission") and panel.actual_basis.tooltip_text.contains("not Federal Reserve terms"), "Staged and actual tooltips distinguish nominal request, authored APR mapping and counterfactual limits")
 	check(panel.staged_flow.arrows[0].accessibility_name.contains("Bank pays 0.20") and panel.staged_flow.arrows[1].accessibility_name.contains("Fed pays 0.11"), "Meaningful graphic lanes have distinct accessible numeric readings")
 	check(ProjectSettings.get_setting("gui/timers/tooltip_delay_sec") == 0.0, "Existing project zero-delay tooltip policy is retained")
 	_check_controls(panel)

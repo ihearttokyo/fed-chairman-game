@@ -1,10 +1,12 @@
 # Priced-credit experiment — optional mode released in Alpha618
 
-**Current status — 2026-10-26:** merged at `356abf5` (PR #140) and released
+**Alpha618 release baseline — 2026-10-26:** merged at `356abf5` (PR #140) and released
 in Alpha618. New career → **Bank workout · borrowing costs** enables optional,
 explicitly collectible-credit accounting in the native bank and macro transition.
 The original Bank workout remains zero-interest; neither laboratory uses normal
 career save slots or awards. The normal-save compatibility evidence is below.
+The current-source loan-quote candidate is described in the final addendum;
+historical release evidence does not validate that candidate.
 
 The historical sections retain rejected and unexposed milestones recorded by
 2026-10-26, before release. Their holds and unfinished gates describe those stages,
@@ -223,7 +225,7 @@ comparisons, all 50 curated events observed and zero diagnostic failures. This
 normal-career regression is separate from the 96 priced-bank cases and does not
 establish human difficulty or optimality of the feedback reference.
 
-## Uncapped negative-APR counterfactual — 2026-10-26 diagnostic
+## Historical Alpha618 uncapped negative-APR counterfactual — 2026-10-26 diagnostic
 
 One installed Godot 4.7.2 headless process, with private temporary HOME and a
 90-second limit, ran two matched seed-1 episodes through the actual priced
@@ -284,3 +286,75 @@ evidence, **not a clean regression-suite pass** under the wrapper's error policy
 Script, source hashes, JSON results and logs remain outside Git in temporary
 evidence. NOT RUN: computer-use GUI validation (headless accounting diagnostic
 only; no UI changes or usability claim). No user saves or GUI were accessed.
+
+## Current-status addendum — diminishing negative loan transmission candidate, 2026-10-26
+
+The current-source candidate changes only the optional priced controller's
+authored loan quote. Contract/payload version 2 identifies
+`Economy._effective_rate(requested_policy_rate_pct,negative_rate_efficacy_scale_pct)`.
+For requested policy `i` and the existing positive efficacy scale `s`, APR is
+exactly `i` at zero/positive rates and `s * tanh(i/s)` below zero. This smoothly
+approaches `-s`; floating-point saturation can reach that value. It does not cap
+player input. Requested policy, guidance, loan offers, principal and separate
+interest-claim accounting retain their existing meanings. No normal model,
+primitive, coefficients, save schema, compatibility bridge or award is changed.
+
+This is an authored US counterfactual, not an empirical Federal Reserve lending
+rule. It reuses the existing nonlinear macro transmission channel rather than
+adding an unrelated subsidy penalty or hard input cap. It is a bounded candidate
+design, not a claim of optimality, measured difficulty or measured enjoyment.
+The Alpha618 table above remains historical evidence of the original raw-APR
+mapping, not an expected result under this candidate.
+
+At scale 1, independent analytic loan-APR points are
+`-1 → -0.7615941559557649`, `-10 → -0.9999999958776927` and `-1000 → -1` percent.
+With fixed Q2 opening principal 2.4 and 91 days, expected reverse interest is
+about `0.005983561619169537` versus `0.005983561643835617` initial-GDP units
+for requested -10 versus -1000, not the historical hundredfold cash ratio.
+These are formula predictions, not new live-play observations. The general
+Economy credit primitive still accepts externally authored raw APR and remains
+linear, including at -1000.
+
+One controller mapping supplies current held quotes, staged forecasts,
+conditional forward-guidance quotes and actual settlement contexts. The actual
+snapshot reads committed APR from that settlement's stored context; it does not
+reprice past contracts from later policy/parameter values. Nominal requested
+policy is separately exposed in snapshots and cost-panel tooltip details.
+Negative-APR diminishing transmission and counterfactual status are disclosed
+in Help and panel tooltips. Unknown future shocks/withdrawals remain excluded
+from conditional previews.
+
+Narrow existing-suite regressions cover independent Python-math golden values
+at scales 1 and 2.5, unchanged positive/zero rates, continuity/monotonicity,
+atomic invalid/type/nonfinite rejection, fixed-principal extreme-rate cash,
+unmodified raw-APR primitive behavior, preview/actual/held consistency, negative
+guidance, future-shock exclusion and original laboratory/normal payload isolation.
+Updated negative-APR expectations use the new authored contract, not relaxed
+accounting invariants. No native old-baseline RED was executed.
+
+Candidate validation: the child wrapper stopped at its private-HOME storage
+preflight with a system-CA access error. The parent used the unchanged wrapper
+in its owning execution context; no CA error occurred. That run found a new-test
+GDScript type-inference error, repaired by an explicit Dictionary type. Independent
+review then found unsafe negative integers being converted before the existing
+exact-integer guard. Reusing `Economy._bw_number` fixed rate/scale validation;
+direct dictionary regressions cover both unsafe signs and atomic rejection.
+
+Final parent native checks passed: controller421, financing148, raw credit126,
+stock rounding85, original workout867, Help89 and career/save continuity. Presenter218
+and Main integration25 passed before the integer-guard-only repair; their source
+was unchanged. Logs remain outside Git. No native old-baseline RED ran. The
+analytic goldens and recorded Alpha618 diagnostic supply separate baseline evidence.
+
+A private current-source GUI run completed eight actual meetings by keyboard:
+Q1 rate8/offer2.4, Q2 requested-1000/no offer, then rate8/no offer. Before Q2,
+requests-10 and-1000 both displayed approximately-1% loan APR and0.0060 reverse
+cash; inputs were not capped. Staged versus actual terms, F1 Help, Escape and
+terminal refusal were inspected. Original-resolution pixels were readable; no
+user save or preference changed. This GUI run preceded the integer-validation-only
+repair; presenter, Help and normal model files were unchanged. Final matching
+exported-artifact smoke remains separate. These checks do not establish all-window,
+actual VoiceOver, second-Mac, empirical accuracy or human-enjoyment acceptance.
+The unchanged normal model/workbook equations do not require a new1100-career
+sweep for this optional controller-only candidate. Integration and release remain
+pending; historical Alpha618 is still the shipped baseline.
