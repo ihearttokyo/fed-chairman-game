@@ -359,6 +359,26 @@ const principalNet = (label, legs, s, put) => {
   const rest = (range, index) => Array.from({ length: n }, (_, k) => `IF(${k + 1}>${index},LARGE(${range},${k + 1}),0)`).reverse();
   return emit('result', `SUM(${rest(cr, ci).join(',')},${c})-SUM(${rest(dr, di).join(',')},${d})`);
 };
+// Preserve the ordinary native allocation's original arithmetic unless its
+// fresh subtraction overdraws a request AND makes total unpaid funding negative.
+// Raw helpers never depend on the final fields, so repairing gross cannot cycle
+// back through refinancing. #N/A is a deliberate representation refusal, not an
+// unpaid-claim clamp or an absolute tolerance scaled by the renewed stock.
+// Artifact comparisons equate tiny nonzero residuals with zero; SIGN preserves
+// their native IEEE-754 direction before comparing the exact integers -1/0/1.
+const localFundingAllocation = (s, shock, put) => {
+  const emit = (key, formula) => { register(key); put(key, formula); return s(key); };
+  const rawGross = emit('local_funding_raw_gross', `MIN(${s('liquidity_request_pct_initial_gdp')},MIN(${s('lending_collateral_capacity_pct_initial_gdp')},${s('eligible_local_need_pct_initial_gdp')}))`);
+  const rawRefinancing = emit('local_funding_raw_refinancing', `MIN(${rawGross},${s('refinancing_need_pct_initial_gdp')}*(${shock('liquidity_eligibility_pct')}/100))`);
+  const rawNew = emit('local_funding_raw_new', `${rawGross}-${rawRefinancing}`);
+  const repair = emit('local_funding_repair', `IF(AND(SIGN(${rawNew}-${s('funding_need_pct_initial_gdp')})>0,SIGN((${s('funding_need_pct_initial_gdp')}-${rawNew})+(${s('refinancing_need_pct_initial_gdp')}-${rawRefinancing}))<0),1,0)`);
+  const eligibleNew = emit('local_funding_eligible_new', `${s('funding_need_pct_initial_gdp')}*(${shock('liquidity_eligibility_pct')}/100)`);
+  const repairedGross = emit('local_funding_repaired_gross', `${rawRefinancing}+${eligibleNew}`);
+  const valid = emit('local_funding_repair_valid', `IF(SIGN(ABS((${repairedGross}-${rawRefinancing})-${eligibleNew})-0.000000000001*${eligibleNew})>0,0,1)`);
+  put('liquidity_local_applied_pct_initial_gdp', `IF(${repair},IF(${valid},${repairedGross},NA()),${rawGross})`);
+  put('liquidity_refinancing_applied_pct_initial_gdp', `IF(${repair},IF(${valid},${rawRefinancing},NA()),${rawRefinancing})`);
+  put('liquidity_new_need_applied_pct_initial_gdp', `IF(${repair},IF(${valid},${eligibleNew},NA()),${rawNew})`);
+};
 const cohortSum = (s, key, count) => `SUM(${s(arrayField(key, 0))}:${s(arrayField(key, count - 1))})`;
 const treasuryKey = 'treasury_cohorts_pct_initial_gdp', tagKey = 'sterilized_treasury_cohorts_pct_initial_gdp', billKey = 'bill_cohorts_pct_initial_gdp';
 const writeBalance = (s, prev, shock, put) => {
@@ -401,11 +421,9 @@ const writeBalance = (s, prev, shock, put) => {
   put('eligible_collateral_pct_initial_gdp', shock('eligible_collateral_pct_initial_gdp'));
   put('refinancing_request_pct_initial_gdp', shock('refinancing_need_pct_initial_gdp'));
   put('refinancing_need_pct_initial_gdp', `MIN(${s('refinancing_request_pct_initial_gdp')},${s('liquidity_repayment_pct_initial_gdp')})`);
-  put('lending_collateral_capacity_pct_initial_gdp', `${s('eligible_collateral_pct_initial_gdp')}*(1-${shock('collateral_haircut_pct')}/100)*${shock('liquidity_eligibility_pct')}/100`);
-  put('eligible_local_need_pct_initial_gdp', `${s('refinancing_need_pct_initial_gdp')}*${shock('liquidity_eligibility_pct')}/100+${s('funding_need_pct_initial_gdp')}*${shock('liquidity_eligibility_pct')}/100`);
-  put('liquidity_local_applied_pct_initial_gdp', `MIN(${s('liquidity_request_pct_initial_gdp')},MIN(${s('lending_collateral_capacity_pct_initial_gdp')},${s('eligible_local_need_pct_initial_gdp')}))`);
-  put('liquidity_refinancing_applied_pct_initial_gdp', `MIN(${s('liquidity_local_applied_pct_initial_gdp')},${s('refinancing_need_pct_initial_gdp')}*${shock('liquidity_eligibility_pct')}/100)`);
-  put('liquidity_new_need_applied_pct_initial_gdp', `${s('liquidity_local_applied_pct_initial_gdp')}-${s('liquidity_refinancing_applied_pct_initial_gdp')}`);
+  put('lending_collateral_capacity_pct_initial_gdp', `${s('eligible_collateral_pct_initial_gdp')}*(1-${shock('collateral_haircut_pct')}/100)*(${shock('liquidity_eligibility_pct')}/100)`);
+  put('eligible_local_need_pct_initial_gdp', `${s('refinancing_need_pct_initial_gdp')}*(${shock('liquidity_eligibility_pct')}/100)+${s('funding_need_pct_initial_gdp')}*(${shock('liquidity_eligibility_pct')}/100)`);
+  localFundingAllocation(s, shock, put);
   put('uncovered_new_funding_pct_initial_gdp', `${s('funding_need_pct_initial_gdp')}-${s('liquidity_new_need_applied_pct_initial_gdp')}`);
   put('uncovered_refinancing_pct_initial_gdp', `${s('refinancing_need_pct_initial_gdp')}-${s('liquidity_refinancing_applied_pct_initial_gdp')}`);
   put('uncovered_funding_pct_initial_gdp', `${s('uncovered_new_funding_pct_initial_gdp')}+${s('uncovered_refinancing_pct_initial_gdp')}`);
@@ -565,6 +583,7 @@ for (let q = 0; q <= 48; q++) {
 }
 
 for (const [key, row] of Object.entries(R)) cell(economy, `B${row}`, human(key));
+cell(economy, `B${R.local_funding_repair_valid}`, 'Fractional repair: 0 refuses with #N/A when active');
 economy.getRange(`B100:AZ${nextModelRow - 1}`).format = { font: { name: 'Arial', size: 10, color: C.ink }, rowHeight: 22, verticalAlignment: 'center' };
 economy.getRange(`B100:B${nextModelRow - 1}`).format.columnWidth = 54;
 economy.getRange(`D100:AZ${nextModelRow - 1}`).setNumberFormat('0.000');
@@ -823,6 +842,34 @@ for (const [key, value, affected] of [['minimum_rate_increment_pct', 0, 'policy_
 workbook.recalculate();
 assert.ok(verifyTrace('restored signed-rate boundaries', [cases[2].initial_state, ...cases[2].quarters.map(x => x.state)]) < 1e-7);
 console.log('PASS: seven native signed-rate boundaries, quote grid, conditional delivery and restored full parity');
+
+// Exercise the repaired public native edge through the actual workbook engine.
+// This checks selected balance fields, not a new full native macro trace.
+const fractionalFundingShocks = [
+  { funding_need_pct_initial_gdp: 1.98, refinancing_need_pct_initial_gdp: 0, eligible_collateral_pct_initial_gdp: 10, liquidity_eligibility_pct: 100 },
+  { funding_need_pct_initial_gdp: 0.1, refinancing_need_pct_initial_gdp: 1.98, eligible_collateral_pct_initial_gdp: 10, liquidity_eligibility_pct: 100 },
+];
+const fractionalFundingSaved = applyFixture([
+  [lab, 'C4', 1], [lab, 'C6', 2],
+  ...fractionalFundingShocks.flatMap((shock, q) => shockKeys.map(key => [shocks, `${column(q + 5)}${shockRows.get(key) + 1}`, shock[key] ?? shockDefault(key)])),
+  ...['E', 'F'].flatMap(col => [[policy, `${col}10`, 0], [policy, `${col}11`, 3], [policy, `${col}13`, true]]),
+]);
+try {
+  workbook.recalculate();
+  const actual = (col, key) => economy.getRange(`${col}${R[key]}`).values[0][0];
+  assert.equal(actual('E', 'outstanding_liquidity_pct_initial_gdp'), 1.98, 'Actual workbook Q1 originates the old 1.98 loan');
+  const expected = { liquidity_new_need_applied_pct_initial_gdp: 0.1, liquidity_refinancing_applied_pct_initial_gdp: 1.98,
+    liquidity_local_applied_pct_initial_gdp: 2.08, uncovered_new_funding_pct_initial_gdp: 0,
+    uncovered_refinancing_pct_initial_gdp: 0, uncovered_funding_pct_initial_gdp: 0 };
+  for (const [key, value] of Object.entries(expected)) assert.equal(actual('F', key), value, `Actual workbook Q2 fractional refinancing: ${key}`);
+  checks.push({ fundingAllocation: 'fractional_refinancing_native_edge', checkedFields: Object.keys(expected), maxAbsoluteError: 0 });
+} finally {
+  writeInputs(fractionalFundingSaved.map(([sheet, ref, value, formula]) => [sheet, ref, formula || value, Boolean(formula)]));
+  workbook.recalculate();
+  for (const [sheet, ref, value, formula] of fractionalFundingSaved) assert.equal(sheet.getRange(ref)[formula ? 'formulas' : 'values'][0][0], formula || value, 'Fractional funding fixture restores every exact input');
+}
+verifyTrace('restored fractional refinancing fixture', [cases[2].initial_state, ...cases[2].quarters.map(x => x.state)]);
+console.log('PASS: actual workbook fractional refinancing selected fields and exact input restoration');
 }
 
 const checkpointFixtureEdits = fixture => {

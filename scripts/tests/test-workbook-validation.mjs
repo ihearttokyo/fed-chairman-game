@@ -386,6 +386,98 @@ for (const [ref, value] of mainLabels) originals.set(ref, { value, formula: '' }
 console.log('PASS: actual selector/summary/calendar emitters reject invalid offsets (VM/simulated guards; not native recalculation)');
 assert.ok(source.includes('=CHOOSE(C6,"Feedback rule","Rate hold; conditional guidance")'), 'Workbook hold label discloses conditional guidance');
 
+// Source-bound actual balance emitter; only its affected scalar formulas are
+// evaluated here. This is IEEE-754/VM evidence, not Excel/Calc recalculation.
+const allocationStart = source.indexOf('const writeBalance = ');
+const allocationEnd = source.indexOf('for (let q = 0; q <= 48;', allocationStart);
+assert.ok(allocationStart >= 0 && allocationEnd > allocationStart, 'Locate the actual balance emitter');
+const allocationHelperStart = source.indexOf('const localFundingAllocation = ');
+const allocationHelperEnd = source.indexOf('const cohortSum = ', allocationHelperStart);
+const allocationHelper = allocationHelperStart < 0 ? '' : source.slice(allocationHelperStart, allocationHelperEnd);
+const allocationRows = new Map();
+const emitAllocationBalance = vm.runInNewContext(`${allocationHelper}\n${source.slice(allocationStart, allocationEnd)}\nwriteBalance`, {
+  register: key => { if (!allocationRows.has(key)) allocationRows.set(key, allocationRows.size + 1); },
+  p: key => `parameters.${key}`, principalNet: () => '0', cohortSum: () => '0',
+  arrayField: (key, i) => `${key}_${i}`, treasuryKey: 'treasury', tagKey: 'tags', billKey: 'bills',
+});
+const allocationCase = ({ refinance, need, offer, eligibility = 100, collateral = 10, haircut = 0 }) => {
+  const formulas = new Map();
+  emitAllocationBalance(key => `v.${key}`, key => `previous.${key}`, key => `shocks.${key}`,
+    (key, formula) => formulas.set(key, formula));
+  const inputs = { liquidity_request_pct_initial_gdp: offer };
+  const previous = { outstanding_liquidity_pct_initial_gdp: refinance };
+  const shocks = { funding_need_pct_initial_gdp: need, refinancing_need_pct_initial_gdp: refinance,
+    eligible_collateral_pct_initial_gdp: collateral, collateral_haircut_pct: haircut, liquidity_eligibility_pct: eligibility };
+  const cache = new Map(), active = new Set();
+  const read = key => {
+    if (Object.hasOwn(inputs, key)) return inputs[key];
+    if (cache.has(key)) return cache.get(key);
+    assert.ok(formulas.has(key), `Actual allocation field is emitted: ${key}`);
+    assert.ok(!active.has(key), `No allocation formula cycle at ${key}`);
+    active.add(key);
+    const value = vm.runInNewContext(formulas.get(key), {
+      v: values, previous, shocks, MIN: Math.min, MAX: Math.max, ABS: Math.abs, SIGN: Math.sign,
+      AND: (...args) => args.every(Boolean), IF: (condition, yes, no) => condition ? yes : no,
+      NA: () => NaN,
+    });
+    active.delete(key); cache.set(key, value); return value;
+  };
+  const values = new Proxy({}, { get: (_, key) => read(key) });
+  return { read, formulas };
+};
+const allocationFields = ['liquidity_local_applied_pct_initial_gdp', 'liquidity_refinancing_applied_pct_initial_gdp',
+  'liquidity_new_need_applied_pct_initial_gdp', 'uncovered_new_funding_pct_initial_gdp',
+  'uncovered_refinancing_pct_initial_gdp', 'uncovered_funding_pct_initial_gdp'];
+const nativeOriginalAllocation = ({ refinance, need, offer, eligibility = 100, collateral = 10, haircut = 0 }) => {
+  const factor = eligibility / 100;
+  const capacity = collateral * (1 - haircut / 100) * factor;
+  const eligible = refinance * factor + need * factor;
+  const gross = Math.min(offer, Math.min(capacity, eligible));
+  const renewed = Math.min(gross, refinance * factor), fresh = gross - renewed;
+  return [gross, renewed, fresh, need - fresh, refinance - renewed, (need - fresh) + (refinance - renewed)];
+};
+const repairedAllocation = allocationCase({ refinance: 1.98, need: 0.1, offer: 2.08 });
+assert.equal(repairedAllocation.read(allocationFields[2]), 0.1, 'Actual emitted fresh advance matches the native 1.98 + 0.1 repair');
+assert.deepEqual(allocationFields.map(repairedAllocation.read), [2.08, 1.98, 0.1, 0, 0, 0], 'Corrected gross, fresh and unpaid legs reconcile without forgiveness');
+
+const acceptedNearFull = { refinance: 0.28, need: 0.01, offer: 0.29, eligibility: 99.9999999999999 };
+const oldNearFull = nativeOriginalAllocation(acceptedNearFull);
+assert.ok(oldNearFull[2] > acceptedNearFull.need && oldNearFull[5] >= 0, 'Countercase distinguishes previously accepted total from negative total');
+assert.deepEqual(allocationFields.map(allocationCase(acceptedNearFull).read), oldNearFull, 'Previously accepted near-full-eligibility allocation remains byte-equivalent');
+for (const fixture of [
+  { refinance: 0, need: 0, offer: 0 }, { refinance: 1.98, need: 0.1, offer: 0 },
+  { refinance: 1.98, need: 0.1, offer: 2 }, { refinance: 1.98, need: 0.1, offer: 3, eligibility: 50 },
+  { refinance: 7, need: 3, offer: 99, haircut: 100 },
+  { refinance: 2 ** 53, need: 2, offer: 2 ** 53 + 2, collateral: 2 ** 54 },
+]) {
+  const old = nativeOriginalAllocation(fixture);
+  assert.ok(old[5] >= 0, 'The accepted-path fixture really was previously valid');
+  assert.deepEqual(allocationFields.map(allocationCase(fixture).read), old, 'Accepted arithmetic is not broadly clamped or recalculated');
+}
+const unrepresentable = allocationCase({ refinance: 2 ** 53, need: 1.5, offer: 2 ** 53 + 2, collateral: 2 ** 54 });
+for (const key of allocationFields) assert.ok(Number.isNaN(unrepresentable.read(key)), `Unrepresentable repaired gross/fresh allocation exposes #N/A at ${key}`);
+const associationRefusal = allocationCase({ refinance: 1.6233, need: 1e-12, offer: 100, collateral: 100 });
+for (const key of allocationFields) assert.ok(Number.isNaN(associationRefusal.read(key)), `Native factor-first association cannot conceal an unrepresentable fresh leg: ${key}`);
+const largeCollateral = allocationCase({ refinance: 0, need: 1, offer: 1, collateral: 1e308 });
+assert.equal(largeCollateral.read('lending_collateral_capacity_pct_initial_gdp'), 1e308, 'Factor-first native capacity avoids an artificial amount-times-100 overflow');
+assert.deepEqual(allocationFields.map(largeCollateral.read), nativeOriginalAllocation({ refinance: 0, need: 1, offer: 1, collateral: 1e308 }));
+assert.ok(allocationHelperStart >= 0 && allocationHelperEnd > allocationHelperStart, 'Repair is a bounded reusable emitter, not duplicated economic logic');
+assert.equal(allocationRows.size, 7, 'Exactly seven useful raw/repair helpers register once across all columns');
+assert.ok([...allocationRows.keys()].every(key => key.startsWith('local_funding_')), 'Helpers do not replace or expand the native state schema');
+assert.ok(source.includes('Fractional repair: 0 refuses with #N/A when active'), 'The calculation chain documents deliberate representation refusal');
+assert.ok(repairedAllocation.formulas.get('local_funding_repair').includes('AND(SIGN(')
+  && repairedAllocation.formulas.get('local_funding_repair_valid').includes('IF(SIGN(ABS('), 'Native residual signs are not lost to artifact approximate comparisons (static guard; real-engine fixture runs in main phase)');
+for (const key of ['uncovered_new_funding_pct_initial_gdp', 'uncovered_refinancing_pct_initial_gdp']) {
+  assert.ok(!repairedAllocation.formulas.get(key).includes('MAX('), 'Unpaid claims are not silently forgiven');
+}
+console.log('PASS: actual funding-allocation emitter repairs rejected fractional advances, preserves accepted cases, refuses unrepresentable gross and has no cycles (VM/IEEE-754; not native workbook recalculation)');
+const fractionalFixtureStart = mainChecks.indexOf('const fractionalFundingShocks = ');
+const fractionalFixture = mainChecks.slice(fractionalFixtureStart);
+assert.ok(fractionalFixtureStart >= 0 && fractionalFixture.includes('const fractionalFundingSaved = applyFixture([')
+  && fractionalFixture.includes('workbook.recalculate();') && fractionalFixture.includes("actual('F', key)")
+  && fractionalFixture.includes('finally {') && fractionalFixture.includes('writeInputs(fractionalFundingSaved.map(')
+  && fractionalFixture.includes("verifyTrace('restored fractional refinancing fixture'"), 'Main phase retains a real-engine fractional funding fixture and restoration (static admission; not executed here)');
+
 if (process.argv.length > 2) {
   assert.equal(process.argv[2], '--checkpoint-reference');
   assert.equal(process.argv.length, 4, 'Usage: --checkpoint-reference /absolute/late-checkpoints.json');
