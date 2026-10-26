@@ -101,3 +101,29 @@ Captures and exact source hashes are retained outside Git. These checks do not q
 new difficulty, enjoyment, empirical calibration, workbook integration or
 release readiness on their own. The laboratory subsequently shipped in Alpha 615;
 release and notarization evidence remains separate from source-native checks.
+
+## Borrowing-cost variant
+
+New career also offers **Bank workout · borrowing costs**. It keeps the same
+bank, withdrawal waves and eight-meeting horizon, adding explicit interest on
+actual opening loan principal. Its staged APR follows the policy-rate choice;
+negative loan APR is a fictional US counterfactual, not a claim about real primary
+credit. The original zero-interest lab and normal careers remain separate.
+
+The compact cost panel shows bank-to-Fed and Fed-to-bank cash separately, with
+first-staged and last-actual terms clearly labelled. Unpaid interest is separate
+from loan principal and highlighted as a funding obligation. Explicit supported
+new cash may pay interest before withdrawals; unused offers create neither cash
+nor equity. The journal retains actual credit terms/claims and the debrief uses
+combined equity including accrued interest. Help discloses authored priority,
+day-count and collectibility limits. See `PRICED_CREDIT_EXPERIMENT.md` for source
+research, rejected hypotheses and numeric qualification.
+
+Source-native testing completed two eight-meeting Computer Use paths in private
+storage: mixed positive/negative rates with partial support, and a keyboard-only
+8% path with first-meeting support then no new offers. Screenshots verified the
+opposing cash lanes, unpaid-claim warning, readable Help, Escape dismissal, normal
+terminal behavior and keyboard Home/End access to the full debrief. An initial
+muted warning and empty terminal rows were repaired and visually rechecked.
+These are current-size functional/pixel checks, not measured enjoyment, actual
+assistive-technology certification or release/export qualification.

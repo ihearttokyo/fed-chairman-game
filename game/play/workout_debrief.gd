@@ -92,12 +92,19 @@ static func present(bank_history: Array, settlements: Array, completed: bool) ->
 	for quarter in range(9):
 		if not _bank_valid(bank_history[quarter], quarter):
 			return unavailable
+	var priced: bool = settlements[0] is Dictionary and settlements[0].has("credit_result")
 	var quarters: Array = []
 	var descriptions: Array[String] = []
 	for index in range(8):
 		var source: Variant = settlements[index]
 		if typeof(source) != TYPE_DICTIONARY or typeof(source.get("ok")) != TYPE_BOOL or not source.ok or source.get("state") != bank_history[index + 1]:
 			return unavailable
+		if source.has("credit_result") != priced:
+			return unavailable
+		if priced:
+			var credit: Variant = source.credit_result
+			if not credit is Dictionary or not _number(credit.get("bank_equity_after")) or not _number(credit.get("core_bank_equity_after")) or credit.core_bank_equity_after != source.get("equity_after"):
+				return unavailable
 		for key in SETTLEMENT_AMOUNTS:
 			if not _number(source.get(key)) or (not key.begins_with("equity_") and source[key] < 0):
 				return unavailable
@@ -115,12 +122,12 @@ static func present(bank_history: Array, settlements: Array, completed: bool) ->
 		quarters.append({"quarter": index + 1, "due": due, "paid": paid, "applicable": applicable, "short": shortfall,
 			"fraction": paid / due if applicable else 0.0, "description": description})
 	var ending: Dictionary = bank_history[8]
-	var equity: float = settlements[7].equity_after
+	var equity: float = settlements[7].credit_result.bank_equity_after if priced else settlements[7].equity_after
 	return {"ok": true, "visible": true, "title": "Eight-meeting debrief", "quarters": quarters,
-		"ending_queue": ending.withdrawal_queue, "ending_arrears": ending.loan_arrears, "ending_equity": equity,
+		"ending_queue": ending.withdrawal_queue, "ending_arrears": ending.loan_arrears, "ending_equity": equity, "includes_interest": priced,
 		"queue_text": "Queued %s (within deposits)" % _amount(ending.withdrawal_queue),
 		"arrears_text": "Overdue CB principal %s (within loan)" % _amount(ending.loan_arrears),
-		"equity_text": "Mark-to-market equity %s%s" % ["+" if equity > 0 else "", _amount(equity)],
+		"equity_text": "%s %s%s" % ["Equity incl. interest" if priced else "Mark-to-market equity", "+" if equity > 0 else "", _amount(equity)],
 		"timeline_description": "\n".join(descriptions)}
 
 func _init() -> void:
@@ -172,7 +179,7 @@ func update_episode(bank_history: Array, settlements: Array, completed: bool) ->
 	_set_label(legend, "Paid / due per meeting · mint paid · gold short · dash n.a.", TIMELINE_HINT)
 	_set_label(queue_label, snapshot.queue_text, "Ending queued withdrawals only; included in deposits. Repeated quarterly queues are not added.")
 	_set_label(arrears_label, snapshot.arrears_text, "Ending overdue CB principal only; included in the CB loan, not extra debt.")
-	_set_label(equity_label, snapshot.equity_text, "Signed ending mark-to-market equity; separate from depositor payments, not regulatory capital. Lending does not create equity.")
+	_set_label(equity_label, snapshot.equity_text, "Signed ending equity including separate accrued interest claims; not regulatory capital. Lending does not create equity." if snapshot.includes_interest else "Signed ending mark-to-market equity; separate from depositor payments, not regulatory capital. Lending does not create equity.")
 	_set_label(note, "Ending balances · % initial GDP", "The ending retained claims are not summed across repeated meetings.")
 	queue_label.add_theme_color_override("font_color", GOLD if snapshot.ending_queue > 0 else MUTED)
 	arrears_label.add_theme_color_override("font_color", GOLD if snapshot.ending_arrears > 0 else MUTED)

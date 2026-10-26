@@ -514,6 +514,8 @@ func _step_internal(state: Dictionary, policy: Dictionary, shocks: Dictionary, p
 	for key in BALANCE_DIAGNOSTICS:
 		trace[key] = next[key]
 	trace.merge(rate_conditions, true)
+	if balance.has("credit_stock_roundoff"):
+		trace.credit_stock_roundoff = balance.credit_stock_roundoff.duplicate(true)
 	return {"ok": true, "state": next, "trace": trace}
 
 
@@ -698,8 +700,22 @@ func _balance_sheet_step(state: Dictionary, policy: Dictionary, shocks: Dictiona
 	if not workout.is_empty():
 		# Renewed contracts retire and originate gross principal but move no cash.
 		reserve_base = _principal_net([state.reserves_pct_initial_gdp, state.reverse_repo_pct_initial_gdp, purchase, -runoff, -workout.repayment, -currency_conversion])
+	var capital_other: Variant = state.capital_other_pct_initial_gdp
+	var credit_roundoff := {}
+	if workout.has("credit_result"):
+		# Cash settlement moves reserves/core capital oppositely. Unpaid accrual
+		# remains outside this principal-only ledger, in the explicit sidecar.
+		var credit: Dictionary = workout.credit_result
+		reserve_base = _bw_credit_stock_shift(reserve_base, -credit.paid_positive, credit_roundoff, "reserves")
+		reserve_base = _bw_credit_stock_shift(reserve_base, credit.paid_negative, credit_roundoff, "reserves")
+		capital_other = _bw_credit_stock_shift(float(capital_other), credit.paid_positive, credit_roundoff, "capital")
+		capital_other = _bw_credit_stock_shift(float(capital_other), -credit.paid_negative, credit_roundoff, "capital")
+		if not is_finite(reserve_base) or not is_finite(capital_other):
+			return _bw_fail("Unrepresentable native cash-interest settlement")
 	var offer: float = policy.liquidity_request_pct_initial_gdp
 	var new_need: float = shocks.get("funding_need_pct_initial_gdp", 0.0)
+	if workout.has("credit_result") and workout.credit_result.get("interest_financing_active", false):
+		new_need = workout.credit_result.funding_need_before_advances
 	var refinancing_request: float = shocks.get("refinancing_need_pct_initial_gdp", 0.0)
 	var refinancing_need := minf(refinancing_request, old_loan_due)
 	if not workout.is_empty():
@@ -736,6 +752,8 @@ func _balance_sheet_step(state: Dictionary, policy: Dictionary, shocks: Dictiona
 	if not workout.is_empty():
 		uncovered_new = workout.remaining_queue
 		uncovered_refinancing = workout.loan_arrears
+		if workout.has("credit_result") and workout.credit_result.get("interest_financing_active", false):
+			uncovered_new = _bw_net([uncovered_new, workout.credit_state.payable])
 	var uncovered := uncovered_new + uncovered_refinancing
 	if not workout.is_empty():
 		uncovered = _bw_net([uncovered_new, uncovered_refinancing])
@@ -775,13 +793,13 @@ func _balance_sheet_step(state: Dictionary, policy: Dictionary, shocks: Dictiona
 	var duration: float = _cohort_sum(treasury) + mbs * (params.mbs_duration_years / params.treasury_duration_years)
 	var securities: float = _principal_net([state.asset_stock_pct_initial_gdp, purchase, -runoff, maintenance])
 	var assets: float = securities + loans
-	var ledger_error := _principal_net([assets, -reserves, -absorption, -currency, -state.treasury_account_pct_initial_gdp, -state.capital_other_pct_initial_gdp])
+	var ledger_error := _principal_net([assets, -reserves, -absorption, -currency, -state.treasury_account_pct_initial_gdp, -capital_other])
 	var updates := {
 		"treasury_cohorts_pct_initial_gdp":treasury, "sterilized_treasury_cohorts_pct_initial_gdp":tags,
 		"bill_cohorts_pct_initial_gdp":bills, "mbs_stock_pct_initial_gdp":mbs,
 		"reserves_pct_initial_gdp":reserves, "reverse_repo_pct_initial_gdp":absorption,
 		"currency_pct_initial_gdp":currency, "treasury_account_pct_initial_gdp":state.treasury_account_pct_initial_gdp,
-		"capital_other_pct_initial_gdp":state.capital_other_pct_initial_gdp,
+		"capital_other_pct_initial_gdp":capital_other,
 		"asset_stock_pct_initial_gdp":securities, "asset_flow_applied_pct_initial_gdp":purchase - runoff,
 		"term_premium_pct":_portfolio_premium(duration - state.initial_duration_equivalent_pct_initial_gdp, n, state.initial_portfolio_premium_pct, params),
 		"outstanding_liquidity_pct_initial_gdp":loans, "liquidity_repayment_pct_initial_gdp":old_loan_due,
@@ -818,7 +836,10 @@ func _balance_sheet_step(state: Dictionary, policy: Dictionary, shocks: Dictiona
 		"sterilized_principal_runoff_pct_initial_gdp":tagged_runoff, "sterilized_principal_reinvestment_pct_initial_gdp":tagged_roll,
 		"principal_ledger_error_pct_initial_gdp":ledger_error,
 	}
-	return {"ok":true,"updates":updates}
+	var result := {"ok":true,"updates":updates}
+	if workout.has("credit_result") and (workout.credit_result.paid_positive != 0.0 or workout.credit_result.paid_negative != 0.0):
+		result.credit_stock_roundoff = credit_roundoff
+	return result
 
 
 func conditional_commitment(state: Dictionary, params: Dictionary) -> float:
@@ -1361,10 +1382,15 @@ static func bank_workout_value(state: Variant, yield_pct: Variant) -> Dictionary
 	return _bw_mark(state.claims, state.quarter_index, float(yield_pct))
 
 
-static func bank_workout_step(prior: Variant, order: Variant) -> Dictionary:
+static func bank_workout_step(prior: Variant, order: Variant, credit_context: Dictionary = {}) -> Dictionary:
 	var valid := _bw_validate(prior)
 	if not valid.ok:
 		return valid
+	var credit: Dictionary = {}
+	if not credit_context.is_empty():
+		credit = _bw_credit_accrual(prior.central_bank_loan, credit_context)
+		if not credit.ok:
+			return credit
 	var keys := ["annual_yield_pct", "new_withdrawals", "liquidity_offer", "haircut_pct", "pledgeable_share"]
 	if not _bw_schema(order, keys):
 		return _bw_fail("Invalid or unknown workout order schema")
@@ -1404,18 +1430,51 @@ static func bank_workout_step(prior: Variant, order: Variant) -> Dictionary:
 	var repayment := minf(available_cash, old_debt)
 	var cash_remaining := _bw_difference(available_cash, repayment)
 	var old_remaining := _bw_difference(old_debt, repayment)
+	var credit_active: bool = not credit.is_empty() and (credit.payable > 0.0 or credit.receivable > 0.0)
+	if credit_active:
+		if not _bw_audit_stock(float(prior.cash), due, available_cash, credit, "cash_roundoff", false, cash_legs) or not _bw_audit_stock(available_cash, -repayment, cash_remaining, credit, "cash_roundoff") or not _bw_audit_stock(old_debt, -repayment, old_remaining, credit, "principal_roundoff", true):
+			return _bw_fail("Unrepresentable credit opening cash/principal booking")
 	var capacity: float = new_mark.market_value * (1.0 - order.haircut_pct / 100.0) * order.pledgeable_share
 	if new_mark.market_value > 0.0 and order.haircut_pct < 100.0 and order.pledgeable_share > 0.0 and capacity == 0.0:
 		return _bw_fail("Workout collateral capacity underflow")
 	var permitted := minf(order.liquidity_offer, capacity)
 	var renewal := minf(old_remaining, permitted)
 	var arrears := _bw_difference(old_remaining, renewal)
+	var finance_active: bool = not credit.is_empty() and credit.get("finance_interest", false) and (credit.payable > 0.0 or credit.receivable > 0.0)
+	var financed: Dictionary = {}
+	if finance_active:
+		financed = _bw_credit_finance(credit, cash_remaining, old_remaining, permitted, requested)
+		if not financed.ok:
+			return financed
+		credit = financed.credit
+		cash_remaining = financed.cash_remaining
+		if credit.interest_due != 0.0:
+			reference_legs.append(credit.interest_due)
+		if credit.paid_negative != 0.0:
+			reference_legs.append(-credit.paid_negative)
+		reference = _bw_net(reference_legs)
+	elif not credit.is_empty():
+		credit.paid_positive = minf(cash_remaining, credit.payable)
+		credit.paid_negative = credit.receivable
+		credit.payable = _bw_credit_shift(credit.payable, -credit.paid_positive)
+		credit.receivable = _bw_credit_shift(credit.receivable, -credit.paid_negative)
+		if credit.paid_positive != 0.0 or credit.paid_negative != 0.0:
+			cash_remaining = _bw_credit_stock_shift(cash_remaining, -credit.paid_positive, credit, "cash_roundoff")
+			cash_remaining = _bw_credit_stock_shift(cash_remaining, credit.paid_negative, credit, "cash_roundoff")
+			reference_legs.append(credit.paid_positive)
+			reference_legs.append(-credit.paid_negative)
+			reference = _bw_net(reference_legs)
+		for amount in [cash_remaining, credit.payable, credit.receivable]:
+			if not is_finite(amount) or amount < 0.0:
+				return _bw_fail("Unrepresentable separate cash-interest claims")
 	var cash_shortfall := _bw_net([requested, -cash_remaining])
 	if not is_finite(cash_shortfall):
 		return _bw_fail("Unrepresentable remaining withdrawal need")
 	var needed_cash := maxf(0.0, cash_shortfall)
 	var fresh := 0.0
-	if permitted > old_remaining and needed_cash > 0.0:
+	if finance_active:
+		fresh = financed.fresh
+	elif permitted > old_remaining and needed_cash > 0.0:
 		var required_total := _bw_net([old_remaining, needed_cash])
 		if is_finite(required_total) and required_total <= permitted:
 			fresh = needed_cash
@@ -1425,11 +1484,39 @@ static func bank_workout_step(prior: Variant, order: Variant) -> Dictionary:
 				return _bw_fail("Unrepresentable fresh-credit headroom")
 			fresh = minf(headroom, needed_cash)
 	var withdrawal_cash := _bw_net([cash_remaining, fresh])
+	if finance_active:
+		# Actually receive the new advance, then remit its interest-purpose cash.
+		# Neither entry is a direct addition of interest to loan principal.
+		# Process receipts/remittances are audited separately: final purpose cash
+		# is audited below, so these residuals must not be counted twice in equity.
+		var gross_roundoff := {}
+		var received := _bw_credit_stock_shift(cash_remaining, fresh, gross_roundoff, "receipt")
+		var remitted := _bw_credit_stock_shift(received, -credit.new_cash_for_interest, gross_roundoff, "remittance")
+		credit.gross_cash_roundoff = gross_roundoff
+		# Book the validated original purpose, not a cancellation residue from
+		# gross receipt minus interest. Retain and audit the cash roundoff rather
+		# than inventing a tiny closing asset or discarding an unpaid obligation.
+		withdrawal_cash = _bw_net([cash_remaining, credit.new_cash_for_withdrawals])
+		credit.cash_purpose_reconciliation = _bw_parts_value(_bw_rounding_parts([withdrawal_cash, -remitted]))
+		if not is_finite(received) or not is_finite(remitted) or not is_finite(credit.cash_purpose_reconciliation):
+			return _bw_fail("Unrepresentable audited financed cash reconstruction")
+	if credit_active:
+		var cash_advance_legs: Array = [cash_remaining, fresh]
+		if finance_active:
+			cash_advance_legs.append(-credit.new_cash_for_interest)
+		var net_cash_advance: float = fresh - (credit.new_cash_for_interest if finance_active else 0.0)
+		if not _bw_audit_stock(cash_remaining, net_cash_advance, withdrawal_cash, credit, "cash_roundoff", false, cash_advance_legs):
+			return _bw_fail("Unrepresentable net cash advance booking")
 	var paid := minf(requested, withdrawal_cash)
 	var cash := _bw_difference(withdrawal_cash, paid)
 	var deposits := _bw_difference(float(prior.deposits), paid)
 	var queue := _bw_difference(requested, paid)
 	var principal := _bw_net([old_remaining, fresh])
+	if finance_active:
+		principal = _bw_credit_shift(old_remaining, fresh)
+	if credit_active:
+		if not _bw_audit_stock(withdrawal_cash, -paid, cash, credit, "cash_roundoff") or not _bw_audit_stock(float(prior.deposits), -paid, deposits, credit, "deposit_roundoff") or not _bw_audit_stock(old_remaining, fresh, principal, credit, "principal_roundoff", true):
+			return _bw_fail("Unrepresentable credit closing cash/deposit/principal booking")
 	var matured := _bw_net([float(prior.matured_face), due])
 	var net_cb := _bw_net([fresh, -repayment])
 	for amount in [due, available_cash, requested, repayment, cash_remaining, old_remaining, capacity, permitted, renewal, arrears, needed_cash, fresh, withdrawal_cash, paid, cash, deposits, queue, principal, matured, net_cb]:
@@ -1454,6 +1541,10 @@ static func bank_workout_step(prior: Variant, order: Variant) -> Dictionary:
 	expected_legs.append_array(new_mark.claim_values)
 	for amount in old_mark.claim_values:
 		expected_legs.append(-amount)
+	var market_legs := expected_legs.duplicate()
+	if not credit.is_empty() and (credit.paid_positive != 0.0 or credit.paid_negative != 0.0):
+		expected_legs.append(-credit.paid_positive)
+		expected_legs.append(credit.paid_negative)
 	var before := _bw_net(old_equity_legs)
 	var after := _bw_net(new_equity_legs)
 	var change := _bw_net(change_legs)
@@ -1479,10 +1570,30 @@ static func bank_workout_step(prior: Variant, order: Variant) -> Dictionary:
 	# compound evaluation reference cannot fit one float. Keep its original legs.
 	if is_finite(reference):
 		result.prequote_reference_need = maxf(0.0, reference)
+	if not credit.is_empty():
+		if credit.get("finance_interest", false):
+			credit.interest_financing_active = finance_active
+			if not finance_active:
+				credit.interest_due = 0.0
+				credit.paid_positive_from_pre_advance_cash = credit.paid_positive
+				credit.new_cash_for_interest = 0.0
+				credit.new_cash_for_withdrawals = fresh
+				credit.funding_need_before_advances = needed_cash
+		var combined := _bw_credit_bank_result(credit, old_equity_legs, new_equity_legs, market_legs)
+		if not combined.ok:
+			return combined
+		result.credit_state = {"payable": credit.payable, "receivable": credit.receivable}
+		result.credit_result = combined.diagnostics
+		# Legacy equity fields describe the principal-only book. Active credit
+		# status must include both separate interest claims; this is not a
+		# regulatory-capital or collectibility determination.
+		result.solvent = combined.diagnostics.bank_equity_after >= 0.0
+		result.payment_distress = distress or credit.payable > 0.0
+		result.workout = result.payment_distress or not result.solvent
 	return result
 
 
-static func bank_workout_briefing(bank: Variant, order: Variant) -> Dictionary:
+static func bank_workout_briefing(bank: Variant, order: Variant, credit_context: Dictionary = {}) -> Dictionary:
 	# Before-policy mark and zero-offer projection only, not accepted bank state.
 	var valid := _bw_validate(bank)
 	if not valid.ok:
@@ -1491,20 +1602,25 @@ static func bank_workout_briefing(bank: Variant, order: Variant) -> Dictionary:
 		return _bw_fail("Invalid or unknown coupled workout order schema")
 	var bank_order := {"annual_yield_pct": bank.annual_yield_pct, "new_withdrawals": order.new_withdrawals,
 		"liquidity_offer": 0.0, "haircut_pct": order.haircut_pct, "pledgeable_share": order.pledgeable_share}
-	var projection := bank_workout_step(bank, bank_order)
+	var projection := bank_workout_step(bank, bank_order, credit_context)
 	if not projection.ok:
 		return projection
 	var collateral: float = projection.remaining_market_value * order.pledgeable_share
 	if not is_finite(collateral) or (projection.remaining_market_value > 0.0 and order.pledgeable_share > 0.0 and collateral == 0.0):
 		return _bw_fail("Unrepresentable current workout collateral")
+	var funding_need: Variant = projection.remaining_queue
+	if projection.has("credit_result") and projection.credit_result.get("interest_financing_active", false):
+		funding_need = _bw_net([projection.remaining_queue, projection.credit_state.payable])
+		if not is_finite(funding_need):
+			return _bw_fail("Unrepresentable separate deposit/interest funding need")
 	return {"ok": true, "bank_result": projection, "shocks": {
-		"funding_need_pct_initial_gdp": projection.remaining_queue,
+		"funding_need_pct_initial_gdp": funding_need,
 		"refinancing_need_pct_initial_gdp": projection.old_exposure_remaining,
 		"eligible_collateral_pct_initial_gdp": collateral, "collateral_haircut_pct": order.haircut_pct,
 		"liquidity_eligibility_pct": 100.0}}
 
 
-func bank_workout_transition(state: Dictionary, policy: Dictionary, shocks: Dictionary, params: Dictionary, bank: Variant, order: Variant) -> Dictionary:
+func bank_workout_transition(state: Dictionary, policy: Dictionary, shocks: Dictionary, params: Dictionary, bank: Variant, order: Variant, credit_context: Dictionary = {}) -> Dictionary:
 	# This optional facade owns no Career, future tape, save or household account.
 	# Every provisional/final calculation starts from the same valid native frame.
 	var valid := _validate_parameters(params)
@@ -1524,7 +1640,7 @@ func bank_workout_transition(state: Dictionary, policy: Dictionary, shocks: Dict
 		return valid
 	if bank.quarter_index != state.quarter_index or bank.central_bank_loan != state.outstanding_liquidity_pct_initial_gdp:
 		return _bw_fail("Workout bank and native opening clock/principal disagree")
-	var briefing := bank_workout_briefing(bank, order)
+	var briefing := bank_workout_briefing(bank, order, credit_context)
 	if not briefing.ok:
 		return briefing
 	var current := shocks.duplicate(true)
@@ -1541,7 +1657,7 @@ func bank_workout_transition(state: Dictionary, policy: Dictionary, shocks: Dict
 	var bank_order := {"annual_yield_pct": quote, "new_withdrawals": order.new_withdrawals,
 		"liquidity_offer": policy.liquidity_request_pct_initial_gdp,
 		"haircut_pct": order.haircut_pct, "pledgeable_share": order.pledgeable_share}
-	var accepted := bank_workout_step(bank, bank_order)
+	var accepted := bank_workout_step(bank, bank_order, credit_context)
 	if not accepted.ok:
 		return accepted
 	current.eligible_collateral_pct_initial_gdp = accepted.remaining_market_value * order.pledgeable_share
@@ -1556,8 +1672,28 @@ func bank_workout_transition(state: Dictionary, policy: Dictionary, shocks: Dict
 		return _bw_fail("Workout funding changed its own discount quote")
 	if final.state.quarter_index != accepted.state.quarter_index or final.state.outstanding_liquidity_pct_initial_gdp != accepted.state.central_bank_loan:
 		return _bw_fail("Workout/native closing clock or principal does not reconcile")
-	return {"ok": true, "state": final.state, "trace": final.trace,
+	var result := {"ok": true, "state": final.state, "trace": final.trace,
 		"bank_state": accepted.state, "bank_result": accepted, "discount_yield_pct": quote}
+	if not credit_context.is_empty():
+		var credit: Dictionary = accepted.credit_result.duplicate(true)
+		var before := _bw_net([float(state.capital_other_pct_initial_gdp), float(credit_context.payable), -float(credit_context.receivable)])
+		var after := _bw_net([float(final.state.capital_other_pct_initial_gdp), float(accepted.credit_state.payable), -float(accepted.credit_state.receivable)])
+		var capital_legs: Array = [float(final.state.capital_other_pct_initial_gdp), -float(state.capital_other_pct_initial_gdp), float(accepted.credit_state.payable), -float(accepted.credit_state.receivable), -float(credit_context.payable), float(credit_context.receivable), -credit.fed_interest_income]
+		var stock_roundoff: Dictionary = final.trace.get("credit_stock_roundoff", {})
+		for amount in stock_roundoff.get("capital", []):
+			capital_legs.append(-float(amount))
+		var error := _bw_parts_value(_bw_rounding_parts(capital_legs))
+		if not is_finite(before) or not is_finite(after) or not is_finite(error) or absf(error) > _bw_credit_bound(credit):
+			return _bw_fail("Unrepresentable combined Fed accrual/capital reconciliation")
+		credit.fed_capital_before = before
+		credit.fed_capital_after = after
+		credit.fed_capital_reconciliation = error
+		credit.fed_stock_roundoff = stock_roundoff.duplicate(true)
+		credit.core_fed_capital_before = state.capital_other_pct_initial_gdp
+		credit.core_fed_capital_after = final.state.capital_other_pct_initial_gdp
+		result.credit_state = accepted.credit_state.duplicate(true)
+		result.credit_result = credit
+	return result
 
 
 static func bank_workout_opening(params: Variant) -> Dictionary:
@@ -1624,3 +1760,216 @@ static func bank_workout_remaining_request(bank: Variant) -> Dictionary:
 	if not is_finite(request):
 		return _bw_fail("Unrepresentable remaining unrequested deposits")
 	return {"ok": true, "request": request}
+
+
+# Optional priced-credit experiment only. APR mapping, whole-day segments and
+# principal -> interest -> deposit cash priority are authored assumptions, not
+# exact US discount-window governance/terms or impairment/GAAP/CECL accounting.
+# The caller attests collectibility; neither mark-to-market equity nor cash
+# shortage establishes impairment here. Sidecar claims never become principal.
+static func _bw_credit_accrual(principal: float, context: Dictionary) -> Dictionary:
+	var keys := ["annual_rate_pct", "days", "payable", "receivable", "collectible", "allow_negative"]
+	if context.has("finance_interest"):
+		keys.append("finance_interest")
+		if typeof(context.finance_interest) != TYPE_BOOL:
+			return _bw_fail("Interest-financing switch must be Boolean")
+	if not _bw_schema(context, keys):
+		return _bw_fail("Invalid or unknown optional credit-context schema")
+	for key in ["annual_rate_pct", "payable", "receivable"]:
+		if not _bw_number(context[key]):
+			return _bw_fail("Invalid optional credit amount: " + key)
+	if context.payable < 0.0 or context.receivable < 0.0 or typeof(context.days) != TYPE_INT or context.days < 0 or context.days > 9007199254740992 or typeof(context.collectible) != TYPE_BOOL or typeof(context.allow_negative) != TYPE_BOOL:
+		return _bw_fail("Invalid separate claims, exact whole days, or credit flags")
+	if not context.collectible:
+		return _bw_fail("Unsupported impaired/noncollectible credit: nonaccrual and recovery accounting required")
+	if context.annual_rate_pct < 0.0 and not context.allow_negative:
+		return _bw_fail("Negative APR requires explicit counterfactual opt-in")
+	var accrued := 0.0
+	if principal != 0.0 and context.annual_rate_pct != 0.0 and context.days != 0:
+		accrued = (absf(float(context.annual_rate_pct)) / 100.0) * (float(context.days) / 365.0) * principal
+		if not is_finite(accrued) or accrued <= 0.0:
+			return _bw_fail("Unrepresentable positive credit accrual: overflow or underflow")
+	var positive := accrued if context.annual_rate_pct >= 0.0 else 0.0
+	var negative := accrued if context.annual_rate_pct < 0.0 else 0.0
+	var payable := _bw_credit_shift(float(context.payable), positive)
+	var receivable := _bw_credit_shift(float(context.receivable), negative)
+	if not is_finite(payable) or not is_finite(receivable):
+		return _bw_fail("Unrepresentable interest claim; no accrued leg was erased")
+	return {"ok": true, "opening_payable": float(context.payable), "opening_receivable": float(context.receivable),
+		"payable": payable, "receivable": receivable, "accrued_positive": positive, "accrued_negative": negative,
+		"finance_interest": context.get("finance_interest", false)}
+
+
+static func _bw_credit_finance(source: Dictionary, cash: float, old_remaining: float, permitted: float, requested: float) -> Dictionary:
+	# B only: reverse-interest cash is received, not set off, before paying the
+	# positive claim. Supported new advances then pay interest before withdrawals.
+	# General-purpose primary-credit use motivates eligibility, not this authored
+	# priority/rate/collectibility rule or any claim of exact US implementation.
+	var credit := source.duplicate(true)
+	credit.interest_due = credit.payable
+	credit.paid_negative = credit.receivable
+	cash = _bw_credit_stock_shift(cash, credit.paid_negative, credit, "cash_roundoff")
+	credit.receivable = _bw_credit_shift(credit.receivable, -credit.paid_negative)
+	credit.paid_positive_from_pre_advance_cash = minf(cash, credit.payable)
+	cash = _bw_credit_stock_shift(cash, -credit.paid_positive_from_pre_advance_cash, credit, "cash_roundoff")
+	credit.payable = _bw_credit_shift(credit.payable, -credit.paid_positive_from_pre_advance_cash)
+	var deposit_shortfall := _bw_net([requested, -cash])
+	if not is_finite(deposit_shortfall):
+		return _bw_fail("Unrepresentable deposit need after cash interest")
+	var deposit_need := maxf(0.0, deposit_shortfall)
+	var need := _bw_net([credit.payable, deposit_need])
+	if not is_finite(need):
+		return _bw_fail("Unrepresentable separate interest/deposit cash need")
+	var fresh := 0.0
+	if permitted > old_remaining and need > 0.0:
+		var total := _bw_net([old_remaining, need])
+		if is_finite(total) and total <= permitted:
+			fresh = need
+		else:
+			var headroom := _bw_difference(permitted, old_remaining)
+			if not is_finite(headroom):
+				return _bw_fail("Unrepresentable interest-financing headroom")
+			fresh = minf(headroom, need)
+	if fresh == need:
+		# Preserve the original fully funded purposes before booking their gross
+		# sum. Subtracting a fee from that sum can invent a fractional surplus
+		# withdrawal advance and then a spurious bank-cash asset.
+		credit.new_cash_for_interest = credit.payable
+		credit.new_cash_for_withdrawals = deposit_need
+	else:
+		credit.new_cash_for_interest = minf(fresh, credit.payable)
+		credit.new_cash_for_withdrawals = _bw_difference(fresh, credit.new_cash_for_interest)
+	credit.payable = _bw_credit_shift(credit.payable, -credit.new_cash_for_interest)
+	credit.paid_positive = _bw_net([credit.paid_positive_from_pre_advance_cash, credit.new_cash_for_interest])
+	credit.funding_need_before_advances = need
+	for amount in [cash, credit.receivable, credit.payable, credit.paid_negative, credit.paid_positive_from_pre_advance_cash, credit.new_cash_for_interest, credit.new_cash_for_withdrawals, credit.paid_positive, need, fresh]:
+		if not is_finite(amount) or amount < 0.0:
+			return _bw_fail("Unrepresentable financed-interest cash/claim leg")
+	if credit.new_cash_for_withdrawals > deposit_need or _bw_net([credit.new_cash_for_interest, credit.new_cash_for_withdrawals]) != fresh:
+		return _bw_fail("Financed-interest cash purposes do not reconcile")
+	return {"ok": true, "credit": credit, "cash_remaining": cash, "fresh": fresh}
+
+
+# Error-free floating expansions used only to audit optional credit booking.
+# Components preserve the exact sum of finite binary inputs, not decimal money.
+# A nonfinite intermediate refuses; this is not arbitrary-precision economics.
+static func _bw_rounding_parts(legs: Array) -> Array:
+	var partials: Array = []
+	for leg in legs:
+		var x := float(leg)
+		if not is_finite(x):
+			return [NAN]
+		var retained: Array = []
+		for part in partials:
+			var y := float(part)
+			if absf(x) < absf(y):
+				var swap := x
+				x = y
+				y = swap
+			var hi := x + y
+			if not is_finite(hi):
+				return [NAN]
+			var lo := y - (hi - x)
+			if lo != 0.0:
+				retained.append(lo)
+			x = hi
+		if x != 0.0:
+			retained.append(x)
+		partials = retained
+	return partials
+
+
+static func _bw_parts_value(parts: Array) -> float:
+	var value := 0.0
+	for part in parts:
+		value += float(part)
+	return value
+
+
+static func _bw_audit_stock(value: float, change: float, next: float, audit: Dictionary, key: String, strict: bool = false, original_legs: Array = []) -> bool:
+	if not is_finite(value) or not is_finite(change) or not is_finite(next) or (change != 0.0 and next == value):
+		return false
+	var legs := [next]
+	var operands: Array = original_legs if not original_legs.is_empty() else [value, change]
+	var local_scale := maxf(absf(value), absf(next))
+	for amount in operands:
+		legs.append(-float(amount))
+		local_scale = maxf(local_scale, absf(float(amount)))
+	var parts := _bw_rounding_parts(legs)
+	var error := _bw_parts_value(parts)
+	# Tiny absolute ceiling AND local IEEE bound AND <=1ppm of this flow.
+	# Contractual principal remains on the existing <=1e-12 relative policy.
+	var bound := 1e-12 * absf(change) if strict else minf(1e-12, minf(1e-6 * absf(change), 2.220446049250313e-16 * local_scale * maxf(1.0, operands.size() - 1.0)))
+	if not is_finite(error) or absf(error) > bound:
+		return false
+	var recorded: Array = audit.get(key, [])
+	recorded.append_array(parts)
+	audit[key] = recorded
+	return true
+
+
+static func _bw_credit_stock_shift(value: float, change: float, audit: Dictionary, key: String) -> float:
+	var next := value + change
+	return next if _bw_audit_stock(value, change, next, audit, key) else NAN
+
+
+static func _bw_credit_shift(value: float, change: float) -> float:
+	# Claims/principal retain their strict transaction-relative fidelity guard.
+	var next := _bw_net([value, change])
+	var error := _bw_net([next, -value, -change])
+	if not is_finite(next) or not is_finite(error) or absf(error) > 1e-12 * absf(change):
+		return NAN
+	return next
+
+
+static func _bw_credit_bound(credit: Dictionary) -> float:
+	return 1e-12 * maxf(maxf(credit.accrued_positive, credit.accrued_negative), maxf(credit.paid_positive, credit.paid_negative))
+
+
+static func _bw_credit_bank_result(credit: Dictionary, old_legs: Array, new_legs: Array, market_legs: Array) -> Dictionary:
+	var opening: Array = old_legs.duplicate()
+	opening.append_array([-credit.opening_payable, credit.opening_receivable])
+	var closing: Array = new_legs.duplicate()
+	closing.append_array([-credit.payable, credit.receivable])
+	var before := _bw_net(opening)
+	var after := _bw_net(closing)
+	var change_legs := closing.duplicate()
+	for amount in opening:
+		change_legs.append(-amount)
+	var change := _bw_net(change_legs)
+	var reconciliation := change_legs.duplicate()
+	for amount in market_legs:
+		reconciliation.append(-amount)
+	reconciliation.append_array([credit.accrued_positive, -credit.accrued_negative])
+	var raw_parts := _bw_rounding_parts(reconciliation)
+	for key in ["cash_roundoff", "deposit_roundoff", "principal_roundoff"]:
+		for amount in credit.get(key, []):
+			reconciliation.append(-float(amount) if key == "cash_roundoff" else float(amount))
+	var error := _bw_parts_value(_bw_rounding_parts(reconciliation))
+	var net_cash := _bw_net([credit.paid_negative, -credit.paid_positive])
+	var income := _bw_net([credit.accrued_positive, -credit.accrued_negative])
+	for amount in [before, after, change, error, net_cash, income]:
+		if not is_finite(amount):
+			return _bw_fail("Unrepresentable combined bank interest/equity bridge")
+	# An inert opt-in must not add a new rejection gate to the existing ledger.
+	var inert: bool = credit.opening_payable == 0.0 and credit.opening_receivable == 0.0 and income == 0.0
+	if not inert and absf(error) > _bw_credit_bound(credit):
+		return _bw_fail("Combined bank equity does not reconcile at transaction-sized precision")
+	var diagnostics := {"accrued_positive": credit.accrued_positive, "accrued_negative": credit.accrued_negative,
+		"paid_positive": credit.paid_positive, "paid_negative": credit.paid_negative, "net_cash_to_bank": net_cash,
+		"opening_payable": credit.opening_payable, "opening_receivable": credit.opening_receivable,
+		"bank_equity_before": before, "bank_equity_after": after, "bank_equity_change": change,
+		"core_bank_equity_before": _bw_net(old_legs), "core_bank_equity_after": _bw_net(new_legs),
+		"bank_equity_reconciliation": error, "fed_interest_income": income,
+		"bank_equity_raw_reconciliation_parts": raw_parts,
+		"bank_stock_roundoff": {"cash": credit.get("cash_roundoff", []).duplicate(), "deposits": credit.get("deposit_roundoff", []).duplicate(), "principal": credit.get("principal_roundoff", []).duplicate()}}
+	if credit.get("finance_interest", false):
+		diagnostics.merge({"finance_interest": true, "interest_financing_active": credit.interest_financing_active,
+			"interest_due": credit.interest_due, "paid_positive_from_pre_advance_cash": credit.paid_positive_from_pre_advance_cash,
+			"new_cash_for_interest": credit.new_cash_for_interest, "new_cash_for_withdrawals": credit.new_cash_for_withdrawals,
+			"uncovered_interest": credit.payable, "funding_need_before_advances": credit.funding_need_before_advances})
+		if credit.has("cash_purpose_reconciliation"):
+			diagnostics.cash_purpose_reconciliation = credit.cash_purpose_reconciliation
+		if credit.has("gross_cash_roundoff"):
+			diagnostics.gross_cash_roundoff = credit.gross_cash_roundoff.duplicate(true)
+	return {"ok": true, "diagnostics": diagnostics}
