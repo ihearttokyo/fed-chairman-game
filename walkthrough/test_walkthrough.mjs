@@ -275,3 +275,150 @@ test('later workout settlement selects its own APR without rewriting path data',
  assert.equal(api.firstCreditSettlement(o,1).apr,-.75);
  assert.equal(api.firstCreditSettlement(o,8).apr,null);
 });
+
+// Native handoff tests use synthetic policies/ratios, not replacement engine exports.
+function entryFixture(quarter = 0, ratio = 1.25) {
+  const d = fixture(), lesson = d.lessons[0];
+  lesson.native_entry = { decision_quarter: quarter, nominal_gdp_ratio: ratio };
+  for (const option of lesson.options) {
+    option.path.forEach((row, i) => { row.quarter = quarter + i + 1; });
+    option.policy = {
+      policy_rate_request_pct: 3.5, guidance_rate_pct: 2.5,
+      guidance_inflation_sensitivity: 1.5, guidance_output_gap_sensitivity: .5,
+      asset_flow_request_pct_initial_gdp: 2, liquidity_request_pct_initial_gdp: 3,
+      reinvest_principal: true, maintain_ample_reserves: true, sterilize_purchases: false
+    };
+  }
+  return d;
+}
+function freezeTree(value) {
+  if (value && typeof value === 'object') { Object.values(value).forEach(freezeTree); Object.freeze(value); }
+  return value;
+}
+test('native entry converts only initial-GDP offers using the opening/decision ratio, including Q4', () => {
+  for (const [quarter, ratio, purchase, loan] of [[0, 1.25, '1.60', '2.4000'], [4, 2.4, '0.83', '1.2500']]) {
+    const d = entryFixture(quarter, ratio), lesson = d.lessons[0], option = lesson.options[0];
+    // Future macro endpoints are deliberately unrelated and must not set the denominator.
+    option.path[7].assets = 999; option.path[7].loans = 888;
+    const before = JSON.stringify(d); freezeTree(d);
+    const handoff = api.nativeEntryHandoff(lesson, option);
+    assert.equal(handoff.ok, true); assert.equal(handoff.decisionQuarter, quarter); assert.equal(handoff.ratio, ratio);
+    assert.equal(handoff.quotes.purchase, purchase); assert.equal(handoff.quotes.loan, loan);
+    assert.equal(handoff.quotes.rate, '3.50'); assert.equal(handoff.quotes.guidance, '2.50');
+    assert.equal(handoff.quotes.inflationResponse, '1.50'); assert.equal(handoff.quotes.outputResponse, '0.50');
+    assert.equal(handoff.switches.sterilize_purchases, false); assert.equal(JSON.stringify(d), before);
+  }
+});
+test('native quote grids preserve signed rates/runoff and genuine zero offers', () => {
+  const lesson = entryFixture().lessons[0], option = lesson.options[0];
+  Object.assign(option.policy, { policy_rate_request_pct: -2, guidance_rate_pct: -.01, asset_flow_request_pct_initial_gdp: -2, liquidity_request_pct_initial_gdp: 0 });
+  let h = api.nativeEntryHandoff(lesson, option);
+  assert.equal(h.ok, true); assert.equal(h.quotes.rate, '-2.00'); assert.equal(h.quotes.guidance, '-0.01');
+  assert.equal(h.quotes.purchase, '-1.60'); assert.equal(h.quotes.loan, '0.0000');
+  option.policy.asset_flow_request_pct_initial_gdp = 0; h = api.nativeEntryHandoff(lesson, option);
+  assert.equal(h.quotes.purchase, '0.00');
+  option.policy.liquidity_request_pct_initial_gdp = 1.23456;
+  assert.equal(api.nativeEntryHandoff(lesson, option).quotes.loan, '0.9876');
+});
+test('native entry refuses absent/nonpositive/nonfinite ratios, invalid clocks and conversion overflow/underflow', () => {
+  for (const ratio of [undefined, null, '1.25', NaN, Infinity, -Infinity, 0, -1]) {
+    const lesson = entryFixture(4).lessons[0]; lesson.native_entry.nominal_gdp_ratio = ratio;
+    assert.equal(api.nativeEntryHandoff(lesson, lesson.options[0]).ok, false, `ratio ${ratio}`);
+  }
+  const missing = entryFixture().lessons[0]; delete missing.native_entry;
+  assert.equal(api.nativeEntryHandoff(missing, missing.options[0]).ok, false);
+  for (const quarter of [undefined, null, '4', -1, 4.5, Infinity, Number.MAX_SAFE_INTEGER + 1, 3]) {
+    const lesson = entryFixture(4).lessons[0]; lesson.native_entry.decision_quarter = quarter;
+    assert.equal(api.nativeEntryHandoff(lesson, lesson.options[0]).ok, false);
+  }
+  for (const [ratio, offer] of [[1e-308, Number.MAX_VALUE], [1e308, Number.MIN_VALUE], [1e-308, 1]]) {
+    const lesson = entryFixture(4, ratio).lessons[0]; lesson.options[0].policy.asset_flow_request_pct_initial_gdp = offer;
+    const h = api.nativeEntryHandoff(lesson, lesson.options[0]);
+    assert.equal(h.ok, false); assert.match(h.reason, /overflow|underflow|precision/);
+  }
+});
+test('invalid/incomplete policies never produce assumed native control values', () => {
+  for (const edit of [
+    p => delete p.policy_rate_request_pct, p => p.policy_rate_request_pct = NaN,
+    p => p.guidance_rate_pct = Infinity, p => p.policy_rate_request_pct = .005,
+    p => p.asset_flow_request_pct_initial_gdp = '2', p => p.asset_flow_request_pct_initial_gdp = Infinity,
+    p => p.liquidity_request_pct_initial_gdp = -1, p => p.guidance_inflation_sensitivity = 2.01,
+    p => p.guidance_output_gap_sensitivity = -2.01, p => delete p.reinvest_principal,
+    p => p.sterilize_purchases = 1, p => p.extra = 0
+  ]) {
+    const lesson = entryFixture().lessons[0], option = lesson.options[0]; edit(option.policy);
+    const original = JSON.stringify(lesson); assert.equal(api.nativeEntryHandoff(lesson, option).ok, false);
+    assert.equal(JSON.stringify(lesson), original);
+  }
+});
+test('selected option changes native handoff without touching policy, paths, or local progress', async () => {
+  const d = entryFixture(4, 1.25), lesson = d.lessons[0];
+  Object.assign(lesson.options[1].policy, { policy_rate_request_pct: -2, liquidity_request_pct_initial_gdp: 4, sterilize_purchases: true });
+  const original = JSON.stringify(d); freezeTree(d);
+  const { nodes: n, storage } = await boot({ data: d });
+  assert.match(n.get('native-entry').textContent, /Choose a policy/);
+  n.get('options').children[0].click();
+  assert.match(n.get('native-entry').textContent, /Decision Q4/); assert.match(n.get('native-entry').textContent, /2.4000%/);
+  assert.match(n.get('native-entry').textContent, /Custom conditional guidance/);
+  n.get('options').children[1].click();
+  assert.match(n.get('native-entry').textContent, /-2.00%/); assert.match(n.get('native-entry').textContent, /3.2000%/);
+  assert.match(n.get('native-entry').textContent, /Sterilize purchasesOn/);
+  assert.match(n.get('native-entry').textContent, /Rounded native quotes may yield slightly different paths/);
+  assert.match(n.get('native-entry').textContent, /does not reproduce unknown future events or every decimal/);
+  assert.equal(JSON.parse(storage.get(api.STORAGE_KEY)).choices[lesson.id], 'alternative');
+  assert.equal(JSON.stringify(d), original);
+});
+test('legacy dataset still renders lessons but explicitly withholds ratio-dependent handoff', async () => {
+  const { nodes: n } = await boot(); n.get('options').children[0].click();
+  assert.equal(n.get('results').hidden, false);
+  assert.match(n.get('native-entry').textContent, /Native entry unavailable/);
+  assert.doesNotMatch(n.get('native-entry').textContent, /current\/initial nominal GDP = 1|% current annual GDP/);
+});
+test('exporter statically captures pure native decision metadata before forecasts and guards the clock', () => {
+  const exporter = fs.readFileSync(path.join(root, '../game/tests/export_walkthrough.gd'), 'utf8');
+  assert.match(exporter, /func _native_entry_metadata\(career: Career\)/);
+  assert.match(exporter, /var ratio: float = career\.model\.nominal_gdp_ratio\(career\.state\)/);
+  assert.match(exporter, /var_to_bytes\(career\.state\) != state_before/);
+  assert.match(exporter, /not is_finite\(ratio\) or ratio <= 0\.0/);
+  assert.match(exporter, /"native_entry": native_entry/);
+  assert.match(exporter, /var_to_bytes\(native_entry\) != entry_untouched/);
+  assert.match(exporter, /point\.quarter != entry\.decision_quarter \+ 1/);
+  assert.ok(exporter.indexOf('var native_entry := _native_entry_metadata(career)') < exporter.indexOf('var forecast: Dictionary = career.forecast'));
+  const main = fs.readFileSync(path.join(root, '../game/play/main.gd'), 'utf8');
+  assert.ok(main.includes('input.step = 0.01 if step_size < 1 else step_size'));
+  assert.ok(main.includes('input.custom_arrow_step = step_size')); assert.ok(main.includes('liquidity.step = 0.0001'));
+  for (const name of ['rate', 'guidance', 'assets', 'liquidity']) assert.match(main, new RegExp(`${name} = _spin\\([^\\n]+0\\.25,`));
+  assert.ok(main.includes('"asset_flow_request_pct_initial_gdp": assets.value * n'));
+  assert.ok(main.includes('"liquidity_request_pct_initial_gdp": liquidity.value * n'));
+});
+
+test('native handoff keeps four primary quotes visible and folds the full recipe', async () => {
+  const { nodes: n } = await boot({ data: entryFixture(4, 1.25) });
+  n.get('options').children[0].click();
+  const children = n.get('native-entry').children;
+  const primary = children.find(node => node.tagName === 'dl');
+  const details = children.find(node => node.tagName === 'details');
+  assert.equal(primary.children.length, 8);
+  assert.match(primary.textContent, /Target midpoint.*Next-quarter guidance.*Purchases.*Liquidity offer/);
+  assert.equal(details.attrs.open, undefined);
+  assert.equal(details.children[0].tagName, 'summary');
+  assert.match(details.textContent, /Custom conditional guidance.*Reinvest principal.*Maintain ample reserves.*Sterilize purchases/);
+  assert.match(children.filter(node => node !== details).map(node => node.textContent).join(' '), /Offers: % current annual GDP/);
+  assert.doesNotMatch(primary.textContent, /nominal GDP =/);
+});
+
+test('half-away entry rounding does not add a tick below half or to odd integral counts', () => {
+  for (const [field, amount, expected] of [
+    ['liquidity_request_pct_initial_gdp', .000049999999999999996, '0.0000'],
+    ['liquidity_request_pct_initial_gdp', .00005, '0.0001'],
+    ['liquidity_request_pct_initial_gdp', 450359962737.0497, '450359962737.0497'],
+    ['asset_flow_request_pct_initial_gdp', -45035996273706.97, '-45035996273706.97']
+  ]) {
+    const lesson = entryFixture(0, 1).lessons[0], option = lesson.options[0];
+    option.policy[field] = amount;
+    const before = JSON.stringify(lesson), handoff = api.nativeEntryHandoff(lesson, option);
+    assert.equal(handoff.ok, true);
+    assert.equal(handoff.quotes[field.startsWith('liquidity') ? 'loan' : 'purchase'], expected);
+    assert.equal(JSON.stringify(lesson), before);
+  }
+});

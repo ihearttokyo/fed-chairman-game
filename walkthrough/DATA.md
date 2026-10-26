@@ -5,6 +5,27 @@ PolicyDocket/PolicyCommittee and PricedWorkoutCareer logic. Not a browser game,
 new economic engine, empirical forecast or optimal policy. UI is separately
 owned. Source: `a91d7dfc8ee2ac04e408285b20203a047711ebd2`.
 
+## Native quote handoff
+
+Each lesson now includes `native_entry`: its decision quarter and the pure native
+`nominal_gdp_ratio` lookup at that opening state. Native quote units are
+**% current annual GDP**; exported raw offers remain **% initial annual GDP**.
+Divide the exported offer by that decision ratio, never a forecast endpoint.
+The selected option shows four entry quotes; guidance settings, portfolio
+switches, grid sizes and the exact conversion live in keyboard-accessible Details.
+Rounded entry quotes can produce slightly different paths. This is a rehearsal,
+not an exact native replay. Missing/invalid metadata yields Unavailable, not 1.
+
+The fresh export added only these eight metadata records; all prior lesson
+fields, policies, paths and ledgers were unchanged. Python qualification covers
+all 3,875 native floats, with zero nonzero differences and 18 explicitly allowed
+signed-zero equivalents. Native lookup/forecast purity guards ran. Strict metadata
+schema/clock/source checks, 24 validator self-tests and 29 UI contracts pass.
+Browser checks verify the Q4 3% initial-GDP offer becomes 2.8758% current GDP,
+with the complete guidance/switch recipe accessible by keyboard. This does not
+establish human comprehension, VoiceOver or arbitrary viewport acceptance.
+Preserve previous distribution bytes and repeat qualification when regenerating.
+
 ## Production export and qualification — parent executes once
 
 From the repository root, with `officialGodot` pointing to the same official
@@ -64,7 +85,7 @@ sandbox or exclusive-create protection against concurrent writers. Inspect
 failed writes before retrying. All careers are new in-memory objects; no user
 save is read/written. Logs/screenshots stay outside Git.
 
-Ten native source hashes and the native model digest are pinned. Native policy
+Eleven native/UI source hashes and the native model digest are pinned. Native policy
 validation, payload-byte forecast purity, finite/schema/domain/integral-quarter
 checks, textual-key collision checks and raw/normalized document byte-purity
 checks remain. Full-precision encoding does not mutate or round native results.
@@ -141,9 +162,18 @@ PricedWorkoutCareer, Economy and scenarios; other dependencies were hash-checked
 ## Schema, raw units and information boundary
 
 Top level: `schema_version:1`, `source_commit`, `model_digest`, `lessons`.
-Lessons: `id,title,task,scenario,seed,mode:"conditional",source_paths,before,options,takeaway,native_steps`.
+Lessons: `id,title,task,scenario,seed,mode:"conditional",source_paths,before,native_entry,options,takeaway,native_steps`.
 Options: `id,label,action,policy,path,notes`; workout adds a native `ledger`.
 `before` has inflation, unemployment, output_gap, credibility and support.
+`native_entry` is a per-lesson immutable decision-state snapshot:
+`{decision_quarter, nominal_gdp_ratio}`. The exporter calls the existing native
+`Economy.nominal_gdp_ratio(career.state)` **before** any option forecast, after
+any authored Hold prelude. This is current nominal annual GDP / initial nominal
+annual GDP, not the state's previous-decision ratio or a future endpoint. State
+and career-payload bytes are checked before/after lookup, copied scalar metadata
+is guarded across forecasts, and ratio floats join the existing native-bit
+proof/normalization/serialization purity checks. Export refuses missing/invalid
+clock, nonfinite/nonpositive ratio and mismatched first-quarter paths.
 `path` has exactly eight native quarterly observations with only these metrics:
 
 | Metric | Native field | Raw units |
@@ -180,3 +210,58 @@ claim the browser page implements saves, replay, awards or the full game. Eight
 forecast quarters do not establish a 60-year Mandate or sustained recovery.
 Coefficients/crisis design are fictional. No GUI-usability claim: computer-use
 validation was not run here, as explicitly prohibited/delegated to the parent.
+
+
+## Native-entry UI contract and local implementation receipt
+
+Task: `walkthrough_native_quote_handoff`, parent Fed01a0ed6e. Actual runtime tier
+unverified; no model substitution or child agent used. The existing Try it
+section now shows only the selected option's compact entry quotes. Policies,
+forecasts, eight-lesson navigation, local progress, optional ledgers and source
+links are retained. The native control source link is appended, not substituted.
+
+Verified against `game/play/main.gd` (`_spin`, control configuration, `_policy`,
+`_committee_range_value`) and `game/model/economy.gd` (`nominal_gdp_ratio`, policy
+validation). Rates/guidance input grid is 0.01 percentage points (1 bp); purchase
+input grid 0.01 % current annual GDP; loan grid 0.0001 % current annual GDP.
+Rate/guidance/purchase/loan arrows move 0.25. Custom response inputs use 0.01 rate
+pp per reference pp (0.1 arrows), with the current source's ±2 bounds. Signed
+rates and signed runoff are supported; loan offers cannot be negative.
+
+Current-GDP entry = raw initial-GDP offer / exported decision-state ratio.
+This unit conversion is display-only; no policy, forecast, state or supplied
+metadata is mutated. Quotes use the native minimum-offset grid convention for
+typed entries, with a safe-precision/overflow check. Choose Custom conditional
+guidance and enter the quoted responses to represent the supplied policy without
+assuming the native default commitment. Portfolio switches are explicit On/Off,
+never silently defaulted. Missing/nonpositive/nonfinite ratio, mismatched clock,
+invalid/missing policy/switches, conversion underflow/overflow or unreliable grid
+precision yields Unavailable, not guessed quotes. A genuine supplied zero offer
+is distinct from missing data; grid-rounded quotes are explicitly approximate.
+
+The displayed note states that rounded native quotes may yield slightly
+different paths, and this rehearsal does not reproduce unknown future events or
+every decimal. It cannot stage/adopt native policy or promise exact replay.
+Native settlement constraints remain native; offers are not applied amounts.
+
+Owned changes: `game/tests/export_walkthrough.gd`, `walkthrough/dist/app.js`,
+`walkthrough/dist/index.html`, `walkthrough/dist/style.css`,
+`walkthrough/test_walkthrough.mjs`, and this `walkthrough/DATA.md` only. No edits
+to `lessons.json`, unowned test-data.py, native main/model, parent plans, private
+research or quality/rating material.
+
+Validation: `node --check walkthrough/dist/app.js` PASS;
+`node --test walkthrough/test_walkthrough.mjs` **27 PASS, 0 FAIL, 0 SKIP**.
+Includes nonunit opening and Q4 ratios, negative rates/runoff and zero offers,
+all missing/invalid/nonfinite/nonpositive ratio cases, mismatched clocks,
+conversion overflow/underflow, invalid policies, frozen-input purity, per-option
+quote updates, preserved local progress, legacy metadata absence, exporter
+source guards and native control-configuration contracts. The existing dataset's
+structural test passed; it does not qualify newly added native metadata. Node DOM
+stand-ins are simulated wiring evidence, not browser rendering or native runs.
+
+NOT RUN: native compile/export, independent Python artifact qualification and
+computer-use GUI validation — delegated to parent or prohibited in this task.
+No engine, GUI, network, Git command/publication, server, installation, children
+or quality/rating access used. Parent step is the validator update + fresh native
+export/float-proof qualification described above; existing data remains untouched.

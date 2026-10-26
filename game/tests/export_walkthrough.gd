@@ -7,6 +7,7 @@ const PricedWorkout = preload("res://play/priced_workout_career.gd")
 const SOURCE_COMMIT := "a91d7dfc8ee2ac04e408285b20203a047711ebd2"
 const MODEL_DIGEST := "525f6c2e96c0b77e8260064d829604102a8b8c153e435874a9b942709e38f30f"
 const SOURCE_HASHES := {
+	"game/play/main.gd": "4b37c38d36781eb538af4442d33a3a1b86e3ad3f52369dcae2ae5c230820184d",
 	"game/play/career.gd": "14cf91be15ef7108a7681df6fb7af59cdded594ca1ad6d55f9577889e7cc2d16",
 	"game/play/policy_docket.gd": "cfefc2664607c5e7f6edb3602564980d58fc346baa2e828569397ca403245496",
 	"game/play/policy_committee.gd": "6b4ce1988e3839469ca58de96f16c73070a0d6a444389e73dae5ff5a272c7ef4",
@@ -151,9 +152,31 @@ func _rate(policy: Dictionary, value: float) -> Dictionary:
 func _choice(id: String, label: String, policy: Dictionary, notes: Array = [], follow: bool = false) -> Dictionary:
 	return {"id": id, "label": label, "action": label, "policy": policy, "notes": notes, "follow": follow}
 
+func _native_entry_metadata(career: Career) -> Dictionary:
+	# Capture THIS opening/decision state, never a future forecast endpoint.
+	var payload_before := var_to_bytes(career.payload())
+	var state_before := var_to_bytes(career.state)
+	var ratio: float = career.model.nominal_gdp_ratio(career.state)
+	if var_to_bytes(career.payload()) != payload_before or var_to_bytes(career.state) != state_before:
+		failure = "Impure native GDP-ratio metadata lookup."
+		return {}
+	var quarter: Variant = career.state.get("quarter_index")
+	if not is_finite(ratio) or ratio <= 0.0 or typeof(quarter) not in [TYPE_INT, TYPE_FLOAT]:
+		failure = "Unavailable native entry ratio/decision quarter."
+		return {}
+	if not is_finite(float(quarter)) or quarter < 0 or quarter > 9007199254740991 or int(quarter) != quarter:
+		failure = "Invalid native entry decision quarter."
+		return {}
+	# Scalar copies have no mutable state alias; document float proof covers ratio.
+	return {"decision_quarter": int(quarter), "nominal_gdp_ratio": ratio}
+
 func _lesson(career: Career, id: String, title: String, task: String, choices: Array, takeaway: String, steps: Array, paths: Array = []) -> Dictionary:
 	if career == null:
 		return {}
+	var native_entry := _native_entry_metadata(career)
+	if native_entry.is_empty():
+		return {}
+	var entry_untouched := var_to_bytes(native_entry)
 	var before := {}
 	for key in ["inflation", "unemployment", "output_gap", "credibility", "support"]:
 		before[key] = career.state[METRICS[key]]
@@ -165,7 +188,7 @@ func _lesson(career: Career, id: String, title: String, task: String, choices: A
 			failure = "Invalid native policy: " + id + "/" + choice.id + ": " + str(valid.get("error", "no native error"))
 			return {}
 		var forecast: Dictionary = career.forecast(choice.policy, choice.follow)
-		if var_to_bytes(career.payload()) != original:
+		if var_to_bytes(career.payload()) != original or var_to_bytes(native_entry) != entry_untouched:
 			failure = "Impure native forecast: " + id + "/" + choice.id
 			return {}
 		if not forecast.get("ok", false) or not forecast.get("states") is Array or forecast.states.size() != 8:
@@ -190,7 +213,7 @@ func _lesson(career: Career, id: String, title: String, task: String, choices: A
 	for source in paths:
 		if source not in sources:
 			sources.append(source)
-	return {"id": id, "title": title, "task": task, "scenario": career.scenario_id, "seed": career.seed_value, "mode": "conditional", "source_paths": sources, "before": before, "options": options, "takeaway": takeaway, "native_steps": steps}
+	return {"id": id, "title": title, "task": task, "scenario": career.scenario_id, "seed": career.seed_value, "mode": "conditional", "source_paths": sources, "before": before, "native_entry": native_entry, "options": options, "takeaway": takeaway, "native_steps": steps}
 
 func _lessons() -> Array:
 	var lessons: Array = []
@@ -485,6 +508,16 @@ func _valid_document(data: Dictionary) -> bool:
 			_problem(context + ".before", "expected five initial metrics")
 		elif _numeric_fields(lesson.before, ["inflation", "unemployment", "output_gap", "credibility", "support"], context + ".before"):
 			_check_units(lesson.before, context + ".before")
+		var entry: Variant = lesson.get("native_entry")
+		var entry_valid := false
+		if not entry is Dictionary or entry.size() != 2:
+			_problem(context + ".native_entry", "expected immutable decision quarter and nominal GDP ratio")
+		elif _numeric_fields(entry, ["decision_quarter", "nominal_gdp_ratio"], context + ".native_entry"):
+			entry_valid = is_finite(float(entry.nominal_gdp_ratio)) and entry.nominal_gdp_ratio > 0.0 and is_finite(float(entry.decision_quarter)) and entry.decision_quarter >= 0 and entry.decision_quarter <= 9007199254740991
+			if entry_valid:
+				entry_valid = int(entry.decision_quarter) == entry.decision_quarter
+			if not entry_valid:
+				_problem(context + ".native_entry", "expected positive finite decision GDP ratio and nonnegative integral quarter", entry)
 		if not lesson.get("source_paths") is Array or lesson.source_paths.is_empty():
 			_problem(context + ".source_paths", "expected nonempty source paths")
 		else:
@@ -530,6 +563,8 @@ func _valid_document(data: Dictionary) -> bool:
 				if not is_finite(float(point.quarter)) or int(point.quarter) != point.quarter:
 					_problem(point_context + ".quarter", "expected finite integer quarter", point.quarter)
 					continue
+				if entry_valid and point_index == 0 and point.quarter != entry.decision_quarter + 1:
+					_problem(point_context + ".quarter", "expected quarter immediately after native entry decision", point.quarter)
 				if previous >= 0 and point.quarter != previous + 1:
 					_problem(point_context + ".quarter", "expected quarter %d" % (previous + 1), point.quarter)
 				previous = int(point.quarter)

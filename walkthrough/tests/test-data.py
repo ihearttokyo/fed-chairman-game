@@ -248,7 +248,7 @@ def digest():
 def source_guards():
     text = EXPORTER.read_text()
     pairs = dict(re.findall(r'"(game/[^"\n]+)": "([0-9a-f]{64})"', text))
-    require(len(pairs) == 10, "ten native dependency hashes required")
+    require(len(pairs) == 11 and "game/play/main.gd" in pairs, "eleven native/UI dependency hashes required")
     for path, pinned in pairs.items():
         finalized = subprocess.check_output(["git", "show", f"{COMMIT}:{path}"], cwd=ROOT)
         require(hashlib.sha256(finalized).hexdigest() == pinned, f"pin not finalized: {path}")
@@ -257,6 +257,12 @@ def source_guards():
     require(f'const SOURCE_COMMIT := "{COMMIT}"' in text, "source commit pin")
     require(f'const MODEL_DIGEST := "{digest()}"' in text, "model digest pin")
     require("career.forecast(choice.policy, choice.follow)" in text, "native forecast delegation")
+    for guard in ("career.model.nominal_gdp_ratio(career.state)",
+                  "var_to_bytes(career.payload()) != payload_before",
+                  "var_to_bytes(career.state) != state_before",
+                  "var_to_bytes(native_entry) != entry_untouched",
+                  "point.quarter != entry.decision_quarter + 1"):
+        require(guard in text, "native handoff purity/timing guard: " + guard)
     require("Docket.policy_for(" in text and "Committee.proposals(" in text, "native docket delegation")
     require("workout.start_episode(" in text, "native priced workout initialization")
     require("JSON.stringify(document, \"\", true, true)" in text, "full-precision pure encoding")
@@ -283,6 +289,15 @@ def strings(values, label):
     require(all(type(v) is str and v.strip() for v in values), label + " must contain text")
 
 
+def validate_native_entry(entry, start):
+    require(type(entry) is dict and set(entry) == {"decision_quarter", "nominal_gdp_ratio"},
+            "native entry metadata keys")
+    require(type(entry["decision_quarter"]) is int and entry["decision_quarter"] == start,
+            "native entry decision quarter")
+    require(number(entry["nominal_gdp_ratio"]) and entry["nominal_gdp_ratio"] > 0,
+            "native entry positive finite GDP ratio")
+
+
 def validate(data, check_sources=True):
     finite_tree(data)
     require(set(data) == {"schema_version", "source_commit", "model_digest", "lessons"}, "document keys")
@@ -293,7 +308,7 @@ def validate(data, check_sources=True):
     require(type(lessons) is list and len(lessons) == 8, "eight lessons required")
     require({x["id"] for x in lessons} == set(STARTS), "lesson identities")
     lesson_keys = {"id", "title", "task", "scenario", "seed", "mode", "source_paths",
-                   "before", "options", "takeaway", "native_steps"}
+                   "before", "native_entry", "options", "takeaway", "native_steps"}
     for lesson in lessons:
         require(set(lesson) == lesson_keys, "lesson keys")
         ident = lesson["id"]
@@ -301,6 +316,7 @@ def validate(data, check_sources=True):
         require(lesson["scenario"] == scenario and type(lesson["seed"]) is int
                 and lesson["seed"] == seed, "explicit authored start: " + ident)
         require(lesson["mode"] == "conditional", "conditional mode")
+        validate_native_entry(lesson["native_entry"], start)
         strings([lesson[k] for k in ("title", "task", "takeaway")], "narration")
         strings(lesson["native_steps"], "native steps")
         strings(lesson["source_paths"], "source paths")
@@ -375,6 +391,25 @@ class GuardTests(unittest.TestCase):
         for value in (float("nan"), float("inf"), -float("inf")):
             with self.assertRaises(ValueError):
                 finite_tree({"nested": [value]})
+
+    def test_native_entry_decision_units(self):
+        for quarter, ratio in ((0, 1.0), (4, 1.037), (4, .93)):
+            entry = {"decision_quarter": quarter, "nominal_gdp_ratio": ratio}
+            before = copy.deepcopy(entry)
+            validate_native_entry(entry, quarter)
+            self.assertEqual(entry, before)
+
+    def test_native_entry_refuses_invalid_or_future_metadata(self):
+        valid = {"decision_quarter": 4, "nominal_gdp_ratio": 1.037}
+        for ratio in (None, True, "1", 0, -.1, float("inf"), float("nan")):
+            with self.subTest(ratio=ratio), self.assertRaises(ValueError):
+                validate_native_entry(dict(valid, nominal_gdp_ratio=ratio), 4)
+        for quarter in (True, 4.0, 5, -1, "4"):
+            with self.subTest(quarter=quarter), self.assertRaises(ValueError):
+                validate_native_entry(dict(valid, decision_quarter=quarter), 4)
+        for entry in (None, {}, {"decision_quarter": 4}, dict(valid, future_ratio=1.1)):
+            with self.subTest(entry=entry), self.assertRaises(ValueError):
+                validate_native_entry(entry, 4)
 
     def test_duplicate_key(self):
         with self.assertRaises(ValueError):
