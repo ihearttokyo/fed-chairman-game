@@ -228,12 +228,14 @@ func model_digest() -> String:
 # Exact accepted-path compatibility only. Workout settlement stays optional;
 # the fractional-advance repair changes formerly invalid transitions, not valid
 # histories. Genuine pre-edit nine-scenario Q240 replay is separately qualified.
+# Optional priced credit leaves ordinary calls unchanged; genuine Alpha616/617
+# saves replay byte-identically through this exact source, without file rewrites.
 # Future source drift disables these bridges; older eight-only scope is retained.
 func _compatible_saved_model(data: Dictionary) -> bool:
-	if model_digest() != "48de589c689eb84f54893cd8b96e3d26b08ce9690d80b166532f8cea4e646419":
+	if model_digest() != "525f6c2e96c0b77e8260064d829604102a8b8c153e435874a9b942709e38f30f":
 		return false
 	var prior: Variant = data.get("model_digest")
-	if prior in ["f88f562b3039ed35b9af8740fdf6509d1c44ff03a2b4f9dbf642fec9c9709725", "06714dc18908afbd2805c5f2ed0f97bc9ede6ab53c111ee73aa0413724ca49a6"]:
+	if prior in ["48de589c689eb84f54893cd8b96e3d26b08ce9690d80b166532f8cea4e646419", "f88f562b3039ed35b9af8740fdf6509d1c44ff03a2b4f9dbf642fec9c9709725", "06714dc18908afbd2805c5f2ed0f97bc9ede6ab53c111ee73aa0413724ca49a6"]:
 		return data.get("scenario_id") in ["base", "demand_boom", "supply_shock", "funding_stress", "unanchored_inflation", "lower_bound_slump", "mixed_crises", "policy_career", "stagflation_bank_run"]
 	return prior == "ff431fc6f24cbc90339055340ede21cc1db7677a8a5f4011633ca59016205cdc" \
 		and data.get("scenario_id") in ["base", "demand_boom", "supply_shock", "funding_stress", "unanchored_inflation", "lower_bound_slump", "mixed_crises", "policy_career"]

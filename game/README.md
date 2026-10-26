@@ -118,6 +118,12 @@ and valuation assumptions. Normal saves, career awards and automatic follow-up
 are unavailable in this mode; choose a normal new career to return to them.
 See [the accounting and qualification record](../docs/BANK_WORKOUT.md).
 
+**Borrowing-cost variant:** New career → Bank workout · borrowing costs adds
+separate interest claims, explicit loan-financed debt service and staged/actual
+cash-flow graphics. Negative loan APR is a fictional US counterfactual. The
+original lab stays zero-interest; neither lab uses normal save slots or awards.
+See `../docs/PRICED_CREDIT_EXPERIMENT.md` for limits and qualification.
+
 ## Routine follow-up candidate
 
 `Include routine follow-up (4 quarters total)` adopts the staged decision, then

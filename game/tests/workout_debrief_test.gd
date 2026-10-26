@@ -111,11 +111,45 @@ func _initialize() -> void:
 	var detached := Debrief.present(source.history, source.settlements, true)
 	detached.quarters[0].due = 999
 	check(var_to_bytes(source) == frozen, "Presentation rows do not retain mutable source containers")
+	var priced := fixture()
+	for settlement in priced.settlements:
+		settlement.credit_result = {"bank_equity_after": -1.75, "core_bank_equity_after": -1.5}
+	var credit_frozen := var_to_bytes(priced)
+	shown = Debrief.present(priced.history, priced.settlements, true)
+	check(shown.ok and shown.includes_interest and shown.ending_equity == -1.75 and shown.equity_text.contains("incl. interest"), "Priced debrief uses actual combined equity, not principal-only equity")
+	check(var_to_bytes(priced) == credit_frozen, "Combined-equity presentation never edits settlements")
+	for invalid in [NAN, INF, true, "1", null]:
+		var bad := priced.duplicate(true)
+		bad.settlements[7].credit_result.bank_equity_after = invalid
+		check(not Debrief.present(bad.history, bad.settlements, true).ok, "Malformed combined equity cannot fall back silently to principal equity")
+	var mixed := priced.duplicate(true)
+	mixed.settlements[3].erase("credit_result")
+	check(not Debrief.present(mixed.history, mixed.settlements, true).ok, "Mixed priced and unpriced settlement tapes refuse")
+	var disconnected := priced.duplicate(true)
+	disconnected.settlements[7].credit_result.core_bank_equity_after = 123.0
+	check(not Debrief.present(disconnected.history, disconnected.settlements, true).ok, "Credit readout must match its principal-only settlement frame")
+	_test_native_priced_episode()
 	_test_native_episode()
 	_test_component(source)
 	if failures == 0:
 		print("PASS: workout debrief ", checks, " checks, 0 failures")
 	quit(0 if failures == 0 else 1)
+
+func _test_native_priced_episode() -> void:
+	var career = preload("res://play/priced_workout_career.gd").new()
+	var opening: Dictionary = career.model.bank_workout_opening(career.params)
+	check(opening.ok and career.start_episode(opening.bank, opening.requests, opening.haircut_pct, opening.pledgeable_share, "stagflation_bank_run", 417, opening.remaining_request_index).ok, "Actual priced episode starts for terminal combined-equity proof")
+	for quarter in range(8):
+		var policy: Dictionary = career.model.benchmark_policy(career.state, career.params, "hold")
+		policy.policy_rate_request_pct = 4.0
+		policy.guidance_rate_pct = 4.0
+		policy.liquidity_request_pct_initial_gdp = 4.0
+		var result: Dictionary = career.advance(policy)
+		check(result.ok, "Actual priced meeting settles before debrief")
+		if not result.ok:
+			return
+	var shown := Debrief.present(career.bank_history, career.settlements, true)
+	check(shown.ok and shown.includes_interest and shown.ending_equity == career.credit_results[-1].bank_equity_after, "Terminal readout uses the actual eight-step combined ledger")
 
 func _test_native_episode() -> void:
 	var model := Economy.new()
