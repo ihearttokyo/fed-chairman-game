@@ -1,8 +1,16 @@
-# Bank-workout episode — in development
+# Bank-workout episode
 
 The optional eight-meeting laboratory is connected in current source. Choose
-New career → Bank workout. Alpha 614 remains the installed/public game until
-this candidate completes publication and release qualification.
+New career → Bank workout. The laboratory shipped in Alpha 615; Alpha 616 adds
+the lending allocation preview and repairs fractional refinancing.
+
+After eight meetings, the current source shows a payment timeline and ending
+queued withdrawals, overdue CB principal and signed equity. Each bar is paid/due
+for that meeting, not an amount on a shared scale. A dash means no payment due;
+gold marks even a tiny shortfall. Queued claims recur until paid, so the chart
+does not add repeated queues into a fictitious total. Ending claims remain
+subsets of deposits and CB principal; payment coverage is not a solvency grade.
+The debrief is read-only and clears when leaving the laboratory.
 
 ## Mechanism
 
@@ -91,4 +99,5 @@ points, with locally stacked charts; narrower windows use the existing stacked
 cockpit. All native instances used private storage and were verified exited.
 Captures and exact source hashes are retained outside Git. These checks do not qualify
 new difficulty, enjoyment, empirical calibration, workbook integration or
-release readiness. Alpha 614 remains the public/installed version.
+release readiness on their own. The laboratory subsequently shipped in Alpha 615;
+release and notarization evidence remains separate from source-native checks.
