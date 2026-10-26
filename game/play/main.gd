@@ -24,7 +24,8 @@ const TransitionExplanation = preload("res://play/transition_explanation.gd")
 const ObjectiveBoard = preload("res://play/objective_board.gd")
 const OutcomeDrivers = preload("res://play/outcome_drivers.gd")
 const DispatchBrief = preload("res://play/dispatch_brief.gd")
-const PolicyCommittee = preload("res://play/policy_committee.gd")
+const PolicyDocket = preload("res://play/policy_docket.gd")
+const CommitteeDocket = preload("res://play/committee_docket.gd")
 const FOLLOW_UP_INTERVAL_SECONDS := 2.0
 const FOLLOW_UP_MAX_FRAME_CREDIT_SECONDS := 0.1
 const SAVE_PATH := "user://policy-career-v2.save"
@@ -92,8 +93,15 @@ var follow_up_wait_seconds := 0.0
 var segment_start := -1
 var adopting := false
 var last_follow_up_reasons: Array[String] = []
-var committee: OptionButton
-var committee_note: Label
+var committee_button: Button
+var committee_docket: CommitteeDocket
+var docket_builder := PolicyDocket.new()
+var docket_snapshot: PackedByteArray
+var docket_state_identity: Dictionary
+var docket_controls: Dictionary = {}
+var docket_signal_states: Array = []
+var docket_controls_applied: bool = false
+var docket_forecast_calls: int = 0
 var workout_panel: PanelContainer
 var workout_board: WorkoutPanel
 var workout_fed_stock: Label
@@ -104,7 +112,7 @@ var priced_credit_board: PricedCreditPanel
 var city_panel: PanelContainer
 var normal_storage_buttons: Array[Button] = []
 
-const KEYBOARD_HELP := "Keyboard controls\nTab / Shift+Tab move forward / back through visible controls. Return or Space activates a focused button. In numeric fields, type a value and press Return to commit only that field; Up / Down use its advertised step. Arrow keys navigate open scenario or guidance menus; Return selects and Escape cancels.\n\nCharts: Left / Right inspect completed quarters; Home / End select the first / latest. Focused cockpit and reports: Page Up / Down scroll, Home / End reach the ends. Escape or modified Return closes an informational report and returns focus. Plain Return closes its text or OK button, otherwise activates the focused report control. Escape cancels replacement; Return still follows the focused confirmation control.\n\nOptional accelerators use Cmd on macOS or Ctrl elsewhere: N New, S Save, O Load, J journal, P Compare, R staff estimate, K stage committee proposal, modified Return adopt one quarter. F1 opens this guide. Every command also has a Tab-accessible control; plain typing never adopts a quarter.\n\n"
+const KEYBOARD_HELP := "Keyboard controls\nTab / Shift+Tab move forward / back through visible controls. Return or Space activates a focused button. In numeric fields, type a value and press Return to commit only that field; Up / Down use its advertised step. Arrow keys navigate open scenario or guidance menus; Return selects and Escape cancels.\n\nCharts: Left / Right inspect completed quarters; Home / End select the first / latest. Focused cockpit and reports: Page Up / Down scroll, Home / End reach the ends. Escape or modified Return closes an informational report and returns focus. Plain Return closes its text or OK button, otherwise activates the focused report control. Escape cancels replacement; Return still follows the focused confirmation control.\n\nOptional accelerators use Cmd on macOS or Ctrl elsewhere: N New, S Save, O Load, J journal, P Compare, R staff estimate, K open committee docket, modified Return adopt one quarter. F1 opens this guide. Every command also has a Tab-accessible control; plain typing never adopts a quarter.\n\n"
 const STAFF_HELP := "Staff estimates use two-decimal published inflation, output gap and long expectations with the scenario’s initial neutral-rate prior. They do not know the evolving neutral rate or short expectations. An estimate is not an optimal policy; other tools remain unchanged. The rate formula does not directly adjust for credit spreads, term premiums or weaker negative-rate transmission."
 const BENCHMARK_HELP := "The full-information benchmark uses the true neutral rate, short inflation expectations, inflation and output gap from the current model state. It does not know future shocks or identify an optimal policy. The rate formula does not directly adjust for credit spreads, term premiums or weaker negative-rate transmission."
 
@@ -712,16 +720,10 @@ func _build_policy(parent: Node, actions: Node) -> void:
 	var benchmark_button := _button(box, "Stage staff estimate", _staff_rule, KEY_R)
 	benchmark_button.tooltip_text = STAFF_HELP
 	benchmark_button.accessibility_description = benchmark_button.tooltip_text
-	committee = OptionButton.new()
-	committee.accessibility_name = "Policy committee priority"
-	committee.tooltip_text = "Competing fictional mandates using current published conditions, not the true neutral rate or future shocks. Select a priority, then stage its proposal. Nothing is adopted automatically."
-	committee.accessibility_description = committee.tooltip_text
-	box.add_child(committee)
-	keyboard_controls.append(committee)
-	committee.item_selected.connect(_committee_selected)
-	_button(box, "Stage committee proposal", _stage_committee, KEY_K)
-	committee_note = _label(box, "", 11, MUTED)
-	committee_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	committee_button = _button(box, "Policy committee", _open_committee_docket, KEY_K)
+	committee_button.tooltip_text = "Open the decision docket (Cmd/Ctrl+K). Compare current staging, Hold and three fictional priorities; stage without adopting. No future shocks are revealed."
+	committee_button.accessibility_description = committee_button.tooltip_text
+	committee_button.button_up.connect(func(): _release_unused_docket_drafts.call_deferred())
 	forecast_label = _label(box, "", 13, MINT)
 	forecast_label.custom_minimum_size.y = 114
 	forecast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -867,7 +869,6 @@ func _refresh(reset_controls := false, update_preview := true) -> void:
 	if funding_plan != null:
 		funding_plan.update_plan({}, 0.0, 1.0)
 	var s: Dictionary = career.state
-	_committee_brief()
 	var complete := career.decisions.size() >= _active_horizon()
 	case_title.text = "Bank workout · unsaved laboratory" if _is_workout() else career.cases[career.scenario_id].label
 	var n: float = career.model.nominal_gdp_ratio(s)
@@ -1130,42 +1131,189 @@ func _decision_briefing() -> String:
 	text += "REFERENCE AND LIMITS\nHold today's rate, guide to that rate with data dependence, and request no new asset flows or loans. Both paths use the same current shock and no new future shocks. After this meeting, each holds its own applied rate and portfolio switches, with no new asset flows or loans. Principal, short-loan repayment, reserve maintenance and policy lags still operate. The HOLD reference uses default reinvestment/maintenance and no sterilization.\n\nThese are combined effects of the staged controls, not an optimal-policy recommendation or a confidence interval. Positive differences mean a higher value, not necessarily a better outcome. Policy lags can leave first-quarter inflation unchanged even when later outcomes differ."
 	return text
 
-func _committee_selected(_index: int) -> void:
-	if routine.active:
-		_finish_follow_up("Committee priority changed", false)
-	_committee_brief()
+func _committee_range_value(input: SpinBox, value: float) -> float:
+	# Range.set_value rounds relative to min_value, not relative to zero.
+	# Match the actual setter once for raw drafts; never re-snap committed values.
+	var result: float = value
+	if input.step > 0.0:
+		result = roundf((value - input.min_value) / input.step) * input.step + input.min_value
+	if input.rounded:
+		result = roundf(result)
+	if not input.allow_greater:
+		result = minf(result, input.max_value - input.page)
+	if not input.allow_lesser:
+		result = maxf(result, input.min_value)
+	return result
 
-func _committee_brief() -> void:
-	if not is_instance_valid(committee) or not is_instance_valid(committee_note):
-		return
-	var choices: Array = PolicyCommittee.proposals(career.state, career.params, career.current_briefing(), career.model.nominal_gdp_ratio(career.state))
-	var selected: int = maxi(0, committee.selected)
-	committee.clear()
-	for choice in choices:
-		committee.add_item("%s: %.2f%%" % [choice.label, choice.rate])
-	committee.select(selected)
-	committee_note.text = choices[selected].tradeoff
+func _committee_has_raw_draft(input: SpinBox) -> bool:
+	var raw: String = input.get_line_edit().text
+	var text: String = raw.strip_edges()
+	if not text.is_valid_float():
+		return true
+	var value: float = text.to_float()
+	if not is_finite(value) or (not input.allow_lesser and value < input.min_value) or (not input.allow_greater and value > input.max_value):
+		return true
+	# Native canonical text must round-trip through the same minimum-offset grid.
+	# A changed raw spelling remains a draft even if it lands on the same step.
+	return raw != input.get_meta("numeric_text") or (not input.get_meta("numeric_text_pending") and _committee_range_value(input, value) != input.value)
 
-func _stage_committee() -> void:
-	_finish_follow_up("Committee proposal requested", false)
-	if career.decisions.size() >= _active_horizon():
-		status_label.text = "Career complete. Start a new career to stage policy."
+func _committee_control_snapshot() -> Array:
+	var result: Array = []
+	for input in [rate, guidance, assets, liquidity, inflation_response, activity_response]:
+		var text: String = input.get_line_edit().text
+		result.append([input.value, text if _committee_has_raw_draft(input) else null])
+	result.append([commitment.selected, reinvestment.button_pressed, reserve_maintenance.button_pressed, sterilization.button_pressed, follow_up_toggle.button_pressed])
+	return result
+
+func _committee_snapshot() -> PackedByteArray:
+	var context: Array = [career.get_instance_id(), career.scenario_id, career.seed_value, career.state, career.params, career.decisions.size(), career.current_briefing(), _committee_control_snapshot()]
+	if _is_workout():
+		context.append(career.get("bank_state"))
+		context.append([career.get("haircut_pct"), career.get("pledgeable_share"), career.get("remaining_request_index")])
+	if career is PricedWorkout:
+		context.append(career.get("credit_state"))
+	return var_to_bytes(context)
+
+func _hold_docket_drafts() -> void:
+	if not docket_signal_states.is_empty():
 		return
-	var choices: Array = PolicyCommittee.proposals(career.state, career.params, career.current_briefing(), career.model.nominal_gdp_ratio(career.state))
-	var choice: Dictionary = choices[maxi(0, committee.selected)]
-	loading_controls = true
-	_apply_input(rate)
-	_apply_input(guidance)
-	rate.value = choice.rate
-	guidance.value = choice.rate
-	if choice.has("lending_offer_current_gdp"):
-		_apply_input(liquidity)
-		liquidity.value = choice.lending_offer_current_gdp
-	commitment.select(0)
-	_guidance_controls()
-	loading_controls = false
-	_preview()
-	status_label.text = "%s proposal staged, not adopted. Compare its conditional path before deciding." % choice.label
+	docket_controls_applied = false
+	# A native editing_toggled callback can already be queued before suppression.
+	# Capture raw text before focus transfer; restore it after that deferred work,
+	# while keeping signals suppressed throughout the modal's lifetime.
+	for input in [rate, guidance, assets, liquidity, inflation_response, activity_response]:
+		var edit: LineEdit = input.get_line_edit()
+		docket_signal_states.append([edit, edit.is_blocking_signals(), edit.text, input.value, career.get_instance_id(), career.state, _committee_has_raw_draft(input)])
+		edit.set_block_signals(true)
+	_restore_held_docket_drafts.call_deferred()
+
+func _restore_held_docket_drafts() -> void:
+	if docket_controls_applied:
+		return
+	for pair in docket_signal_states:
+		if not is_instance_valid(pair[0]):
+			continue
+		var edit: LineEdit = pair[0]
+		var input: SpinBox = edit.get_parent()
+		# Do not overwrite a replacement career or an externally changed control.
+		if pair[6] and pair[4] == career.get_instance_id() and is_same(pair[5], career.state) and input.value == pair[3]:
+			edit.text = pair[2]
+
+func _release_unused_docket_drafts() -> void:
+	# Pointer release can cancel an opener before its pressed signal; an existing
+	# modal retains suppression until its own tree exit and focus restoration.
+	if is_instance_valid(committee_docket) and committee_docket.is_inside_tree() and committee_docket.visible:
+		return
+	_release_docket_drafts()
+
+func _exit_tree() -> void:
+	_release_docket_drafts()
+
+func _release_docket_drafts() -> void:
+	_restore_held_docket_drafts()
+	for pair in docket_signal_states:
+		if is_instance_valid(pair[0]):
+			pair[0].set_block_signals(pair[1])
+	docket_signal_states.clear()
+
+func _committee_draft() -> Dictionary:
+	var values: Dictionary = {}
+	for pair in [["rate", rate], ["guidance", guidance], ["assets", assets], ["liquidity", liquidity], ["inflation_response", inflation_response], ["activity_response", activity_response]]:
+		var input: SpinBox = pair[1]
+		var raw: String = input.get_line_edit().text
+		var text: String = raw.strip_edges()
+		# Draw bookkeeping is not numeric validation. Even canonical-looking or
+		# pending text must be checked before considering committed Range values.
+		if not text.is_valid_float():
+			return {"ok": false, "error": "Docket refused: invalid numeric draft in " + input.accessibility_name + ". Enter a finite number; expressions are not accepted. Draft retained."}
+		var value: float = text.to_float()
+		if not is_finite(value) or (not input.allow_lesser and value < input.min_value) or (not input.allow_greater and value > input.max_value):
+			return {"ok": false, "error": "Docket refused: nonfinite or out-of-range draft in " + input.accessibility_name + ". Draft retained."}
+		# Canonical text represents the already-committed native value, whether
+		# its draw is pending or settled. Only genuine edits go through the setter's
+		# minimum-offset grid; zero-origin re-snapping changes some committed bits.
+		value = _committee_range_value(input, value) if _committee_has_raw_draft(input) else input.value
+		if not is_finite(value) or (not input.allow_lesser and value < input.min_value) or (not input.allow_greater and value > input.max_value):
+			return {"ok": false, "error": "Docket refused: nonfinite or out-of-range native control in " + input.accessibility_name + ". Draft retained."}
+		values[pair[0]] = value
+	var policy: Dictionary = _policy()
+	var n: float = career.model.nominal_gdp_ratio(career.state)
+	policy.policy_rate_request_pct = values.rate
+	policy.guidance_rate_pct = values.guidance
+	policy.asset_flow_request_pct_initial_gdp = values.assets * n
+	policy.liquidity_request_pct_initial_gdp = values.liquidity * n
+	if commitment.selected == 2:
+		policy.guidance_inflation_sensitivity = values.inflation_response
+		policy.guidance_output_gap_sensitivity = values.activity_response
+	return {"ok": true, "policy": policy, "controls": values}
+
+func _refresh_committee_docket() -> void:
+	var draft: Dictionary = _committee_draft()
+	var data: Dictionary
+	if draft.ok:
+		docket_controls = draft.controls
+		data = docket_builder.build(career, draft.policy, _active_horizon())
+	else:
+		data = {"ok": false, "error": draft.error, "entries": [], "forecast_calls": 0}
+	docket_forecast_calls += int(data.forecast_calls)
+	docket_state_identity = career.state
+	docket_snapshot = _committee_snapshot()
+	var restoring_refresh: bool = committee_docket.build_count > 0
+	committee_docket.present(data)
+	if restoring_refresh:
+		committee_docket.refresh_button.grab_focus.call_deferred()
+
+func _open_committee_docket() -> void:
+	for child in get_children():
+		if child is Window and child.visible:
+			return
+	_hold_docket_drafts()
+	var keep_follow_up_selection: bool = follow_up_toggle.button_pressed and not routine.active
+	_finish_follow_up("Committee docket opened", false)
+	# The single main-screen opener is also the deterministic focus return target.
+	committee_button.grab_focus()
+	committee_docket = CommitteeDocket.new()
+	committee_docket.stage_requested.connect(_stage_docket_proposal)
+	committee_docket.refresh_requested.connect(_refresh_committee_docket)
+	_show_dialog(committee_docket, Vector2i(1050, 620))
+	committee_docket.tree_exited.connect(func(): _release_unused_docket_drafts.call_deferred())
+	follow_up_toggle.set_pressed_no_signal(keep_follow_up_selection)
+	_refresh_committee_docket()
+	var initial: Control = committee_docket.stage_buttons[0] if not committee_docket.stage_buttons.is_empty() else committee_docket.get_ok_button()
+	initial.grab_focus.call_deferred()
+
+func _stage_docket_proposal(id: String) -> void:
+	if not is_instance_valid(committee_docket) or not committee_docket.visible:
+		return
+	if not is_same(docket_state_identity, career.state) or docket_snapshot != _committee_snapshot() or career.decisions.size() >= _active_horizon():
+		committee_docket.refuse("Stale docket: career, quarter or controls changed. Refresh before staging. Nothing applied.")
+		return
+	for item in committee_docket.quote.get("entries", []):
+		if item.id != id or id not in ["prices", "jobs", "funding"] or not item.valid:
+			continue
+		var policy: Dictionary = item.policy
+		docket_controls_applied = true
+		loading_controls = true
+		rate.value = policy.policy_rate_request_pct
+		guidance.value = policy.guidance_rate_pct
+		assets.value = docket_controls.assets
+		liquidity.value = item.liquidity_current_gdp if id == "funding" else docket_controls.liquidity
+		inflation_response.value = docket_controls.inflation_response
+		activity_response.value = docket_controls.activity_response
+		# Explicit staging commits only already-validated/normalized numeric drafts.
+		# Also refresh unchanged-value edits: a same-value setter need not redraw.
+		for input in [rate, guidance, assets, liquidity, inflation_response, activity_response]:
+			var edit: LineEdit = input.get_line_edit()
+			edit.text = ("%.4f" if input == liquidity else "%.2f") % input.value
+			input.set_meta("numeric_text", edit.text)
+			input.set_meta("numeric_text_pending", false)
+		commitment.select(0)
+		_guidance_controls()
+		loading_controls = false
+		_preview()
+		status_label.text = "%s proposal staged, not adopted. Other tools preserved; inspect before adopting." % item.label
+		committee_docket.queue_free()
+		return
 
 func _staff_rule() -> void:
 	_finish_follow_up("Staff estimate requested", false)
@@ -1346,6 +1494,15 @@ func _stage_native_policy(policy: Dictionary) -> void:
 	loading_controls = false
 
 func _input(event: InputEvent) -> void:
+	# Intercept before native focus transfer can submit a pending numeric draft.
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_K and event.is_command_or_control_pressed() and not event.alt_pressed:
+		_open_committee_docket()
+		get_viewport().set_input_as_handled()
+		return
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and is_instance_valid(committee_button) and committee_button.is_visible_in_tree() and committee_button.get_global_rect().has_point(event.position) and cockpit_scroll.get_global_rect().has_point(event.position) and overflow_scroll.get_global_rect().has_point(event.position):
+		_hold_docket_drafts()
+	if event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_LEFT and not docket_signal_states.is_empty():
+		_release_unused_docket_drafts.call_deferred()
 	if not routine.active or not event is InputEventKey or not event.pressed or event.echo or event.keycode in [KEY_SHIFT, KEY_CTRL, KEY_META, KEY_ALT]:
 		return
 	var focused_adopt := get_viewport().gui_get_focus_owner() in [decision_button, stop_follow_up]
@@ -1417,6 +1574,7 @@ func _quit_app(exit_code := 0) -> void:
 	if shutting_down:
 		return
 	shutting_down = true
+	_release_docket_drafts()
 	get_tree().paused = true
 	music_toggle.disabled = true
 	if is_instance_valid(music):
@@ -1438,6 +1596,8 @@ func _restore_keyboard_focus(invoker: WeakRef) -> void:
 		rate.get_line_edit().grab_focus()
 
 func _fit_report(dialog: Window, desired_size := Vector2i(740, 540)) -> Vector2i:
+	if dialog is CommitteeDocket:
+		desired_size = Vector2i(1050, 620)
 	var content: Control = dialog.get_child(0)
 	var parent_size := Vector2i(get_window().get_visible_rect().size)
 	var decoration := (dialog.get_size_with_decorations() - dialog.size).max(Vector2i.ZERO)
@@ -1728,7 +1888,7 @@ func _help() -> void:
 	_link_focus([guide.topics, guide.body, dialog.get_ok_button()])
 
 func _help_text() -> String:
-	return ("Bank workout\n" + _workout_help().replace("\n\n", "\n") + "\n\n" if _is_workout() else "") + KEYBOARD_HELP + STAFF_HELP + "\nNeutral real-rate prior: %.2f%%.\n\n" % career.params.initial_r_star_pct + BENCHMARK_HELP + "\n\n" + _mandate_rules_text() + "\n\nStart a career\nSet a target-range midpoint for a simplified FOMC, not the market's effective rate; a real chair acts with the committee.\n\nEvery career includes seeded background disturbances. Varied policy career and Recurring crises draw from 50 curated exogenous events. Varied policy career starts with weakly anchored inflation, then recurring dilemmas. Weakly anchored inflation remains separately selectable. The baseline starts at equilibrium with no scheduled scenario events, not a shock-free path. The same scenario and seed reproduce a path within the same engine and model.\n\n1. Read the dispatch for current conditions, not future shocks.\n2. Set the target rate. Higher real rates gradually restrain demand; inflation reacts with a lag. A supply shock can raise prices while weakening activity.\n3. Choose guidance. A firm promise is easier to understand, but missing it reduces follow-through credit. Data dependence adjusts the prior promise for changes in inflation and the output gap.\n4. Set purchases or a runoff cap, reinvestment, reserve maintenance and sterilization. Offer secured liquidity for eligible funding, not insolvency.\n5. Inspect applied amounts and the eight-quarter preview, then adopt. The preview assumes no new future shocks.\n\nPolicy committee\nChoose Price stability, Employment or Financial stability, then Stage committee proposal (Cmd/Ctrl+K). Price and employment proposals adjust the current rate by half the published inflation miss or output gap respectively; both round to the policy grid. Financial stability holds the rate and offers today's collateral-backed funding need. These fictional priorities disagree under stagflation; none knows the neutral rate or future shocks. Rate proposals preserve other tools; funding replaces the loan offer. Stage changes controls only. Compare before adopting.\n\nRoutine follow-up (optional)\nOff by default and not saved. Adopt your staged decision, then allow up to three staff rate/guidance updates, for at most four outcomes. Portfolio switches persist; purchase and loan offers reset. Funding, current events, drift or a scheduled check-in returns control. Stop or Escape, editing, reports, New and Load cancel follow-up. Any other non-modifier keypress, including Tab and arrows, also cancels, as do Save, Quit and the staff estimate action. The preview holds a rate; it does not predict adaptive follow-up.\n\nRates and guidance\nNominal rates apply in full: 1bp increments, 25bp arrows. Negative rates are a U.S. counterfactual, with diminishing benefits. Below zero, the effective financing rate is s*tanh(i/s); above zero it is unchanged. The illustrative scale s=1 percentage point is not an estimated lower bound. Credibility prices nominal guidance before this transmission. Stance credibility compares effective restraint with an unsaturated real-gap objective, giving constrained best effort partial credit rather than full adequacy. Conditional implied quotes round to the same 1bp grid before nominal promise follow-through.\n\nSecurities and runoff\nAsset and lending offers use percent of current annual GDP, converted once at the meeting. Purchases are uncapped; their duration-premium effect diminishes with scale. A negative offer caps runoff at maturing Treasury, MBS and bill principal, without selling unmatured holdings. With a zero or positive offer, reinvestment on rolls principal; off allows natural runoff. MBS paydown responds nonlinearly to lagged financing; Treasury timing uses a source-backed maturity ladder.\n\nReserves and sterilization\nMaintain ample reserves buys short bills after all other transactions to meet the disclosed buffer. With maintenance off, currency growth, runoff or loan repayment can exhaust reserves. A rejected settlement preserves the last valid quarter; enable maintenance or adjust purchases/runoff. Bills can ease funding scarcity but are excluded from the long-duration channel: long runoff can coexist with unchanged total assets. Sterilization retains securities and duration effects while replacing reserves with overnight reverse repo liabilities. Uptake, Treasury collateral and settlement can limit absorption. Tagged principal rolls without adding a new absorption target.\n\nLiquidity\nThe offer sets desired concurrent exposure, not accumulated quarterly turnover. Quotes use 0.0001% of current GDP; arrows move 0.25. Small funding amounts show four decimals; positive amounts below 0.0001 show <0.0001. Overnight/short loans mature next quarter. New needs and requested refinancing are separate; eligible refinancing has priority. Default zero refinancing assumes private repayment funds. Eligibility and haircut-adjusted collateral limit advances; excess offers do not become loans. Lending can relieve funding scarcity, not erase losses or create capital. Inspect applied amounts, RRP, reserve-maintenance purchases (RMP) and uncovered funding before adoption. Portfolio switches persist through previews and later meetings; one-time purchase and lending offers reset.\n\nRecovery\nDeferred demand tracks postponed durable/replacement purchases, not all lost consumption. Positive stock supports catch-up spending; negative stock means purchases were brought forward. Financing restraint delays release; growth changes the denominator, and obsolete plans decay. Its unit is percent of quarterly potential output. Short expectations gradually mix observed inflation with prior long expectations according to credibility. Transitory neutral-rate deviations revert toward a structural reference; permanent structural shifts change it. Recovery impulses provide no guaranteed return to 2% under persistent restraint.\n\nCredibility affects guidance pricing and long-run inflation expectations. Public support remembers inflation/deflation hardship and unemployment, recovering gradually without term resets or a game-over threshold.\n\nSaves and access\nSave and Load use policy-career-v2.save only. Prior policy-career-v1.save and original slots career-late-compound-v1.save and career-v1.save remain untouched; use their matching prior app/model. There is no copying, migration or fallback. New career and Load ask before replacing unsaved play. Tab navigates controls; Data & journal gives exact chart values. Animation defaults off.\n\nModel limits\nNine hypothetical scenarios. Varied policy career, Recurring crises and Stagflation & bank run draw from 50 curated exogenous events: disasters, demand/supply changes, funding and credit losses, and favorable developments. Forty-eight independent profiles use a no-repeat bag; two private-bank normalization events require prior eligible stress. The dispatch names active events, not future pulses. Private normalization cannot erase old losses or loans. The 2% objective and portfolio reference observations are source-backed; behavioral coefficients, starting conditions and shock incidence are design assumptions. This is a hypothetical economy, not an empirical forecast or financial advice. No Federal Reserve affiliation. Primary sources and equations are in the repository's FED_RESEARCH and model README."
+	return ("Bank workout\n" + _workout_help().replace("\n\n", "\n") + "\n\n" if _is_workout() else "") + KEYBOARD_HELP + STAFF_HELP + "\nNeutral real-rate prior: %.2f%%.\n\n" % career.params.initial_r_star_pct + BENCHMARK_HELP + "\n\n" + _mandate_rules_text() + "\n\nStart a career\nSet a target-range midpoint for a simplified FOMC, not the market's effective rate; a real chair acts with the committee.\n\nEvery career includes seeded background disturbances. Varied policy career and Recurring crises draw from 50 curated exogenous events. Varied policy career starts with weakly anchored inflation, then recurring dilemmas. Weakly anchored inflation remains separately selectable. The baseline starts at equilibrium with no scheduled scenario events, not a shock-free path. The same scenario and seed reproduce a path within the same engine and model.\n\n1. Read the dispatch for current conditions, not future shocks.\n2. Set the target rate. Higher real rates gradually restrain demand; inflation reacts with a lag. A supply shock can raise prices while weakening activity.\n3. Choose guidance. A firm promise is easier to understand, but missing it reduces follow-through credit. Data dependence adjusts the prior promise for changes in inflation and the output gap.\n4. Set purchases or a runoff cap, reinvestment, reserve maintenance and sterilization. Offer secured liquidity for eligible funding, not insolvency.\n5. Inspect applied amounts and the eight-quarter preview, then adopt. The preview assumes no new future shocks.\n\nPolicy committee\nOpen Policy committee (Cmd/Ctrl+K). Its decision docket compares current staging, Hold and Price stability, Employment or Financial stability on common graphical scales with exact text values. Tab to Stage price/jobs/funding, then Return; Escape cancels and restores focus. Modified Return never adopts from this modal. Refresh recomputes paths; reading does not. Invalid drafts are refused without submission. Near the horizon, extra forecast points are diagnostic only. Price and employment proposals adjust the current rate by half the published inflation miss or output gap respectively; both round to the policy grid. Financial stability holds the rate and offers today's collateral-backed funding need. These fictional priorities disagree under stagflation; none knows the neutral rate or future shocks. Rate proposals preserve other tools; funding replaces the loan offer. Stage changes controls only and closes the docket. Stale career/quarter/control snapshots refuse staging. All proposals use matching guidance with standard data dependence; the displayed controls and forecast match staging. Funding is unmet need, not bank losses; structural unemployment is a reference, not a fixed target. Lower inflation is not always better. Compare before adopting.\n\nRoutine follow-up (optional)\nOff by default and not saved. Adopt your staged decision, then allow up to three staff rate/guidance updates, for at most four outcomes. Portfolio switches persist; purchase and loan offers reset. Funding, current events, drift or a scheduled check-in returns control. Stop or Escape, editing, reports, New and Load cancel follow-up. Any other non-modifier keypress, including Tab and arrows, also cancels, as do Save, Quit and the staff estimate action. The preview holds a rate; it does not predict adaptive follow-up.\n\nRates and guidance\nNominal rates apply in full: 1bp increments, 25bp arrows. Negative rates are a U.S. counterfactual, with diminishing benefits. Below zero, the effective financing rate is s*tanh(i/s); above zero it is unchanged. The illustrative scale s=1 percentage point is not an estimated lower bound. Credibility prices nominal guidance before this transmission. Stance credibility compares effective restraint with an unsaturated real-gap objective, giving constrained best effort partial credit rather than full adequacy. Conditional implied quotes round to the same 1bp grid before nominal promise follow-through.\n\nSecurities and runoff\nAsset and lending offers use percent of current annual GDP, converted once at the meeting. Purchases are uncapped; their duration-premium effect diminishes with scale. A negative offer caps runoff at maturing Treasury, MBS and bill principal, without selling unmatured holdings. With a zero or positive offer, reinvestment on rolls principal; off allows natural runoff. MBS paydown responds nonlinearly to lagged financing; Treasury timing uses a source-backed maturity ladder.\n\nReserves and sterilization\nMaintain ample reserves buys short bills after all other transactions to meet the disclosed buffer. With maintenance off, currency growth, runoff or loan repayment can exhaust reserves. A rejected settlement preserves the last valid quarter; enable maintenance or adjust purchases/runoff. Bills can ease funding scarcity but are excluded from the long-duration channel: long runoff can coexist with unchanged total assets. Sterilization retains securities and duration effects while replacing reserves with overnight reverse repo liabilities. Uptake, Treasury collateral and settlement can limit absorption. Tagged principal rolls without adding a new absorption target.\n\nLiquidity\nThe offer sets desired concurrent exposure, not accumulated quarterly turnover. Quotes use 0.0001% of current GDP; arrows move 0.25. Small funding amounts show four decimals; positive amounts below 0.0001 show <0.0001. Overnight/short loans mature next quarter. New needs and requested refinancing are separate; eligible refinancing has priority. Default zero refinancing assumes private repayment funds. Eligibility and haircut-adjusted collateral limit advances; excess offers do not become loans. Lending can relieve funding scarcity, not erase losses or create capital. Inspect applied amounts, RRP, reserve-maintenance purchases (RMP) and uncovered funding before adoption. Portfolio switches persist through previews and later meetings; one-time purchase and lending offers reset.\n\nRecovery\nDeferred demand tracks postponed durable/replacement purchases, not all lost consumption. Positive stock supports catch-up spending; negative stock means purchases were brought forward. Financing restraint delays release; growth changes the denominator, and obsolete plans decay. Its unit is percent of quarterly potential output. Short expectations gradually mix observed inflation with prior long expectations according to credibility. Transitory neutral-rate deviations revert toward a structural reference; permanent structural shifts change it. Recovery impulses provide no guaranteed return to 2% under persistent restraint.\n\nCredibility affects guidance pricing and long-run inflation expectations. Public support remembers inflation/deflation hardship and unemployment, recovering gradually without term resets or a game-over threshold.\n\nSaves and access\nSave and Load use policy-career-v2.save only. Prior policy-career-v1.save and original slots career-late-compound-v1.save and career-v1.save remain untouched; use their matching prior app/model. There is no copying, migration or fallback. New career and Load ask before replacing unsaved play. Tab navigates controls; Data & journal gives exact chart values. Animation defaults off.\n\nModel limits\nNine hypothetical scenarios. Varied policy career, Recurring crises and Stagflation & bank run draw from 50 curated exogenous events: disasters, demand/supply changes, funding and credit losses, and favorable developments. Forty-eight independent profiles use a no-repeat bag; two private-bank normalization events require prior eligible stress. The dispatch names active events, not future pulses. Private normalization cannot erase old losses or loans. The 2% objective and portfolio reference observations are source-backed; behavioral coefficients, starting conditions and shock incidence are design assumptions. This is a hypothetical economy, not an empirical forecast or financial advice. No Federal Reserve affiliation. Primary sources and equations are in the repository's FED_RESEARCH and model README."
 
 func _process(delta: float) -> void:
 	_follow_up_frame(delta)

@@ -232,30 +232,33 @@ func run() -> void:
 		timing_game._process(0.1)
 		await process_frame
 	check(timing_game.career.encode() == timing_before and timing_model.attempts == 1 and timing_model.confirmed == 1, "cancelled pacing cannot resume later; separate timing fixture has exactly one confirmed native transition")
-	# A pointer selection emits item_selected without the keyboard cancellation path.
-	check(timing_game.routine.arm(timing_game.career.state, timing_game.career.params, timing_game._policy(), Engine.get_process_frames()).ok, "priority-change fixture re-arms without another economic transition")
+	# The single committee opener replaces priority selection and stops active follow-up.
+	check(timing_game.routine.arm(timing_game.career.state, timing_game.career.params, timing_game._policy(), Engine.get_process_frames()).ok, "committee-open fixture re-arms without another economic transition")
 	timing_game.segment_start = 0
 	timing_game.follow_up_toggle.set_pressed_no_signal(true)
 	var priority_policy: Dictionary = timing_game._policy()
 	var priority_draft: String = timing_game.rate.get_line_edit().text
-	timing_game.committee.select(1)
-	timing_game.committee.item_selected.emit(1)
-	check(not timing_game.routine.active and not timing_game.follow_up_toggle.button_pressed, "pointer priority selection cancels active routine follow-up")
-	check(timing_game.committee.selected == 1 and timing_game.career.encode() == timing_before and timing_game._policy() == priority_policy and timing_game.rate.get_line_edit().text == priority_draft, "priority selection keeps the new choice and draft without adopting or staging a policy")
+	var before_docket_attempts: int = timing_model.attempts
+	var before_docket_confirmed: int = timing_model.confirmed
+	timing_game.committee_button.pressed.emit()
+	check(not timing_game.routine.active and not timing_game.follow_up_toggle.button_pressed, "pointer committee opener cancels active routine follow-up")
+	check(timing_game.committee_docket.visible and timing_game.career.encode() == timing_before and timing_game._policy() == priority_policy and timing_game.rate.get_line_edit().text == priority_draft, "opening docket preserves policy and numeric draft without adopting or staging")
+	check(timing_game.docket_forecast_calls == 5 and timing_model.attempts == before_docket_attempts + 40 and timing_model.confirmed == before_docket_confirmed + 40, "explicit docket open records five eight-quarter native forecasts, not economic adoptions")
+	timing_game.committee_docket.queue_free()
 	for _frame in range(25):
 		timing_game._process(0.1)
 		await process_frame
-	check(timing_game.career.encode() == timing_before and timing_model.attempts == 1, "priority-cancelled follow-up cannot resume on later frames")
+	check(timing_game.career.encode() == timing_before and timing_model.attempts == before_docket_attempts + 40, "docket-cancelled follow-up cannot resume or recompute on later frames")
 	timing_game.follow_up_toggle.set_pressed_no_signal(true)
-	timing_game.committee.select(2)
-	timing_game.committee.item_selected.emit(2)
-	check(timing_game.follow_up_toggle.button_pressed and timing_game._policy() == priority_policy and timing_game.career.encode() == timing_before, "inactive priority choice preserves the player's next-adoption follow-up preference and policy")
+	timing_game.committee_button.pressed.emit()
+	check(timing_game.follow_up_toggle.button_pressed and timing_game._policy() == priority_policy and timing_game.career.encode() == timing_before, "inactive docket opening preserves the player's next-adoption follow-up preference and policy")
+	check(timing_game.docket_forecast_calls == 10 and timing_model.attempts == before_docket_attempts + 80 and timing_model.confirmed == before_docket_confirmed + 80, "two explicit docket opens account exactly for eighty projected transitions")
 	timing_game.music.free()
 	timing_game.queue_free()
 	await process_frame
 	await mixer_release()
-	print("TIMING_INPUT: simulated frame time, native Window Escape; attempts=%d confirmed=%d" % [timing_model.attempts, timing_model.confirmed])
-	print("%s: routine UI %d checks, %d failures; attempts=%d confirmed=%d known_rejects=%d unknown=%d; forecasts disabled" % ["PASS" if failures == 0 else "FAIL", checks, failures, model.attempts, model.confirmed, model.known_rejects, model.attempts - model.confirmed - model.known_rejects])
+	print("TIMING_INPUT: simulated frame time, native Window Escape, two explicit docket forecasts; attempts=%d confirmed=%d" % [timing_model.attempts, timing_model.confirmed])
+	print("%s: routine UI %d checks, %d failures; attempts=%d confirmed=%d known_rejects=%d unknown=%d; ordinary preview forecasts disabled" % ["PASS" if failures == 0 else "FAIL", checks, failures, model.attempts, model.confirmed, model.known_rejects, model.attempts - model.confirmed - model.known_rejects])
 	quit(0 if failures == 0 else 1)
 
 func mixer_release() -> void:
