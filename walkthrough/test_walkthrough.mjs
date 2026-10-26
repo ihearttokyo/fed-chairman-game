@@ -147,13 +147,15 @@ class Node {
   focus() { this.focused = true; }
   click() { if (!this.disabled) this.events.click?.(); }
 }
-async function boot({ data = fixture(), failure, storageBlocked = false } = {}) {
+async function boot({ data = fixture(), failure, storageBlocked = false, compact = false, chartWidth = 0, observeResize = false } = {}) {
   const nodes = new Map([...html.matchAll(/id="([^"]+)"/g)].map(m => [m[1], new Node()]));
   nodes.get('experience').hidden = true;
+  nodes.get('chart').clientWidth = chartWidth;
+  const resizeObservers = [], mediaChanges = [];
   const storage = new Map([['unrelated-native-key', 'keep']]);
   const requests = [];
   const context = {
-    Intl, console, window: { matchMedia: () => ({ matches: false, addEventListener: () => {} }) },
+    Intl, console, window: { matchMedia: () => ({ matches: compact, addEventListener: (event, callback) => { if (event === 'change') mediaChanges.push(callback); } }) },
     document: { getElementById: id => { assert.ok(nodes.has(id), `Missing HTML id: ${id}`); return nodes.get(id); }, createElement: tag => new Node(tag), createElementNS: (_, tag) => new Node(tag) },
     localStorage: {
       getItem: key => { if (storageBlocked) throw Error('blocked'); return storage.get(key) ?? null; },
@@ -162,9 +164,13 @@ async function boot({ data = fixture(), failure, storageBlocked = false } = {}) 
     },
     fetch: async (...args) => { requests.push(args); if (failure) throw Error(failure); return { ok: true, json: async () => data }; }
   };
+  if (observeResize) context.ResizeObserver = class {
+    constructor(callback) { this.callback = callback; resizeObservers.push(this); }
+    observe(target) { this.target = target; }
+  };
   vm.runInNewContext(app, context);
   await new Promise(resolve => setImmediate(resolve));
-  return { nodes, storage, requests };
+  return { nodes, storage, requests, resizeObservers, mediaChanges };
 }
 test('lesson selection, actual rows, native steps, navigation and scoped reset', async () => {
   const d = fixture(); d.lessons[0].options[1].label = '<script>not executable</script>';
@@ -174,7 +180,8 @@ test('lesson selection, actual rows, native steps, navigation and scoped reset',
   assert.ok(n.get('native-steps').textContent.includes('native app'));
   assert.match(n.get('before').textContent, /25 \/100/);
   assert.match(n.get('before').textContent, /70 \/100/);
-  assert.match(n.get('before').textContent, /0–100 index; no rescaling/);
+  assert.doesNotMatch(n.get('before').textContent, /rescaling|index ×100/);
+  assert.match(html, /<details class="condition-notes">[\s\S]*?0–100 index; no rescaling/);
   n.get('options').children[1].click();
   assert.equal(n.get('results').hidden, false); assert.equal(n.get('options').children[1].attrs['aria-pressed'], 'true');
   assert.ok(n.get('endpoints').textContent.includes('-0.2 pp')); assert.ok(n.get('data-table').textContent.includes('Unavailable'));
@@ -392,7 +399,7 @@ test('exporter statically captures pure native decision metadata before forecast
   assert.ok(main.includes('"liquidity_request_pct_initial_gdp": liquidity.value * n'));
 });
 
-test('native handoff keeps four primary quotes visible and folds the full recipe', async () => {
+test('native handoff retains four primary quotes inside its disclosure and folds the full recipe', async () => {
   const { nodes: n } = await boot({ data: entryFixture(4, 1.25) });
   n.get('options').children[0].click();
   const children = n.get('native-entry').children;
@@ -421,4 +428,254 @@ test('half-away entry rounding does not add a tick below half or to odd integral
     assert.equal(handoff.quotes[field.startsWith('liquidity') ? 'loan' : 'purchase'], expected);
     assert.equal(JSON.stringify(lesson), before);
   }
+});
+
+
+test('instrument plots retain independently named scales, all quarters and actual series geometry', async () => {
+  for (const compact of [false, true]) {
+    const d = entryFixture(4), original = JSON.stringify(d);
+    freezeTree(d);
+    const { nodes: n } = await boot({ data: d, compact });
+    n.get('options').children[1].click();
+    const plots = n.get('chart').children;
+    assert.equal(plots.length, 2);
+    plots.forEach((plot, lane) => {
+      const key = ['inflation', 'unemployment'][lane];
+      const option = d.lessons[0].options[1], reference = d.lessons[0].options[0];
+      assert.equal(plot.attrs.role, 'img');
+      assert.equal(plot.attrs.viewBox, `0 0 ${compact ? 320 : 360} 238`);
+      assert.equal(plot.attrs['aria-labelledby'], `chart-title-${lane} chart-description-${lane}`);
+      assert.match(plot.textContent, /own labelled scale and units/);
+      const quarterLabels = plot.children.filter(node => node.tagName === 'text' && /^Q\d+$/.test(node.textContent));
+      assert.deepEqual(quarterLabels.map(node => node.textContent), ['Q5', 'Q6', 'Q7', 'Q8', 'Q9', 'Q10', 'Q11', 'Q12']);
+      const [lo, hi] = api.extent([...option.path, ...reference.path].map(row => row[key]));
+      const points = plot.children.find(node => node.attrs.class === 'chosen').attrs.points.split(' ');
+      assert.equal(points.length, 8);
+      points.forEach((point, i) => {
+        const [x, y] = point.split(',').map(Number);
+        assert.equal(x, 90 + i * ((compact ? 300 : 340) - 90) / 7);
+        assert.equal(y, 196 - (option.path[i][key] - lo) / (hi - lo) * 124);
+      });
+      assert.equal(plot.children.find(node => node.attrs.class === 'reference').attrs.points.split(' ').length, 8);
+    });
+    assert.equal(JSON.stringify(d), original);
+  }
+});
+
+test('opening-to-outcome meters use supplied observations, follow metrics and refuse missing stock baselines', async () => {
+  const d = fixture(), original = JSON.stringify(d);
+  freezeTree(d);
+  const { nodes: n } = await boot({ data: d });
+  assert.equal(n.get('choice-outcomes').hidden, true);
+  n.get('options').children[1].click();
+  assert.equal(n.get('choice-outcomes').hidden, false);
+  const meter = n.get('outcome-meters').children[0];
+  assert.match(meter.textContent, /InflationOpening4%Q8 chosen3.1%/);
+  const graphic = meter.children.find(node => node.tagName === 'svg');
+  assert.equal(graphic.attrs['aria-hidden'], 'true');
+  const endingValue = d.lessons[0].options[1].path[7].inflation;
+  const [lo, hi] = api.extent([d.lessons[0].before.inflation, endingValue]);
+  const opening = graphic.children.find(node => node.attrs.class === 'opening');
+  const ending = graphic.children.find(node => node.attrs.class === 'ending');
+  assert.equal(Number(opening.attrs.cx), 10 + (4 - lo) / (hi - lo) * 200);
+  assert.equal(Number(ending.attrs.cx), 10 + (endingValue - lo) / (hi - lo) * 200);
+  n.get('metric-0').value = 'assets'; n.get('metric-0').events.change();
+  const missing = n.get('outcome-meters').children[0];
+  assert.match(missing.textContent, /AssetsOpeningUnavailableQ8 chosenUnavailable/);
+  assert.equal(missing.children.some(node => node.tagName === 'svg'), false);
+  n.get('metric-0').value = 'credibility'; n.get('metric-0').events.change();
+  assert.match(n.get('outcome-meters').textContent, /CredibilityOpening25 \/100Q8 chosen25 \/100/);
+  assert.doesNotMatch(JSON.stringify(n.get('outcome-meters').children), /NaN|Infinity/);
+  n.get('reset').click();
+  assert.equal(n.get('choice-outcomes').hidden, true);
+  assert.equal(n.get('outcome-meters').children.length, 0);
+  assert.equal(JSON.stringify(d), original);
+});
+
+test('native entry is progressively disclosed without removing labels, controls or limitations', () => {
+  assert.match(html, /<details class="native-handoff" id="native-handoff"><summary>Try it in the native app<\/summary><ol id="native-steps"><\/ol><div id="native-entry"><\/div><p>This desk cannot stage or adopt a native decision/);
+  assert.doesNotMatch(html, /<details[^>]*\sopen(?:[\s=>])/);
+  assert.match(html, /Lower inflation is not always better/);
+  assert.match(html, /Each graphic has its own scale/);
+  assert.match(html, /<nav class="atlas-rail" aria-label="Eight lessons"/);
+  assert.match(css, /@container plots/);
+  assert.doesNotMatch(css, /@import|url\(/);
+});
+
+test('instrument palette text and essential boundaries have measured contrast', () => {
+  const tokens = Object.fromEntries([...css.matchAll(/--([a-z]+): (#[0-9a-f]{6});/g)].slice(0, 9).map(match => [match[1], match[2]]));
+  const luminance = hex => {
+    const rgb = hex.slice(1).match(/../g).map(value => parseInt(value, 16) / 255).map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4);
+    return rgb[0] * .2126 + rgb[1] * .7152 + rgb[2] * .0722;
+  };
+  const ratio = (a, b) => (Math.max(luminance(a), luminance(b)) + .05) / (Math.min(luminance(a), luminance(b)) + .05);
+  for (const background of ['ink', 'panel', 'deep']) {
+    for (const foreground of ['text', 'muted', 'jade', 'gold']) assert.ok(ratio(tokens[foreground], tokens[background]) >= 4.5, `${foreground}/${background} text`);
+    assert.ok(ratio(tokens.edge, tokens[background]) >= 3, `control boundary/${background}`);
+  }
+  assert.ok(ratio(tokens.ink, tokens.jade) >= 4.5, 'selected policy text');
+});
+
+test('all eight production lessons and 21 native choices retain results, handoffs and immutable source data', { skip: !fs.existsSync(dataPath) && 'Fixture owner has not supplied lessons.json' }, async () => {
+  const bytes = fs.readFileSync(dataPath, 'utf8'), d = JSON.parse(bytes), original = JSON.stringify(d);
+  freezeTree(d);
+  const { nodes: n } = await boot({ data: d });
+  let choices = 0;
+  for (const [index, lesson] of d.lessons.entries()) {
+    n.get('lesson-nav').children[index].children[0].click();
+    assert.equal(n.get('lesson-title').textContent, lesson.title);
+    assert.equal(n.get('options').children.length, lesson.options.length);
+    assert.ok(n.get('native-steps').children.length);
+    for (const [optionIndex, option] of lesson.options.entries()) {
+      n.get('options').children[optionIndex].click(); choices++;
+      assert.equal(n.get('results').hidden, false);
+      assert.equal(n.get('chart').children.length, 2);
+      assert.equal(n.get('data-table').children.length, 8);
+      assert.match(n.get('native-entry').textContent, /Entry quotes:/);
+      assert.doesNotMatch(n.get('native-entry').textContent, /Native entry unavailable/);
+      assert.match(n.get('native-entry').textContent, /Rounded native quotes may yield slightly different paths/);
+      assert.ok(n.get('native-entry').textContent.includes(option.label));
+      assert.equal(n.get('options').children[optionIndex].attrs['aria-pressed'], 'true');
+    }
+  }
+  assert.equal(choices, 21);
+  assert.equal(JSON.stringify(d), original);
+  assert.equal(fs.readFileSync(dataPath, 'utf8'), bytes);
+});
+
+
+test('compact topics retain a visible current lesson and reveal keyboard focus only within their strip', async () => {
+  const { nodes: n } = await boot({ compact: true });
+  const strip = n.get('lesson-nav');
+  Object.assign(strip, { clientWidth: 300, scrollWidth: 1500, scrollLeft: 0 });
+  const last = strip.children[7].children[0];
+  Object.assign(last, { offsetLeft: 1266, offsetWidth: 175 });
+  last.events.focus();
+  assert.equal(strip.scrollLeft, 1149);
+  const first = strip.children[0].children[0];
+  Object.assign(first, { offsetLeft: 8, offsetWidth: 175 });
+  first.events.focus();
+  assert.equal(strip.scrollLeft, 0);
+  last.click();
+  assert.equal(n.get('topic-current').textContent, 'Current: Synthetic lesson 7');
+  assert.equal(n.get('lesson-nav').children[7].children[0].attrs['aria-current'], 'step');
+  assert.match(html, /Scroll for more/);
+  assert.match(css, /\.lesson-nav \{ position: relative; display: flex; flex-direction: row; flex-wrap: nowrap; overflow-x: auto; max-width: 100%; scroll-padding-inline: 8px/);
+  assert.doesNotMatch(app, /scrollIntoView|window\.scroll/);
+});
+
+test('narrow endpoint rows preserve column and outcome associations, full names, units and peak qualification', async () => {
+  const d = fixture(); d.lessons[0].title = 'Funding';
+  d.lessons[0].options[1].path[2].uncovered_funding = 9;
+  const { nodes: n } = await boot({ data: d, compact: true });
+  n.get('metric-1').value = 'unemployment'; n.get('metric-1').events.change();
+  n.get('options').children[1].click();
+  const table = n.get('endpoints').children[0];
+  assert.equal(table.attrs.role, 'table');
+  assert.equal(table.attrs.class, 'endpoint-table');
+  assert.match(table.children[0].textContent, /funding row shows each path’s eight-quarter peak, which may occur at different quarters/);
+  const headings = table.children[1].children[0].children;
+  const rows = table.children[2].children;
+  assert.equal(rows[1].children[0].textContent, 'Unemployment');
+  rows.forEach((row, rowIndex) => {
+    assert.equal(row.attrs.role, 'row');
+    assert.equal(row.children[0].attrs.scope, 'row');
+    assert.equal(row.children[0].attrs.id, `endpoint-row-${rowIndex}`);
+    row.children.slice(1).forEach((cell, i) => {
+      assert.equal(cell.attrs['data-label'], ['Chosen', 'Reference', 'Difference'][i]);
+      assert.equal(cell.attrs.headers, `endpoint-row-${rowIndex} ${headings[i + 1].attrs.id}`);
+      assert.equal(headings[i + 1].attrs.scope, 'col');
+    });
+  });
+  assert.match(rows[2].textContent, /Peak uncovered funding, Q1–Q8.*9% initial GDP.*\+9 pp of initial GDP/);
+  assert.match(css, /#endpoints \.endpoint-table tbody th \{ display: block; grid-column: 1 \/ -1; overflow-wrap: normal; word-break: normal/);
+  assert.match(css, /content: attr\(data-label\)/);
+});
+
+test('meter marker key and numeric padded scale identify declines, increases and coincident endpoints', async () => {
+  for (const end of [3, 6, 4]) {
+    const d = fixture(); d.lessons[0].options[1].path[7].inflation = end;
+    const { nodes: n } = await boot({ data: d });
+    n.get('options').children[1].click();
+    const meter = n.get('outcome-meters').children[0];
+    const graphic = meter.children.find(node => node.tagName === 'svg');
+    const opening = graphic.children.find(node => node.attrs.class === 'opening');
+    const chosen = graphic.children.find(node => node.attrs.class === 'ending');
+    assert.equal(Math.sign(Number(chosen.attrs.cx) - Number(opening.attrs.cx)), Math.sign(end - 4));
+    assert.ok(Number(opening.attrs.r) > Number(chosen.attrs.r), 'coincident markers remain distinguishable');
+    const scale = meter.children.find(node => node.attrs.class === 'meter-scale');
+    const [lo, hi] = api.extent([4, end]);
+    assert.equal(scale.attrs['aria-label'], 'Numeric scale endpoints, not observations');
+    assert.equal(scale.children[0].textContent, `Scale min${api.formatValue(lo, 'inflation')}`);
+    assert.equal(scale.children[1].textContent, `Scale max${api.formatValue(hi, 'inflation')}`);
+  }
+  assert.match(html, /Hollow marker: opening. Filled marker: chosen endpoint/);
+  assert.match(html, /Scale endpoints include padding, not extra observations/);
+});
+
+test('plot viewBoxes follow mocked rendered widths and reflow without shrinking SVG type', async () => {
+  for (const width of [266, 334, 695, 779, 780, 900]) {
+    const { nodes: n } = await boot({ compact: width < 400, chartWidth: width });
+    n.get('options').children[1].click();
+    const expected = (width >= 780 ? (width - 12) / 2 : width) - 2;
+    for (const plot of n.get('chart').children) {
+      assert.equal(plot.attrs.viewBox, `0 0 ${expected} 238`);
+      assert.equal(plot.children.filter(node => node.tagName === 'text' && /^Q\d+$/.test(node.textContent)).length, expected < 300 ? 3 : 8);
+      assert.equal(plot.children.filter(node => node.tagName === 'circle').length, 8);
+    }
+  }
+  const { nodes: n, resizeObservers } = await boot({ chartWidth: 695, observeResize: true });
+  n.get('options').children[1].click();
+  assert.equal(resizeObservers[0].target, n.get('chart'));
+  n.get('chart').clientWidth = 900;
+  resizeObservers[0].callback([{ contentRect: { width: 900 } }]);
+  assert.equal(n.get('chart').children[0].attrs.viewBox, '0 0 442 238');
+  const prior = n.get('chart').children[0];
+  resizeObservers[0].callback([{ contentRect: { width: 900 } }]);
+  assert.equal(n.get('chart').children[0], prior, 'height-only changes do not trigger redraw loops');
+  assert.match(css, /@container plots \(min-width: 780px\)/);
+  assert.match(css, /svg text \{[^}]*font: 16px/);
+  assert.match(css, /svg \.lane-unit \{ font-size: 14px/);
+});
+
+test('opening index conversion mechanics move into contextual detail without changing /100 values', async () => {
+  const { nodes: n } = await boot();
+  const before = n.get('before');
+  assert.match(before.textContent, /Credibility25 \/100Public support70 \/100/);
+  assert.ok(before.children.every(group => group.children.length === 2));
+  assert.doesNotMatch(before.textContent, /index ×100|rescaling/);
+  assert.match(html, /<details class="condition-notes"><summary>About the \/100 indices<\/summary><p>Credibility: 0–1 index ×100. Public support: 0–100 index; no rescaling. Both display \/100; differences are index points.<\/p><\/details>/);
+});
+
+// Identity/state assertions are DOM stand-in evidence, not actual browser focus proof.
+test('width and breakpoint redraws preserve native disclosure nodes, open state and progress', async () => {
+  const { nodes: n, storage, resizeObservers, mediaChanges } = await boot({data: entryFixture(), chartWidth: 695, observeResize: true});
+  n.get('options').children[1].click();
+  const inner = n.get('native-entry').children.find(node => node.tagName === 'details');
+  assert.ok(inner); inner.open = true;
+  const summary = inner.children[0]; summary.focus();
+  n.get('native-handoff').open = true;
+  const endpoints = n.get('endpoints').children[0];
+  const progress = storage.get(api.STORAGE_KEY);
+  for (const width of [900, 300]) {
+    n.get('chart').clientWidth = width;
+    resizeObservers[0].callback([{contentRect:{width}}]);
+    assert.equal(n.get('native-entry').children.find(node => node.tagName === 'details'), inner);
+    assert.equal(inner.open, true); assert.equal(inner.children[0], summary);
+    assert.equal(n.get('native-handoff').open, true);
+    assert.equal(n.get('endpoints').children[0], endpoints);
+    assert.equal(storage.get(api.STORAGE_KEY), progress);
+  }
+  assert.equal(mediaChanges.length, 1);
+  mediaChanges[0]();
+  assert.equal(n.get('native-entry').children.find(node => node.tagName === 'details'), inner);
+  assert.equal(inner.open, true); assert.equal(inner.children[0], summary);
+  assert.equal(n.get('endpoints').children[0], endpoints);
+  assert.equal(storage.get(api.STORAGE_KEY), progress);
+});
+
+test('narrow topic navigation shows one complete labelled topic per snap position', () => {
+  assert.match(css, /scroll-padding-inline: 8px; scroll-snap-type: x mandatory/);
+  assert.match(css, /\.lesson-nav li \{ flex: 0 0 100%; min-width: 0; scroll-snap-align: start \}/);
+  assert.match(html, /Scroll for more/);
 });
