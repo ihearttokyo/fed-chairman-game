@@ -209,3 +209,9 @@ priced component/controller/integration tests. These results do not qualify ever
 possible window size, actual VoiceOver use, a second Mac, measured difficulty or
 human enjoyment. ARM64 export, matching packaged-runtime checks, reviewed PR
 publication/merge and release remain separate unfinished delivery work.
+
+The final source also passed the full macro model suite and the current curated
+career diagnostic: 1,100 completed careers, 264,000 transitions, 100 paired
+comparisons, all 50 curated events observed and zero diagnostic failures. This
+normal-career regression is separate from the 96 priced-bank cases and does not
+establish human difficulty or optimality of the feedback reference.
