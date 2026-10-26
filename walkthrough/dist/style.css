@@ -203,8 +203,8 @@ footer p:last-child { flex-basis: 100% }
   .atlas-rail > p { display: inline; margin-left: .75rem }
   .strip-hint { display: inline }
   .atlas-rail > .topic-current { display: block; margin: .35rem 0 0; color: var(--text); font-size: .8rem }
-  .lesson-nav { position: relative; display: flex; flex-direction: row; flex-wrap: nowrap; overflow-x: auto; max-width: 100%; scroll-padding-inline: 8px; padding: 8px; gap: .4rem; margin-top: .35rem }
-  .lesson-nav li { flex: 0 0 175px; min-width: 0 }
+  .lesson-nav { position: relative; display: flex; flex-direction: row; flex-wrap: nowrap; overflow-x: auto; max-width: 100%; scroll-padding-inline: 8px; scroll-snap-type: x mandatory; padding: 8px; gap: .4rem; margin-top: .35rem }
+  .lesson-nav li { flex: 0 0 100%; min-width: 0; scroll-snap-align: start }
   .lesson-nav button { padding: .5rem; font-size: .8rem; min-height: 64px; height: 100%; gap: .4rem }
   .lesson-nav button[aria-current="step"] { box-shadow: inset 0 -3px var(--gold) }
   .lesson-nav .number { font-size: .85rem }

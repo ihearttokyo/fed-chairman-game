@@ -673,3 +673,9 @@ test('width and breakpoint redraws preserve native disclosure nodes, open state 
   assert.equal(n.get('endpoints').children[0], endpoints);
   assert.equal(storage.get(api.STORAGE_KEY), progress);
 });
+
+test('narrow topic navigation shows one complete labelled topic per snap position', () => {
+  assert.match(css, /scroll-padding-inline: 8px; scroll-snap-type: x mandatory/);
+  assert.match(css, /\.lesson-nav li \{ flex: 0 0 100%; min-width: 0; scroll-snap-align: start \}/);
+  assert.match(html, /Scroll for more/);
+});
