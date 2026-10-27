@@ -138,6 +138,9 @@ func _ready() -> void:
 	overflow_scroll = ScrollContainer.new()
 	overflow_scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overflow_scroll.follow_focus = true
+	# Keep wrapped footer width identical with and without vertical overflow.
+	# Breakpoint reservation alone cannot prevent scrollbar-induced height hysteresis.
+	overflow_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_RESERVE
 	add_child(overflow_scroll)
 	var layout := VBoxContainer.new()
 	layout.size_flags_horizontal = Control.SIZE_EXPAND_FILL

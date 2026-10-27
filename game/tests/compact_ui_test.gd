@@ -165,6 +165,64 @@ func check_resize_history(game: Control, density: float, edit: LineEdit, preserv
 		await settle_layout()
 	check(not row.vertical and game.overflow_scroll.get_v_scroll_bar().max_value <= game.overflow_scroll.get_v_scroll_bar().page + 0.5, "shrink/regrow returns fitting horizontal actions and pinned footer independent of resize history")
 	check(resize_snapshot(game) == preserved and edit.has_focus(), "height boundary crossings preserve the selected policy draft and career")
+	await check_footer_wrap_history(game, density, edit, reserve)
+	check(resize_snapshot(game) == preserved and edit.has_focus(), "footer wrap fixture restores the original native font, feedback, draft and career")
+
+func check_footer_wrap_history(game: Control, density: float, edit: LineEdit, reserve: float) -> void:
+	var scroll: ScrollContainer = game.overflow_scroll
+	var layout: Control = scroll.get_child(0)
+	var feedback: Label = game.consequence
+	var original_mode := scroll.vertical_scroll_mode
+	var original_text := feedback.text
+	var had_font_override := feedback.has_theme_font_override("font")
+	var original_font := feedback.get_theme_font("font")
+	# The engine's embedded font makes this native Label fixture independent of
+	# Avenir/DejaVu availability. Keep the production font size and target sizes.
+	var font := ThemeDB.fallback_font
+	var font_size := feedback.get_theme_font_size("font_size")
+	feedback.add_theme_font_override("font", font)
+	var width := ceili(game._row_minimum(game.action_buttons) + reserve)
+	var gutter := scroll.get_v_scroll_bar().get_combined_minimum_size().x
+	var wide := float(width - 48) # Existing footer's two 24-point margins.
+	var text := "Policy outcome "
+	while font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x <= wide - gutter:
+		text += "."
+	var text_width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	check(text_width > wide - gutter and text_width <= wide, "native footer text fits only before an automatic scrollbar consumes its gutter")
+	feedback.text = text
+	await settle_layout()
+	var fixture_preserved := resize_snapshot(game)
+	# AUTO is the negative control: this exact text must wrap and stick after
+	# shrink/regrow. The unchanged production mode must keep a constant width.
+	for negative_control in [true, false]:
+		scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO if negative_control else original_mode
+		root.size = Vector2i((Vector2(width, 700) * density).round())
+		await settle_layout()
+		var height := ceili(layout.get_combined_minimum_size().y)
+		var widths: Array[float] = []
+		var lines: Array[int] = []
+		var overflowing: Array[bool] = []
+		for logical in [Vector2i(width, height + 1), Vector2i(width, height - 1), Vector2i(width, height + 1)]:
+			root.size = Vector2i((Vector2(logical) * density).round())
+			await settle_layout()
+			widths.append(layout.size.x)
+			lines.append(feedback.get_line_count())
+			var bar := scroll.get_v_scroll_bar()
+			overflowing.append(bar.max_value > bar.page + 0.5)
+			check(resize_snapshot(game) == fixture_preserved and edit.has_focus(), "native footer boundary fixture preserves selection, focus, career, preview, fonts and targets without forecasts")
+		var vertical := scroll.get_v_scroll_bar()
+		var pinned := vertical.max_value <= vertical.page + 0.5
+		if negative_control:
+			check(not pinned and overflowing == [false, true, true] and lines == [1, 2, 2] and is_equal_approx(widths[0] - widths[1], gutter) and is_equal_approx(widths[1], widths[2]), "AUTO negative control reproduces gutter-induced wrapping and footer hysteresis")
+		else:
+			check(pinned and overflowing == [false, true, false] and not game.action_buttons.vertical and lines == [2, 2, 2] and is_equal_approx(widths[0], width - gutter) and is_equal_approx(widths[0], widths[1]) and is_equal_approx(widths[1], widths[2]), "reserved native scrollbar gutter keeps footer width and wrapping stable through height +/-1 shrink/regrow")
+		print("FOOTER_WRAP_HISTORY: negative_control=%s widths=%s lines=%s overflowing=%s pinned=%s" % [negative_control, widths, lines, overflowing, pinned])
+	feedback.text = original_text
+	if had_font_override:
+		feedback.add_theme_font_override("font", original_font)
+	else:
+		feedback.remove_theme_font_override("font")
+	await settle_layout()
 
 func check_small_actions(game: Control, density: float) -> void:
 	root.size = Vector2i((Vector2(800, 240) * density).round())
