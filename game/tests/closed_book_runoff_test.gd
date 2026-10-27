@@ -6,9 +6,22 @@ var failures := 0
 class CountingModel:
 	extends "res://model/economy.gd"
 	var transitions := 0
+	var trace: Array = []
 	func bank_workout_transition(state: Dictionary, policy: Dictionary, shocks: Dictionary, params: Dictionary, bank: Variant, order: Variant, credit: Dictionary = {}) -> Dictionary:
 		transitions += 1
-		return super.bank_workout_transition(state, policy, shocks, params, bank, order, credit)
+		var result := super.bank_workout_transition(state, policy, shocks, params, bank, order, credit)
+		if result.ok: trace.append(result.state.duplicate(true))
+		return result
+class CountingCareer:
+	extends "res://play/career.gd"
+	var calls := 0
+	var last: Dictionary = {}
+	func forecast(policy: Dictionary, follow: bool = false) -> Dictionary:
+		calls += 1
+		last = super.forecast(policy, follow)
+		return last
+func macro_text(state: Dictionary) -> String:
+	return "Inflation %.2f%% · unemployment %.2f%% · output gap %+.2f%%" % [state.four_quarter_inflation_pct, state.unemployment_rate_pct, state.output_gap_pct]
 func check(ok: bool, text: String) -> void:
 	checks += 1
 	if not ok:
@@ -61,6 +74,11 @@ func run() -> void:
 	var game: Control = load("res://main.tscn").instantiate()
 	root.add_child(game)
 	await settle()
+	var assumptions: Label
+	for label in game.find_children("*", "Label", true, false):
+		if label.text.begins_with("Preview: this decision"):
+			assumptions = label
+	check(assumptions != null, "primary preview assumptions label exists")
 	game.save_path = "user://runoff-preserved.save"
 	game._save()
 	var saved := FileAccess.get_file_as_bytes(game.save_path)
@@ -97,6 +115,14 @@ func run() -> void:
 		var steps: int = game.career.model.transitions
 		game._preview()
 		check(game.career.model.transitions == steps + 8 and game.bank_outlook.snapshot.values.size() == mini(8, 20 - meeting) and game.bank_outlook.snapshot.last_quarter == mini(20, meeting + 8), "preview stays8steps and labels its actual forecast endpoint")
+		if meeting in [0, 8, 18, 19]:
+			var count := mini(8, 20 - meeting)
+			var cached: Dictionary = game.career.model.trace[game.career.model.trace.size() - 8 + count - 1]
+			check(game.forecast_label.text.contains("CONDITIONAL Q+%d" % count) and game.forecast_label.text.contains("Q%d" % (meeting + count)) and game.forecast_label.text.contains(macro_text(cached)), "primary macro endpoint/values match the same cached playable state, not diagnostic tail")
+			if meeting == 18:
+				check(assumptions.text.contains("1 more quarter through Q20"), "two-point preview uses a singular one-quarter hold")
+			if meeting == 19:
+				check(not assumptions.text.contains("seven more") and assumptions.text.contains("Q20"), "last-meeting assumptions do not promise seven nonexistent playable holds")
 		if meeting == 19:
 			check(game.bank_outlook.path.values.size() == 1 and game.bank_outlook.summary.text.contains("through Q20"), "Q19 displays exactlyone Q20quote, not diagnostic later capital")
 		game._advance()
@@ -115,17 +141,19 @@ func run() -> void:
 				order[(order.find(target) - 1 + order.size()) % order.size()].grab_focus()
 				await key(KEY_TAB)
 				await settle()
-				check(target.has_focus() and root.get_visible_rect().grow(1).encloses(target.get_global_rect()), "Tab reveals the full active graph after compact/desktop reflow")
+				check(target.has_focus() and root.get_visible_rect().grow(1).encloses(target.get_global_rect()) and game.cockpit_scroll.get_global_rect().grow(1).encloses(target.get_global_rect()), "Tab reveals the full active graph after compact/desktop reflow")
 				check(game.runoff_context.get_combined_minimum_size().x < 420 and game.runoff_context.size.x <= game.runoff_context.get_parent().size.x + 1, "actual checkpoint does not force a horizontal minimum trap")
 				var before: PackedByteArray = game.career.encode()
 				steps = game.career.model.transitions
 				await key(KEY_HOME)
 				await key(KEY_END)
 				if meeting == 19:
+					check(target.get_global_rect().grow(1).encloses(game.workout_debrief.inspection.get_global_rect()) and root.get_visible_rect().grow(1).encloses(game.workout_debrief.inspection.get_global_rect()) and game.cockpit_scroll.get_global_rect().grow(1).encloses(game.workout_debrief.inspection.get_global_rect()), "selected numeric caption is inside the focused timeline bounds and viewport, not hidden below footer")
 					check(target.selected == 19 and game.workout_debrief.inspection.text.begins_with("Q20") and target.accessibility_description.contains("Q20"), "20-bar timeline exposes selected end values visibly and accessibly, not tiny-hover-only")
 				check(game.career.encode() == before and game.career.model.transitions == steps, "graph inspection/resize does not adopt, forecast or step")
 	check(game.decision_button.disabled and game.workout_debrief.snapshot.ok and game.workout_debrief.snapshot.quarters.size() == 20 and game.runoff_context.snapshot.quarter == 20 and game.runoff_context.snapshot.capital_now == game.career.credit_results[-1].bank_equity_after, "Q20 actual debrief and checkpoint use all20 records and all-in terminal capital")
 	check(game.bank_outlook.path.values.is_empty() and not game.bank_outlook.visible, "terminal forecast clears")
+	check(assumptions.text.is_empty() and not assumptions.visible and game.forecast_label.tooltip_text.is_empty(), "terminal clears stale hold assumptions and forecast tooltip")
 	var final_state: PackedByteArray = game.career.encode()
 	game._advance()
 	check(game.career.encode() == final_state and game.career.decisions.size() == 20 and FileAccess.get_file_as_bytes(game.save_path) == saved, "21st decision refuses and normal save bytes remain untouched")
@@ -134,5 +162,23 @@ func run() -> void:
 		check(game._active_horizon() == 8 and not game._is_runoff() and not game.runoff_context.visible, "each existing8-meeting lab remains separately available and clears runoff context")
 	game._start_career("policy_career", 1)
 	check(game._active_horizon() == 240 and not game.runoff_context.visible and not game.workout_debrief_panel.visible and FileAccess.get_file_as_bytes(game.save_path) == saved, "normal careers clear all runoff/debrief state without changing their save")
+	# Synthetic normal-career clock near its finite endpoint; no fabricated
+	# claim of a realized239-decision playthrough and no extra forecast calls.
+	var near_end := CountingCareer.new()
+	check(near_end.start("base", 1).ok, "normal finite-endpoint fixture starts")
+	near_end.state.quarter_index = 232
+	near_end.decisions.resize(232)
+	game.career = near_end
+	game._preview()
+	check(near_end.calls == 1 and game.forecast_label.text.contains("CONDITIONAL Q+8") and game.forecast_label.text.contains(macro_text(near_end.last.states[-1])) and assumptions.text == "Preview: this decision, then hold its rate for seven more quarters. No new future shocks. This is a conditional path, not a confidence interval.", "full-eight normal preview retains its cached eighth values and original assumptions")
+	near_end.state.quarter_index = 239
+	near_end.decisions.resize(239)
+	game.career = near_end
+	game._preview()
+	check(near_end.calls == 2 and near_end.last.states.size() == 8 and game.forecast_label.text.contains("CONDITIONAL Q+1") and game.forecast_label.text.contains("Q240") and game.forecast_label.text.contains(macro_text(near_end.last.states[0])), "normalQ239 primary reads cachedQ240 while retaining one eight-step forecast")
+	near_end.state.quarter_index = 240
+	near_end.decisions.resize(240)
+	game._preview()
+	check(near_end.calls == 2 and assumptions.text.is_empty() and not assumptions.visible, "normal completion clears assumptions without another forecast")
 	if failures == 0: print("PASS: closed-book runoff UI candidate ", checks, " checks; headless mechanics, not native acceptance")
 	await game._quit_app(1 if failures else 0)

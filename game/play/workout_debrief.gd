@@ -12,6 +12,7 @@ class PaymentTimeline:
 	extends Control
 	var quarters: Array = []
 	var selected := 0
+	var caption_height := 0.0
 	signal inspected(text: String)
 	func _init() -> void:
 		focus_entered.connect(func(): inspect(selected))
@@ -46,11 +47,11 @@ class PaymentTimeline:
 			draw_rect(Rect2(Vector2.ZERO, size), GOLD, false, 2)
 		var font := get_theme_default_font()
 		var step := size.x / quarters.size()
-		var height := maxf(1.0, size.y - 24.0)
+		var height := maxf(1.0, size.y - caption_height - 24.0)
 		for index in range(quarters.size()):
 			var quarter: Dictionary = quarters[index]
 			var left := step * index + step * 0.22
-			var rect := Rect2(left, 2.0, step * 0.56, height - 4.0)
+			var rect := Rect2(left, caption_height + 2.0, step * 0.56, height - 4.0)
 			if not quarter.applicable:
 				draw_line(Vector2(rect.position.x, rect.get_center().y), Vector2(rect.end.x, rect.get_center().y), MUTED, 2.0)
 			else:
@@ -69,6 +70,7 @@ class PaymentTimeline:
 
 var heading := Label.new()
 var inspection := Label.new()
+var inspection_holder := MarginContainer.new()
 var timeline := PaymentTimeline.new()
 var legend := Label.new()
 var queue_label := Label.new()
@@ -172,7 +174,16 @@ func _init() -> void:
 	timeline.focus_mode = Control.FOCUS_NONE
 	timeline.mouse_filter = Control.MOUSE_FILTER_PASS
 	add_child(timeline)
-	add_child(inspection)
+	# Keep the selected numeric reading within the focused reveal target.
+	timeline.add_child(inspection_holder)
+	inspection_holder.add_child(inspection)
+	inspection_holder.add_theme_constant_override("margin_left", 2)
+	inspection_holder.add_theme_constant_override("margin_right", 2)
+	inspection_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	inspection.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	inspection_holder.minimum_size_changed.connect(_fit_timeline_caption)
+	timeline.resized.connect(_fit_timeline_caption)
+	inspection_holder.hide()
 	inspection.hide()
 	timeline.inspected.connect(func(text: String):
 		if timeline.focus_mode != Control.FOCUS_NONE:
@@ -180,6 +191,16 @@ func _init() -> void:
 	for label in [legend, note, queue_label, arrears_label, equity_label]:
 		add_child(label)
 	_clear_display()
+
+func _fit_timeline_caption() -> void:
+	var height := 0.0
+	if inspection_holder.visible:
+		inspection_holder.size.x = maxf(1, timeline.size.x)
+		inspection_holder.size.y = inspection_holder.get_combined_minimum_size().y
+		height = inspection_holder.size.y + 4.0
+	timeline.caption_height = height
+	timeline.custom_minimum_size.y = 96.0 + height
+	timeline.queue_redraw()
 
 func _set_label(label: Label, text: String, hint: String) -> void:
 	label.text = text
@@ -192,6 +213,8 @@ func _clear_display() -> void:
 	for label in [heading, inspection, legend, queue_label, arrears_label, equity_label, note]:
 		_set_label(label, "", "")
 	inspection.hide()
+	inspection_holder.hide()
+	_fit_timeline_caption()
 	timeline.focus_mode = Control.FOCUS_NONE
 	timeline.quarters = []
 	timeline.tooltip_text = ""
@@ -219,10 +242,12 @@ func update_episode(bank_history: Array, settlements: Array, completed: bool, ho
 	timeline.quarters = snapshot.quarters.duplicate(true)
 	timeline.tooltip_text = TIMELINE_HINT
 	timeline.focus_mode = Control.FOCUS_ALL if horizon > 8 else Control.FOCUS_NONE
+	inspection_holder.visible = horizon > 8
 	inspection.visible = horizon > 8
 	timeline.accessibility_name = "Depositor payments, Q1 through Q%d" % horizon
 	if horizon > 8:
 		timeline.inspect(mini(timeline.selected, horizon - 1))
+	_fit_timeline_caption()
 	timeline.accessibility_description = snapshot.timeline_description + "\n" + TIMELINE_HINT
 	timeline.queue_redraw()
 	accessibility_description = "%s. %s. %s." % [snapshot.queue_text, snapshot.arrears_text, snapshot.equity_text]

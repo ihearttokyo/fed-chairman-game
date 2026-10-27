@@ -54,6 +54,7 @@ var objective_board: ObjectiveBoard
 var objective_panel: PanelContainer
 var mandate_label: Label
 var forecast_label: Label
+var preview_hint: Label
 var comparison_series: Array = []
 var status_label: Label
 var rate: SpinBox
@@ -784,8 +785,8 @@ func _build_policy(parent: Node, actions: Node) -> void:
 	stop_follow_up.visible = false
 	follow_up_note = _label(decision_controls, "", 11, MUTED)
 	follow_up_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	var explanation := _label(box, "Preview: this decision, then hold its rate for seven more quarters. No new future shocks. This is a conditional path, not a confidence interval.", 11, MUTED)
-	explanation.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	preview_hint = _label(box, "Preview: this decision, then hold its rate for seven more quarters. No new future shocks. This is a conditional path, not a confidence interval.", 11, MUTED)
+	preview_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
 func _policy() -> Dictionary:
 	var n: float = career.model.nominal_gdp_ratio(career.state) if not career.state.is_empty() else 1.0
@@ -1078,6 +1079,10 @@ func _preview() -> void:
 	if follow_up_note != null:
 		follow_up_note.text = "Hold-rate preview; routine follow-up updates the staff estimate each quarter." if follow_up_toggle.button_pressed else ""
 		follow_up_note.visible = follow_up_toggle.button_pressed
+	forecast_label.tooltip_text = ""
+	preview_hint.text = ""
+	preview_hint.accessibility_name = ""
+	preview_hint.hide()
 	if career.decisions.size() >= _active_horizon():
 		bank_outlook.update_forecast({}, int(career.state.quarter_index), _is_priced_workout(), _is_workout(), _active_horizon())
 		_link_focus(_keyboard_focus_order())
@@ -1092,18 +1097,28 @@ func _preview() -> void:
 	if not result.ok:
 		forecast_label.text = "Preview unavailable: " + _policy_error(result.error)
 		return
+	var count := mini(8, _active_horizon() - int(career.state.quarter_index))
+	if count < 1:
+		forecast_label.text = "Preview unavailable: no remaining playable quarter."
+		return
 	var first: Dictionary = result.states[0]
-	var last: Dictionary = result.states[-1]
-	if _is_workout() and result.diagnostic_beyond_episode:
-		forecast_label.tooltip_text = "Q+8 continues diagnostically beyond playable Q%d. No future withdrawal requests are revealed." % _active_horizon()
-	else:
-		forecast_label.tooltip_text = ""
+	var last: Dictionary = result.states[count - 1]
+	var endpoint: int = last.quarter_index
+	if count < result.states.size():
+		forecast_label.tooltip_text = "Primary readout stops at playable Q%d. Further quarters are diagnostic only; see Policy paths." % endpoint
+	preview_hint.text = "Preview: this decision, then hold its rate for seven more quarters. No new future shocks. This is a conditional path, not a confidence interval."
+	if count == 1:
+		preview_hint.text = "Preview: this decision only, through Q%d. No later playable quarters. Conditional, not a confidence interval." % endpoint
+	elif count < 8:
+		preview_hint.text = "Preview: this decision, then hold its rate for %d more %s through Q%d. No new future shocks. Conditional, not a confidence interval." % [count - 1, "quarter" if count == 2 else "quarters", endpoint]
+	preview_hint.accessibility_name = preview_hint.text
+	preview_hint.show()
 	var rate_text := "Rate %.2f%%" % first.policy_rate_pct
 	if first.policy_rate_pct < 0.0:
 		rate_text += " (effective %.2f%%)" % first.effective_policy_rate_pct
 	var n: float = first.decision_nominal_gdp_ratio
 	funding_plan.update_plan(first, policy.liquidity_request_pct_initial_gdp, n)
-	forecast_label.text = "IF ADOPTED NOW\n%s · assets %+.2f\nRunoff %s · RMP %s · RRP %s\nUnsterilized %s\n\nCONDITIONAL Q+8\nInflation %.2f%% · unemployment %.2f%% · output gap %+.2f%%" % [rate_text, first.asset_flow_applied_pct_initial_gdp / n, Career.funding_amount_text(first.long_securities_runoff_pct_initial_gdp / n), Career.funding_amount_text(first.reserve_maintenance_purchase_pct_initial_gdp / n), Career.funding_amount_text(first.sterilization_applied_pct_initial_gdp / n), Career.funding_amount_text(first.sterilization_unfulfilled_pct_initial_gdp / n), last.four_quarter_inflation_pct, last.unemployment_rate_pct, last.output_gap_pct]
+	forecast_label.text = "IF ADOPTED NOW\n%s · assets %+.2f\nRunoff %s · RMP %s · RRP %s\nUnsterilized %s\n\nCONDITIONAL Q+%d · Q%d\nInflation %.2f%% · unemployment %.2f%% · output gap %+.2f%%" % [rate_text, first.asset_flow_applied_pct_initial_gdp / n, Career.funding_amount_text(first.long_securities_runoff_pct_initial_gdp / n), Career.funding_amount_text(first.reserve_maintenance_purchase_pct_initial_gdp / n), Career.funding_amount_text(first.sterilization_applied_pct_initial_gdp / n), Career.funding_amount_text(first.sterilization_unfulfilled_pct_initial_gdp / n), count, endpoint, last.four_quarter_inflation_pct, last.unemployment_rate_pct, last.output_gap_pct]
 
 func _decision_briefing() -> String:
 	comparison_series = []

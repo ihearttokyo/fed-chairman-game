@@ -213,9 +213,12 @@ func run() -> void:
 			check(career.advance(career.model.benchmark_policy(career.state, career.params, "hold")).ok, "real remaining playable meetings advance")
 		game._refresh(true)
 		check(game.bank_outlook.snapshot.ok and game.bank_outlook.path.values.size() == 1, "Main Q7 displays one point, excluding seven diagnostic continuation points")
+		var endpoint: Dictionary = career.last.states[0]
+		check(game.forecast_label.text.contains("CONDITIONAL Q+1 · Q8") and game.forecast_label.text.contains("Inflation %.2f%% · unemployment %.2f%% · output gap %+.2f%%" % [endpoint.four_quarter_inflation_pct, endpoint.unemployment_rate_pct, endpoint.output_gap_pct]) and game.preview_hint.text.contains("this decision only, through Q8"), "both default8 labs clip primary macro values/assumptions to cachedQ8 atQ7")
 		check(career.advance(career.model.benchmark_policy(career.state, career.params, "hold")).ok, "real final settlement advances")
 		game._refresh(true)
 		check(not game.bank_outlook.visible and path.values.is_empty() and path not in game._keyboard_focus_order(), "Q8 completion clears bank outlook without a stale diagnostic capital minimum")
+		check(game.workout_debrief.timeline.caption_height == 0 and game.workout_debrief.timeline.custom_minimum_size.y == 96 and not game.workout_debrief.inspection.visible, "default8 debrief keeps its original96-point geometry without a numeric caption")
 	game._start_career("policy_career", 1)
 	check(not game.bank_outlook.visible and game.bank_outlook.path.values.is_empty() and FileAccess.get_file_as_bytes(game.save_path) == saved, "leaving both labs clears outlook and preserves normal save bytes")
 	if failures == 0:
