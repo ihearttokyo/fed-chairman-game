@@ -1778,7 +1778,7 @@ func _new_dialog() -> void:
 		if dialog.claim_start():
 			_apply_input(dialog.seed_input)
 			_start_career(dialog.scenario.get_item_metadata(dialog.scenario.selected), int(dialog.seed_input.value)))
-	_show_dialog(dialog, Vector2i(820, 560), scenario)
+	_show_dialog(dialog, Vector2i(820, 560), dialog.primary_buttons[0])
 
 func _review() -> void:
 	var compared: Dictionary = career.review_comparison()

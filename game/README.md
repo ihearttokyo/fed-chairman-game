@@ -133,10 +133,11 @@ scenarios** retains every original case and both labs. Selecting a choice only
 updates the selector and its short cue; **Details & assumptions** expands the
 existing scenario description or lab help. Only explicit **Start** replaces
 unsaved decisions; opening, reading, changing selection or cancelling writes no
-save. Tab retains the selector → seed → Cancel → Start route, then reaches the
-four choices, Details and scrolling; Shift+Tab reverses it. Return on a choice
-selects only, and Return in the seed commits only that field. Escape cancels and
-returns focus. Narrow layouts scroll rather than shrinking text or targets.
+save. The selected primary choice starts focused. Tab follows the choices, All
+scenarios, seed, Details, Cancel and Start; Shift+Tab reverses it. Return on a
+choice selects only, and Return in the seed commits only that field. Escape
+cancels and returns focus. The replacement warning stays beside the actions;
+narrow layouts scroll rather than shrinking text or targets.
 
 New career → **Stagflation & bank run** starts with 7% inflation, a −3% output gap
 and immediate funding pressure. Curated events begin within three quarters and

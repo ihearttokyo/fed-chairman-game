@@ -42,6 +42,18 @@ func key(window: Window, code: Key, command := false, shift := false, character 
 	await process_frame
 	await process_frame
 
+func press_without_frame(window: Window, code: Key) -> void:
+	var receiver: Window = root if window.is_embedded() else window
+	var event := InputEventKey.new()
+	event.keycode = code
+	event.pressed = true
+	receiver.window_input.emit(event)
+	receiver.push_input(event)
+	event = event.duplicate()
+	event.pressed = false
+	receiver.window_input.emit(event)
+	receiver.push_input(event)
+
 func drafts(game: Control) -> PackedByteArray:
 	var rows: Array = []
 	for input in [game.rate, game.guidance, game.assets, game.liquidity, game.inflation_response, game.activity_response]:
@@ -156,7 +168,10 @@ func run() -> void:
 	var picker = modal(game)
 	check(picker != null and picker.get_script() == load("res://play/career_opening_picker.gd"), "production New uses the reusable picker")
 	check(game.scenario == picker.scenario and game.seed_input == picker.seed_input, "public scenario and seed interfaces stay compatible")
-	check(game.scenario.has_focus(), "existing scenario-first keyboard opening is preserved")
+	check(picker.primary_buttons[0].has_focus() and picker.primary_buttons[0].button_pressed, "opening focuses the visible selected default primary choice")
+	for expected in picker.primary_buttons.slice(1) + [picker.scenario, picker.seed_input.get_line_edit()]:
+		await key(picker, KEY_TAB)
+		check(picker.gui_get_focus_owner() == expected and game.starts.is_empty(), "initial sequential Tab visits every choice then selector and seed without starting")
 	check(game.scenario.get_item_metadata(game.scenario.selected) == game.Career.DEFAULT_SCENARIO and game.seed_input.value == 1, "unchanged policy_career default and seed 1")
 	check(picker.primary_ids == ["policy_career", "stagflation_bank_run", "__priced_bank_workout", "__bank_workout"], "four primary cards use the actual production constant IDs")
 	check(picker.primary_buttons.size() == 4, "all four choices exist immediately")
@@ -206,6 +221,11 @@ func run() -> void:
 	await key(picker, KEY_2, false, false, 50)
 	await key(picker, KEY_ENTER)
 	check(game.seed_input.value == 42 and game.seed_input.get_line_edit().has_focus() and game.starts.is_empty(), "native seed Return commits 42 only, without start or focus loss")
+	var seed_scroll: int = picker.scroll.scroll_vertical
+	await key(picker, KEY_HOME)
+	check(game.seed_input.get_line_edit().caret_column == 0 and picker.scroll.scroll_vertical == seed_scroll, "seed Home edits the caret without scrolling the picker")
+	await key(picker, KEY_END)
+	check(game.seed_input.get_line_edit().caret_column == game.seed_input.get_line_edit().text.length() and picker.scroll.scroll_vertical == seed_scroll and game.starts.is_empty(), "seed End retains native caret and explicit-Start semantics")
 	await key(picker, KEY_ESCAPE)
 	check(not is_instance_valid(picker) and game.rate.get_line_edit().has_focus(), "Escape closes the production modal and restores its numeric opener")
 	check(game.career.encode() == before and drafts(game) == pending and game.previews == previews and FileAccess.get_file_as_bytes(game.save_path) == saved, "opening, selection, details and Escape preserve career/drafts/save with no extra forecasts")
@@ -328,6 +348,19 @@ func layout_checks(game: Control) -> void:
 		game._new_dialog()
 		await settle()
 		var picker = modal(game)
+		# Inspect the untouched initial viewport, before any manual scroll reset.
+		if logical.x >= 800:
+			for button in picker.primary_buttons:
+				check(picker.scroll.get_global_rect().grow(1).encloses(button.get_global_rect()) and picker.scroll.get_global_rect().grow(1).encloses(button.caption.get_global_rect()), "initial opening shows every full primary title/cue without a scroll reset at " + str(logical))
+		var replacement_warning: Label
+		for label in picker.find_children("*", "Label", true, false):
+			if label.text == "Start replaces unsaved decisions. Nothing is saved automatically.":
+				replacement_warning = label
+		check(replacement_warning != null and not picker.scroll.is_ancestor_of(replacement_warning) and picker.get_visible_rect().grow(1).encloses(replacement_warning.get_global_rect()), "replacement warning is persistent and fully visible outside the scroller at " + str(logical))
+		if replacement_warning != null:
+			check(replacement_warning.get_theme_font_size("font_size") == picker.primary_buttons[0].caption.get_theme_font_size("font_size") and replacement_warning.get_line_count() <= 2, "fixed warning retains ordinary readable type and bounded wrapping")
+			check(replacement_warning.get_global_rect().end.y <= picker.cancel.get_global_rect().position.y and picker.cancel.get_global_rect().position.y - replacement_warning.get_global_rect().end.y <= 24, "replacement warning stays immediately above the native action row")
+		print("INITIAL_ENTRY logical=", logical, " scroll=", picker.scroll.scroll_vertical, " first=", picker.primary_buttons[0].get_global_rect(), " viewport=", picker.scroll.get_global_rect())
 		var decorated := Rect2(Vector2(picker.get_position_with_decorations()), Vector2(picker.get_size_with_decorations()))
 		check(root.get_visible_rect().grow(1).encloses(decorated), "picker chrome bounded at " + str(logical))
 		check(picker.get_visible_rect().grow(1).encloses(picker.scroll.get_global_rect()), "scroll body bounded at " + str(logical))
@@ -339,26 +372,54 @@ func layout_checks(game: Control) -> void:
 			await settle()
 			for button in picker.primary_buttons:
 				check(picker.scroll.get_global_rect().grow(1).encloses(button.get_global_rect()), "all four primary choices immediately visible at " + str(logical))
+		check(picker.primary_buttons[0].has_focus() and picker.scroll.get_global_rect().grow(1).encloses(picker.primary_buttons[0].get_global_rect()) and not picker._focus_reveal_pending, "initial selected choice has visible settled focus without polling")
 		var visited: Array = []
-		picker.scenario.grab_focus()
-		for step in range(11):
+		var expected_order: Array = []
+		expected_order.append_array(picker.primary_buttons)
+		expected_order.append_array([picker.scenario, picker.seed_input.get_line_edit(), picker.details_button, picker.cancel, picker.get_ok_button(), picker.scroll])
+		for expected in expected_order:
 			var focused: Control = picker.gui_get_focus_owner()
+			check(focused == expected, "native Tab follows the complete visible primary/selector/seed/details/action sequence")
 			if focused != null:
 				visited.append(focused)
+				check(replacement_warning != null and picker.get_visible_rect().grow(1).encloses(replacement_warning.get_global_rect()) and not picker.scroll.get_global_rect().intersects(replacement_warning.get_global_rect()), "replacement warning remains beside actions through the complete focus cycle")
 				if picker.content.is_ancestor_of(focused):
+					if not picker.scroll.get_global_rect().grow(2).encloses(focused.get_global_rect()):
+						printerr("ENTRY_FOCUS_DIAG logical=%s control=%s rect=%s viewport=%s bar=%s page=%s pending=%s" % [str(logical), str(focused), str(focused.get_global_rect()), str(picker.scroll.get_global_rect()), str(picker.scroll.scroll_vertical), str(picker.scroll.get_v_scroll_bar().page), str(picker._focus_reveal_pending)])
 					check(picker.scroll.get_global_rect().grow(2).encloses(focused.get_global_rect()), "native focus-follow scroll reveals tab target at " + str(logical))
 			await key(picker, KEY_TAB)
 		for control in [picker.scenario, picker.seed_input.get_line_edit(), picker.cancel, picker.get_ok_button(), picker.details_button, picker.scroll] + picker.primary_buttons:
 			check(control in visited, "complete forward native Tab cycle includes " + control.get_class())
 		picker.scenario.grab_focus()
 		await key(picker, KEY_TAB, false, true)
-		check(picker.scroll.has_focus(), "ShiftTab reaches scroll from selector")
+		check(picker.primary_buttons[3].has_focus(), "ShiftTab returns from All scenarios to the last visible primary choice")
+		picker.primary_buttons[0].grab_focus()
+		await key(picker, KEY_TAB, false, true)
+		check(picker.scroll.has_focus(), "ShiftTab wraps from the first primary choice to scrolling")
+		if logical.x <= 800:
+			for code in [KEY_END, KEY_HOME, KEY_PAGEDOWN, KEY_PAGEUP]:
+				picker._schedule_focus_reveal()
+				check(picker._focus_reveal_pending, "manual reading navigation starts with an older queued reveal")
+				var before_manual: int = picker.scroll.scroll_vertical
+				press_without_frame(picker, code)
+				var manual: int = picker.scroll.scroll_vertical
+				check(manual != before_manual and not picker._focus_reveal_pending, "native Page/Home/End moves reading scroll and disconnects the older reveal")
+				await process_frame
+				await process_frame
+				check(picker.scroll.scroll_vertical == manual and not picker._focus_reveal_pending, "older reveal cannot undo explicit reading navigation")
 		await key(picker, KEY_END)
 		check(picker.scroll.scroll_vertical > 0 or picker.scroll.get_v_scroll_bar().max_value <= picker.scroll.get_v_scroll_bar().page, "native scroll End reaches lower content")
 		picker.details_button.grab_focus()
 		await key(picker, KEY_ENTER)
 		await key(picker, KEY_TAB)
 		check(picker.details.has_focus() and picker.scroll.get_global_rect().grow(2).encloses(picker.details.get_global_rect()), "expanded detail remains focus-scroll reachable at " + str(logical))
+		var details_scroll: int = picker.scroll.scroll_vertical
+		picker.details.set_caret_line(0)
+		picker.details.set_caret_column(5)
+		await key(picker, KEY_HOME)
+		check(picker.details.get_caret_column() == 0 and picker.scroll.scroll_vertical == details_scroll, "details Home retains native text navigation instead of moving the body")
+		await key(picker, KEY_END)
+		check(picker.details.get_caret_column() > 0 and picker.scroll.scroll_vertical == details_scroll, "details End retains native text navigation instead of moving the body")
 		# Fit the same open production modal after the parent shrinks.
 		root.size = Vector2i((Vector2(800, 480) * density).round())
 		await settle()
