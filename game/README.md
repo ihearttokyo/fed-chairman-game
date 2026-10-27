@@ -87,11 +87,12 @@ the published inflation miss or output gap, rounded to the policy grid. Funding
 holds the rate and offers today's eligible collateral-backed need. These are
 fictional decision aids, not optimal policies; they cannot see the neutral rate
 or future shocks. Open the single **Policy committee** button (Cmd/Ctrl+K) for a decision docket.
-It compares the current staged snapshot, Hold and all three proposals on shared
-scales: signed Q8 inflation, Q8 unemployment and Q1–Q8 peak unmet funding
-(% initial annual GDP, not bank losses), with exact text values. The structural
-unemployment marker is a current reference, not a fixed target or welfare score;
-lower inflation is not always better, including deflation.
+Absolute Q+8 inflation, Q+8 unemployment and Q+1–8 peak unmet funding
+(% initial annual GDP, not bank losses) remain visible. Bars show percentage-point
+changes from **Hold**, with a shared symmetric scale for each measure. Exact ties
+say Same; small nonzero changes retain their sign. Inflation's objective and the
+current structural unemployment reference provide context, not the bars' zero or
+a welfare ranking. Lower inflation is not always better, including deflation.
 
 Tab to **Stage price/jobs/funding**, then Return to stage and close; nothing
 adopts a quarter. Escape cancels and restores the opener. Modified Return cannot
