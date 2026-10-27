@@ -15,6 +15,7 @@ const WORKOUT_HELP := "Eight meetings. Rate decisions change inflation, activity
 const Chart = preload("res://play/history_chart.gd")
 const HelpGuide = preload("res://play/help_guide.gd")
 const ReportDialog = preload("res://play/report_dialog.gd")
+const CareerOpeningPicker = preload("res://play/career_opening_picker.gd")
 const PolicyReview = preload("res://play/policy_review.gd")
 const ForecastOverview = preload("res://play/forecast_overview.gd")
 const Music = preload("res://play/music.gd")
@@ -1699,33 +1700,20 @@ func _text_dialog(title: String, text: String) -> AcceptDialog:
 	return dialog
 
 func _new_dialog() -> void:
-	var dialog := AcceptDialog.new()
-	var cancel := dialog.add_button("Cancel", true)
-	cancel.pressed.connect(dialog.queue_free)
-	dialog.title = "Start a new career · unsaved decisions will be replaced"
-	var box := _vbox(dialog)
-	_label(box, "Choose a hypothetical economy, not a historical forecast.\nEvery career includes seeded background disturbances, even the baseline.")
-	scenario = OptionButton.new()
-	scenario.accessibility_name = "Career scenario"
-	for case_id in career.cases:
-		scenario.add_item(career.cases[case_id].label)
-		scenario.set_item_metadata(scenario.item_count - 1, case_id)
-		if case_id == Career.DEFAULT_SCENARIO:
-			scenario.select(scenario.item_count - 1)
-	scenario.add_item("Bank workout · borrowing costs")
-	scenario.set_item_metadata(scenario.item_count - 1, PRICED_WORKOUT_CASE)
-	scenario.add_item("Bank workout · 8-meeting laboratory")
-	scenario.set_item_metadata(scenario.item_count - 1, WORKOUT_CASE)
-	box.add_child(scenario)
-	seed_input = _spin(box, "Scenario seed", 1, 2147483647, 1, "Same scenario and seed reproduce the path within the same engine and model.")
-	seed_input.value = 1
-	_label(box, "Default: weakly anchored inflation with recurring dilemmas.\nWeakly anchored inflation also qualifies for Mandate v1. Stagflation & bank run has Recovery v1; other cases are practice.", 13, MUTED)
+	var dialog := CareerOpeningPicker.new()
+	dialog.build(career.cases, Career.DEFAULT_SCENARIO, PRICED_WORKOUT_CASE, WORKOUT_CASE, {
+		PRICED_WORKOUT_CASE: PRICED_WORKOUT_HELP, WORKOUT_CASE: WORKOUT_HELP})
+	scenario = dialog.scenario
+	seed_input = dialog.seed_input
+	var opening_career = career
+	var opening_state: Dictionary = career.state
+	dialog.hold_drafts([rate, guidance, assets, liquidity, inflation_response, activity_response],
+		func(): return career == opening_career and is_same(career.state, opening_state))
 	dialog.confirmed.connect(func():
-		_apply_input(seed_input)
-		_start_career(scenario.get_item_metadata(scenario.selected), int(seed_input.value))
-	)
-	_show_dialog(dialog, Vector2i(740, 240), scenario)
-	_link_focus([scenario, seed_input.get_line_edit(), cancel, dialog.get_ok_button()])
+		if dialog.claim_start():
+			_apply_input(seed_input)
+			_start_career(scenario.get_item_metadata(scenario.selected), int(seed_input.value)))
+	_show_dialog(dialog, Vector2i(820, 560), scenario)
 
 func _review() -> void:
 	var compared: Dictionary = career.review_comparison()
