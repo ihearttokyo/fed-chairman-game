@@ -167,6 +167,12 @@ and valuation assumptions. Normal saves, career awards and automatic follow-up
 are unavailable in this mode; choose a normal new career to return to them.
 See [the accounting and qualification record](../docs/BANK_WORKOUT.md).
 
+The bank outlook previews capital and first-meeting withdrawal payments before
+Adopt. Its chart stops at the last playable meeting, uses interest-inclusive
+capital in the borrowing-cost lab, and reads the existing conditional path—no
+extra simulation. Tab to the chart; Left/Right inspect meetings and Home/End
+select its endpoints. These are assumed paths, not future withdrawal forecasts.
+
 **Borrowing-cost variant:** New career → Bank workout · borrowing costs adds
 separate interest claims, explicit loan-financed debt service and staged/actual
 cash-flow graphics. Negative loan APR is a fictional US counterfactual. The

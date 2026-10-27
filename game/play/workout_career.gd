@@ -125,6 +125,7 @@ func forecast(policy: Dictionary, follow_guidance: bool = false) -> Dictionary:
 	var projected_bank := bank_state.duplicate(true)
 	var states: Array = []
 	var banks: Array = []
+	var bank_results: Array = []
 	for q in range(8):
 		var choice: Dictionary = policy.duplicate(true) if q == 0 else model.benchmark_policy(projected, params, "hold")
 		if q > 0:
@@ -145,7 +146,8 @@ func forecast(policy: Dictionary, follow_guidance: bool = false) -> Dictionary:
 		projected_bank = result.bank_state
 		states.append(projected.duplicate(true))
 		banks.append(projected_bank.duplicate(true))
-	return {"ok": true, "states": states, "bank_states": banks, "episode_end_quarter": EPISODE_QUARTERS,
+		bank_results.append(result.bank_result.duplicate(true))
+	return {"ok": true, "states": states, "bank_states": banks, "bank_results": bank_results, "episode_end_quarter": EPISODE_QUARTERS,
 		"diagnostic_beyond_episode": states[-1].quarter_index > EPISODE_QUARTERS}
 
 func panel_snapshot() -> Dictionary:

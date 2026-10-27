@@ -5,6 +5,7 @@ const Workout = preload("res://play/workout_career.gd")
 const PricedWorkout = preload("res://play/priced_workout_career.gd")
 const PricedCreditPanel = preload("res://play/priced_credit_panel.gd")
 const WorkoutPanel = preload("res://play/bank_workout_panel.gd")
+const BankOutlook = preload("res://play/bank_outlook.gd")
 const WorkoutDebrief = preload("res://play/workout_debrief.gd")
 const FundingPlan = preload("res://play/funding_plan.gd")
 const WORKOUT_CASE := "__bank_workout"
@@ -108,6 +109,7 @@ var docket_signal_states: Array = []
 var docket_controls_applied: bool = false
 var docket_forecast_calls: int = 0
 var workout_panel: PanelContainer
+var bank_outlook: BankOutlook
 var workout_board: WorkoutPanel
 var workout_fed_stock: Label
 var workout_debrief_panel: PanelContainer
@@ -237,6 +239,9 @@ func _ready() -> void:
 	workout_board.details_requested.connect(_workout_details)
 	keyboard_controls.append(workout_board.details_button)
 	workout_panel.hide()
+	bank_outlook = BankOutlook.new()
+	left.add_child(bank_outlook)
+	keyboard_controls.append(bank_outlook.path)
 	priced_credit_board = PricedCreditPanel.new()
 	priced_credit_panel = priced_credit_board
 	left.add_child(priced_credit_panel)
@@ -913,6 +918,7 @@ func _refresh(reset_controls := false, update_preview := true) -> void:
 	if _is_workout():
 		quarter_label.text = "EPISODE COMPLETE · 8 MEETINGS" if complete else "BANK WORKOUT · MEETING %d / 8" % (s.quarter_index + 1)
 	workout_panel.visible = _is_workout()
+	bank_outlook.update_forecast({}, int(s.quarter_index), _is_priced_workout(), _is_workout())
 	priced_credit_panel.visible = _is_priced_workout()
 	if _is_priced_workout():
 		priced_credit_board.update_credit((career as PricedWorkout).credit_snapshot(), {"ok": false, "error": "Episode complete." if complete else "Preview not refreshed."})
@@ -1053,10 +1059,14 @@ func _preview() -> void:
 		follow_up_note.text = "Hold-rate preview; routine follow-up updates the staff estimate each quarter." if follow_up_toggle.button_pressed else ""
 		follow_up_note.visible = follow_up_toggle.button_pressed
 	if career.decisions.size() >= _active_horizon():
+		bank_outlook.update_forecast({}, int(career.state.quarter_index), _is_priced_workout(), _is_workout())
+		_link_focus(_keyboard_focus_order())
 		forecast_label.text = "Episode complete. Review the retained bank ledger." if _is_workout() else "CAREER COMPLETE\nFinal outcomes at Q240. Compare paths is diagnostic only; no further decisions."
 		return
 	var policy := _policy()
 	var result: Dictionary = career.forecast(policy)
+	bank_outlook.update_forecast(result, int(career.state.quarter_index), _is_priced_workout(), _is_workout())
+	_link_focus(_keyboard_focus_order())
 	if _is_priced_workout():
 		priced_credit_board.update_credit((career as PricedWorkout).credit_snapshot(), result)
 	if not result.ok:
