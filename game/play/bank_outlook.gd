@@ -145,11 +145,11 @@ static func signed_amount(value: float) -> String:
 static func unrounded_amount(value: float) -> String:
 	return JSON.stringify(value, "", true, true)
 
-static func present(preview: Dictionary, quarter: int, priced: bool, active: bool = true) -> Dictionary:
-	var unavailable := {"visible": active and quarter < 8, "ok": false, "values": []}
-	if not unavailable.visible or quarter < 0 or typeof(preview.get("ok")) != TYPE_BOOL or not preview.ok:
+static func present(preview: Dictionary, quarter: int, priced: bool, active: bool = true, horizon: int = 8) -> Dictionary:
+	var unavailable := {"visible": active and quarter < horizon, "ok": false, "values": []}
+	if not unavailable.visible or horizon < 1 or horizon > 240 or quarter < 0 or typeof(preview.get("ok")) != TYPE_BOOL or not preview.ok:
 		return unavailable
-	var count := 8 - quarter
+	var count := mini(8, horizon - quarter)
 	for key in ["states", "bank_results"] + (["credit_results"] if priced else []):
 		if typeof(preview.get(key)) != TYPE_ARRAY or preview[key].size() < count:
 			return unavailable
@@ -186,7 +186,7 @@ static func present(preview: Dictionary, quarter: int, priced: bool, active: boo
 	var due_text: String = Amounts._amount(due)
 	if paid < due and paid_text == due_text:
 		paid_text = "<due (~%s)" % paid_text
-	return {"visible": true, "ok": true, "values": values, "first_quarter": quarter + 1, "last_quarter": 8,
+	return {"visible": true, "ok": true, "values": values, "first_quarter": quarter + 1, "last_quarter": quarter + count,
 		"first": values[0], "minimum": values.min(), "paid": paid, "due": due,
 		"payment_fraction": minf(paid, due) / due if due > 0 else 0.0,
 		"payment_text": "Q+1 withdrawals paid %s / due %s" % [paid_text, due_text] if due > 0 else "Q+1 withdrawals: none due",
@@ -234,8 +234,8 @@ func _label(label: Label, text: String, hint: String = "") -> void:
 	label.accessibility_description = hint
 	label.tooltip_text = hint
 
-func update_forecast(preview: Dictionary, quarter: int, priced: bool, active: bool = true) -> void:
-	snapshot = present(preview, quarter, priced, active)
+func update_forecast(preview: Dictionary, quarter: int, priced: bool, active: bool = true, horizon: int = 8) -> void:
+	snapshot = present(preview, quarter, priced, active, horizon)
 	visible = snapshot.visible
 	for label in [heading, summary, resolution, payment, carryover, limits]:
 		_label(label, "")
@@ -254,7 +254,7 @@ func update_forecast(preview: Dictionary, quarter: int, priced: bool, active: bo
 		_label(summary, "Outlook unavailable", "No staged capital or payments are shown without a complete finite playable path.")
 		return
 	var hint: String = snapshot.basis + " Playable meetings only; diagnostic continuation excluded. " + LIMITS
-	_label(summary, "Q+1 capital %s · minimum through Q8 %s" % [signed_amount(snapshot.first), signed_amount(snapshot.minimum)], hint + " Unrounded first %s; minimum %s." % [unrounded_amount(snapshot.first), unrounded_amount(snapshot.minimum)])
+	_label(summary, "Q+1 capital %s · minimum through Q%d %s" % [signed_amount(snapshot.first), snapshot.last_quarter, signed_amount(snapshot.minimum)], hint + " Unrounded first %s; minimum %s." % [unrounded_amount(snapshot.first), unrounded_amount(snapshot.minimum)])
 	path.set_values(snapshot.values, snapshot.first_quarter, hint)
 	var below: String = path.resolution_caption()
 	_label(resolution, "Capital scale ±" + path.scale_text() + (" · " + below if not below.is_empty() else ""), "Symmetric capital axis; extent rounded to three significant digits. These signed nonzero samples are omitted from the line and points, never drawn as zero. Inspect their unrounded values with Left/Right.")
@@ -265,4 +265,4 @@ func update_forecast(preview: Dictionary, quarter: int, priced: bool, active: bo
 	meter.accessibility_description = payment.tooltip_text
 	if snapshot.queued_peak > 0 or snapshot.overdue_peak > 0:
 		carryover.show()
-		_label(carryover, "Peak carryover: queued %s · overdue principal %s" % [Amounts._amount(snapshot.queued_peak), Amounts._amount(snapshot.overdue_peak)], "Separate maxima through playable Q8; queue is included in deposits, overdue principal in CB loans. They are not additional liabilities or a sum across meetings.")
+		_label(carryover, "Peak carryover: queued %s · overdue principal %s" % [Amounts._amount(snapshot.queued_peak), Amounts._amount(snapshot.overdue_peak)], "Separate maxima through forecast Q%d; queue is included in deposits, overdue principal in CB loans. They are not additional liabilities or a sum across meetings." % snapshot.last_quarter)

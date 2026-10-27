@@ -126,10 +126,11 @@ Draft signal suppression spans the modal lifetime and restores prior flags on
 close, staging or shutdown, including pointer opening. The headless tests check mechanics, not all-window usability; current
 native pixels, keyboard interaction and density checks remain separate GUI gates.
 
-New career shows four direct choices: **Varied policy career** (the unchanged
+New career shows five direct choices: **Varied policy career** (the unchanged
 60-year / Q240 default), **Stagflation & bank run**, and both **Bank workout**
-laboratories. Geometric markers identify choices, not forecast trends. **All
-scenarios** retains every original case and both labs. Selecting a choice only
+laboratories, plus **Bank runoff · to maturity**. Geometric markers identify
+choices, not forecast trends. **All scenarios** retains every original case and
+the three bank exercises. Selecting a choice only
 updates the selector and its short cue; **Details & assumptions** expands the
 existing scenario description or lab help. Only explicit **Start** replaces
 unsaved decisions; opening, reading, changing selection or cancelling writes no
@@ -185,6 +186,21 @@ held-rate quotes share this authored diminishing-transmission rule; the cost
 panel retains nominal requested policy separately from contractual APR. This is
 not an estimated Federal Reserve lending rule or an optimal-policy claim.
 See `../docs/PRICED_CREDIT_EXPERIMENT.md` for limits and qualification.
+
+**Closed-book runoff:** New career → Bank runoff · to maturity carries the same
+priced bank to Q20, its last security maturity. The first eight withdrawal waves
+and seeded macro shocks are unchanged; later new withdrawal requests are zero.
+Existing loans, interest and unpaid claims continue without forgiveness. It is
+unsaved, has no career award, and is not a legal bank-resolution process.
+
+At Q8, the realized checkpoint remains visible while play continues. Separate
+early/late inflation-distance and employment-shortfall bars show your actual
+path, alongside Q8/current capital, principal and queued withdrawals—not a causal
+policy comparison or forecast. Before Q9, the later interval is not yet realized.
+The policy forecast still looks ahead at most eight quarters and stops its chart
+at the last playable meeting; it never claims a Q20 forecast at the opening.
+The terminal payment timeline remains keyboard-inspectable.
+See [the prospective screen and its limits](../docs/GAMEPLAY_DEPTH.md#closed-book-runoff-the-cost-after-q8).
 
 ## Routine follow-up candidate
 

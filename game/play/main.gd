@@ -5,11 +5,14 @@ const Workout = preload("res://play/workout_career.gd")
 const PricedWorkout = preload("res://play/priced_workout_career.gd")
 const PricedCreditPanel = preload("res://play/priced_credit_panel.gd")
 const WorkoutPanel = preload("res://play/bank_workout_panel.gd")
+const ClosedBookRunoff = preload("res://play/closed_book_runoff.gd")
 const BankOutlook = preload("res://play/bank_outlook.gd")
 const WorkoutDebrief = preload("res://play/workout_debrief.gd")
 const FundingPlan = preload("res://play/funding_plan.gd")
 const WORKOUT_CASE := "__bank_workout"
 const PRICED_WORKOUT_CASE := "__priced_bank_workout"
+const RUNOFF_CASE := "__priced_bank_runoff"
+const RUNOFF_HELP := "Twenty meetings through final security maturity Q20. The existing bank book and first eight withdrawal requests are unchanged; later requests are zero. Seeded macro shocks continue. Eight-quarter previews remain conditional, not a forecast of the whole runoff. Q8 is a checkpoint, not completion. This is not a legal resolution mechanism; remaining debts and interest are not forgiven at Q20.\n\n"
 const PRICED_WORKOUT_HELP := "Eight meetings. Rates affect inflation, activity, security values and bank borrowing costs. Loan APR equals requested policy at zero or above; negative loan APR follows diminishing transmission (s × tanh(requested rate / s), using the model efficacy scale). Requested rates and guidance remain uncapped. Interest uses opening principal and the meeting's 90/91/92/92-day schedule, divided by 365. This is an authored quarterly contract, not exact US discount-window terms.\n\nAfter principal repayment, the Fed settles reverse interest, then the bank pays interest before withdrawals. Collateral-supported new advances may fund interest before withdrawals. Funded debt service raises actual principal; unpaid interest stays separate. Lending cannot create equity.\n\nNegative loan APR pays the bank: an explicit fictional US counterfactual. Positive and reverse claims never cancel without cash. Credit is assumed collectible; impairment is unsupported.\n\nThe cost panel separates this meeting's staged preview from the last actual payment. Future withdrawals/shocks are hidden. All bank amounts are % initial annual GDP. This unsaved lab has no normal career awards or save/load."
 
 const WORKOUT_HELP := "Eight meetings. Rate decisions change inflation, activity and the market value of the bank's securities. Lending can pay withdrawals or renew debt; it cannot create equity. Unpaid withdrawals and overdue loans carry forward. A final withdrawal wave requests all remaining unrequested deposits. Maturing securities turn into cash and stop serving as collateral.\n\nThis authored exercise uses zero loan interest and automatic cash-first repayment of CB principal, then deposit withdrawals. That is a teaching assumption, not statutory insolvency priority. Securities use one flat semiannual discount yield. Quantities are % of initial annual GDP; policy offers remain % of current GDP.\n\nPreviews include known maturities and today's request, not future withdrawal requests or shocks. Paths beyond meeting eight are diagnostics, not additional playable meetings. Normal career saves and awards are unavailable in this unsaved laboratory."
@@ -109,6 +112,7 @@ var docket_signal_states: Array = []
 var docket_controls_applied: bool = false
 var docket_forecast_calls: int = 0
 var workout_panel: PanelContainer
+var runoff_context: ClosedBookRunoff
 var bank_outlook: BankOutlook
 var workout_board: WorkoutPanel
 var workout_fed_stock: Label
@@ -246,10 +250,13 @@ func _ready() -> void:
 	priced_credit_panel = priced_credit_board
 	left.add_child(priced_credit_panel)
 	priced_credit_panel.hide()
+	runoff_context = ClosedBookRunoff.new()
+	left.add_child(runoff_context)
 	workout_debrief_panel = _panel(left)
 	workout_debrief = WorkoutDebrief.new()
 	workout_debrief_panel.add_child(workout_debrief)
 	workout_debrief_panel.hide()
+	keyboard_controls.append(workout_debrief.timeline)
 	var brief_box := _vbox(_panel(left), 5)
 	var dispatch_header := HBoxContainer.new()
 	brief_box.add_child(dispatch_header)
@@ -495,7 +502,7 @@ func _button(parent: Node, text: String, action: Callable, code: Key = KEY_NONE,
 func _keyboard_focus_order() -> Array[Control]:
 	var order: Array[Control] = []
 	for control in keyboard_controls:
-		if control.is_visible_in_tree() and not (control is BaseButton and control.disabled):
+		if control.is_visible_in_tree() and control.focus_mode != Control.FOCUS_NONE and not (control is BaseButton and control.disabled):
 			order.append(control)
 	order.sort_custom(func(a: Control, b: Control):
 		if a == cockpit_scroll: return false
@@ -872,11 +879,15 @@ func _is_workout() -> bool:
 func _is_priced_workout() -> bool:
 	return career is PricedWorkout
 
+func _is_runoff() -> bool:
+	return _is_priced_workout() and career.episode_quarters == 20
+
 func _workout_help() -> String:
+	if _is_runoff(): return RUNOFF_HELP + PRICED_WORKOUT_HELP.replace("Eight meetings.", "Twenty meetings.")
 	return PRICED_WORKOUT_HELP if _is_priced_workout() else WORKOUT_HELP
 
 func _active_horizon() -> int:
-	return Workout.EPISODE_QUARTERS if _is_workout() else Career.MAX_QUARTERS
+	return career.episode_quarters if _is_workout() else Career.MAX_QUARTERS
 
 func _workout_details() -> void:
 	_text_dialog("Bank workout", _workout_help())
@@ -885,10 +896,15 @@ func _start_career(case_id: String, seed_number: int) -> void:
 	_finish_follow_up("New career", false)
 	var candidate = career
 	var result: Dictionary
-	if case_id in [WORKOUT_CASE, PRICED_WORKOUT_CASE]:
-		candidate = PricedWorkout.new() if case_id == PRICED_WORKOUT_CASE else Workout.new()
+	if case_id in [WORKOUT_CASE, PRICED_WORKOUT_CASE, RUNOFF_CASE]:
+		candidate = PricedWorkout.new() if case_id in [PRICED_WORKOUT_CASE, RUNOFF_CASE] else Workout.new()
 		var recipe: Dictionary = candidate.model.bank_workout_opening(candidate.params)
-		result = candidate.start_episode(recipe.bank, recipe.requests, recipe.haircut_pct, recipe.pledgeable_share, "stagflation_bank_run", seed_number, recipe.remaining_request_index) if recipe.ok else recipe
+		if recipe.ok and case_id == RUNOFF_CASE:
+			var requests: Array = recipe.requests.duplicate(true)
+			requests.append_array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+			result = candidate.start_episode(recipe.bank, requests, recipe.haircut_pct, recipe.pledgeable_share, "stagflation_bank_run", seed_number, recipe.remaining_request_index, 20)
+		else:
+			result = candidate.start_episode(recipe.bank, recipe.requests, recipe.haircut_pct, recipe.pledgeable_share, "stagflation_bank_run", seed_number, recipe.remaining_request_index) if recipe.ok else recipe
 	else:
 		if _is_workout():
 			candidate = Career.new()
@@ -904,21 +920,21 @@ func _start_career(case_id: String, seed_number: int) -> void:
 	consequence.text = "Review current conditions, stage policy, then adopt."
 	consequence.tooltip_text = ""
 	consequence.accessibility_description = ""
-	status_label.text = "New unsaved career · %s · seed %d" % ["Bank workout · 8 meetings" if _is_workout() else career.cases[case_id].label, seed_number]
+	status_label.text = "New unsaved career · %s · seed %d" % ["Bank runoff · 20 meetings" if _is_runoff() else "Bank workout · 8 meetings" if _is_workout() else career.cases[case_id].label, seed_number]
 
 func _refresh(reset_controls := false, update_preview := true) -> void:
 	if funding_plan != null:
 		funding_plan.update_plan({}, 0.0, 1.0)
 	var s: Dictionary = career.state
 	var complete := career.decisions.size() >= _active_horizon()
-	case_title.text = "Bank workout · unsaved laboratory" if _is_workout() else career.cases[career.scenario_id].label
+	case_title.text = "Bank runoff · to maturity · unsaved" if _is_runoff() else "Bank workout · unsaved laboratory" if _is_workout() else career.cases[career.scenario_id].label
 	var n: float = career.model.nominal_gdp_ratio(s)
 	case_detail.text = "Holdings %.1f%% · Term premium %+.3f pp · Loans %s%% · Reserves %s%% · RRP %s%%\nStocks: %% of current annual GDP" % [s.asset_stock_pct_initial_gdp / n, s.term_premium_pct, Career.funding_amount_text(s.outstanding_liquidity_pct_initial_gdp / n), Career.funding_amount_text(s.reserves_pct_initial_gdp / n), Career.funding_amount_text(s.reverse_repo_pct_initial_gdp / n)]
 	quarter_label.text = "CAREER COMPLETE · %d MEETINGS" % _active_horizon() if complete else "YEAR %02d / Q%d   ·   MEETING %d" % [int(s.quarter_index / 4) + 1, int(s.quarter_index) % 4 + 1, s.quarter_index + 1]
 	if _is_workout():
-		quarter_label.text = "EPISODE COMPLETE · 8 MEETINGS" if complete else "BANK WORKOUT · MEETING %d / 8" % (s.quarter_index + 1)
+		quarter_label.text = "EPISODE COMPLETE · %d MEETINGS" % _active_horizon() if complete else "%s · MEETING %d / %d" % ["BANK RUNOFF" if _is_runoff() else "BANK WORKOUT", s.quarter_index + 1, _active_horizon()]
 	workout_panel.visible = _is_workout()
-	bank_outlook.update_forecast({}, int(s.quarter_index), _is_priced_workout(), _is_workout())
+	bank_outlook.update_forecast({}, int(s.quarter_index), _is_priced_workout(), _is_workout(), _active_horizon())
 	priced_credit_panel.visible = _is_priced_workout()
 	if _is_priced_workout():
 		priced_credit_board.update_credit((career as PricedWorkout).credit_snapshot(), {"ok": false, "error": "Episode complete." if complete else "Preview not refreshed."})
@@ -926,9 +942,13 @@ func _refresh(reset_controls := false, update_preview := true) -> void:
 		priced_credit_board.update_credit({}, {})
 	workout_debrief_panel.visible = _is_workout() and complete
 	if _is_workout():
-		workout_debrief.update_episode((career as Workout).bank_history, (career as Workout).settlements, complete)
+		workout_debrief.update_episode((career as Workout).bank_history, (career as Workout).settlements, complete, _active_horizon())
 	else:
 		workout_debrief.update_episode([], [], false)
+	if _is_runoff():
+		runoff_context.update_actual(career.history, career.bank_history, career.credit_results, int(s.quarter_index), career.params.inflation_target_pct)
+	else:
+		runoff_context.update_actual([], [], [], 0, 2.0, false)
 	city_panel.visible = not _is_workout()
 	mandate_label.visible = not _is_workout()
 	for button in normal_storage_buttons:
@@ -1059,13 +1079,13 @@ func _preview() -> void:
 		follow_up_note.text = "Hold-rate preview; routine follow-up updates the staff estimate each quarter." if follow_up_toggle.button_pressed else ""
 		follow_up_note.visible = follow_up_toggle.button_pressed
 	if career.decisions.size() >= _active_horizon():
-		bank_outlook.update_forecast({}, int(career.state.quarter_index), _is_priced_workout(), _is_workout())
+		bank_outlook.update_forecast({}, int(career.state.quarter_index), _is_priced_workout(), _is_workout(), _active_horizon())
 		_link_focus(_keyboard_focus_order())
 		forecast_label.text = "Episode complete. Review the retained bank ledger." if _is_workout() else "CAREER COMPLETE\nFinal outcomes at Q240. Compare paths is diagnostic only; no further decisions."
 		return
 	var policy := _policy()
 	var result: Dictionary = career.forecast(policy)
-	bank_outlook.update_forecast(result, int(career.state.quarter_index), _is_priced_workout(), _is_workout())
+	bank_outlook.update_forecast(result, int(career.state.quarter_index), _is_priced_workout(), _is_workout(), _active_horizon())
 	_link_focus(_keyboard_focus_order())
 	if _is_priced_workout():
 		priced_credit_board.update_credit((career as PricedWorkout).credit_snapshot(), result)
@@ -1075,7 +1095,7 @@ func _preview() -> void:
 	var first: Dictionary = result.states[0]
 	var last: Dictionary = result.states[-1]
 	if _is_workout() and result.diagnostic_beyond_episode:
-		forecast_label.tooltip_text = "Q+8 continues diagnostically beyond the playable eighth meeting. No future withdrawal requests are revealed."
+		forecast_label.tooltip_text = "Q+8 continues diagnostically beyond playable Q%d. No future withdrawal requests are revealed." % _active_horizon()
 	else:
 		forecast_label.tooltip_text = ""
 	var rate_text := "Rate %.2f%%" % first.policy_rate_pct
@@ -1098,7 +1118,7 @@ func _decision_briefing() -> String:
 	var n: float = first.decision_nominal_gdp_ratio
 	if _is_workout():
 		var bank: Dictionary = selected.bank_states[0]
-		var report := "CURRENT MEETING / BANK WORKOUT\nRate %.2f%% · Unpaid withdrawals %s · Overdue CB debt %s (%% initial GDP).\n\nFORECASTS / CONDITIONAL PATHS\nStaged policy versus holding the current rate with no new loan offer. Both include this bank's retained claims and known maturities; future withdrawal requests and shocks are excluded. Q+8 may extend beyond the playable eighth meeting.\n\nREFERENCE AND LIMITS\nLoan renewal moves no cash. Fresh advances cannot repair equity. Open Bank workout Details for the authored payment priority and valuation assumptions." % [first.policy_rate_pct, Career.funding_amount_text(bank.withdrawal_queue), Career.funding_amount_text(bank.loan_arrears)]
+		var report := "CURRENT MEETING / BANK WORKOUT\nRate %.2f%% · Unpaid withdrawals %s · Overdue CB debt %s (%% initial GDP).\n\nFORECASTS / CONDITIONAL PATHS\nStaged policy versus holding the current rate with no new loan offer. Both include this bank's retained claims and known maturities; future withdrawal requests and shocks are excluded. Q+8 may extend beyond playable Q%d.\n\nREFERENCE AND LIMITS\nLoan renewal moves no cash. Fresh advances cannot repair equity. Open Bank workout Details for the authored payment priority and valuation assumptions." % [first.policy_rate_pct, Career.funding_amount_text(bank.withdrawal_queue), Career.funding_amount_text(bank.loan_arrears), _active_horizon()]
 		if _is_priced_workout():
 			var staged_credit: Dictionary = selected.credit_results[0]
 			var held_credit: Dictionary = held.credit_results[0]
@@ -1417,7 +1437,7 @@ func _advance() -> void:
 			_link_focus(_keyboard_focus_order())
 		else:
 			_finish_follow_up("Routine follow-up unavailable; decision retained.", false)
-	elif int(career.state.quarter_index) % 12 == 0:
+	elif not _is_workout() and int(career.state.quarter_index) % 12 == 0:
 		_review()
 
 func _commit_policy(policy: Dictionary) -> Dictionary:
@@ -1780,7 +1800,7 @@ func _new_dialog() -> void:
 	career_opening_picker = dialog
 	entry_guard_in_modal = true
 	dialog.build(career.cases, Career.DEFAULT_SCENARIO, PRICED_WORKOUT_CASE, WORKOUT_CASE, {
-		PRICED_WORKOUT_CASE: PRICED_WORKOUT_HELP, WORKOUT_CASE: WORKOUT_HELP})
+		PRICED_WORKOUT_CASE: PRICED_WORKOUT_HELP, WORKOUT_CASE: WORKOUT_HELP, RUNOFF_CASE: RUNOFF_HELP + PRICED_WORKOUT_HELP.replace("Eight meetings.", "Twenty meetings.")}, RUNOFF_CASE)
 	scenario = dialog.scenario
 	seed_input = dialog.seed_input
 	dialog.tree_exited.connect(func(): _release_unused_entry_drafts.call_deferred())
@@ -1932,13 +1952,13 @@ func _mandate_summary(assessment: Dictionary) -> String:
 
 func _mandate_rules_text() -> String:
 	if _is_workout():
-		return "Bank workout is an eight-meeting laboratory, without normal career awards."
+		return "Bank workout is an eight-meeting laboratory, without normal career awards." if _active_horizon() == 8 else "Bank runoff is a %d-meeting unsaved laboratory, without normal career awards or legal resolution." % _active_horizon()
 	if career.scenario_id == "stagflation_bank_run":
 		return "Recovery v1 is a separate fictional stabilization objective. Complete at least 12 quarters. Over the latest 12, average absolute inflation distance from 2% must be ≤1 pp and unemployment above its changing structural reference ≤1 pp. Cover ≥95% of cumulative eligible collateral-backed local funding, including refinancing; aggregate reserve loans do not count. No eligible need is n.a. New shocks can end stabilization; play continues through Q240. Only completed canonical shocks qualify. Inherited crisis inflation is not a lifetime-average penalty. Mandate v1 and its 60-year criteria are unchanged. Values are unrounded; neither score claims optimal policy or a real Federal Reserve rule."
 	return "Mandate v1 is a fictional game challenge for Varied policy career and Weakly anchored inflation, with canonical completed shocks. At Q240, career-average inflation distance must be ≤%.2f pp and unemployment above its changing structural reference ≤%.2f pp. Latest %d-quarter averages must each be ≤%.2f pp. Cover ≥%.0f%% of haircut/eligibility-supported local funding, including refinancing; aggregate reserve loans and insolvency repair do not count. No eligible need is not applicable. Criteria use unrounded values. Early misses never stop play. Other laboratories and custom completed shock paths are practice. Assessment is recalculated from completed history; it is not a Federal Reserve dismissal rule or an optimal-policy claim." % [Career.MANDATE_INFLATION_MISS_MAX, Career.MANDATE_EMPLOYMENT_SHORTFALL_MAX, Career.MANDATE_RECENT_QUARTERS, Career.MANDATE_RECENT_EMPLOYMENT_SHORTFALL_MAX, 100.0 * Career.MANDATE_FUNDING_COVERAGE_MIN]
 
 func _journal() -> void:
-	var text := "%s · seed %d\nRates and changes are percentage units. Asset and lending flows below use %% of each meeting's current annual GDP; ending stocks use ending GDP.\n\n" % ["Bank workout" if _is_workout() else career.cases[career.scenario_id].label, career.seed_value]
+	var text := "%s · seed %d\nRates and changes are percentage units. Asset and lending flows below use %% of each meeting's current annual GDP; ending stocks use ending GDP.\n\n" % ["Bank runoff · to maturity (20 meetings)" if _is_runoff() else "Bank workout" if _is_workout() else career.cases[career.scenario_id].label, career.seed_value]
 	for s in career.history:
 		text += "Q%03d | inflation %.2f%% | long expectations %.2f%% | unemployment %.2f%% | structural reference %.2f%% | rate %.2f%% | output gap %+.2f%% | credibility %.1f | support %.1f | hardship memory %.2f | assets %+.2f | loans %s\n\n" % [s.quarter_index, s.four_quarter_inflation_pct, s.expected_long_inflation_pct, s.unemployment_rate_pct, s.structural_unemployment_pct, s.policy_rate_pct, s.output_gap_pct, s.credibility * 100, s.public_support, s.public_hardship_memory, s.asset_flow_applied_pct_initial_gdp / s.decision_nominal_gdp_ratio, Career.funding_amount_text(s.liquidity_applied_pct_initial_gdp / s.decision_nominal_gdp_ratio)]
 	if _is_workout():

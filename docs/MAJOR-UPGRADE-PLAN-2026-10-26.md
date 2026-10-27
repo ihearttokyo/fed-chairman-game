@@ -5,19 +5,48 @@ A decision desk, not a wall of explanation. Make economic consequences visible,
 make the controls easy to learn, and make later policy decisions worth making.
 Ship coherent improvements with a matching app and private walkthrough.
 
-## Current iteration — bank decisions before adoption
+## Current iteration — consequential crisis decisions
 
-Alpha 622 (`39f015bc00d75b8f38618b4c3468d5c5c3167545`) is installed and released.
-The comparison and opening-choice improvements are frozen; do not polish them
-again without a demonstrated regression. Main-career decision depth remains
-unfinished. A competent Staff rule is not itself a defect or a reason to hide advice.
+Alpha 623 (`6e0aaccc5f4ca675aef45b2e12cf81fc30e18e90`) is installed and released.
+Its bank decision outlook passed scoped independent and native keyboard review:
+the cached projection now shows capital and current withdrawal payments before
+adoption, using the ordinary or interest-inclusive ledger as appropriate.
+The outlook, comparison and opening-choice improvements are frozen. This is
+better decision visibility, not a new economic mechanism or whole-game acceptance.
 
-Next: make the existing workout rate-versus-bank-capital tradeoff actionable
-before adoption. Show a compact conditional capital path and current withdrawal
-payments, with keyboard inspection and the correct ordinary/priced accounting.
-Reuse the cached projection; preserve normal careers, equations and saves.
-This candidate still needs independent review and native intended-use evidence.
-It is not a new challenge score or a claim of stronger main-career mechanics.
+Main-career decision depth remains unfinished. A competent Staff rule is not
+itself a defect or a reason to hide advice. The retained strategy audit found
+Staff plus current secured funding met all six sampled Mandate assessments;
+the short priced-workout screen also left fixed-zero-rate funding unusually
+strong for bank capital and employment, although worse for inflation.
+
+Candidate: a closed-book runoff episode through Q20, the existing book's final
+security maturity. The eight-meeting lab stops before that settlement and much
+of the delayed macro response. Preserve its opening book and withdrawal waves;
+append no new withdrawals, deposits, assets or capital. Carry principal, interest
+and unpaid obligations without forgiveness. This is not a legal bank-resolution
+or insolvency process. Default eight-meeting labs remain unchanged.
+
+Freeze controls and decision-relevance criteria before runs. Keep Staff plus
+current funding and fixed-zero-rate funding as strong controls; compare inflation,
+employment, capital, payments and borrowing costs separately at Q8 and Q20.
+Require a material late macro tradeoff and consequential bank settlement, not
+floating-point differences or twelve extra clicks. Qualification earns a native
+prototype, not a claim of player enjoyment or an accepted new challenge.
+Do not manufacture success by weakening advice, increasing shock severity or
+choosing award thresholds after results. If this adds only laboratory variety,
+retain that result and choose a structurally different mechanism. A successful
+laboratory screen still does not qualify stronger normal-career gameplay.
+
+The frozen three-seed/four-policy screen is complete: 240 native advances,
+unchanged economic equations, and material late inflation/jobs/bank-capital
+tradeoffs. Independent correctness and intended-use reviews support a bounded
+native prototype. The candidate adds a separate unsaved opening, accurate
+rolling-eight-quarter forecasts, and realized Q8/late/terminal context. Native
+keyboard/compact review and matching release delivery remain required; the
+screen itself does not pass those gates. Details and separate outcomes are in
+[the gameplay-depth record](GAMEPLAY_DEPTH.md#closed-book-runoff-the-cost-after-q8).
+
 Keep the larger funded-replacement prototype unqualified: arithmetic checks and
 cash reclassification do not repair its failed spending/output reference.
 
