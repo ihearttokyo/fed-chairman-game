@@ -111,6 +111,7 @@ var priced_credit_panel: PanelContainer
 var priced_credit_board: PricedCreditPanel
 var city_panel: PanelContainer
 var normal_storage_buttons: Array[Button] = []
+var focus_reveal_pending := false
 
 const KEYBOARD_HELP := "Keyboard controls\nTab / Shift+Tab move forward / back through visible controls. Return or Space activates a focused button. In numeric fields, type a value and press Return to commit only that field; Up / Down use its advertised step. Arrow keys navigate open scenario or guidance menus; Return selects and Escape cancels.\n\nCharts: Left / Right inspect completed quarters; Home / End select the first / latest. Focused cockpit and reports: Page Up / Down scroll, Home / End reach the ends. Escape or modified Return closes an informational report and returns focus. Plain Return closes its text or OK button, otherwise activates the focused report control. Escape cancels replacement; Return still follows the focused confirmation control.\n\nOptional accelerators use Cmd on macOS or Ctrl elsewhere: N New, S Save, O Load, J journal, P Compare, R staff estimate, K open committee docket, modified Return adopt one quarter. F1 opens this guide. Every command also has a Tab-accessible control; plain typing never adopts a quarter.\n\n"
 const STAFF_HELP := "Staff estimates use two-decimal published inflation, output gap and long expectations with the scenario’s initial neutral-rate prior. They do not know the evolving neutral rate or short expectations. An estimate is not an optimal policy; other tools remain unchanged. The rate formula does not directly adjust for credit spreads, term premiums or weaker negative-rate transmission."
@@ -138,6 +139,9 @@ func _ready() -> void:
 	overflow_scroll = ScrollContainer.new()
 	overflow_scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overflow_scroll.follow_focus = true
+	# Keep wrapped footer width identical with and without vertical overflow.
+	# Breakpoint reservation alone cannot prevent scrollbar-induced height hysteresis.
+	overflow_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_RESERVE
 	add_child(overflow_scroll)
 	var layout := VBoxContainer.new()
 	layout.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -281,7 +285,13 @@ func _ready() -> void:
 	get_window().dpi_changed.connect(_resize_layout)
 	overflow_scroll.resized.connect(_resize_layout)
 	overflow_scroll.get_v_scroll_bar().visibility_changed.connect(_resize_layout)
-	cockpit_scroll.resized.connect(_reveal_focus)
+	cockpit_scroll.resized.connect(_schedule_focus_reveal)
+	# Wrapped text and nested containers may sort after the resize callback's
+	# deferred work. Observe their actual layout, not a fixed number of frames.
+	for container in overflow_scroll.find_children("*", "Container", true, false):
+		if not container is ScrollContainer: # Scroll-only movement is not a reflow.
+			container.sort_children.connect(_schedule_focus_reveal)
+	get_viewport().gui_focus_changed.connect(func(_control: Control): _schedule_focus_reveal())
 	for card in metric_layout.get_children():
 		card.minimum_size_changed.connect(_resize_layout)
 	_resize_layout()
@@ -308,8 +318,28 @@ func _row_minimum(row: BoxContainer) -> float:
 			width += child.get_combined_minimum_size().x
 	return width
 
+func _schedule_focus_reveal() -> void:
+	if focus_reveal_pending or not is_inside_tree() or is_queued_for_deletion():
+		return
+	focus_reveal_pending = true
+	# One coalesced callback after the current layout/message-queue batch. Later
+	# sorts request another callback; there is no timer or perpetual polling.
+	get_tree().process_frame.connect(_reveal_settled_focus, CONNECT_ONE_SHOT)
+
+func _reveal_settled_focus() -> void:
+	focus_reveal_pending = false
+	if not is_inside_tree() or is_queued_for_deletion():
+		return
+	for child in get_children():
+		if child is Window and child.visible and not child.is_queued_for_deletion():
+			return # A modal owns its focus/scrolling; never reveal its main opener.
+	_reveal_focus()
+
 func _reveal_focus() -> void:
 	var focused := get_viewport().gui_get_focus_owner()
+	# A focused scroller owns manual Page/Home/End navigation; do not undo it.
+	if focused is ScrollContainer:
+		return
 	if focused != null:
 		if cockpit_scroll.is_ancestor_of(focused):
 			cockpit_scroll.ensure_control_visible(focused)
@@ -354,7 +384,7 @@ func _resize_layout() -> void:
 	if policy_panel.get_index() != policy_index:
 		body_layout.move_child(policy_panel, policy_index)
 		_link_focus(_keyboard_focus_order())
-	_reveal_focus.call_deferred()
+	_schedule_focus_reveal()
 	for child in get_children():
 		if child is ReportDialog and child.visible:
 			_fit_report.call_deferred(child)

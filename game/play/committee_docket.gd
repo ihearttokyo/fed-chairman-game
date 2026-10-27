@@ -9,41 +9,156 @@ var quote: Dictionary = {}
 var stage_buttons: Array[Button] = []
 var proposal_cards: Array[PanelContainer] = []
 var metric_values: Array[Label] = []
+var delta_values: Array[Label] = []
+var metric_plots: Array[Control] = []
+var delta_scales: Array = []
 var cards: GridContainer
 var reference_table: GridContainer
 var scroll: ScrollContainer
 var content: VBoxContainer
+var context_footer: VBoxContainer
 var message: Label
 var refresh_button: Button
 var details_button: Button
 var details: Label
 var build_count: int = 0
+var focus_reveal_pending := false
 
 class MetricPlot:
 	extends Control
+	const NEGATIVE_COLOR := Color("91c9e8")
+	const POSITIVE_COLOR := Color("e9b76e")
+	const TIE_COLOR := Color("e7eee9")
 	var value: float
-	var reference: float
-	var low: float
-	var high: float
-	var magnitude: float = 1.0
-	var funding: bool = false
+	var held_value: float
+	var delta: float
+	var delta_scale: Dictionary
 	func position_for(number: float) -> float:
-		# Divide before subtracting: large finite signed values remain drawable.
-		var a: float = low / magnitude
-		var b: float = high / magnitude
-		return 8.0 + (number / magnitude - a) / (b - a) * maxf(1.0, size.x - 16.0)
-	func _draw() -> void:
-		var y: float = 9.0
-		draw_line(Vector2(8, y), Vector2(size.x - 8, y), Color("8da5ac"), 2.0)
-		var x: float = position_for(reference)
-		draw_line(Vector2(x, y - 6), Vector2(x, y + 6), Color("e9b76e"), 2.0)
-		draw_circle(Vector2(position_for(value), y), 4.0, Color("e7eee9"))
+		var center: float = size.x * 0.5
+		if delta_scale.radius == 0.0:
+			return center
+		# Divide before multiplying: finite deltas up to DBL_MAX stay drawable.
+		return center + (number / delta_scale.radius) * maxf(0.0, size.x * 0.5 - 8.0)
+	func render_state() -> String:
+		if delta_scale.overflow:
+			return "overflow"
+		if value == held_value:
+			return "tie"
+		# A nonzero double may underflow in normalization or disappear when its
+		# coordinate becomes a Vector2. Never turn that into a zero/tie marker.
+		var center: float = position_for(0.0)
+		var x: float = position_for(delta)
+		if absf(x - center) < 1.0 or Vector2(x, 0).x == Vector2(center, 0).x:
+			return "below_resolution"
+		return "point"
+	func direction_color() -> Color:
+		return TIE_COLOR if value == held_value else (NEGATIVE_COLOR if value < held_value else POSITIVE_COLOR)
+	func _notification(what: int) -> void:
+		if what == NOTIFICATION_RESIZED:
+			queue_redraw()
+	func _caption(text: String, y: float) -> void:
 		var font: Font = get_theme_default_font()
-		var left: String = Docket.value_text(low, funding)
-		var right: String = Docket.value_text(high, funding)
-		draw_string(font, Vector2(0, 29), left, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("a4babe"))
+		var width: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
+		draw_string(font, Vector2(maxf(0.0, (size.x - width) * 0.5), y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("a4babe"))
+	func axis_labels() -> PackedStringArray:
+		if not delta_scale.available or delta_scale.overflow or not is_finite(delta_scale.radius) or delta_scale.radius < 0.0:
+			return PackedStringArray()
+		var radius: float = delta_scale.radius
+		if radius == 0.0:
+			return PackedStringArray(["0"])
+		# Three significant digits for ticks only. Exact raw data and the shared
+		# mathematical domain stay untouched in the plot, tooltip and AX detail.
+		var extent: String
+		if radius >= 0.01 and radius < 1000.0:
+			var decimals := 0 if radius >= 100.0 else 1 if radius >= 10.0 else 2 if radius >= 1.0 else 3 if radius >= 0.1 else 4
+			extent = String.num(radius, decimals)
+		else:
+			# Normalize by safe steps: pow(10,-324) underflows and log-based
+			# normalization can overflow at the opposite finite-double boundary.
+			var mantissa := radius
+			var exponent := 0
+			while mantissa >= 10.0:
+				mantissa /= 10.0
+				exponent += 1
+			while mantissa < 1.0:
+				mantissa *= 10.0
+				exponent -= 1
+			extent = String.num(mantissa, 2)
+			if extent.to_float() >= 10.0:
+				extent = "1"
+				exponent += 1
+			extent += "e" + str(exponent)
+		return PackedStringArray(["−" + extent, "0", "+" + extent])
+	func _draw() -> void:
+		var state: String = render_state()
+		if state == "overflow":
+			_caption("Shared Δ scale overflow; not plotted", 15)
+			return
+		var y: float = 7.0
+		var center: float = position_for(0.0)
+		if state == "below_resolution":
+			_caption("Nonzero; below plot resolution", 13)
+		else:
+			draw_line(Vector2(8, y), Vector2(size.x - 8, y), Color("8da5ac"), 1.0)
+			draw_line(Vector2(center, y - 5), Vector2(center, y + 5), TIE_COLOR, 1.0)
+			if state == "tie":
+				draw_arc(Vector2(center, y), 4.0, 0.0, TAU, 20, TIE_COLOR, 1.5, true)
+			else:
+				var x: float = position_for(delta)
+				draw_line(Vector2(center, y), Vector2(x, y), direction_color(), 2.0)
+				draw_circle(Vector2(x, y), 3.5, direction_color())
+		var ticks := axis_labels()
+		if ticks.is_empty():
+			return
+		if ticks.size() == 1:
+			_caption(ticks[0], 28)
+			return
+		var font: Font = get_theme_default_font()
+		var left: String = ticks[0]
+		var right: String = ticks[2]
+		draw_string(font, Vector2(0, 28), left, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("a4babe"))
 		var width: float = font.get_string_size(right, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
-		draw_string(font, Vector2(maxf(0.0, size.x - width), 29), right, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("a4babe"))
+		draw_string(font, Vector2(maxf(0.0, size.x - width), 28), right, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("a4babe"))
+		_caption("0", 28)
+
+static func hold_projection(entries: Array) -> Dictionary:
+	for item in entries:
+		if item.id == "hold":
+			return item.projection
+	return {"ok": false}
+
+static func delta_text(value: float, held: float) -> String:
+	# Exact equality only: neither display rounding nor approximate equality can
+	# establish a tie. Signs describe arithmetic direction, never welfare.
+	if value == held:
+		return "Same as Hold · Δ 0 pp"
+	var sign_text: String = "−" if value < held else "+"
+	var delta: float = value - held
+	if not is_finite(delta):
+		return "Δ " + sign_text + "overflow vs Hold"
+	var amount: String = "<0.005" if absf(delta) < 0.005 else Docket.value_text(absf(delta))
+	if amount == "0.00":
+		# Guard a formatter's half-step rounding without declaring a false zero.
+		amount = String.num_scientific(absf(delta))
+	return sign_text + amount + " pp vs Hold"
+
+static func comparison_scales(entries: Array) -> Array:
+	var held: Dictionary = hold_projection(entries)
+	var scales: Array = []
+	for metric in range(3):
+		var scale: Dictionary = {"available": held.ok, "overflow": false, "radius": 0.0}
+		if held.ok:
+			for item in entries:
+				if item.projection.ok:
+					var delta: float = item.projection.values[metric] - held.values[metric]
+					if is_finite(delta):
+						scale.radius = maxf(scale.radius, absf(delta))
+					else:
+						# A clipped/saturated endpoint would fabricate a magnitude.
+						# Keep text/absolutes, but withhold this metric's shared plot.
+						scale.overflow = true
+		scales.append(scale)
+	return scales
 
 func _init() -> void:
 	title = "Compare priorities"
@@ -51,14 +166,42 @@ func _init() -> void:
 	get_ok_button().text = "Cancel"
 	scroll = ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.follow_focus = true
+	# One reveal owner: the engine's synchronous follow_focus can update the
+	# bar before its deferred sort has moved content, racing our layout reveal.
+	scroll.follow_focus = false
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	add_child(scroll)
 	content = VBoxContainer.new()
 	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	content.add_theme_constant_override("separation", 8)
 	scroll.add_child(content)
+	# Reuse the native Cancel row for a bounded interpretation caption. Its
+	# native centering spacers stay in place but no longer consume the caption's
+	# width. Neither caption participates in focus order or scrolls off screen.
+	var footer: HBoxContainer = get_ok_button().get_parent()
+	for child in footer.get_children(true):
+		if child is Control and not child is BaseButton:
+			child.size_flags_horizontal = Control.SIZE_FILL
+	context_footer = VBoxContainer.new()
+	context_footer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	context_footer.add_theme_constant_override("separation", 2)
+	footer.add_child(context_footer)
+	footer.move_child(context_footer, 0)
+	get_ok_button().size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	footer.minimum_size_changed.connect(_refit_context_footer, CONNECT_DEFERRED)
 	scroll.resized.connect(_reflow_cards)
+	content.sort_children.connect(_schedule_card_focus)
+	context_footer.sort_children.connect(_schedule_card_focus)
+	gui_focus_changed.connect(func(_control: Control): _schedule_card_focus())
+	visibility_changed.connect(_schedule_card_focus)
+
+func _refit_context_footer() -> void:
+	# Wrapped footer chrome can acquire its final minimum after popup fitting.
+	# Reuse Main's bounded report fit, independently of cancellable focus work.
+	if is_inside_tree() and visible and not is_queued_for_deletion():
+		var parent := get_parent()
+		if parent.has_method("_fit_report"):
+			parent._fit_report(self)
 
 func label_in(parent: Node, text: String, font_size: int = 14) -> Label:
 	var label := Label.new()
@@ -78,12 +221,43 @@ func _reflow_cards() -> void:
 		var columns: int = columns_for_width(scroll.size.x - scroll.get_v_scroll_bar().get_combined_minimum_size().x, cards.get_theme_constant("h_separation"))
 		if cards.columns != columns:
 			cards.columns = columns
-			_reveal_card_focus.call_deferred()
+		_schedule_card_focus()
+
+func _schedule_card_focus() -> void:
+	if focus_reveal_pending or not is_inside_tree() or not visible or is_queued_for_deletion():
+		return
+	focus_reveal_pending = true
+	# Reflow and wrapped minimum heights can settle after call_deferred. Each
+	# actual sort/focus change coalesces into the next frame, without refocusing.
+	get_tree().process_frame.connect(_reveal_settled_card_focus, CONNECT_ONE_SHOT)
+
+func _cancel_pending_card_focus() -> void:
+	# Explicit navigation wins over an older automatic reveal. Disconnect it
+	# rather than leaving a stale callback that could consume a newer request.
+	if focus_reveal_pending:
+		if get_tree().process_frame.is_connected(_reveal_settled_card_focus):
+			get_tree().process_frame.disconnect(_reveal_settled_card_focus)
+		focus_reveal_pending = false
+
+func _reveal_settled_card_focus() -> void:
+	focus_reveal_pending = false
+	if is_inside_tree() and visible and not is_queued_for_deletion():
+		_reveal_card_focus()
 
 func _reveal_card_focus() -> void:
 	var focused: Control = gui_get_focus_owner()
-	if focused != null and scroll.is_ancestor_of(focused):
-		scroll.ensure_control_visible(focused)
+	if focused != null and content.is_ancestor_of(focused):
+		# Use content-local, unscrolled coordinates. ensure_control_visible adds
+		# a global-geometry delta to the current bar; until ScrollContainer's
+		# queued sort applies that bar, a second reveal adds the same delta
+		# again. An absolute target is idempotent even in that ordering gap.
+		var relative := content.get_global_transform().affine_inverse() * focused.get_global_transform()
+		var rect: Rect2 = relative * Rect2(Vector2.ZERO, focused.size)
+		var bar := scroll.get_v_scroll_bar()
+		if rect.position.y < bar.value:
+			bar.value = floorf(rect.position.y)
+		elif rect.end.y > bar.value + bar.page:
+			bar.value = ceilf(rect.end.y - bar.page)
 
 func _size_metric_value(number: Label) -> void:
 	# Values are atomic. Reserve their full themed width; descriptive labels
@@ -98,7 +272,7 @@ func _size_metric_value(number: Label) -> void:
 	var font_size: int = number.get_theme_font_size("font_size")
 	number.custom_minimum_size.x = ceilf(font.get_string_size(number.text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x) + 2.0
 
-func _card(item: Dictionary, scales: Array, references: Array) -> void:
+func _card(item: Dictionary, scales: Array, held: Dictionary) -> void:
 	var panel := PanelContainer.new()
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var style := StyleBoxFlat.new()
@@ -125,25 +299,38 @@ func _card(item: Dictionary, scales: Array, references: Array) -> void:
 		error_label.accessibility_description = error_label.tooltip_text
 	else:
 		for metric in range(3):
+			var metric_group := VBoxContainer.new()
+			metric_group.add_theme_constant_override("separation", 0)
+			card.add_child(metric_group)
 			var row := HBoxContainer.new()
-			card.add_child(row)
+			metric_group.add_child(row)
 			label_in(row, METRIC_NAMES[metric], 12)
 			var value: float = item.projection.values[metric]
 			var number: Label = label_in(row, Docket.value_text(value, metric == 2), 20)
 			_size_metric_value(number)
 			metric_values.append(number)
 			number.accessibility_name = "%s: %s" % [METRIC_NAMES[metric], number.text]
+			var change: Label = label_in(metric_group, delta_text(value, held.values[metric]) if held.ok else "Δ unavailable · Hold unavailable", 12)
+			delta_values.append(change)
+			change.accessibility_name = METRIC_NAMES[metric] + ": " + change.text
+			if not held.ok:
+				continue
 			var plot := MetricPlot.new()
 			plot.value = value
-			plot.reference = references[metric]
-			plot.low = scales[metric][0]
-			plot.high = scales[metric][1]
-			plot.magnitude = scales[metric][2]
-			plot.funding = metric == 2
-			plot.custom_minimum_size = Vector2(0, 32)
-			plot.accessibility_name = "%s; shared scale %s to %s" % [number.accessibility_name, Docket.value_text(plot.low, plot.funding), Docket.value_text(plot.high, plot.funding)]
+			plot.held_value = held.values[metric]
+			plot.delta = value - plot.held_value
+			plot.delta_scale = scales[metric]
+			plot.custom_minimum_size = Vector2(0, 30)
+			plot.accessibility_name = change.accessibility_name + "; shared symmetric scale centered on Hold zero"
+			plot.accessibility_description = "Nonzero changes below one plot point are labelled, not drawn as zero. Overflow withholds the shared plot. Colors show direction, not welfare."
+			change.add_theme_color_override("font_color", plot.direction_color())
+			change.tooltip_text = "Raw value: %s; Hold: %s; difference: %s pp. No significance threshold is implied." % [var_to_str(value), var_to_str(plot.held_value), var_to_str(plot.delta)]
+			change.tooltip_text += " Shared Δ radius: %s pp; axis ticks are rounded." % var_to_str(scales[metric].radius)
+			change.accessibility_description = change.tooltip_text
+			plot.accessibility_description += " " + change.tooltip_text
 			plot.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			card.add_child(plot)
+			metric_group.add_child(plot)
+			metric_plots.append(plot)
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	card.add_child(spacer)
@@ -160,15 +347,23 @@ func _card(item: Dictionary, scales: Array, references: Array) -> void:
 func present(data: Dictionary) -> void:
 	quote = data
 	build_count += 1
-	for child in content.get_children():
-		content.remove_child(child)
-		child.queue_free()
+	for parent in [content, context_footer]:
+		for child in parent.get_children():
+			parent.remove_child(child)
+			child.queue_free()
 	stage_buttons.clear()
 	proposal_cards.clear()
 	metric_values.clear()
+	delta_values.clear()
+	metric_plots.clear()
+	delta_scales.clear()
 	var toolbar := HBoxContainer.new()
 	content.add_child(toolbar)
-	label_in(toolbar, "Conditional 8-quarter comparison. No new shocks or withdrawal requests. Stage does not adopt.", 13)
+	label_in(context_footer, "Conditional Q+1–8 · No new shocks/withdrawal requests · Stage does not adopt.", 13)
+	var toolbar_space := Control.new()
+	toolbar_space.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	toolbar_space.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	toolbar.add_child(toolbar_space)
 	refresh_button = Button.new()
 	refresh_button.text = "Refresh"
 	refresh_button.size_flags_horizontal = Control.SIZE_SHRINK_END
@@ -185,21 +380,12 @@ func present(data: Dictionary) -> void:
 	cards.add_theme_constant_override("h_separation", 10)
 	cards.add_theme_constant_override("v_separation", 10)
 	content.add_child(cards)
-	var scales: Array = []
-	for metric in range(3):
-		var low: float = minf(0.0, data.references[metric])
-		var high: float = maxf(0.0, data.references[metric])
-		for item in data.entries:
-			if item.projection.ok:
-				low = minf(low, item.projection.values[metric])
-				high = maxf(high, item.projection.values[metric])
-		if low == high:
-			high = low + 1.0
-		scales.append([low, high, maxf(1.0, maxf(absf(low), absf(high)))])
+	delta_scales = comparison_scales(data.entries)
+	var held: Dictionary = hold_projection(data.entries)
 	# Keep all five source entries; only the three actionable proposals are cards.
 	for item in data.entries.slice(2):
-		_card(item, scales, data.references)
-	var legend: Label = label_in(content, "Gold ticks: inflation objective %s%% / structural unemployment %s%%. Shared scales." % [Docket.value_text(data.references[0]), Docket.value_text(data.references[1])], 12)
+		_card(item, delta_scales, held)
+	var legend: Label = label_in(context_footer, "Δ vs Hold (pp): direction, not welfare. Inflation objective %s%%; structural unemployment ref %s%% — references, not bar zero." % [Docket.value_text(data.references[0]), Docket.value_text(data.references[1])], 12)
 	legend.add_theme_color_override("font_color", Color("e9b76e"))
 	reference_table = GridContainer.new()
 	reference_table.columns = 4
@@ -240,8 +426,12 @@ func present(data: Dictionary) -> void:
 	for index in range(order.size()):
 		order[index].focus_next = order[index].get_path_to(order[(index + 1) % order.size()])
 		order[index].focus_previous = order[index].get_path_to(order[(index - 1 + order.size()) % order.size()])
+	for container in content.find_children("*", "Container", true, false):
+		if not container is ScrollContainer:
+			container.sort_children.connect(_schedule_card_focus)
 	_reflow_cards()
 	_reflow_cards.call_deferred()
+	_schedule_card_focus()
 
 func refuse(reason: String) -> void:
 	message.text = reason
@@ -263,6 +453,7 @@ func _input(event: InputEvent) -> void:
 		queue_free()
 		return
 	if event.keycode in [KEY_PAGEUP, KEY_PAGEDOWN, KEY_HOME, KEY_END] and not event.is_command_or_control_pressed():
+		_cancel_pending_card_focus()
 		var bar := scroll.get_v_scroll_bar()
 		match event.keycode:
 			KEY_PAGEUP: bar.value -= bar.page
