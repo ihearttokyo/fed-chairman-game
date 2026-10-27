@@ -1,6 +1,7 @@
 extends SceneTree
 const Career = preload("res://play/career.gd")
 const Docket = preload("res://play/policy_docket.gd")
+const CommitteeDialog = preload("res://play/committee_docket.gd")
 var failures: int = 0
 
 class CountingCareer:
@@ -27,7 +28,7 @@ func settle() -> void:
 	for frame in range(5):
 		await process_frame
 
-func key(window: Variant, code: Key, command: bool = false, shift: bool = false) -> void:
+func key(window: Variant, code: Key, command: bool = false, shift: bool = false, alt: bool = false) -> void:
 	# Variant allows the guard to run for a freed object instead of aborting at
 	# argument binding. A missing press target is a failure, never a passed skip.
 	if not is_instance_valid(window) or not window is Window or window.is_queued_for_deletion():
@@ -39,6 +40,7 @@ func key(window: Variant, code: Key, command: bool = false, shift: bool = false)
 	event.meta_pressed = command and OS.get_name() == "macOS"
 	event.ctrl_pressed = command and OS.get_name() != "macOS"
 	event.shift_pressed = shift
+	event.alt_pressed = alt
 	window.push_input(event, true)
 	await process_frame
 	event = event.duplicate()
@@ -65,7 +67,100 @@ func labels(dialog: Window) -> String:
 		text += label.text + "\n"
 	return text
 
+func delta_source_cases() -> void:
+	check(CommitteeDialog.delta_text(4.5, 4.53).begins_with("−0.03"), "inflation displays a signed change from Hold, not the objective")
+	check(CommitteeDialog.delta_text(4.44, 4.34).begins_with("+0.10"), "unemployment displays its positive change in pp")
+	check(CommitteeDialog.delta_text(4.53, 4.53) == "Same as Hold · Δ 0 pp", "only an exact numeric tie says Same")
+	check(CommitteeDialog.delta_text(4.53 + 1e-30, 4.53).contains("Same"), "a difference already lost in source-number representation cannot be invented")
+	# A 5e-324 source literal rounded to zero in the first native run. Decode
+	# the actual IEEE754 value instead: retain, do not delete, this boundary.
+	var least_positive: float = PackedByteArray([1, 0, 0, 0, 0, 0, 0, 0]).decode_double(0)
+	check(least_positive > 0.0 and is_finite(least_positive), "subnormal fixture is genuinely nonzero before formatting")
+	for pair in [[4.530001, 4.53], [4.529999, 4.53], [1e-300, 0.0], [-1e-300, 0.0], [least_positive, 0.0], [-least_positive, 0.0]]:
+		var text: String = CommitteeDialog.delta_text(pair[0], pair[1])
+		check(text.contains("<0.005 pp") and not text.contains("Same") and not text.contains("Δ 0 pp"), "small nonzero changes never masquerade as rounded zero: " + str(pair))
+		check(text.begins_with("+" if pair[0] > pair[1] else "−"), "small nonzero changes retain their direction")
+	for boundary in [0.005, -0.005]:
+		var text: String = CommitteeDialog.delta_text(boundary, 0.0)
+		check(not text.contains("Same") and not text.contains("0.00 pp"), "half-step formatting cannot create a false zero")
+	check(CommitteeDialog.delta_text(-2.5, -2.0).begins_with("−0.50"), "deflation retains arithmetic direction without a welfare claim")
+	check(CommitteeDialog.delta_text(1e300, 0.0).contains("e"), "large finite deltas retain bounded scientific notation")
+	check(CommitteeDialog.delta_text(1.7e308, -1.7e308).contains("+overflow"), "positive subtraction overflow is explicit, not a fake finite magnitude")
+	check(CommitteeDialog.delta_text(-1.7e308, 1.7e308).contains("−overflow"), "negative subtraction overflow retains its known direction")
+
+func delta_ui_cases(dialog: Variant) -> void:
+	# Synthetic projections exercise display only; no additional economic forecast.
+	var original_quote: Dictionary = dialog.quote
+	var fixture: Dictionary = original_quote.duplicate(true)
+	fixture.entries[0].projection = {"ok": true, "values": [-1.0, 4.0, 1e300]}
+	fixture.entries[1].projection = {"ok": true, "values": [-2.0, 4.0, 0.0]}
+	fixture.entries[2].projection = {"ok": true, "values": [-2.5, 4.000001, 1e-300]}
+	fixture.entries[3].projection = {"ok": true, "values": [-2.0, 4.0, 0.0]}
+	fixture.entries[4].projection = {"ok": true, "values": [-1.75, 4.25, 1e300]}
+	var raw: PackedByteArray = var_to_bytes(fixture)
+	dialog.present(fixture)
+	await settle()
+	check(var_to_bytes(fixture) == raw, "comparison presentation preserves every raw projection, proposal and quote byte")
+	check(dialog.metric_plots.size() == 9 and dialog.delta_values.size() == 9, "available proposals expose absolute values, signed deltas and plots")
+	check(dialog.delta_scales[0].radius == 1.0 and dialog.delta_scales[1].radius == 0.25 and dialog.delta_scales[2].radius == 1e300, "one shared symmetric range per metric includes Staged and the actual Hold entry")
+	for index in range(9):
+		var plot: Variant = dialog.metric_plots[index]
+		var metric: int = index % 3
+		var value: float = fixture.entries[2 + floori(index / 3.0)].projection.values[metric]
+		var held: float = fixture.entries[1].projection.values[metric]
+		check(plot.value == value and plot.held_value == held and plot.delta == value - held, "plot keeps exact raw absolute and Hold-derived difference")
+		check(dialog.metric_values[index].text == Docket.value_text(value, metric == 2), "absolute value formatter and units remain unchanged")
+		check(plot.delta_scale == dialog.delta_scales[metric], "all cards share the identical metric scale")
+		check(absf((plot.position_for(-plot.delta_scale.radius) + plot.position_for(plot.delta_scale.radius)) * 0.5 - plot.position_for(0.0)) < 1e-7, "each graphical scale is symmetric about Hold zero")
+		check(is_finite(plot.position_for(plot.delta)), "finite extremes never produce nonfinite plot coordinates")
+	check(dialog.metric_plots[2].render_state() == "below_resolution" and dialog.delta_values[2].text.begins_with("+<"), "a nonzero delta that cannot survive normalization is explicitly not plotted, never shown as a tie")
+	check(dialog.metric_plots[3].render_state() == "tie" and dialog.delta_values[3].text.contains("Same"), "exact ties have a distinct zero marker and text")
+	check(dialog.metric_plots[0].direction_color() == Color("91c9e8") and dialog.metric_plots[7].direction_color() == Color("e9b76e"), "negative inflation uses the negative-direction color, not a lower-is-better judgment")
+	check(dialog.metric_plots[0].position_for(dialog.metric_plots[0].delta) < dialog.metric_plots[0].position_for(0.0) and dialog.metric_plots[6].position_for(dialog.metric_plots[6].delta) > dialog.metric_plots[6].position_for(0.0), "negative and positive changes lie on opposite sides of the shared Hold zero")
+	check(labels(dialog).contains("not welfare") and labels(dialog).contains("Inflation objective") and labels(dialog).contains("structural unemployment"), "visible context distinguishes direction from welfare and retains objective/structural references")
+	# Resolve Hold by ID, never by a target or a positional shortcut.
+	var moved: Dictionary = fixture.duplicate(true)
+	var held_entry: Dictionary = moved.entries.pop_at(1)
+	moved.entries.append(held_entry)
+	check(CommitteeDialog.comparison_scales(moved.entries) == dialog.delta_scales, "Hold lookup is ID-based even when entries are reordered")
+	fixture.entries[1].projection = {"ok": false, "error": "Hold unavailable"}
+	raw = var_to_bytes(fixture)
+	dialog.present(fixture)
+	await settle()
+	check(dialog.metric_values.size() == 9 and dialog.metric_plots.is_empty() and dialog.delta_values[0].text.contains("Hold unavailable"), "unavailable Hold retains absolute proposals but never substitutes an objective or zero baseline")
+	check(var_to_bytes(fixture) == raw and not dialog.stage_buttons[0].disabled, "unavailable Hold preserves raw data and stageable control validity")
+	fixture.entries[1].projection = {"ok": true, "values": [-2.0, 4.0, 0.0]}
+	fixture.entries[3].projection = {"ok": false, "error": "Individual path unavailable"}
+	dialog.present(fixture)
+	await settle()
+	check(dialog.metric_values.size() == 6 and dialog.metric_plots.size() == 6 and not dialog.stage_buttons[1].disabled, "individual projection failure omits only its metrics and keeps stage validity separate")
+	fixture.entries[1].projection.values[0] = -1.7e308
+	fixture.entries[2].projection.values[0] = 1.7e308
+	raw = var_to_bytes(fixture)
+	dialog.present(fixture)
+	await settle()
+	check(dialog.delta_scales[0].overflow and dialog.metric_plots[0].render_state() == "overflow" and dialog.metric_plots[3].render_state() == "overflow", "overflow disables the shared metric scale honestly for every card, without saturated endpoints")
+	check(dialog.delta_values[0].text.contains("+overflow") and var_to_bytes(fixture) == raw, "overflow preserves signed fallback and exact raw quotes")
+	# An entirely tied metric is genuinely flat, not an invented ±1 outcome range.
+	for item in fixture.entries:
+		if item.projection.ok:
+			item.projection.values = [4.0, 4.0, 0.0]
+	dialog.present(fixture)
+	await settle()
+	check(dialog.delta_scales[0].radius == 0.0 and dialog.metric_plots[0].render_state() == "tie", "all-exact-tie paths keep a zero-radius scale")
+	fixture.entries[1].projection.values[0] = 0.0
+	for item in fixture.entries:
+		if item.id != "hold" and item.projection.ok:
+			item.projection.values[0] = 1e-300
+	dialog.present(fixture)
+	await settle()
+	check(dialog.delta_scales[0].radius == 1e-300 and dialog.metric_plots[0].render_state() == "point", "tiny finite deltas remain fully drawable when their shared scale can represent them")
+	check(dialog.metric_plots[0].position_for(1e-300) > dialog.metric_plots[0].position_for(0.0) and dialog.delta_values[0].text.begins_with("+<"), "sub-precision text retains direction even when tiny deltas span the plot")
+	dialog.present(original_quote)
+	await settle()
+
 func run() -> void:
+	delta_source_cases()
 	# This isolated headless fixture starts at 64x64. Establish a desktop-sized
 	# private root before Main, using compact_ui_test's native-density technique.
 	var density: float = maxf(1.0, DisplayServer.screen_get_scale(root.current_screen))
@@ -107,7 +202,10 @@ func run() -> void:
 	await settle()
 	await key(dialog, KEY_TAB)
 	await key(dialog, KEY_PAGEDOWN)
-	await key(dialog, KEY_ENTER, true)
+	for enter_key in [KEY_ENTER, KEY_KP_ENTER]:
+		await key(dialog, enter_key, true)
+		await key(dialog, enter_key, false, true)
+		await key(dialog, enter_key, false, false, true)
 	check(counted.encode() == original and game._committee_control_snapshot() == original_controls and counted.calls == read_calls, "reading/Tab/scroll/modified Return neither adopts, submits nor forecasts")
 	await key(dialog, KEY_ESCAPE)
 	check(not is_instance_valid(dialog) and game.committee_button.has_focus() and game._committee_control_snapshot() == original_controls, "Escape cancels and returns focus to opener, preserving drafts")
@@ -243,6 +341,10 @@ func run() -> void:
 		check(number.size_flags_horizontal == Control.SIZE_SHRINK_END and number.horizontal_alignment == HORIZONTAL_ALIGNMENT_RIGHT and not number.clip_text, "atomic value is right-aligned and neither clipped nor wrapped")
 	for button in dialog.stage_buttons:
 		check(dialog.scroll.get_global_rect().encloses(button.get_global_rect()) and dialog.get_visible_rect().encloses(button.get_global_rect()), "all three Stage actions visible without scrolling in ordinary-desktop viewport")
+	for index in range(2):
+		var left: Rect2 = dialog.proposal_cards[index].get_global_rect()
+		var right: Rect2 = dialog.proposal_cards[index + 1].get_global_rect()
+		check(left.end.x <= right.position.x and absf(left.position.y - right.position.y) < 1.0, "desktop cards occupy three nonoverlapping columns on the same row")
 	# The existing formatter bounds long finite numbers with scientific notation;
 	# exercise the same atomic sizing path, then restore the original displayed text.
 	var atomic: Label = dialog.metric_values[0]
@@ -257,6 +359,11 @@ func run() -> void:
 	var card_ids: Array = []
 	for card in dialog.proposal_cards:
 		card_ids.append(card.get_instance_id())
+	var plot_ids: Array = []
+	for plot in dialog.metric_plots:
+		plot_ids.append(plot.get_instance_id())
+	var popup_builds: int = dialog.build_count
+	var cached_quote: PackedByteArray = var_to_bytes(dialog.quote)
 	var popup_calls: int = game.docket_forecast_calls
 	dialog.stage_buttons[1].grab_focus()
 	# Exercise production report fitting by resizing this private headless root;
@@ -269,8 +376,15 @@ func run() -> void:
 	check(dialog.cards.columns == 1 and dialog.stage_buttons[1].has_focus(), "800x480 private parent stacks the same cards without stealing focus")
 	for index in range(3):
 		check(dialog.proposal_cards[index].get_instance_id() == card_ids[index], "reflow retains original Control identities")
+	for index in range(9):
+		check(dialog.metric_plots[index].get_instance_id() == plot_ids[index], "reflow retains original signed-delta plots")
+	check(dialog.build_count == popup_builds and var_to_bytes(dialog.quote) == cached_quote, "stacked reflow neither rebuilds nor rewrites cached projections")
 	check(game.docket_forecast_calls == popup_calls, "popup reflow never recomputes forecasts")
 	check(dialog.scroll.get_h_scroll_bar().max_value <= dialog.scroll.size.x + 1.0, "stacked cards wrap without horizontal overflow")
+	for index in range(2):
+		var upper: Rect2 = dialog.proposal_cards[index].get_global_rect()
+		var lower: Rect2 = dialog.proposal_cards[index + 1].get_global_rect()
+		check(upper.end.y <= lower.position.y and absf(upper.position.x - lower.position.x) < 1.0, "compact cards form one ordered, nonoverlapping stack")
 	dialog.stage_buttons[2].grab_focus()
 	await settle()
 	check(dialog.scroll.get_global_rect().encloses(dialog.stage_buttons[2].get_global_rect()), "focus-following scroll fully reveals compact funding action")
@@ -284,6 +398,12 @@ func run() -> void:
 	await settle()
 	check(dialog.get_size_with_decorations().x <= logical.x and dialog.get_size_with_decorations().y <= logical.y, "preferred docket size remains bounded by unchanged parent")
 	check(dialog.cards.columns == 3 and dialog.stage_buttons[2].has_focus(), "return to preferred width restores three columns without replacing focused action")
+	check(dialog.build_count == popup_builds and var_to_bytes(dialog.quote) == cached_quote and game.docket_forecast_calls == popup_calls, "desktop reflow retains the same cache without a rebuild or forecast")
+	var calls_before_display_cases: int = game.docket_forecast_calls
+	var career_before_display_cases: PackedByteArray = game.career.encode()
+	var controls_before_display_cases: Array = game._committee_control_snapshot()
+	await delta_ui_cases(dialog)
+	check(game.docket_forecast_calls == calls_before_display_cases and game.career.encode() == career_before_display_cases and game._committee_control_snapshot() == controls_before_display_cases, "synthetic display coverage preserves forecast count, career and drafts")
 	await key(dialog, KEY_ESCAPE)
 	for case_id in [game.WORKOUT_CASE, game.PRICED_WORKOUT_CASE]:
 		game._start_career(case_id, 417)
