@@ -15,6 +15,7 @@ const WORKOUT_HELP := "Eight meetings. Rate decisions change inflation, activity
 const Chart = preload("res://play/history_chart.gd")
 const HelpGuide = preload("res://play/help_guide.gd")
 const ReportDialog = preload("res://play/report_dialog.gd")
+const CareerOpeningPicker = preload("res://play/career_opening_picker.gd")
 const PolicyReview = preload("res://play/policy_review.gd")
 const ForecastOverview = preload("res://play/forecast_overview.gd")
 const Music = preload("res://play/music.gd")
@@ -65,6 +66,10 @@ var inflation_response: SpinBox
 var activity_response: SpinBox
 var scenario: OptionButton
 var seed_input: SpinBox
+var new_career_button: Button
+var career_opening_picker: CareerOpeningPicker
+var entry_signal_states: Array = []
+var entry_guard_in_modal := false
 var city: Node3D
 var reduced_motion := true
 var decision_button: Button
@@ -331,7 +336,7 @@ func _reveal_settled_focus() -> void:
 	if not is_inside_tree() or is_queued_for_deletion():
 		return
 	for child in get_children():
-		if child is Window and child.visible and not child.is_queued_for_deletion():
+		if child is Window and child.visible:
 			return # A modal owns its focus/scrolling; never reveal its main opener.
 	_reveal_focus()
 
@@ -531,7 +536,8 @@ func _build_header(parent: Node) -> void:
 	title.add_theme_font_override("font", serif)
 	_label(brand, "Federal Reserve Policy Lab", 11, GOLD)
 	quarter_label = _label(row, "", 15, MINT)
-	_button(row, "New career", _new_dialog, KEY_N)
+	new_career_button = _button(row, "New career", _new_dialog, KEY_N)
+	new_career_button.button_up.connect(func(): _release_unused_entry_drafts.call_deferred())
 	var save_button := _button(row, "Save", _save, KEY_S)
 	save_button.tooltip_text = "Save to policy-career-v2.save only. policy-career-v1.save and both older slots remain untouched."
 	save_button.accessibility_description = save_button.tooltip_text
@@ -1237,6 +1243,7 @@ func _release_unused_docket_drafts() -> void:
 	_release_docket_drafts()
 
 func _exit_tree() -> void:
+	_release_entry_drafts()
 	_release_docket_drafts()
 
 func _release_docket_drafts() -> void:
@@ -1524,12 +1531,24 @@ func _stage_native_policy(policy: Dictionary) -> void:
 	loading_controls = false
 
 func _input(event: InputEvent) -> void:
+	# New must capture drafts before native pointer/shortcut focus transfer.
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_N and event.is_command_or_control_pressed() and not event.alt_pressed:
+		_new_dialog()
+		get_viewport().set_input_as_handled()
+		return
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed and _entry_opening_allowed() and is_instance_valid(new_career_button) and new_career_button.is_visible_in_tree() and not new_career_button.disabled and new_career_button.get_global_rect().has_point(event.position) and overflow_scroll.get_global_rect().has_point(event.position):
+			_hold_entry_drafts()
+		elif not event.pressed and not entry_signal_states.is_empty():
+			_release_unused_entry_drafts.call_deferred()
 	# Intercept before native focus transfer can submit a pending numeric draft.
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_K and event.is_command_or_control_pressed() and not event.alt_pressed:
+		_release_unused_entry_drafts()
 		_open_committee_docket()
 		get_viewport().set_input_as_handled()
 		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and is_instance_valid(committee_button) and committee_button.is_visible_in_tree() and committee_button.get_global_rect().has_point(event.position) and cockpit_scroll.get_global_rect().has_point(event.position) and overflow_scroll.get_global_rect().has_point(event.position):
+		_release_unused_entry_drafts()
 		_hold_docket_drafts()
 	if event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_LEFT and not docket_signal_states.is_empty():
 		_release_unused_docket_drafts.call_deferred()
@@ -1604,6 +1623,7 @@ func _quit_app(exit_code := 0) -> void:
 	if shutting_down:
 		return
 	shutting_down = true
+	_release_entry_drafts()
 	_release_docket_drafts()
 	get_tree().paused = true
 	music_toggle.disabled = true
@@ -1698,34 +1718,67 @@ func _text_dialog(title: String, text: String) -> AcceptDialog:
 	_link_focus([body, dialog.get_ok_button()])
 	return dialog
 
+func _entry_opening_allowed() -> bool:
+	if shutting_down:
+		return false
+	for child in get_children():
+		if child is Window and child.visible and not child.is_queued_for_deletion():
+			return false
+	return true
+
+func _hold_entry_drafts() -> void:
+	_release_unused_docket_drafts()
+	if not entry_signal_states.is_empty():
+		return
+	for input in [rate, guidance, assets, liquidity, inflation_response, activity_response]:
+		var edit: LineEdit = input.get_line_edit()
+		entry_signal_states.append([edit, edit.is_blocking_signals(), edit.text, input.value, career.get_instance_id(), career.state, _committee_has_raw_draft(input)])
+		edit.set_block_signals(true)
+	# A native editing callback may already be queued. Keep suppression until
+	# the actual modal exits, or until a pointer release aborts its opening.
+	_restore_entry_drafts.call_deferred()
+
+func _restore_entry_drafts() -> void:
+	for row in entry_signal_states:
+		if not is_instance_valid(row[0]):
+			continue
+		var edit: LineEdit = row[0]
+		if row[6] and row[4] == career.get_instance_id() and is_same(row[5], career.state) and edit.get_parent().value == row[3]:
+			edit.text = row[2]
+
+func _release_unused_entry_drafts() -> void:
+	if is_instance_valid(career_opening_picker) and career_opening_picker.is_inside_tree() and career_opening_picker.visible and not career_opening_picker.is_queued_for_deletion():
+		return
+	_release_entry_drafts()
+
+func _release_entry_drafts() -> void:
+	_restore_entry_drafts()
+	for row in entry_signal_states:
+		if is_instance_valid(row[0]):
+			row[0].set_block_signals(row[1])
+	entry_signal_states.clear()
+	entry_guard_in_modal = false
+
 func _new_dialog() -> void:
-	var dialog := AcceptDialog.new()
-	var cancel := dialog.add_button("Cancel", true)
-	cancel.pressed.connect(dialog.queue_free)
-	dialog.title = "Start a new career · unsaved decisions will be replaced"
-	var box := _vbox(dialog)
-	_label(box, "Choose a hypothetical economy, not a historical forecast.\nEvery career includes seeded background disturbances, even the baseline.")
-	scenario = OptionButton.new()
-	scenario.accessibility_name = "Career scenario"
-	for case_id in career.cases:
-		scenario.add_item(career.cases[case_id].label)
-		scenario.set_item_metadata(scenario.item_count - 1, case_id)
-		if case_id == Career.DEFAULT_SCENARIO:
-			scenario.select(scenario.item_count - 1)
-	scenario.add_item("Bank workout · borrowing costs")
-	scenario.set_item_metadata(scenario.item_count - 1, PRICED_WORKOUT_CASE)
-	scenario.add_item("Bank workout · 8-meeting laboratory")
-	scenario.set_item_metadata(scenario.item_count - 1, WORKOUT_CASE)
-	box.add_child(scenario)
-	seed_input = _spin(box, "Scenario seed", 1, 2147483647, 1, "Same scenario and seed reproduce the path within the same engine and model.")
-	seed_input.value = 1
-	_label(box, "Default: weakly anchored inflation with recurring dilemmas.\nWeakly anchored inflation also qualifies for Mandate v1. Stagflation & bank run has Recovery v1; other cases are practice.", 13, MUTED)
+	if not _entry_opening_allowed():
+		return
+	# An older queued close must not lend its snapshots/flags to a newer modal.
+	if entry_guard_in_modal:
+		_release_entry_drafts()
+	_hold_entry_drafts()
+	var dialog := CareerOpeningPicker.new()
+	career_opening_picker = dialog
+	entry_guard_in_modal = true
+	dialog.build(career.cases, Career.DEFAULT_SCENARIO, PRICED_WORKOUT_CASE, WORKOUT_CASE, {
+		PRICED_WORKOUT_CASE: PRICED_WORKOUT_HELP, WORKOUT_CASE: WORKOUT_HELP})
+	scenario = dialog.scenario
+	seed_input = dialog.seed_input
+	dialog.tree_exited.connect(func(): _release_unused_entry_drafts.call_deferred())
 	dialog.confirmed.connect(func():
-		_apply_input(seed_input)
-		_start_career(scenario.get_item_metadata(scenario.selected), int(seed_input.value))
-	)
-	_show_dialog(dialog, Vector2i(740, 240), scenario)
-	_link_focus([scenario, seed_input.get_line_edit(), cancel, dialog.get_ok_button()])
+		if dialog.claim_start():
+			_apply_input(dialog.seed_input)
+			_start_career(dialog.scenario.get_item_metadata(dialog.scenario.selected), int(dialog.seed_input.value)))
+	_show_dialog(dialog, Vector2i(820, 560), dialog.primary_buttons[0])
 
 func _review() -> void:
 	var compared: Dictionary = career.review_comparison()

@@ -126,6 +126,19 @@ Draft signal suppression spans the modal lifetime and restores prior flags on
 close, staging or shutdown, including pointer opening. The headless tests check mechanics, not all-window usability; current
 native pixels, keyboard interaction and density checks remain separate GUI gates.
 
+New career shows four direct choices: **Varied policy career** (the unchanged
+60-year / Q240 default), **Stagflation & bank run**, and both **Bank workout**
+laboratories. Geometric markers identify choices, not forecast trends. **All
+scenarios** retains every original case and both labs. Selecting a choice only
+updates the selector and its short cue; **Details & assumptions** expands the
+existing scenario description or lab help. Only explicit **Start** replaces
+unsaved decisions; opening, reading, changing selection or cancelling writes no
+save. The selected primary choice starts focused. Tab follows the choices, All
+scenarios, seed, Details, Cancel and Start; Shift+Tab reverses it. Return on a
+choice selects only, and Return in the seed commits only that field. Escape
+cancels and returns focus. The replacement warning stays beside the actions;
+narrow layouts scroll rather than shrinking text or targets.
+
 New career → **Stagflation & bank run** starts with 7% inflation, a −3% output gap
 and immediate funding pressure. Curated events begin within three quarters and
 recur every8–10 quarters, including conditional normalization. This is an authored

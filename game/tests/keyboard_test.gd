@@ -332,8 +332,11 @@ func run() -> void:
 	check(chart.accessibility_description.contains("Q0"), "keyboard chart exposes selected exact values without hover")
 	await key(root, KEY_N, true)
 	var chooser := game.get_child(game.get_child_count() - 1) as AcceptDialog
-	check(chooser is AcceptDialog and game.scenario.has_focus(), "New accelerator focuses scenario selection in the actual chooser")
+	check(chooser is AcceptDialog and chooser.primary_buttons[0].has_focus() and chooser.primary_buttons[0].button_pressed, "New accelerator focuses the selected visible primary choice")
 	if chooser is AcceptDialog:
+		for expected in chooser.primary_buttons.slice(1) + [game.scenario]:
+			await key(chooser, KEY_TAB)
+			check(chooser.gui_get_focus_owner() == expected, "initial New Tab follows primary choices into All scenarios")
 		await key(chooser, KEY_SPACE)
 		await key(game.scenario.get_popup(), KEY_DOWN)
 		await key(game.scenario.get_popup(), KEY_ENTER)
@@ -348,6 +351,9 @@ func run() -> void:
 		check(not is_instance_valid(chooser) and game.career.encode() == start, "Escape cancels replacement and preserves unsaved play")
 	await key(root, KEY_N, true)
 	chooser = game.get_child(game.get_child_count() - 1) as AcceptDialog
+	for expected in chooser.primary_buttons.slice(1) + [game.scenario]:
+		await key(chooser, KEY_TAB)
+		check(chooser.gui_get_focus_owner() == expected, "reopened New retains the same explicit primary-to-selector route")
 	await key(chooser, KEY_SPACE)
 	for i in range(5):
 		await key(game.scenario.get_popup(), KEY_UP)
@@ -357,6 +363,8 @@ func run() -> void:
 	await key(chooser, KEY_4, false, false, 52)
 	await key(chooser, KEY_2, false, false, 50)
 	await key(chooser, KEY_ENTER)
+	await key(chooser, KEY_TAB)
+	check(chooser.gui_get_focus_owner() == chooser.details_button, "seed Tab reaches optional details before replacement actions")
 	await key(chooser, KEY_TAB)
 	check(chooser.gui_get_focus_owner() is Button and chooser.gui_get_focus_owner().text == "Cancel", "replacement puts Cancel before confirmation in its keyboard cycle")
 	await key(chooser, KEY_TAB)
