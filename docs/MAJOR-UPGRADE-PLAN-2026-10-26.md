@@ -5,7 +5,23 @@ A decision desk, not a wall of explanation. Make economic consequences visible,
 make the controls easy to learn, and make later policy decisions worth making.
 Ship coherent improvements with a matching app and private walkthrough.
 
-## What is actually delivered
+## Current iteration — bank decisions before adoption
+
+Alpha 622 (`39f015bc00d75b8f38618b4c3468d5c5c3167545`) is installed and released.
+The comparison and opening-choice improvements are frozen; do not polish them
+again without a demonstrated regression. Main-career decision depth remains
+unfinished. A competent Staff rule is not itself a defect or a reason to hide advice.
+
+Next: make the existing workout rate-versus-bank-capital tradeoff actionable
+before adoption. Show a compact conditional capital path and current withdrawal
+payments, with keyboard inspection and the correct ordinary/priced accounting.
+Reuse the cached projection; preserve normal careers, equations and saves.
+This candidate still needs independent review and native intended-use evidence.
+It is not a new challenge score or a claim of stronger main-career mechanics.
+Keep the larger funded-replacement prototype unqualified: arithmetic checks and
+cash reclassification do not repair its failed spending/output reference.
+
+## Historical starting baseline
 
 Baseline: Alpha 620, game source `a91d7dfc8ee2ac04e408285b20203a047711ebd2`.
 
