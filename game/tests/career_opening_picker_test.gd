@@ -48,6 +48,83 @@ func drafts(game: Control) -> PackedByteArray:
 		rows.append([input.value, input.get_line_edit().text])
 	return var_to_bytes(rows)
 
+func signal_flags(game: Control) -> Array:
+	var flags: Array = []
+	for input in [game.rate, game.guidance, game.assets, game.liquidity, game.inflation_response, game.activity_response]:
+		flags.append(input.get_line_edit().is_blocking_signals())
+	return flags
+
+func pointer_at(position: Vector2, pressed: bool) -> void:
+	var motion := InputEventMouseMotion.new()
+	motion.position = position
+	motion.global_position = position
+	root.push_input(motion)
+	var event := InputEventMouseButton.new()
+	event.button_index = MOUSE_BUTTON_LEFT
+	event.position = position
+	event.global_position = position
+	event.pressed = pressed
+	root.push_input(event)
+
+func aborted_and_overlap_cases(game: Control, opener: Button, pending: PackedByteArray) -> void:
+	game.rate.get_line_edit().grab_focus()
+	game.guidance.get_line_edit().set_block_signals(true)
+	var flags := signal_flags(game)
+	pointer_at(opener.get_global_rect().get_center(), true)
+	await process_frame
+	await process_frame
+	check(game.entry_signal_states.size() == 6 and signal_flags(game).all(func(flag): return flag), "held New press protects every policy edit before GUI focus exit")
+	pointer_at(Vector2(1, 1), false)
+	await settle()
+	check(not is_instance_valid(game.career_opening_picker) and game.entry_signal_states.is_empty(), "release outside New aborts the opening and releases its guard")
+	check(drafts(game) == pending and signal_flags(game) == flags, "aborted held press restores literal invalid draft and distinct prior signal flags")
+	# A keyboard command can supersede a still-held pointer opening. The guards
+	# must hand back original flags, not capture one another's temporary blocks.
+	game.rate.get_line_edit().grab_focus()
+	pointer_at(opener.get_global_rect().get_center(), true)
+	await process_frame
+	await key(root, KEY_K, true)
+	var docket: Window = game.committee_docket
+	check(is_instance_valid(docket) and game.entry_signal_states.is_empty() and game.docket_signal_states.size() == 6, "committee supersedes an unused entry pointer guard without nested signal ownership")
+	game._new_dialog()
+	check(not is_instance_valid(game.career_opening_picker) and game.entry_signal_states.is_empty(), "New refuses to nest inside an existing committee modal")
+	await key(docket, KEY_ESCAPE)
+	pointer_at(Vector2(1, 1), false)
+	await settle()
+	check(drafts(game) == pending and signal_flags(game) == flags and game.docket_signal_states.is_empty(), "overlap cancellation restores original drafts/flags instead of temporary suppression")
+	game.shutting_down = true
+	game._new_dialog()
+	check(game.entry_signal_states.is_empty() and not is_instance_valid(game.career_opening_picker), "shutdown refuses a new picker without taking draft ownership")
+	game.shutting_down = false
+	game.guidance.get_line_edit().set_block_signals(false)
+
+func replacement_guard_case(game: Control) -> void:
+	game.guidance.get_line_edit().set_block_signals(true)
+	var flags := signal_flags(game)
+	game._new_dialog()
+	await settle()
+	var older = modal(game)
+	var original_state: Dictionary = game.career.state
+	game._start_career("supply_shock", 99)
+	check(not is_same(game.career.state, original_state), "replacement fixture actually changes state identity")
+	await settle()
+	game.rate.get_line_edit().text = "replacement pending"
+	var replacement := drafts(game)
+	# Queue the replacement from the actual exit before the old tree_exited
+	# cleanup callback; do not free a Window with pending native layout work.
+	older.tree_exiting.connect(func(): game._new_dialog.call_deferred())
+	older.queue_free()
+	await settle()
+	var newer = modal(game)
+	check(is_instance_valid(newer) and game.entry_signal_states.size() == 6, "an exited older picker with deferred cleanup allows a fresh independently captured picker")
+	if drafts(game) != replacement:
+		printerr("REPLACEMENT_DIAG expected=%s actual=%s flags=%s" % [str(bytes_to_var(replacement)), str(bytes_to_var(drafts(game))), str(signal_flags(game))])
+	check(is_instance_valid(newer) and drafts(game) == replacement and signal_flags(game).all(func(flag): return flag), "older deferred release neither consumes the newer guard nor overwrites replacement drafts")
+	await key(newer, KEY_ESCAPE)
+	await settle()
+	check(drafts(game) == replacement and signal_flags(game) == flags and game.entry_signal_states.is_empty(), "newer cancellation preserves replacement state and restores actual prior flags")
+	game.guidance.get_line_edit().set_block_signals(false)
+
 func modal(game: Control) -> AcceptDialog:
 	return game.get_child(game.get_child_count() - 1) as AcceptDialog
 
@@ -147,6 +224,8 @@ func run() -> void:
 	for button in game.find_children("*", "Button", true, false):
 		if button.text == "New career": opener = button
 	check(opener != null, "production New button exists")
+	game.guidance.get_line_edit().set_block_signals(true)
+	var pointer_flags := signal_flags(game)
 	var pointer := InputEventMouseButton.new()
 	pointer.button_index = MOUSE_BUTTON_LEFT
 	pointer.position = opener.get_global_rect().get_center()
@@ -167,9 +246,14 @@ func run() -> void:
 	if picker != null:
 		picker.cancel.grab_focus()
 		await key(picker, KEY_ENTER)
+	check(drafts(game) == pending and signal_flags(game) == pointer_flags and game.entry_signal_states.is_empty(), "pointer Cancel restores original raw drafts and pre-existing signal flags")
+	game.guidance.get_line_edit().set_block_signals(false)
+	await aborted_and_overlap_cases(game, opener, pending)
 	# Independent failure fixture, after the separately asserted pointer path.
 	var failure_career: PackedByteArray = game.career.encode()
 	var failure_drafts := drafts(game)
+	game.assets.get_line_edit().set_block_signals(true)
+	var failure_flags := signal_flags(game)
 	# Failure dispatched through actual Start retains the current career/drafts/save.
 	game._new_dialog()
 	await settle()
@@ -179,9 +263,14 @@ func run() -> void:
 	await key(picker, KEY_ENTER)
 	check(game.starts == [["unknown-entry-validation-case", 1]] and game.status_label.text == "Unknown scenario", "explicit Start preserves existing validation failure feedback")
 	check(game.career.encode() == failure_career and drafts(game) == failure_drafts and FileAccess.get_file_as_bytes(game.save_path) == saved, "failed Start cannot reset career, submit policy drafts or overwrite save")
+	check(signal_flags(game) == failure_flags and game.entry_signal_states.is_empty(), "failed Start releases suppression and restores distinct prior flags")
+	game.assets.get_line_edit().set_block_signals(false)
+	await replacement_guard_case(game)
 	# Actual Start and real normal/lab transitions, using native Return every time.
 	for id in [game.PRICED_WORKOUT_CASE, game.WORKOUT_CASE, "supply_shock", game.Career.DEFAULT_SCENARIO]:
 		game.starts.clear()
+		game.activity_response.get_line_edit().set_block_signals(true)
+		var start_flags := signal_flags(game)
 		game._new_dialog()
 		await settle()
 		picker = modal(game)
@@ -195,9 +284,11 @@ func run() -> void:
 		picker.get_ok_button().grab_focus()
 		await key(picker, KEY_ENTER)
 		check(game.starts == [[id, 417]] and not is_instance_valid(picker), "explicit native Start dispatches exactly once with selected ID/seed: " + id)
+		check(game.entry_signal_states.is_empty() and signal_flags(game) == start_flags and game.rate.get_line_edit().text != "replacement pending", "successful Start releases protection without restoring old-career drafts")
 		check(game.career.seed_value == 417 and game.career.decisions.is_empty(), "real new career is initialized only after Start")
 		check(game._is_workout() == (id in [game.PRICED_WORKOUT_CASE, game.WORKOUT_CASE]) and game._is_priced_workout() == (id == game.PRICED_WORKOUT_CASE), "normal/lab switching uses existing mode implementation")
 		check(FileAccess.get_file_as_bytes(game.save_path) == saved, "explicit Start never writes the prior normal save")
+		game.activity_response.get_line_edit().set_block_signals(false)
 	# Same-frame repeat confirmation must not invoke the existing starter twice.
 	game.starts.clear()
 	game._new_dialog()
@@ -208,6 +299,15 @@ func run() -> void:
 	check(game.starts == [[game.Career.DEFAULT_SCENARIO, 1]], "queued close and duplicate confirmation cannot double-dispatch Start")
 	await settle()
 	await layout_checks(game)
+	# Parent tree exit is also a release path, even with a live picker.
+	game.rate.get_line_edit().text = "tree exit pending"
+	game.guidance.get_line_edit().set_block_signals(true)
+	var exit_flags := signal_flags(game)
+	var exit_drafts := drafts(game)
+	game._new_dialog()
+	check(game.entry_signal_states.size() == 6, "tree-exit fixture holds an actual picker guard")
+	root.remove_child(game)
+	check(game.entry_signal_states.is_empty() and signal_flags(game) == exit_flags and drafts(game) == exit_drafts, "parent tree exit restores drafts and prior flags without leaving blocked edits")
 	print("ENTRY_PICKER_CHECKS ", checks, " FAILURES ", failures)
 	if failures == 0:
 		print("PASS: production career opening picker ", checks, " checks; native headless keys, guarded storage, not GUI acceptance")

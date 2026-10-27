@@ -14,8 +14,6 @@ var cancel: Button
 var _cases: Dictionary
 var _lab_help: Dictionary
 var _submitted := false
-var _held: Array = []
-var _unchanged: Callable
 
 class OpeningChoice:
 	extends Button
@@ -213,26 +211,6 @@ func claim_start() -> bool:
 	_submitted = true
 	get_ok_button().disabled = true
 	return true
-
-func hold_drafts(inputs: Array, unchanged: Callable) -> void:
-	_unchanged = unchanged
-	for input in inputs:
-		var edit: LineEdit = input.get_line_edit()
-		_held.append([edit, edit.is_blocking_signals(), edit.text, input.value, edit.text != input.get_meta("numeric_text")])
-		edit.set_block_signals(true)
-	_restore_drafts.call_deferred()
-	tree_exited.connect(func():
-		_restore_drafts()
-		for row in _held:
-			if is_instance_valid(row[0]):
-				row[0].set_block_signals(row[1]))
-
-func _restore_drafts() -> void:
-	if not _unchanged.is_valid() or not _unchanged.call():
-		return
-	for row in _held:
-		if is_instance_valid(row[0]) and row[4] and row[0].get_parent().value == row[3]:
-			row[0].text = row[2]
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and event.keycode in [KEY_ENTER, KEY_KP_ENTER]:
