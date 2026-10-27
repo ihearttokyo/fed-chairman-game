@@ -129,6 +129,95 @@ func check_stage_visible(dialog: Variant, index: int, context: String) -> void:
 	var button: Button = dialog.stage_buttons[index]
 	check(button.has_focus() and dialog.scroll.get_global_rect().grow(0.5).encloses(button.get_global_rect()) and dialog.get_visible_rect().grow(0.5).encloses(button.get_global_rect()), context)
 
+func press_without_frame(window: Window, code: Key, shift: bool = false) -> void:
+	var event := InputEventKey.new()
+	event.keycode = code
+	event.shift_pressed = shift
+	event.pressed = true
+	window.push_input(event, true)
+	event = event.duplicate()
+	event.pressed = false
+	window.push_input(event, true)
+
+func pending_navigation_cases(game: Variant, dialog: Variant) -> void:
+	var saved := FileAccess.file_exists(game.save_path)
+	var save_bytes := FileAccess.get_file_as_bytes(game.save_path) if saved else PackedByteArray()
+	var cached := var_to_bytes([dialog.quote, dialog.build_count, game.career.encode(), game._committee_control_snapshot(), game.docket_forecast_calls, dialog.stage_buttons.map(func(button: Button): return button.get_instance_id())])
+	var bar: VScrollBar = dialog.scroll.get_v_scroll_bar()
+	for code in [KEY_PAGEDOWN, KEY_END, KEY_PAGEUP, KEY_HOME]:
+		# Start with a genuinely visible focused Price button and idle layout.
+		dialog.stage_buttons[1].grab_focus()
+		dialog.stage_buttons[0].grab_focus()
+		await settle()
+		check_stage_visible(dialog, 0, "pending-navigation fixture starts with visible Stage price")
+		check(not dialog.focus_reveal_pending, "pending-navigation fixture begins after layout is idle")
+		dialog._schedule_card_focus()
+		check(dialog.focus_reveal_pending, "manual key is deliberately delivered before the queued automatic reveal callback")
+		var before := bar.value
+		press_without_frame(dialog, code)
+		var manual := bar.value
+		check(manual != before, "pending-navigation key genuinely moves the scrollbar: " + str(code))
+		await settle()
+		check(bar.value == manual and dialog.stage_buttons[0].has_focus(), "pending automatic reveal cannot undo explicit Page/Home/End: " + str(code))
+		check(not dialog.focus_reveal_pending, "manual-navigation cancellation leaves no automatic callback polling")
+		print("PENDING_NAVIGATION: key=%d before=%s manual=%s settled=%s" % [code, before, manual, bar.value])
+	# Fresh real focus transitions still request automatic visibility after a
+	# cancellation. Multiple changes before one callback must reveal latest Jobs.
+	dialog.stage_buttons[0].grab_focus()
+	dialog._schedule_card_focus()
+	for shift in [false, true, false]:
+		press_without_frame(dialog, KEY_TAB, shift)
+	check(dialog.stage_buttons[1].has_focus(), "rapid Tab/ShiftTab/Tab ends on Jobs before the pending callback")
+	await settle()
+	check_stage_visible(dialog, 1, "rapid pending focus transitions reveal the current Jobs action, not stale Funding")
+	var settled := bar.value
+	dialog._reveal_card_focus()
+	dialog._reveal_card_focus()
+	dialog._schedule_card_focus()
+	await settle()
+	check(bar.value == settled and not dialog.focus_reveal_pending, "repeated current-focus reveal is idempotent after rapid transitions")
+	# A later actual Container sort is allowed to schedule fresh work too.
+	bar.value = 0
+	dialog.content.queue_sort()
+	await settle()
+	check_stage_visible(dialog, 1, "fresh container layout after manual cancellation can reveal current focus")
+	check(not dialog.focus_reveal_pending, "fresh layout reveal returns to idle")
+	check(var_to_bytes([dialog.quote, dialog.build_count, game.career.encode(), game._committee_control_snapshot(), game.docket_forecast_calls, dialog.stage_buttons.map(func(button: Button): return button.get_instance_id())]) == cached and FileAccess.file_exists(game.save_path) == saved and (not saved or FileAccess.get_file_as_bytes(game.save_path) == save_bytes), "pending navigation and rapid focus preserve quote cache, builds, controls, drafts, career, forecast count and save bytes")
+
+func compact_context_cases(game: Variant, dialog: Variant) -> void:
+	var cache := var_to_bytes([dialog.quote, dialog.build_count, game._committee_control_snapshot(), game.career.encode(), game.docket_forecast_calls])
+	for index in range(3):
+		if index > 0:
+			await key(dialog, KEY_TAB)
+		check_stage_visible(dialog, index, "compact context remains beside the current keyboard-focused Stage action")
+		var conditional: Label
+		var reference: Label
+		for label in dialog.find_children("*", "Label", true, false):
+			if not dialog.scroll.is_ancestor_of(label) and label.is_visible_in_tree():
+				if label.text.contains("Conditional") and label.text.contains("No new shocks") and label.text.contains("withdrawal"):
+					conditional = label
+				if label.text.contains("direction, not welfare") and label.text.contains("Inflation objective"):
+					reference = label
+		check(conditional != null and reference != null, "compact decisions retain conditional/no-new-events and direction/reference context outside the scrolling cards")
+		if conditional != null and reference != null:
+			for label in [conditional, reference]:
+				check(dialog.get_visible_rect().grow(0.5).encloses(label.get_global_rect()) and not label.get_global_rect().intersects(dialog.scroll.get_global_rect()), "concise decision context is fully visible in existing dialog chrome, not clipped inside scrolling content")
+				check(label.autowrap_mode == TextServer.AUTOWRAP_WORD_SMART and label.accessibility_name == label.text, "pinned decision context retains native wrapping and exact readable accessibility text")
+			check(conditional.get_theme_font_size("font_size") == 13 and reference.get_theme_font_size("font_size") == 12, "context reuses existing header/legend font sizes without shrinking")
+			check(conditional.text.contains("Stage does not adopt") and conditional.text.contains("Q+1–8") and reference.text.contains("Δ vs Hold (pp)") and reference.text.contains("not bar zero"), "visible context retains conditional horizon, staging semantics and Hold zero distinct from references")
+			check(reference.text.contains(Docket.value_text(dialog.quote.references[0]) + "%") and reference.text.contains(Docket.value_text(dialog.quote.references[1]) + "%") and reference.text.contains("unemployment"), "pinned objective and current structural reference use actual quote data")
+			check(conditional.get_line_count() <= 2 and reference.get_line_count() <= 3, "compact interpretation stays bounded rather than becoming a sticky prose panel")
+			check(conditional.get_parent().size.y <= 80, "pinned caption uses a bounded compact footer instead of a large sticky text wall")
+		check(dialog.get_visible_rect().grow(0.5).encloses(dialog.get_ok_button().get_global_rect()), "Cancel stays fully visible beside compact decision context")
+		check(dialog.get_ok_button().size.y >= dialog.get_ok_button().get_combined_minimum_size().y, "Cancel retains its complete native target height")
+		check(var_to_bytes([dialog.quote, dialog.build_count, game._committee_control_snapshot(), game.career.encode(), game.docket_forecast_calls]) == cache, "compact context/Tab preserves quote, drafts, career, build count and cached forecast calls")
+	var order: Array = [dialog.stage_buttons[0], dialog.stage_buttons[1], dialog.stage_buttons[2], dialog.refresh_button, dialog.details_button, dialog.get_ok_button(), dialog.scroll]
+	for index in range(order.size()):
+		check(order[index].get_node(order[index].focus_next) == order[(index + 1) % order.size()] and order[index].get_node(order[index].focus_previous) == order[(index - 1 + order.size()) % order.size()], "pinned noninteractive context leaves the complete existing keyboard cycle unchanged")
+	# Restore Price for the existing pending-navigation and reopen regressions.
+	dialog.stage_buttons[0].grab_focus()
+	await settle()
+
 func compact_initial_focus_cases(game: Variant, density: float) -> void:
 	var original_size := root.size
 	var career_bytes: PackedByteArray = game.career.encode()
@@ -141,6 +230,8 @@ func compact_initial_focus_cases(game: Variant, density: float) -> void:
 		var dialog: Variant = game.committee_docket
 		check_stage_visible(dialog, 0, "compact CmdK initial Stage price is visible after popup fit, including Escape/reopen")
 		check(not dialog.focus_reveal_pending, "popup settled focus scheduling becomes idle instead of polling")
+		if opening == 0:
+			await compact_context_cases(game, dialog)
 		var cached := var_to_bytes(dialog.quote)
 		var builds: int = dialog.build_count
 		var ids: Array = dialog.stage_buttons.map(func(button: Button): return button.get_instance_id())
@@ -153,6 +244,8 @@ func compact_initial_focus_cases(game: Variant, density: float) -> void:
 		var before_page: float = dialog.scroll.get_v_scroll_bar().value
 		await key(dialog, KEY_PAGEDOWN)
 		check(dialog.scroll.get_v_scroll_bar().value > before_page and dialog.stage_buttons[0].has_focus(), "settled reveal does not undo explicit popup Page Down while a Stage button retains focus")
+		if opening == 0:
+			await pending_navigation_cases(game, dialog)
 		await key(dialog, KEY_ESCAPE)
 		check(game.committee_button.has_focus(), "closing a docket with scheduled reveal restores opener, not a dead Stage button")
 	root.size = original_size
@@ -447,6 +540,7 @@ func run() -> void:
 	await settle()
 	check(root.get_visible_rect().size.distance_to(Vector2(800, 480)) <= 1.5, "private compact fixture establishes an 800x480 logical viewport")
 	check(dialog.get_size_with_decorations().x <= root.get_visible_rect().size.x and dialog.get_size_with_decorations().y <= root.get_visible_rect().size.y, "compact docket stays bounded by its private parent")
+	print("CONTEXT_FIT: root=", root.get_visible_rect(), " dialog=", dialog.size, " decorated=", dialog.get_size_with_decorations(), " min=", dialog.get_contents_minimum_size(), " scroll_min=", dialog.scroll.get_combined_minimum_size(), " footer=", dialog.context_footer.get_global_rect(), " footer_min=", dialog.context_footer.get_combined_minimum_size())
 	check(dialog.cards.columns == 1 and dialog.stage_buttons[1].has_focus(), "800x480 private parent stacks the same cards without stealing focus")
 	check_stage_visible(dialog, 1, "settled compact resize reveals the still-focused Stage jobs without Tab")
 	for index in range(3):

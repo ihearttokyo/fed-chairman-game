@@ -16,6 +16,7 @@ var cards: GridContainer
 var reference_table: GridContainer
 var scroll: ScrollContainer
 var content: VBoxContainer
+var context_footer: VBoxContainer
 var message: Label
 var refresh_button: Button
 var details_button: Button
@@ -172,10 +173,33 @@ func _init() -> void:
 	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	content.add_theme_constant_override("separation", 8)
 	scroll.add_child(content)
+	# Reuse the native Cancel row for a bounded interpretation caption. Its
+	# native centering spacers stay in place but no longer consume the caption's
+	# width. Neither caption participates in focus order or scrolls off screen.
+	var footer: HBoxContainer = get_ok_button().get_parent()
+	for child in footer.get_children(true):
+		if child is Control and not child is BaseButton:
+			child.size_flags_horizontal = Control.SIZE_FILL
+	context_footer = VBoxContainer.new()
+	context_footer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	context_footer.add_theme_constant_override("separation", 2)
+	footer.add_child(context_footer)
+	footer.move_child(context_footer, 0)
+	get_ok_button().size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	footer.minimum_size_changed.connect(_refit_context_footer, CONNECT_DEFERRED)
 	scroll.resized.connect(_reflow_cards)
 	content.sort_children.connect(_schedule_card_focus)
+	context_footer.sort_children.connect(_schedule_card_focus)
 	gui_focus_changed.connect(func(_control: Control): _schedule_card_focus())
 	visibility_changed.connect(_schedule_card_focus)
+
+func _refit_context_footer() -> void:
+	# Wrapped footer chrome can acquire its final minimum after popup fitting.
+	# Reuse Main's bounded report fit, independently of cancellable focus work.
+	if is_inside_tree() and visible and not is_queued_for_deletion():
+		var parent := get_parent()
+		if parent.has_method("_fit_report"):
+			parent._fit_report(self)
 
 func label_in(parent: Node, text: String, font_size: int = 14) -> Label:
 	var label := Label.new()
@@ -204,6 +228,14 @@ func _schedule_card_focus() -> void:
 	# Reflow and wrapped minimum heights can settle after call_deferred. Each
 	# actual sort/focus change coalesces into the next frame, without refocusing.
 	get_tree().process_frame.connect(_reveal_settled_card_focus, CONNECT_ONE_SHOT)
+
+func _cancel_pending_card_focus() -> void:
+	# Explicit navigation wins over an older automatic reveal. Disconnect it
+	# rather than leaving a stale callback that could consume a newer request.
+	if focus_reveal_pending:
+		if get_tree().process_frame.is_connected(_reveal_settled_card_focus):
+			get_tree().process_frame.disconnect(_reveal_settled_card_focus)
+		focus_reveal_pending = false
 
 func _reveal_settled_card_focus() -> void:
 	focus_reveal_pending = false
@@ -303,9 +335,10 @@ func _card(item: Dictionary, scales: Array, held: Dictionary) -> void:
 func present(data: Dictionary) -> void:
 	quote = data
 	build_count += 1
-	for child in content.get_children():
-		content.remove_child(child)
-		child.queue_free()
+	for parent in [content, context_footer]:
+		for child in parent.get_children():
+			parent.remove_child(child)
+			child.queue_free()
 	stage_buttons.clear()
 	proposal_cards.clear()
 	metric_values.clear()
@@ -314,7 +347,11 @@ func present(data: Dictionary) -> void:
 	delta_scales.clear()
 	var toolbar := HBoxContainer.new()
 	content.add_child(toolbar)
-	label_in(toolbar, "Conditional 8-quarter comparison. No new shocks or withdrawal requests. Stage does not adopt.", 13)
+	label_in(context_footer, "Conditional Q+1–8 · No new shocks/withdrawal requests · Stage does not adopt.", 13)
+	var toolbar_space := Control.new()
+	toolbar_space.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	toolbar_space.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	toolbar.add_child(toolbar_space)
 	refresh_button = Button.new()
 	refresh_button.text = "Refresh"
 	refresh_button.size_flags_horizontal = Control.SIZE_SHRINK_END
@@ -336,7 +373,7 @@ func present(data: Dictionary) -> void:
 	# Keep all five source entries; only the three actionable proposals are cards.
 	for item in data.entries.slice(2):
 		_card(item, delta_scales, held)
-	var legend: Label = label_in(content, "Shared Δ scales vs Hold (pp); signs/colors show direction, not welfare. Inflation objective %s%%; structural unemployment %s%% (current reference)." % [Docket.value_text(data.references[0]), Docket.value_text(data.references[1])], 12)
+	var legend: Label = label_in(context_footer, "Δ vs Hold (pp): direction, not welfare. Inflation objective %s%%; structural unemployment ref %s%% — references, not bar zero." % [Docket.value_text(data.references[0]), Docket.value_text(data.references[1])], 12)
 	legend.add_theme_color_override("font_color", Color("e9b76e"))
 	reference_table = GridContainer.new()
 	reference_table.columns = 4
@@ -404,6 +441,7 @@ func _input(event: InputEvent) -> void:
 		queue_free()
 		return
 	if event.keycode in [KEY_PAGEUP, KEY_PAGEDOWN, KEY_HOME, KEY_END] and not event.is_command_or_control_pressed():
+		_cancel_pending_card_focus()
 		var bar := scroll.get_v_scroll_bar()
 		match event.keycode:
 			KEY_PAGEUP: bar.value -= bar.page
