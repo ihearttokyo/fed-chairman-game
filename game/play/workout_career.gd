@@ -1,6 +1,7 @@
 extends "res://play/career.gd"
 ## Optional in-memory episode. Normal career slots are deliberately inaccessible.
 const EPISODE_QUARTERS := 8
+var episode_quarters: int = EPISODE_QUARTERS
 var bank_state: Dictionary = {}
 var bank_history: Array = []
 var settlements: Array = []
@@ -12,9 +13,13 @@ var remaining_request_index := -1
 func start(_case_id: String, _seed_number: int) -> Dictionary:
 	return {"ok": false, "error": "Start a bank-workout episode with its opening bank and request schedule."}
 
-func start_episode(opening: Dictionary, requests: Array, haircut: float, share: float, case_id: String = "stagflation_bank_run", seed_number: int = 417, remaining_index: int = -1) -> Dictionary:
-	if remaining_index < -1 or remaining_index >= EPISODE_QUARTERS or requests.size() != EPISODE_QUARTERS or not is_finite(haircut) or haircut < 0.0 or haircut > 100.0 or not is_finite(share) or share < 0.0 or share > 1.0:
-		return {"ok": false, "error": "Invalid eight-quarter workout configuration."}
+func start_episode(opening: Dictionary, requests: Array, haircut: float, share: float, case_id: String = "stagflation_bank_run", seed_number: int = 417, remaining_index: int = -1, horizon: Variant = EPISODE_QUARTERS) -> Dictionary:
+	# Bound actual play by the existing seeded macro-shock tape, without coercion
+	# or implicit extension/truncation of an explicitly authored request schedule.
+	if typeof(horizon) != TYPE_INT or horizon < 1 or horizon > MAX_QUARTERS:
+		return {"ok": false, "error": "Invalid bank-workout horizon."}
+	if remaining_index < -1 or remaining_index >= horizon or requests.size() != horizon or not is_finite(haircut) or haircut < 0.0 or haircut > 100.0 or not is_finite(share) or share < 0.0 or share > 1.0:
+		return {"ok": false, "error": "Invalid eight-quarter workout configuration." if horizon == EPISODE_QUARTERS else "Invalid %d-quarter workout configuration." % horizon}
 	var checked := model.bank_workout_value(opening, opening.get("annual_yield_pct", NAN))
 	if not checked.ok:
 		return checked
@@ -26,7 +31,7 @@ func start_episode(opening: Dictionary, requests: Array, haircut: float, share: 
 		if index != remaining_index:
 			unrequested -= request
 	if remaining_index >= 0:
-		for index in range(remaining_index + 1, EPISODE_QUARTERS):
+		for index in range(remaining_index + 1, horizon):
 			if requests[index] != 0.0:
 				return {"ok": false, "error": "New withdrawal waves cannot follow the final remaining-depositor wave."}
 	# Build a detached ordinary starting economy before installing either state.
@@ -53,21 +58,22 @@ func start_episode(opening: Dictionary, requests: Array, haircut: float, share: 
 	haircut_pct = haircut
 	pledgeable_share = share
 	remaining_request_index = remaining_index
+	episode_quarters = horizon
 	return {"ok": true}
 
 func _order(request: float) -> Dictionary:
 	return {"new_withdrawals": request, "haircut_pct": haircut_pct, "pledgeable_share": pledgeable_share}
 
 func _current_request() -> Dictionary:
-	if bank_state.is_empty() or decisions.size() >= EPISODE_QUARTERS:
+	if bank_state.is_empty() or decisions.size() >= episode_quarters:
 		return {"ok": false, "error": "No remaining bank-workout request."}
 	if decisions.size() == remaining_request_index:
 		return model.bank_workout_remaining_request(bank_state)
 	return {"ok": true, "request": withdrawal_requests[decisions.size()]}
 
 func advance(policy: Dictionary) -> Dictionary:
-	if bank_state.is_empty() or decisions.size() >= EPISODE_QUARTERS:
-		return {"ok": false, "error": "The eight-quarter bank-workout episode is complete."}
+	if bank_state.is_empty() or decisions.size() >= episode_quarters:
+		return {"ok": false, "error": "The eight-quarter bank-workout episode is complete." if episode_quarters == EPISODE_QUARTERS else "The %d-quarter bank-workout episode is complete." % episode_quarters}
 	var request := _current_request()
 	if not request.ok:
 		return request
@@ -83,7 +89,7 @@ func advance(policy: Dictionary) -> Dictionary:
 	return result
 
 func workout_briefing() -> Dictionary:
-	if bank_state.is_empty() or decisions.size() >= EPISODE_QUARTERS:
+	if bank_state.is_empty() or decisions.size() >= episode_quarters:
 		return {"ok": false, "error": "No remaining bank-workout decision."}
 	var request := _current_request()
 	if not request.ok:
@@ -91,7 +97,7 @@ func workout_briefing() -> Dictionary:
 	return model.bank_workout_briefing(bank_state, _order(request.request))
 
 func current_briefing() -> Dictionary:
-	if bank_state.is_empty() or decisions.size() >= EPISODE_QUARTERS:
+	if bank_state.is_empty() or decisions.size() >= episode_quarters:
 		return {}
 	var shown := workout_briefing()
 	if not shown.ok:
@@ -103,8 +109,8 @@ func current_briefing() -> Dictionary:
 func situation_briefing() -> String:
 	if bank_state.is_empty():
 		return "Bank workout not started."
-	if decisions.size() >= EPISODE_QUARTERS:
-		return "Eight-quarter episode complete. Retained claims remain visible in the bank ledger."
+	if decisions.size() >= episode_quarters:
+		return "Eight-quarter episode complete. Retained claims remain visible in the bank ledger." if episode_quarters == EPISODE_QUARTERS else "%d-quarter episode complete. Retained claims remain visible in the bank ledger." % episode_quarters
 	var shown := workout_briefing()
 	if not shown.ok:
 		return "Bank conditions unavailable: " + shown.error
@@ -116,7 +122,7 @@ func current_shock_episode() -> Dictionary:
 	return {}
 
 func forecast(policy: Dictionary, follow_guidance: bool = false) -> Dictionary:
-	if bank_state.is_empty() or decisions.size() >= EPISODE_QUARTERS:
+	if bank_state.is_empty() or decisions.size() >= episode_quarters:
 		return {"ok": false, "error": "No remaining bank-workout decision."}
 	var today := _current_request()
 	if not today.ok:
@@ -147,8 +153,8 @@ func forecast(policy: Dictionary, follow_guidance: bool = false) -> Dictionary:
 		states.append(projected.duplicate(true))
 		banks.append(projected_bank.duplicate(true))
 		bank_results.append(result.bank_result.duplicate(true))
-	return {"ok": true, "states": states, "bank_states": banks, "bank_results": bank_results, "episode_end_quarter": EPISODE_QUARTERS,
-		"diagnostic_beyond_episode": states[-1].quarter_index > EPISODE_QUARTERS}
+	return {"ok": true, "states": states, "bank_states": banks, "bank_results": bank_results, "episode_end_quarter": episode_quarters,
+		"diagnostic_beyond_episode": states[-1].quarter_index > episode_quarters}
 
 func panel_snapshot() -> Dictionary:
 	if bank_state.is_empty():
@@ -175,7 +181,7 @@ func mandate_assessment() -> Dictionary:
 	var assessment := super.mandate_assessment()
 	assessment.eligible = false
 	assessment.achieved = false
-	assessment.complete = decisions.size() == EPISODE_QUARTERS
+	assessment.complete = decisions.size() == episode_quarters
 	return assessment
 
 func recovery_assessment() -> Dictionary:

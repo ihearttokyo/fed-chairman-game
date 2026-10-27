@@ -20,7 +20,11 @@ func run() -> void:
 	var save_before := FileAccess.get_file_as_bytes(game.save_path) if FileAccess.file_exists(game.save_path) else PackedByteArray()
 	game._new_dialog()
 	var new_dialog: AcceptDialog = game.get_child(game.get_child_count() - 1)
-	var workout_index: int = game.scenario.item_count - 1
+	var workout_index := -1
+	for index in range(game.scenario.item_count):
+		if game.scenario.get_item_metadata(index) == game.WORKOUT_CASE:
+			workout_index = index
+	check(workout_index >= 0, "existing ordinary lab remains discoverable by its stable ID")
 	check(game.scenario.get_item_metadata(workout_index) == game.WORKOUT_CASE, "Actual New menu exposes the optional episode")
 	game.scenario.select(workout_index)
 	game.seed_input.value = 417

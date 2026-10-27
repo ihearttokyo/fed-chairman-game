@@ -18,8 +18,8 @@ var credit_history: Array = []
 var credit_contexts: Array = []
 var credit_results: Array = []
 
-func start_episode(opening: Dictionary, requests: Array, haircut: float, share: float, case_id: String = "stagflation_bank_run", seed_number: int = 417, remaining_index: int = -1) -> Dictionary:
-	var result := super.start_episode(opening, requests, haircut, share, case_id, seed_number, remaining_index)
+func start_episode(opening: Dictionary, requests: Array, haircut: float, share: float, case_id: String = "stagflation_bank_run", seed_number: int = 417, remaining_index: int = -1, horizon: Variant = EPISODE_QUARTERS) -> Dictionary:
+	var result := super.start_episode(opening, requests, haircut, share, case_id, seed_number, remaining_index, horizon)
 	if not result.ok:
 		return result
 	credit_state = {"payable": 0.0, "receivable": 0.0}
@@ -53,8 +53,8 @@ func _today_macro_shock() -> Dictionary:
 	return {"ok": true, "shock": shocks[index].duplicate(true)}
 
 func advance(policy: Dictionary) -> Dictionary:
-	if bank_state.is_empty() or decisions.size() >= EPISODE_QUARTERS:
-		return {"ok": false, "error": "The eight-quarter priced-workout episode has no remaining decision."}
+	if bank_state.is_empty() or decisions.size() >= episode_quarters:
+		return {"ok": false, "error": "The eight-quarter priced-workout episode has no remaining decision." if episode_quarters == EPISODE_QUARTERS else "The %d-quarter priced-workout episode has no remaining decision." % episode_quarters}
 	var request := _current_request()
 	if not request.ok:
 		return request
@@ -81,7 +81,7 @@ func advance(policy: Dictionary) -> Dictionary:
 	return result
 
 func workout_briefing() -> Dictionary:
-	if bank_state.is_empty() or decisions.size() >= EPISODE_QUARTERS:
+	if bank_state.is_empty() or decisions.size() >= episode_quarters:
 		return {"ok": false, "error": "No remaining priced-workout decision."}
 	var request := _current_request()
 	if not request.ok:
@@ -91,7 +91,7 @@ func workout_briefing() -> Dictionary:
 	return model.bank_workout_briefing(bank_state, _order(request.request), _credit_context(state.policy_rate_pct, bank_state.quarter_index, credit_state))
 
 func forecast(policy: Dictionary, follow_guidance: bool = false) -> Dictionary:
-	if bank_state.is_empty() or decisions.size() >= EPISODE_QUARTERS:
+	if bank_state.is_empty() or decisions.size() >= episode_quarters:
 		return {"ok": false, "error": "No remaining priced-workout decision."}
 	var today := _current_request()
 	if not today.ok:
@@ -135,7 +135,7 @@ func forecast(policy: Dictionary, follow_guidance: bool = false) -> Dictionary:
 		contexts.append(credit.duplicate(true))
 	return {"ok": true, "states": states, "bank_states": banks, "credit_states": credits,
 		"credit_results": results, "bank_results": bank_results, "credit_contexts": contexts,
-		"episode_end_quarter": EPISODE_QUARTERS, "diagnostic_beyond_episode": states[-1].quarter_index > EPISODE_QUARTERS}
+		"episode_end_quarter": episode_quarters, "diagnostic_beyond_episode": states[-1].quarter_index > episode_quarters}
 
 func panel_snapshot() -> Dictionary:
 	var view := super.panel_snapshot()
@@ -154,10 +154,10 @@ func credit_snapshot() -> Dictionary:
 		"payable": credit_state.payable, "receivable": credit_state.receivable,
 		"annual_rate_pct": null, "requested_policy_rate_pct": null, "days": null, "accrued_positive": null, "accrued_negative": null,
 		"paid_positive": null, "paid_negative": null, "new_cash_for_interest": null, "new_cash_for_withdrawals": null,
-		"held_annual_rate_pct": _loan_apr(state.policy_rate_pct) if decisions.size() < EPISODE_QUARTERS else null,
-		"held_requested_policy_rate_pct": state.policy_rate_pct if decisions.size() < EPISODE_QUARTERS else null,
+		"held_annual_rate_pct": _loan_apr(state.policy_rate_pct) if decisions.size() < episode_quarters else null,
+		"held_requested_policy_rate_pct": state.policy_rate_pct if decisions.size() < episode_quarters else null,
 		"quote_basis": "mapped_current_policy_rate_not_staged_controls",
-		"next_days": DAY_SCHEDULE[posmod(bank_state.quarter_index, 4)] if decisions.size() < EPISODE_QUARTERS else null,
+		"next_days": DAY_SCHEDULE[posmod(bank_state.quarter_index, 4)] if decisions.size() < episode_quarters else null,
 		"externally_collectible_assumption": true, "negative_rate_counterfactual": true, "finance_interest": true}
 	if not credit_results.is_empty():
 		snapshot.annual_rate_pct = credit_contexts[-1].annual_rate_pct

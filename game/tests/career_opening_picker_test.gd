@@ -173,9 +173,9 @@ func run() -> void:
 		await key(picker, KEY_TAB)
 		check(picker.gui_get_focus_owner() == expected and game.starts.is_empty(), "initial sequential Tab visits every choice then selector and seed without starting")
 	check(game.scenario.get_item_metadata(game.scenario.selected) == game.Career.DEFAULT_SCENARIO and game.seed_input.value == 1, "unchanged policy_career default and seed 1")
-	check(picker.primary_ids == ["policy_career", "stagflation_bank_run", "__priced_bank_workout", "__bank_workout"], "four primary cards use the actual production constant IDs")
-	check(picker.primary_buttons.size() == 4, "all four choices exist immediately")
-	check(game.scenario.item_count == game.career.cases.size() + 2, "all normal cases and both labs remain in the selector")
+	check(picker.primary_ids.slice(0, 4) == ["policy_career", "stagflation_bank_run", "__priced_bank_workout", "__bank_workout"] and picker.primary_ids[4] == game.RUNOFF_CASE, "four primary cards use the actual production constant IDs")
+	check(picker.primary_buttons.size() == 5, "all original four choices and separate runoff choice exist immediately")
+	check(game.scenario.item_count == game.career.cases.size() + 3, "all normal cases, both original labs and separate runoff remain in the selector")
 	var index := 0
 	for id in game.career.cases:
 		check(game.scenario.get_item_metadata(index) == id and game.scenario.get_item_text(index) == game.career.cases[id].label, "original case ordering, label and ID retained: " + id)
@@ -392,7 +392,7 @@ func layout_checks(game: Control) -> void:
 			check(control in visited, "complete forward native Tab cycle includes " + control.get_class())
 		picker.scenario.grab_focus()
 		await key(picker, KEY_TAB, false, true)
-		check(picker.primary_buttons[3].has_focus(), "ShiftTab returns from All scenarios to the last visible primary choice")
+		check(picker.primary_buttons[-1].has_focus(), "ShiftTab returns from All scenarios to the last visible primary choice")
 		picker.primary_buttons[0].grab_focus()
 		await key(picker, KEY_TAB, false, true)
 		check(picker.scroll.has_focus(), "ShiftTab wraps from the first primary choice to scrolling")

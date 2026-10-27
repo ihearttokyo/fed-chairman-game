@@ -14,6 +14,7 @@ var details: TextEdit
 var cancel: Button
 var _cases: Dictionary
 var _lab_help: Dictionary
+var _runoff_id := ""
 var _submitted := false
 var _focus_reveal_pending := false
 
@@ -52,9 +53,13 @@ class OpeningChoice:
 			2:
 				draw_rect(Rect2(p - Vector2(7, 7), Vector2(14, 14)), c, false, 2)
 				draw_line(p + Vector2(-4, 0), p + Vector2(4, 0), c, 2)
+			4:
+				draw_line(p + Vector2(-7, 7), p + Vector2(7, 7), c, 2)
+				draw_line(p + Vector2(7, 7), p + Vector2(7, -7), c, 2)
 			3: draw_rect(Rect2(p - Vector2(7, 7), Vector2(14, 14)), c, false, 2)
 
-func build(cases: Dictionary, default_id: String, priced_id: String, workout_id: String, lab_help: Dictionary) -> void:
+func build(cases: Dictionary, default_id: String, priced_id: String, workout_id: String, lab_help: Dictionary, runoff_id: String = "") -> void:
+	_runoff_id = runoff_id
 	_cases = cases
 	_lab_help = lab_help
 	title = "Start a new career"
@@ -83,6 +88,10 @@ func build(cases: Dictionary, default_id: String, priced_id: String, workout_id:
 	primary_ids.assign([default_id, "stagflation_bank_run", priced_id, workout_id])
 	var titles := [str(cases[default_id].label), str(cases.stagflation_bank_run.label), "Bank workout · borrowing costs", "Bank workout · 8-meeting laboratory"]
 	var cues := ["60 years / Q240 · recurring dilemmas", "7% inflation · −3% gap\nImmediate funding · through Q240", "8 meetings · UNSAVED\nBorrowing costs / equity", "8 meetings · UNSAVED\nCash / collateral / rollover"]
+	if not runoff_id.is_empty():
+		primary_ids.append(runoff_id)
+		titles.append("Bank runoff · to maturity")
+		cues.append("20 meetings · UNSAVED\nThrough final maturity Q20")
 	for index in range(primary_ids.size()):
 		var choice := OpeningChoice.new()
 		choice.configure(titles[index], cues[index], index)
@@ -101,6 +110,9 @@ func build(cases: Dictionary, default_id: String, priced_id: String, workout_id:
 	for pair in [[priced_id, titles[2]], [workout_id, titles[3]]]:
 		scenario.add_item(pair[1])
 		scenario.set_item_metadata(scenario.item_count - 1, pair[0])
+	if not runoff_id.is_empty():
+		scenario.add_item("Bank runoff · to maturity")
+		scenario.set_item_metadata(scenario.item_count - 1, runoff_id)
 	scenario.item_selected.connect(func(_index: int): _selection_changed())
 	summary = _label("")
 	var seed_row := HBoxContainer.new()
@@ -194,6 +206,8 @@ func _selection_changed() -> void:
 		primary_buttons[index].set_pressed_no_signal(primary_ids[index] == id)
 	if id == "stagflation_bank_run":
 		summary.text = "Recovery v1: rolling stabilization, not a 12-quarter ending. Continues to Q240."
+	elif not _runoff_id.is_empty() and id == _runoff_id:
+		summary.text = "20 meetings through final maturity Q20. Seeded macro shocks continue. No normal career awards or saves."
 	elif id in _lab_help:
 		summary.text = "Eight-meeting unsaved exercise. No normal career awards or saves."
 	elif id in [primary_ids[0], "unanchored_inflation"]:
@@ -211,7 +225,7 @@ func _reflow() -> void:
 		var button := primary_buttons[index]
 		var column := index % cards.columns
 		button.focus_neighbor_left = button.get_path_to(primary_buttons[index - 1] if column > 0 else button)
-		button.focus_neighbor_right = button.get_path_to(primary_buttons[index + 1] if column + 1 < cards.columns else button)
+		button.focus_neighbor_right = button.get_path_to(primary_buttons[index + 1] if column + 1 < cards.columns and index + 1 < primary_buttons.size() else button)
 		button.focus_neighbor_top = button.get_path_to(primary_buttons[index - cards.columns] if index >= cards.columns else button)
 		button.focus_neighbor_bottom = button.get_path_to(primary_buttons[index + cards.columns] if index + cards.columns < primary_buttons.size() else button)
 

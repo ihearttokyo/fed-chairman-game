@@ -338,3 +338,26 @@ the result. Do not retune this screen after its outcome or promote this mechanis
 into normal careers. Bank accounting success does not establish macro spillovers,
 held-out improvement or enjoyable play. The native game, saves and walkthrough
 outcomes are unchanged. Stronger ordinary-career decision variety remains open.
+
+## Closed-book runoff: the cost after Q8
+
+The original bank's last security matures at Q20, after the eight-meeting lab
+ends. A prospectively frozen screen carried the same book, withdrawal waves,
+seeded macro shocks and priced-credit settlement through that maturity: three
+new seeds, four unchanged policy families, 240 actual advances. No new deposits,
+assets, capital, forgiveness, coefficients or award thresholds were introduced.
+
+Over Q9–20, Staff plus current secured funding reduced mean inflation distance
+by 0.829–0.844 pp versus opening-rate hold plus funding, but increased employment
+shortfall by 0.812–0.839 pp and left less bank capital. Fixed-zero funding improved
+jobs and bank capital but worsened inflation distance by 1.139–1.157 pp versus
+Staff. Both independent reviews found this supports a bounded native prototype;
+it is not player-fun, calibration or normal-career difficulty acceptance.
+
+Every sampled arm cleared remaining principal, queued deposits, arrears and
+interest claims at Q20. That common endpoint hides different payment delays and
+capital costs. Native gross loan retirement includes renewal; cash repayment and net
+debt-stock reduction are separate measures. Show the Q8 checkpoint and realized late interval, not just
+a terminal cleared balance sheet or an invented winning score.
+
+[Frozen criteria, source pins and separate per-seed outcomes](research/CLOSED_BOOK_RUNOFF_Q20_SCREEN.json).

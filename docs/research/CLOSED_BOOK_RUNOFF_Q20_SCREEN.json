@@ -1,0 +1,812 @@
+{
+  "scope": "Prospective synthetic closed-book runoff screen; supports a native prototype only, not fun, empirical calibration, legal resolution, normal-career difficulty or whole-game acceptance.",
+  "baseline_commit": "6e0aaccc5f4ca675aef45b2e12cf81fc30e18e90",
+  "case": "stagflation_bank_run",
+  "horizon": 20,
+  "horizon_reason": "Last existing security matures at Q20. Same original book and first eight requests; twelve subsequent withdrawal requests are zero. Native macro shock tape is unchanged.",
+  "seeds": [
+    104729,
+    130363,
+    155921
+  ],
+  "families": {
+    "staff_funding": "Actual PolicyAdvice.policy current state each meeting; rate/guidance snapped via native UI-equivalent SpinBox; current Committee funding offer.",
+    "hold_funding": "Opening requested/applied rate snapped once, matching guidance; current Committee funding offer.",
+    "zero_funding": "Fixed 0.00 rate/guidance; current Committee funding offer. Preserve as strong negative control.",
+    "staff_no_funding": "Actual PolicyAdvice rate/guidance current state; no new funding offer."
+  },
+  "counts": {
+    "paths": 12,
+    "priced_advances": 240,
+    "internal_native_successes": 480
+  },
+  "predeclared_qualification": {
+    "macro_materiality": "For a paired family-control comparison over Q9-Q20, compute per-seed differences in the mean absolute inflation miss and mean positive employment shortfall. At least one metric must have absolute mean paired difference >=0.10 percentage point pooled across the three seeds, with the same nonzero direction in all three paired seeds. Report each seed and the Q1-Q8/Q9-Q20/full20 periods separately.",
+    "coupled_bank_consequence": "For the same action/control pair, require a non-noise banking consequence beyond 1e-9: all-in equity sign/crossing differs, or Q20 queue/principal/interest-payable differs, or actual Q20 maturity/repayment changes claim state from Q8 and the paired action produces a non-noise difference. Report raw values and their units; no composite.",
+    "fixed_zero_negative_control": "Compare fixed0+current-funding against actual Staff+current-funding per seed on inflation distance, positive job shortfall, cumulative withdrawals paid, terminal queue, minimum and terminal combined equity, interest cost/payables/receivables, terminal principal. Weakly better across all dimensions in every seed is an automatic-recipe rejection. Use 1e-9 native-value tolerance for partial ordering; identify any apparent win whose only macro loss is <0.10pp as near-dominance, not a material tradeoff.",
+    "resolution_relevance": "Report Q20 maturity/repayment path versus Q8. If Q9-Q20 is a flat wait without consequential bank or macro choice, or the negative control dominates, stop this lane; preserve negative result."
+  },
+  "source_sha256": {
+    "game/model/economy.gd": "0bbf3d361f4e8ad61c86c5fb27d2fc78535f759df80192ae9639fd8d918aa315",
+    "game/play/career.gd": "14cf91be15ef7108a7681df6fb7af59cdded594ca1ad6d55f9577889e7cc2d16",
+    "game/play/workout_career.gd": "53bc93757b985526ead22067366da6252b3552a800f686bb6c8ab7e89e6960f5",
+    "game/play/priced_workout_career.gd": "3c9550a8105c53e3645abc40f060aa8a0037ba3b0af1aa5579156e6c36179925",
+    "game/play/policy_advice.gd": "f7ecdc0ece1027f2867b488090bcbc2364230e0c0034ed49f86c2d8583312b45",
+    "game/play/policy_committee.gd": "6b4ce1988e3839469ca58de96f16c73070a0d6a444389e73dae5ff5a272c7ef4",
+    "game/model/parameters.json": "5d7c3d28dd27c910e8359a80beb3e4d608f1f28edbd2ef6adfe027e77b998e7a",
+    "game/model/scenarios.json": "837a1db314f582f2aa8f9389928c8fe9bc7dde32565e580a78b21b1007e35197",
+    "game/model/exogenous_shocks.json": "63391b29f70c4d52669cfecb5c0fbbaed1246f6369a95dfb1e38e3fa6d83e4e7",
+    "game/project.godot": "2ad20273233d3868295b66924932a374be1c44da1bd817b66390594dd5a51ebd",
+    "game/README.md": "eb4209185877f2ade9cd5d120f39ba5d29fe3556133465e4a604a4b1148082f6"
+  },
+  "evidence_sha256": {
+    "method": "5280c2a274c513b10c72e4460d8bf41231e09acef7deab163cd3170ebc59a16c",
+    "diagnostic": "ad4aab8bb466b6399a8404609d01567d2616d23d238e9a9cc786433caf563c99",
+    "summarizer": "7d1b9693ec12ac8d557a4885cc1884ec4c6b4b3c67a621ad2dd0e1fd9f666678",
+    "traces": "38a8058c79a67a69cdb66cb371ce0dbed0bd16f068bdf76ead20a974f57e901c"
+  },
+  "paths": [
+    {
+      "seed": 104729,
+      "family": "staff_funding",
+      "segments": {
+        "q1_8": {
+          "quarters": 8,
+          "mean_abs_inflation_miss_pp": 4.622529303224245,
+          "mean_positive_employment_shortfall_pp": 1.0917918609880222,
+          "mean_output_gap_pp": -1.7076614675655162,
+          "mean_credit_spread_pp": 0.4179097928805255,
+          "policy_rate_moves": 8,
+          "withdrawals_paid_total": 2.3556611433481525,
+          "net_paid_interest": 0.3620914126523807,
+          "maturity_principal_paid": 1.07
+        },
+        "q9_20": {
+          "quarters": 12,
+          "mean_abs_inflation_miss_pp": 4.094852280657901,
+          "mean_positive_employment_shortfall_pp": 0.8136644695588989,
+          "mean_output_gap_pp": -1.623139231326946,
+          "mean_credit_spread_pp": 0.43377493177500576,
+          "policy_rate_moves": 11,
+          "withdrawals_paid_total": 0.34433885665184416,
+          "net_paid_interest": 0.6928990969619817,
+          "maturity_principal_paid": 2.97
+        },
+        "full20": {
+          "quarters": 20,
+          "mean_abs_inflation_miss_pp": 4.3059230896844385,
+          "mean_positive_employment_shortfall_pp": 0.9249154261305481,
+          "mean_output_gap_pp": -1.656948125822374,
+          "mean_credit_spread_pp": 0.42742887621721365,
+          "policy_rate_moves": 19,
+          "withdrawals_paid_total": 2.6999999999999966,
+          "net_paid_interest": 1.0549905096143624,
+          "maturity_principal_paid": 4.04
+        }
+      },
+      "q8_state": {
+        "bank_cash": 0.0,
+        "deposits": 0.344338856651845,
+        "withdrawal_queue": 0.344338856651845,
+        "loan_principal": 1.64775255600054,
+        "loan_arrears": 0.0,
+        "matured_face": 1.07,
+        "remaining_face": 2.9699999999999998,
+        "interest_payable": 0.00722924422037181,
+        "interest_receivable": 0.0,
+        "combined_equity": 0.0603700381279176
+      },
+      "q20_state": {
+        "bank_cash": 0.285009490385638,
+        "deposits": 0.0,
+        "withdrawal_queue": 0.0,
+        "loan_principal": 0.0,
+        "loan_arrears": 0.0,
+        "matured_face": 4.04,
+        "remaining_face": 0.0,
+        "interest_payable": 0.0,
+        "interest_receivable": 0.0,
+        "combined_equity": 0.285009490385638
+      }
+    },
+    {
+      "seed": 104729,
+      "family": "hold_funding",
+      "segments": {
+        "q1_8": {
+          "quarters": 8,
+          "mean_abs_inflation_miss_pp": 4.7041965394168095,
+          "mean_positive_employment_shortfall_pp": 0.7874060834515229,
+          "mean_output_gap_pp": -0.5825457965696726,
+          "mean_credit_spread_pp": 0.35,
+          "policy_rate_moves": 0,
+          "withdrawals_paid_total": 2.6999999999999997,
+          "net_paid_interest": 0.1219920984901863,
+          "maturity_principal_paid": 1.07
+        },
+        "q9_20": {
+          "quarters": 12,
+          "mean_abs_inflation_miss_pp": 4.931896217117013,
+          "mean_positive_employment_shortfall_pp": 0.0017603796600991165,
+          "mean_output_gap_pp": 1.183463358560843,
+          "mean_credit_spread_pp": 0.3733333333333333,
+          "policy_rate_moves": 0,
+          "withdrawals_paid_total": 0.0,
+          "net_paid_interest": 0.1930755019154144,
+          "maturity_principal_paid": 2.97
+        },
+        "full20": {
+          "quarters": 20,
+          "mean_abs_inflation_miss_pp": 4.840816346036933,
+          "mean_positive_employment_shortfall_pp": 0.3160186611766686,
+          "mean_output_gap_pp": 0.4770596965086368,
+          "mean_credit_spread_pp": 0.364,
+          "policy_rate_moves": 0,
+          "withdrawals_paid_total": 2.6999999999999997,
+          "net_paid_interest": 0.3150676004056007,
+          "maturity_principal_paid": 4.04
+        }
+      },
+      "q8_state": {
+        "bank_cash": 0.0,
+        "deposits": 0.0,
+        "withdrawal_queue": 0.0,
+        "loan_principal": 1.75199209849019,
+        "loan_arrears": 0.0,
+        "matured_face": 1.07,
+        "remaining_face": 2.9699999999999998,
+        "interest_payable": 0.0,
+        "interest_receivable": 0.0,
+        "combined_equity": 0.885282906602804
+      },
+      "q20_state": {
+        "bank_cash": 1.0249323995944,
+        "deposits": 0.0,
+        "withdrawal_queue": 0.0,
+        "loan_principal": 0.0,
+        "loan_arrears": 0.0,
+        "matured_face": 4.04,
+        "remaining_face": 0.0,
+        "interest_payable": 0.0,
+        "interest_receivable": 0.0,
+        "combined_equity": 1.0249323995944
+      }
+    },
+    {
+      "seed": 104729,
+      "family": "zero_funding",
+      "segments": {
+        "q1_8": {
+          "quarters": 8,
+          "mean_abs_inflation_miss_pp": 4.736169461835708,
+          "mean_positive_employment_shortfall_pp": 0.6790208364108601,
+          "mean_output_gap_pp": -0.1434784041115289,
+          "mean_credit_spread_pp": 0.35,
+          "policy_rate_moves": 1,
+          "withdrawals_paid_total": 2.6999999999999997,
+          "net_paid_interest": 0.0,
+          "maturity_principal_paid": 1.07
+        },
+        "q9_20": {
+          "quarters": 12,
+          "mean_abs_inflation_miss_pp": 5.243235267075561,
+          "mean_positive_employment_shortfall_pp": 0.0,
+          "mean_output_gap_pp": 2.223211599123876,
+          "mean_credit_spread_pp": 0.3733333333333333,
+          "policy_rate_moves": 0,
+          "withdrawals_paid_total": 0.0,
+          "net_paid_interest": 0.0,
+          "maturity_principal_paid": 2.97
+        },
+        "full20": {
+          "quarters": 20,
+          "mean_abs_inflation_miss_pp": 5.040408944979619,
+          "mean_positive_employment_shortfall_pp": 0.271608334564344,
+          "mean_output_gap_pp": 1.2765355978297142,
+          "mean_credit_spread_pp": 0.364,
+          "policy_rate_moves": 1,
+          "withdrawals_paid_total": 2.6999999999999997,
+          "net_paid_interest": 0.0,
+          "maturity_principal_paid": 4.04
+        }
+      },
+      "q8_state": {
+        "bank_cash": 0.0,
+        "deposits": 0.0,
+        "withdrawal_queue": 0.0,
+        "loan_principal": 1.63,
+        "loan_arrears": 0.0,
+        "matured_face": 1.07,
+        "remaining_face": 2.9699999999999998,
+        "interest_payable": 0.0,
+        "interest_receivable": 0.0,
+        "combined_equity": 1.29583722829521
+      },
+      "q20_state": {
+        "bank_cash": 1.34,
+        "deposits": 0.0,
+        "withdrawal_queue": 0.0,
+        "loan_principal": 0.0,
+        "loan_arrears": 0.0,
+        "matured_face": 4.04,
+        "remaining_face": 0.0,
+        "interest_payable": 0.0,
+        "interest_receivable": 0.0,
+        "combined_equity": 1.34
+      }
+    },
+    {
+      "seed": 104729,
+      "family": "staff_no_funding",
+      "segments": {
+        "q1_8": {
+          "quarters": 8,
+          "mean_abs_inflation_miss_pp": 4.616929890359656,
+          "mean_positive_employment_shortfall_pp": 1.1046690975004219,
+          "mean_output_gap_pp": -1.7534662957941112,
+          "mean_credit_spread_pp": 0.729,
+          "policy_rate_moves": 8,
+          "withdrawals_paid_total": 1.07,
+          "net_paid_interest": 0.0,
+          "maturity_principal_paid": 1.07
+        },
+        "q9_20": {
+          "quarters": 12,
+          "mean_abs_inflation_miss_pp": 4.042854971544743,
+          "mean_positive_employment_shortfall_pp": 0.8489192912652145,
+          "mean_output_gap_pp": -1.6988597774731236,
+          "mean_credit_spread_pp": 0.6721666666666667,
+          "policy_rate_moves": 12,
+          "withdrawals_paid_total": 1.63,
+          "net_paid_interest": 0.0,
+          "maturity_principal_paid": 2.97
+        },
+        "full20": {
+          "quarters": 20,
+          "mean_abs_inflation_miss_pp": 4.272484939070708,
+          "mean_positive_employment_shortfall_pp": 0.9512192137592974,
+          "mean_output_gap_pp": -1.7207023848015186,
+          "mean_credit_spread_pp": 0.6949000000000001,
+          "policy_rate_moves": 20,
+          "withdrawals_paid_total": 2.7,
+          "net_paid_interest": 0.0,
+          "maturity_principal_paid": 4.04
+        }
+      },
+      "q8_state": {
+        "bank_cash": 0.0,
+        "deposits": 1.63,
+        "withdrawal_queue": 1.63,
+        "loan_principal": 0.0,
+        "loan_arrears": 0.0,
+        "matured_face": 1.07,
+        "remaining_face": 2.9699999999999998,
+        "interest_payable": 0.0,
+        "interest_receivable": 0.0,
+        "combined_equity": 0.433764775194498
+      },
+      "q20_state": {
+        "bank_cash": 1.34,
+        "deposits": 0.0,
+        "withdrawal_queue": 0.0,
+        "loan_principal": 0.0,
+        "loan_arrears": 0.0,
+        "matured_face": 4.04,
+        "remaining_face": 0.0,
+        "interest_payable": 0.0,
+        "interest_receivable": 0.0,
+        "combined_equity": 1.34
+      }
+    },
+    {
+      "seed": 130363,
+      "family": "staff_funding",
+      "segments": {
+        "q1_8": {
+          "quarters": 8,
+          "mean_abs_inflation_miss_pp": 4.611912434029991,
+          "mean_positive_employment_shortfall_pp": 1.0914827433911136,
+          "mean_output_gap_pp": -1.7315732977114537,
+          "mean_credit_spread_pp": 0.41793314448784175,
+          "policy_rate_moves": 8,
+          "withdrawals_paid_total": 2.355042563190972,
+          "net_paid_interest": 0.3645715093439766,
+          "maturity_principal_paid": 1.07
+        },
+        "q9_20": {
+          "quarters": 12,
+          "mean_abs_inflation_miss_pp": 3.9308905567685777,
+          "mean_positive_employment_shortfall_pp": 0.8442941386609505,
+          "mean_output_gap_pp": -1.7034137324427958,
+          "mean_credit_spread_pp": 0.4083868624717568,
+          "policy_rate_moves": 10,
+          "withdrawals_paid_total": 0.3449574368090246,
+          "net_paid_interest": 0.6735378454223016,
+          "maturity_principal_paid": 2.97
+        },
+        "full20": {
+          "quarters": 20,
+          "mean_abs_inflation_miss_pp": 4.203299307673143,
+          "mean_positive_employment_shortfall_pp": 0.9431695805530158,
+          "mean_output_gap_pp": -1.714677558550259,
+          "mean_credit_spread_pp": 0.4122053752781908,
+          "policy_rate_moves": 18,
+          "withdrawals_paid_total": 2.699999999999997,
+          "net_paid_interest": 1.038109354766278,
+          "maturity_principal_paid": 4.04
+        }
+      },
+      "q8_state": {
+        "bank_cash": 0.0,
+        "deposits": 0.344957436809025,
+        "withdrawal_queue": 0.344957436809025,
+        "loan_principal": 1.64961407253495,
+        "loan_arrears": 0.0,
+        "matured_face": 1.07,
+        "remaining_face": 2.9699999999999998,
+        "interest_payable": 0.00443311330540263,
+        "interest_receivable": 0.0,
+        "combined_equity": 0.0630129680193106
+      },
+      "q20_state": {
+        "bank_cash": 0.301890645233722,
+        "deposits": 0.0,
+        "withdrawal_queue": 0.0,
+        "loan_principal": 0.0,
+        "loan_arrears": 0.0,
+        "matured_face": 4.04,
+        "remaining_face": 0.0,
+        "interest_payable": 0.0,
+        "interest_receivable": 0.0,
+        "combined_equity": 0.301890645233722
+      }
+    },
+    {
+      "seed": 130363,
+      "family": "hold_funding",
+      "segments": {
+        "q1_8": {
+          "quarters": 8,
+          "mean_abs_inflation_miss_pp": 4.693511704074751,
+          "mean_positive_employment_shortfall_pp": 0.786972512943266,
+          "mean_output_gap_pp": -0.6069684669144956,
+          "mean_credit_spread_pp": 0.35,
+          "policy_rate_moves": 0,
+          "withdrawals_paid_total": 2.6999999999999997,
+          "net_paid_interest": 0.1219920984901863,
+          "maturity_principal_paid": 1.07
+        },
+        "q9_20": {
+          "quarters": 12,
+          "mean_abs_inflation_miss_pp": 4.760163113429315,
+          "mean_positive_employment_shortfall_pp": 0.005483164719896217,
+          "mean_output_gap_pp": 1.062000074499407,
+          "mean_credit_spread_pp": 0.3499999999999999,
+          "policy_rate_moves": 0,
+          "withdrawals_paid_total": 0.0,
+          "net_paid_interest": 0.1930755019154144,
+          "maturity_principal_paid": 2.97
+        },
+        "full20": {
+          "quarters": 20,
+          "mean_abs_inflation_miss_pp": 4.73350254968749,
+          "mean_positive_employment_shortfall_pp": 0.3180789040092441,
+          "mean_output_gap_pp": 0.39441265793384594,
+          "mean_credit_spread_pp": 0.35,
+          "policy_rate_moves": 0,
+          "withdrawals_paid_total": 2.6999999999999997,
+          "net_paid_interest": 0.3150676004056007,
+          "maturity_principal_paid": 4.04
+        }
+      },
+      "q8_state": {
+        "bank_cash": 0.0,
+        "deposits": 0.0,
+        "withdrawal_queue": 0.0,
+        "loan_principal": 1.75199209849019,
+        "loan_arrears": 0.0,
+        "matured_face": 1.07,
+        "remaining_face": 2.9699999999999998,
+        "interest_payable": 0.0,
+        "interest_receivable": 0.0,
+        "combined_equity": 0.885282906602804
+      },
+      "q20_state": {
+        "bank_cash": 1.0249323995944,
+        "deposits": 0.0,
+        "withdrawal_queue": 0.0,
+        "loan_principal": 0.0,
+        "loan_arrears": 0.0,
+        "matured_face": 4.04,
+        "remaining_face": 0.0,
+        "interest_payable": 0.0,
+        "interest_receivable": 0.0,
+        "combined_equity": 1.0249323995944
+      }
+    },
+    {
+      "seed": 130363,
+      "family": "zero_funding",
+      "segments": {
+        "q1_8": {
+          "quarters": 8,
+          "mean_abs_inflation_miss_pp": 4.725444492620416,
+          "mean_positive_employment_shortfall_pp": 0.6743917251722004,
+          "mean_output_gap_pp": -0.16783541321667986,
+          "mean_credit_spread_pp": 0.35,
+          "policy_rate_moves": 1,
+          "withdrawals_paid_total": 2.6999999999999997,
+          "net_paid_interest": 0.0,
+          "maturity_principal_paid": 1.07
+        },
+        "q9_20": {
+          "quarters": 12,
+          "mean_abs_inflation_miss_pp": 5.069544808831181,
+          "mean_positive_employment_shortfall_pp": 0.0,
+          "mean_output_gap_pp": 2.1029119034603156,
+          "mean_credit_spread_pp": 0.3499999999999999,
+          "policy_rate_moves": 0,
+          "withdrawals_paid_total": 0.0,
+          "net_paid_interest": 0.0,
+          "maturity_principal_paid": 2.97
+        },
+        "full20": {
+          "quarters": 20,
+          "mean_abs_inflation_miss_pp": 4.931904682346875,
+          "mean_positive_employment_shortfall_pp": 0.26975669006888015,
+          "mean_output_gap_pp": 1.1946129767895175,
+          "mean_credit_spread_pp": 0.35,
+          "policy_rate_moves": 1,
+          "withdrawals_paid_total": 2.6999999999999997,
+          "net_paid_interest": 0.0,
+          "maturity_principal_paid": 4.04
+        }
+      },
+      "q8_state": {
+        "bank_cash": 0.0,
+        "deposits": 0.0,
+        "withdrawal_queue": 0.0,
+        "loan_principal": 1.63,
+        "loan_arrears": 0.0,
+        "matured_face": 1.07,
+        "remaining_face": 2.9699999999999998,
+        "interest_payable": 0.0,
+        "interest_receivable": 0.0,
+        "combined_equity": 1.29583722829521
+      },
+      "q20_state": {
+        "bank_cash": 1.34,
+        "deposits": 0.0,
+        "withdrawal_queue": 0.0,
+        "loan_principal": 0.0,
+        "loan_arrears": 0.0,
+        "matured_face": 4.04,
+        "remaining_face": 0.0,
+        "interest_payable": 0.0,
+        "interest_receivable": 0.0,
+        "combined_equity": 1.34
+      }
+    },
+    {
+      "seed": 130363,
+      "family": "staff_no_funding",
+      "segments": {
+        "q1_8": {
+          "quarters": 8,
+          "mean_abs_inflation_miss_pp": 4.606299826258641,
+          "mean_positive_employment_shortfall_pp": 1.1042982722410926,
+          "mean_output_gap_pp": -1.777234779447105,
+          "mean_credit_spread_pp": 0.729,
+          "policy_rate_moves": 8,
+          "withdrawals_paid_total": 1.07,
+          "net_paid_interest": 0.0,
+          "maturity_principal_paid": 1.07
+        },
+        "q9_20": {
+          "quarters": 12,
+          "mean_abs_inflation_miss_pp": 3.879090632254401,
+          "mean_positive_employment_shortfall_pp": 0.8802170744152672,
+          "mean_output_gap_pp": -1.7808361629726717,
+          "mean_credit_spread_pp": 0.6488333333333334,
+          "policy_rate_moves": 12,
+          "withdrawals_paid_total": 1.63,
+          "net_paid_interest": 0.0,
+          "maturity_principal_paid": 2.97
+        },
+        "full20": {
+          "quarters": 20,
+          "mean_abs_inflation_miss_pp": 4.169974309856097,
+          "mean_positive_employment_shortfall_pp": 0.9698495535455972,
+          "mean_output_gap_pp": -1.7793956095624448,
+          "mean_credit_spread_pp": 0.6809000000000001,
+          "policy_rate_moves": 20,
+          "withdrawals_paid_total": 2.7,
+          "net_paid_interest": 0.0,
+          "maturity_principal_paid": 4.04
+        }
+      },
+      "q8_state": {
+        "bank_cash": 0.0,
+        "deposits": 1.63,
+        "withdrawal_queue": 1.63,
+        "loan_principal": 0.0,
+        "loan_arrears": 0.0,
+        "matured_face": 1.07,
+        "remaining_face": 2.9699999999999998,
+        "interest_payable": 0.0,
+        "interest_receivable": 0.0,
+        "combined_equity": 0.436097041968646
+      },
+      "q20_state": {
+        "bank_cash": 1.34,
+        "deposits": 0.0,
+        "withdrawal_queue": 0.0,
+        "loan_principal": 0.0,
+        "loan_arrears": 0.0,
+        "matured_face": 4.04,
+        "remaining_face": 0.0,
+        "interest_payable": 0.0,
+        "interest_receivable": 0.0,
+        "combined_equity": 1.34
+      }
+    },
+    {
+      "seed": 155921,
+      "family": "staff_funding",
+      "segments": {
+        "q1_8": {
+          "quarters": 8,
+          "mean_abs_inflation_miss_pp": 4.6364230831441615,
+          "mean_positive_employment_shortfall_pp": 0.9964922535840111,
+          "mean_output_gap_pp": -1.4138859988076975,
+          "mean_credit_spread_pp": 0.41958949054392963,
+          "policy_rate_moves": 8,
+          "withdrawals_paid_total": 2.340202192521504,
+          "net_paid_interest": 0.3664325914832845,
+          "maturity_principal_paid": 1.07
+        },
+        "q9_20": {
+          "quarters": 12,
+          "mean_abs_inflation_miss_pp": 4.135787081030495,
+          "mean_positive_employment_shortfall_pp": 0.8296908829208389,
+          "mean_output_gap_pp": -1.7607694604324016,
+          "mean_credit_spread_pp": 0.41158082109376853,
+          "policy_rate_moves": 12,
+          "withdrawals_paid_total": 0.35979780747849255,
+          "net_paid_interest": 0.6922233177956876,
+          "maturity_principal_paid": 2.97
+        },
+        "full20": {
+          "quarters": 20,
+          "mean_abs_inflation_miss_pp": 4.336041481875961,
+          "mean_positive_employment_shortfall_pp": 0.8964114311861078,
+          "mean_output_gap_pp": -1.6220160757825202,
+          "mean_credit_spread_pp": 0.414784288873833,
+          "policy_rate_moves": 20,
+          "withdrawals_paid_total": 2.699999999999997,
+          "net_paid_interest": 1.058655909278972,
+          "maturity_principal_paid": 4.04
+        }
+      },
+      "q8_state": {
+        "bank_cash": 0.0,
+        "deposits": 0.359797807478493,
+        "withdrawal_queue": 0.359797807478493,
+        "loan_principal": 1.63663478400479,
+        "loan_arrears": 0.0,
+        "matured_face": 1.07,
+        "remaining_face": 2.9699999999999998,
+        "interest_payable": 0.00664395489337689,
+        "interest_receivable": 0.0,
+        "combined_equity": 0.0427169336293283
+      },
+      "q20_state": {
+        "bank_cash": 0.281344090721028,
+        "deposits": 0.0,
+        "withdrawal_queue": 0.0,
+        "loan_principal": 0.0,
+        "loan_arrears": 0.0,
+        "matured_face": 4.04,
+        "remaining_face": 0.0,
+        "interest_payable": 0.0,
+        "interest_receivable": 0.0,
+        "combined_equity": 0.281344090721028
+      }
+    },
+    {
+      "seed": 155921,
+      "family": "hold_funding",
+      "segments": {
+        "q1_8": {
+          "quarters": 8,
+          "mean_abs_inflation_miss_pp": 4.7185393799778215,
+          "mean_positive_employment_shortfall_pp": 0.6919619245042338,
+          "mean_output_gap_pp": -0.2853868353865861,
+          "mean_credit_spread_pp": 0.35,
+          "policy_rate_moves": 0,
+          "withdrawals_paid_total": 2.6999999999999997,
+          "net_paid_interest": 0.1219920984901863,
+          "maturity_principal_paid": 1.07
+        },
+        "q9_20": {
+          "quarters": 12,
+          "mean_abs_inflation_miss_pp": 4.980233012799585,
+          "mean_positive_employment_shortfall_pp": 0.0,
+          "mean_output_gap_pp": 1.0659037352277945,
+          "mean_credit_spread_pp": 0.3499999999999999,
+          "policy_rate_moves": 0,
+          "withdrawals_paid_total": 0.0,
+          "net_paid_interest": 0.1930755019154144,
+          "maturity_principal_paid": 2.97
+        },
+        "full20": {
+          "quarters": 20,
+          "mean_abs_inflation_miss_pp": 4.875555559670879,
+          "mean_positive_employment_shortfall_pp": 0.27678476980169353,
+          "mean_output_gap_pp": 0.5253875069820423,
+          "mean_credit_spread_pp": 0.35,
+          "policy_rate_moves": 0,
+          "withdrawals_paid_total": 2.6999999999999997,
+          "net_paid_interest": 0.3150676004056007,
+          "maturity_principal_paid": 4.04
+        }
+      },
+      "q8_state": {
+        "bank_cash": 0.0,
+        "deposits": 0.0,
+        "withdrawal_queue": 0.0,
+        "loan_principal": 1.75199209849019,
+        "loan_arrears": 0.0,
+        "matured_face": 1.07,
+        "remaining_face": 2.9699999999999998,
+        "interest_payable": 0.0,
+        "interest_receivable": 0.0,
+        "combined_equity": 0.885282906602804
+      },
+      "q20_state": {
+        "bank_cash": 1.0249323995944,
+        "deposits": 0.0,
+        "withdrawal_queue": 0.0,
+        "loan_principal": 0.0,
+        "loan_arrears": 0.0,
+        "matured_face": 4.04,
+        "remaining_face": 0.0,
+        "interest_payable": 0.0,
+        "interest_receivable": 0.0,
+        "combined_equity": 1.0249323995944
+      }
+    },
+    {
+      "seed": 155921,
+      "family": "zero_funding",
+      "segments": {
+        "q1_8": {
+          "quarters": 8,
+          "mean_abs_inflation_miss_pp": 4.75056092476396,
+          "mean_positive_employment_shortfall_pp": 0.6038880459550169,
+          "mean_output_gap_pp": 0.1546158563709044,
+          "mean_credit_spread_pp": 0.35,
+          "policy_rate_moves": 1,
+          "withdrawals_paid_total": 2.6999999999999997,
+          "net_paid_interest": 0.0,
+          "maturity_principal_paid": 1.07
+        },
+        "q9_20": {
+          "quarters": 12,
+          "mean_abs_inflation_miss_pp": 5.292729918259263,
+          "mean_positive_employment_shortfall_pp": 0.0,
+          "mean_output_gap_pp": 2.104038067200364,
+          "mean_credit_spread_pp": 0.3499999999999999,
+          "policy_rate_moves": 0,
+          "withdrawals_paid_total": 0.0,
+          "net_paid_interest": 0.0,
+          "maturity_principal_paid": 2.97
+        },
+        "full20": {
+          "quarters": 20,
+          "mean_abs_inflation_miss_pp": 5.075862320861142,
+          "mean_positive_employment_shortfall_pp": 0.24155521838200675,
+          "mean_output_gap_pp": 1.3242691828685802,
+          "mean_credit_spread_pp": 0.35,
+          "policy_rate_moves": 1,
+          "withdrawals_paid_total": 2.6999999999999997,
+          "net_paid_interest": 0.0,
+          "maturity_principal_paid": 4.04
+        }
+      },
+      "q8_state": {
+        "bank_cash": 0.0,
+        "deposits": 0.0,
+        "withdrawal_queue": 0.0,
+        "loan_principal": 1.63,
+        "loan_arrears": 0.0,
+        "matured_face": 1.07,
+        "remaining_face": 2.9699999999999998,
+        "interest_payable": 0.0,
+        "interest_receivable": 0.0,
+        "combined_equity": 1.29583722829521
+      },
+      "q20_state": {
+        "bank_cash": 1.34,
+        "deposits": 0.0,
+        "withdrawal_queue": 0.0,
+        "loan_principal": 0.0,
+        "loan_arrears": 0.0,
+        "matured_face": 4.04,
+        "remaining_face": 0.0,
+        "interest_payable": 0.0,
+        "interest_receivable": 0.0,
+        "combined_equity": 1.34
+      }
+    },
+    {
+      "seed": 155921,
+      "family": "staff_no_funding",
+      "segments": {
+        "q1_8": {
+          "quarters": 8,
+          "mean_abs_inflation_miss_pp": 4.630877641832502,
+          "mean_positive_employment_shortfall_pp": 1.0092312271137738,
+          "mean_output_gap_pp": -1.45911755646464,
+          "mean_credit_spread_pp": 0.729,
+          "policy_rate_moves": 6,
+          "withdrawals_paid_total": 1.07,
+          "net_paid_interest": 0.0,
+          "maturity_principal_paid": 1.07
+        },
+        "q9_20": {
+          "quarters": 12,
+          "mean_abs_inflation_miss_pp": 4.083826652890585,
+          "mean_positive_employment_shortfall_pp": 0.8647708516855581,
+          "mean_output_gap_pp": -1.8360978387463884,
+          "mean_credit_spread_pp": 0.6488333333333334,
+          "policy_rate_moves": 12,
+          "withdrawals_paid_total": 1.63,
+          "net_paid_interest": 0.0,
+          "maturity_principal_paid": 2.97
+        },
+        "full20": {
+          "quarters": 20,
+          "mean_abs_inflation_miss_pp": 4.302647048467351,
+          "mean_positive_employment_shortfall_pp": 0.9225550018568445,
+          "mean_output_gap_pp": -1.685305725833689,
+          "mean_credit_spread_pp": 0.6809000000000001,
+          "policy_rate_moves": 18,
+          "withdrawals_paid_total": 2.7,
+          "net_paid_interest": 0.0,
+          "maturity_principal_paid": 4.04
+        }
+      },
+      "q8_state": {
+        "bank_cash": 0.0,
+        "deposits": 1.63,
+        "withdrawal_queue": 1.63,
+        "loan_principal": 0.0,
+        "loan_arrears": 0.0,
+        "matured_face": 1.07,
+        "remaining_face": 2.9699999999999998,
+        "interest_payable": 0.0,
+        "interest_receivable": 0.0,
+        "combined_equity": 0.419257500898102
+      },
+      "q20_state": {
+        "bank_cash": 1.34,
+        "deposits": 0.0,
+        "withdrawal_queue": 0.0,
+        "loan_principal": 0.0,
+        "loan_arrears": 0.0,
+        "matured_face": 4.04,
+        "remaining_face": 0.0,
+        "interest_payable": 0.0,
+        "interest_receivable": 0.0,
+        "combined_equity": 1.34
+      }
+    }
+  ],
+  "interpretation": [
+    "All sampled arms settle all remaining securities at Q20 and finish with zero deposit queue, principal, arrears and interest claims; interim delay and equity/cash outcomes differ.",
+    "Staff+funding versus opening hold+funding improves late inflation distance but worsens employment shortfall and reduces ending equity.",
+    "Fixed-zero funding improves bank and employment outcomes but materially worsens late inflation. No composite utility or award was selected.",
+    "Native gross loan retirement includes renewal; cash repayment and net debt-stock reduction are separate measures."
+  ]
+}

@@ -11,25 +11,47 @@ const TIMELINE_HINT := "Each bar is that meeting's paid / due. Queued claims rep
 class PaymentTimeline:
 	extends Control
 	var quarters: Array = []
+	var selected := 0
+	var caption_height := 0.0
+	signal inspected(text: String)
+	func _init() -> void:
+		focus_entered.connect(func(): inspect(selected))
+		resized.connect(queue_redraw)
+	func inspect(index: int) -> void:
+		if quarters.is_empty(): return
+		selected = clampi(index, 0, quarters.size() - 1)
+		tooltip_text = quarters[selected].description
+		accessibility_description = tooltip_text + ". Left/Right inspect; Home/End select endpoints."
+		inspected.emit(tooltip_text)
+		queue_redraw()
 
 	func _make_custom_tooltip(for_text: String) -> Object:
 		return preload("res://play/wrapped_tooltip.gd").create(self, for_text)
 
 	func _gui_input(event: InputEvent) -> void:
-		if event is InputEventMouseMotion and quarters.size() == 8 and size.x > 0:
-			var index := clampi(int(event.position.x / (size.x / 8.0)), 0, 7)
-			tooltip_text = quarters[index].description
+		if event is InputEventMouseMotion and not quarters.is_empty() and size.x > 0:
+			inspect(int(event.position.x / (size.x / quarters.size())))
+		if event is InputEventKey and event.pressed and focus_mode != Control.FOCUS_NONE and not event.alt_pressed and not event.is_command_or_control_pressed():
+			match event.keycode:
+				KEY_LEFT: inspect(selected - 1)
+				KEY_RIGHT: inspect(selected + 1)
+				KEY_HOME: inspect(0)
+				KEY_END: inspect(quarters.size() - 1)
+				_: return
+			accept_event()
 
 	func _draw() -> void:
-		if quarters.size() != 8 or size.x <= 0:
+		if quarters.is_empty() or size.x <= 0:
 			return
+		if has_focus():
+			draw_rect(Rect2(Vector2.ZERO, size), GOLD, false, 2)
 		var font := get_theme_default_font()
-		var step := size.x / 8.0
-		var height := maxf(1.0, size.y - 24.0)
-		for index in range(8):
+		var step := size.x / quarters.size()
+		var height := maxf(1.0, size.y - caption_height - 24.0)
+		for index in range(quarters.size()):
 			var quarter: Dictionary = quarters[index]
 			var left := step * index + step * 0.22
-			var rect := Rect2(left, 2.0, step * 0.56, height - 4.0)
+			var rect := Rect2(left, caption_height + 2.0, step * 0.56, height - 4.0)
 			if not quarter.applicable:
 				draw_line(Vector2(rect.position.x, rect.get_center().y), Vector2(rect.end.x, rect.get_center().y), MUTED, 2.0)
 			else:
@@ -40,11 +62,15 @@ class PaymentTimeline:
 					# Keep even a subpixel shortfall visibly different from full payment.
 					draw_rect(rect, GOLD, false, 1.0)
 					draw_line(rect.position, Vector2(rect.end.x, rect.position.y), GOLD, 2.0)
+			if has_focus() and index == selected:
+				draw_rect(rect.grow(1), INK, false, 2)
 			var text := "Q%d" % (index + 1) if step >= 24 else str(index + 1)
 			if font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x <= step:
 				draw_string(font, Vector2(step * index, size.y - 4), text, HORIZONTAL_ALIGNMENT_CENTER, step, 12, MUTED)
 
 var heading := Label.new()
+var inspection := Label.new()
+var inspection_holder := MarginContainer.new()
 var timeline := PaymentTimeline.new()
 var legend := Label.new()
 var queue_label := Label.new()
@@ -85,17 +111,17 @@ static func _amount(value: float) -> String:
 		text = ("%.4f" if amount > 0 and amount < 0.01 else "%.2f") % amount
 	return ("-" if value < 0 else "") + text
 
-static func present(bank_history: Array, settlements: Array, completed: bool) -> Dictionary:
+static func present(bank_history: Array, settlements: Array, completed: bool, horizon: int = 8) -> Dictionary:
 	var unavailable := {"ok": false, "visible": false}
-	if not completed or bank_history.size() != 9 or settlements.size() != 8:
+	if not completed or horizon < 1 or horizon > 240 or bank_history.size() != horizon + 1 or settlements.size() != horizon:
 		return unavailable
-	for quarter in range(9):
+	for quarter in range(horizon + 1):
 		if not _bank_valid(bank_history[quarter], quarter):
 			return unavailable
 	var priced: bool = settlements[0] is Dictionary and settlements[0].has("credit_result")
 	var quarters: Array = []
 	var descriptions: Array[String] = []
-	for index in range(8):
+	for index in range(horizon):
 		var source: Variant = settlements[index]
 		if typeof(source) != TYPE_DICTIONARY or typeof(source.get("ok")) != TYPE_BOOL or not source.ok or source.get("state") != bank_history[index + 1]:
 			return unavailable
@@ -121,9 +147,9 @@ static func present(bank_history: Array, settlements: Array, completed: bool) ->
 		descriptions.append(description)
 		quarters.append({"quarter": index + 1, "due": due, "paid": paid, "applicable": applicable, "short": shortfall,
 			"fraction": paid / due if applicable else 0.0, "description": description})
-	var ending: Dictionary = bank_history[8]
-	var equity: float = settlements[7].credit_result.bank_equity_after if priced else settlements[7].equity_after
-	return {"ok": true, "visible": true, "title": "Eight-meeting debrief", "quarters": quarters,
+	var ending: Dictionary = bank_history[horizon]
+	var equity: float = settlements[horizon - 1].credit_result.bank_equity_after if priced else settlements[horizon - 1].equity_after
+	return {"ok": true, "visible": true, "title": "Eight-meeting debrief" if horizon == 8 else "%d-meeting debrief" % horizon, "quarters": quarters,
 		"ending_queue": ending.withdrawal_queue, "ending_arrears": ending.loan_arrears, "ending_equity": equity, "includes_interest": priced,
 		"queue_text": "Queued %s (within deposits)" % _amount(ending.withdrawal_queue),
 		"arrears_text": "Overdue CB principal %s (within loan)" % _amount(ending.loan_arrears),
@@ -135,7 +161,7 @@ func _init() -> void:
 	focus_mode = Control.FOCUS_NONE
 	add_theme_constant_override("separation", 4)
 	accessibility_name = "Bank workout eight-meeting debrief"
-	for label in [heading, legend, queue_label, arrears_label, equity_label, note]:
+	for label in [heading, inspection, legend, queue_label, arrears_label, equity_label, note]:
 		label.add_theme_font_size_override("font_size", 13 if label == heading else 12)
 		label.add_theme_color_override("font_color", INK if label in [heading, equity_label] else MUTED)
 		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -148,9 +174,33 @@ func _init() -> void:
 	timeline.focus_mode = Control.FOCUS_NONE
 	timeline.mouse_filter = Control.MOUSE_FILTER_PASS
 	add_child(timeline)
+	# Keep the selected numeric reading within the focused reveal target.
+	timeline.add_child(inspection_holder)
+	inspection_holder.add_child(inspection)
+	inspection_holder.add_theme_constant_override("margin_left", 2)
+	inspection_holder.add_theme_constant_override("margin_right", 2)
+	inspection_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	inspection.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	inspection_holder.minimum_size_changed.connect(_fit_timeline_caption)
+	timeline.resized.connect(_fit_timeline_caption)
+	inspection_holder.hide()
+	inspection.hide()
+	timeline.inspected.connect(func(text: String):
+		if timeline.focus_mode != Control.FOCUS_NONE:
+			_set_label(inspection, text, TIMELINE_HINT))
 	for label in [legend, note, queue_label, arrears_label, equity_label]:
 		add_child(label)
 	_clear_display()
+
+func _fit_timeline_caption() -> void:
+	var height := 0.0
+	if inspection_holder.visible:
+		inspection_holder.size.x = maxf(1, timeline.size.x)
+		inspection_holder.size.y = inspection_holder.get_combined_minimum_size().y
+		height = inspection_holder.size.y + 4.0
+	timeline.caption_height = height
+	timeline.custom_minimum_size.y = 96.0 + height
+	timeline.queue_redraw()
 
 func _set_label(label: Label, text: String, hint: String) -> void:
 	label.text = text
@@ -160,8 +210,12 @@ func _set_label(label: Label, text: String, hint: String) -> void:
 
 func _clear_display() -> void:
 	hide()
-	for label in [heading, legend, queue_label, arrears_label, equity_label, note]:
+	for label in [heading, inspection, legend, queue_label, arrears_label, equity_label, note]:
 		_set_label(label, "", "")
+	inspection.hide()
+	inspection_holder.hide()
+	_fit_timeline_caption()
+	timeline.focus_mode = Control.FOCUS_NONE
 	timeline.quarters = []
 	timeline.tooltip_text = ""
 	timeline.accessibility_name = ""
@@ -170,12 +224,13 @@ func _clear_display() -> void:
 	accessibility_description = ""
 	tooltip_text = ""
 
-func update_episode(bank_history: Array, settlements: Array, completed: bool) -> void:
-	snapshot = present(bank_history, settlements, completed)
+func update_episode(bank_history: Array, settlements: Array, completed: bool, horizon: int = 8) -> void:
+	snapshot = present(bank_history, settlements, completed, horizon)
 	if not snapshot.ok:
 		_clear_display()
 		return
-	_set_label(heading, snapshot.title, "Completed eight-meeting episode, not a grade or solvency assessment.")
+	accessibility_name = "Bank workout eight-meeting debrief" if horizon == 8 else "Bank runoff %d-meeting debrief" % horizon
+	_set_label(heading, snapshot.title, "Completed %d-meeting episode, not a grade or solvency assessment." % horizon)
 	_set_label(legend, "Paid / due per meeting · mint paid · gold short · dash n.a.", TIMELINE_HINT)
 	_set_label(queue_label, snapshot.queue_text, "Ending queued withdrawals only; included in deposits. Repeated quarterly queues are not added.")
 	_set_label(arrears_label, snapshot.arrears_text, "Ending overdue CB principal only; included in the CB loan, not extra debt.")
@@ -186,7 +241,13 @@ func update_episode(bank_history: Array, settlements: Array, completed: bool) ->
 	equity_label.add_theme_color_override("font_color", GOLD if snapshot.ending_equity < 0 else INK)
 	timeline.quarters = snapshot.quarters.duplicate(true)
 	timeline.tooltip_text = TIMELINE_HINT
-	timeline.accessibility_name = "Depositor payments, Q1 through Q8"
+	timeline.focus_mode = Control.FOCUS_ALL if horizon > 8 else Control.FOCUS_NONE
+	inspection_holder.visible = horizon > 8
+	inspection.visible = horizon > 8
+	timeline.accessibility_name = "Depositor payments, Q1 through Q%d" % horizon
+	if horizon > 8:
+		timeline.inspect(mini(timeline.selected, horizon - 1))
+	_fit_timeline_caption()
 	timeline.accessibility_description = snapshot.timeline_description + "\n" + TIMELINE_HINT
 	timeline.queue_redraw()
 	accessibility_description = "%s. %s. %s." % [snapshot.queue_text, snapshot.arrears_text, snapshot.equity_text]
