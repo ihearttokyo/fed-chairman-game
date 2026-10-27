@@ -166,7 +166,9 @@ func _init() -> void:
 	get_ok_button().text = "Cancel"
 	scroll = ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.follow_focus = true
+	# One reveal owner: the engine's synchronous follow_focus can update the
+	# bar before its deferred sort has moved content, racing our layout reveal.
+	scroll.follow_focus = false
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	add_child(scroll)
 	content = VBoxContainer.new()
@@ -244,8 +246,18 @@ func _reveal_settled_card_focus() -> void:
 
 func _reveal_card_focus() -> void:
 	var focused: Control = gui_get_focus_owner()
-	if focused != null and scroll.is_ancestor_of(focused):
-		scroll.ensure_control_visible(focused)
+	if focused != null and content.is_ancestor_of(focused):
+		# Use content-local, unscrolled coordinates. ensure_control_visible adds
+		# a global-geometry delta to the current bar; until ScrollContainer's
+		# queued sort applies that bar, a second reveal adds the same delta
+		# again. An absolute target is idempotent even in that ordering gap.
+		var relative := content.get_global_transform().affine_inverse() * focused.get_global_transform()
+		var rect: Rect2 = relative * Rect2(Vector2.ZERO, focused.size)
+		var bar := scroll.get_v_scroll_bar()
+		if rect.position.y < bar.value:
+			bar.value = floorf(rect.position.y)
+		elif rect.end.y > bar.value + bar.page:
+			bar.value = ceilf(rect.end.y - bar.page)
 
 func _size_metric_value(number: Label) -> void:
 	# Values are atomic. Reserve their full themed width; descriptive labels

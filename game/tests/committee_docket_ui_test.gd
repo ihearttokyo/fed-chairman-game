@@ -139,6 +139,61 @@ func press_without_frame(window: Window, code: Key, shift: bool = false) -> void
 	event.pressed = false
 	window.push_input(event, true)
 
+func focus_scroll_order_cases(game: Variant, dialog: Variant) -> void:
+	var cached := var_to_bytes([dialog.quote, dialog.build_count, game.career.encode(), game._committee_control_snapshot(), game.docket_forecast_calls, dialog.stage_buttons.map(func(button: Button): return button.get_instance_id())])
+	var bar: VScrollBar = dialog.scroll.get_v_scroll_bar()
+	check(not dialog.scroll.follow_focus, "docket has one automatic reveal owner, not synchronous engine plus queued application reveals")
+	check_stage_visible(dialog, 0, "scroll-order fixture starts at compact Stage price")
+	var price_scroll := bar.value
+	press_without_frame(dialog, KEY_TAB)
+	check(dialog.stage_buttons[1].has_focus() and bar.value == price_scroll, "first Tab changes real focus without a competing immediate engine scroll")
+	dialog.stage_buttons[0].grab_focus()
+	await process_frame
+	await process_frame
+	bar.value = 0
+	await process_frame
+	await process_frame
+	var old_position: Vector2 = dialog.content.position
+	# Negative control: an initial Price reveal has updated the bar, but its
+	# queued content reposition has not run when the first real Tab arrives.
+	# Engine + old application reveal both add stale global-geometry deltas.
+	dialog.scroll.ensure_control_visible(dialog.stage_buttons[0])
+	press_without_frame(dialog, KEY_TAB)
+	dialog._cancel_pending_card_focus()
+	dialog.scroll.ensure_control_visible(dialog.stage_buttons[1])
+	var once := bar.value
+	dialog.scroll.ensure_control_visible(dialog.stage_buttons[1])
+	var twice := bar.value
+	check(once > price_scroll and twice > once and dialog.content.position == old_position, "legacy reveals genuinely add stale transform deltas before content reposition")
+	await process_frame
+	await process_frame
+	check(dialog.stage_buttons[1].has_focus() and not dialog.scroll.get_global_rect().grow(0.5).encloses(dialog.stage_buttons[1].get_global_rect()), "legacy negative control visibly hides focused Jobs after its overshoot is laid out")
+	# Repeat that pending initial reveal/first Tab with the replacement. Its
+	# absolute content-local target is idempotent before any frame or sort.
+	dialog.stage_buttons[0].grab_focus()
+	await process_frame
+	await process_frame
+	bar.value = 0
+	await process_frame
+	await process_frame
+	old_position = dialog.content.position
+	dialog._reveal_card_focus()
+	check(bar.value > 0 and dialog.content.position == old_position, "fixed initial Price reveal deliberately precedes its queued reposition")
+	press_without_frame(dialog, KEY_TAB)
+	dialog._reveal_card_focus()
+	var target := bar.value
+	dialog._reveal_card_focus()
+	check(bar.value == target and dialog.content.position == old_position and dialog.stage_buttons[1].has_focus(), "absolute first-Tab reveal does not double-count an outstanding scroll or refocus another action")
+	await process_frame
+	await process_frame
+	check_stage_visible(dialog, 1, "first Tab reveals Jobs after a genuine deferred scroll-position ordering gap")
+	check(not dialog.focus_reveal_pending, "scroll-order repair returns to idle without polling")
+	print("FOCUS_SCROLL_ORDER: price=%s legacy_once=%s legacy_twice=%s fixed=%s" % [price_scroll, once, twice, target])
+	check(var_to_bytes([dialog.quote, dialog.build_count, game.career.encode(), game._committee_control_snapshot(), game.docket_forecast_calls, dialog.stage_buttons.map(func(button: Button): return button.get_instance_id())]) == cached, "scroll-order repair preserves quotes, controls, career, build and five-forecast cache")
+	dialog.stage_buttons[0].grab_focus()
+	await process_frame
+	await process_frame
+
 func pending_navigation_cases(game: Variant, dialog: Variant) -> void:
 	var saved := FileAccess.file_exists(game.save_path)
 	var save_bytes := FileAccess.get_file_as_bytes(game.save_path) if saved else PackedByteArray()
@@ -165,9 +220,11 @@ func pending_navigation_cases(game: Variant, dialog: Variant) -> void:
 	# cancellation. Multiple changes before one callback must reveal latest Jobs.
 	dialog.stage_buttons[0].grab_focus()
 	dialog._schedule_card_focus()
+	press_without_frame(dialog, KEY_END)
+	check(not dialog.focus_reveal_pending, "explicit End disconnects the older one-shot before same-frame fresh focus work")
 	for shift in [false, true, false]:
 		press_without_frame(dialog, KEY_TAB, shift)
-	check(dialog.stage_buttons[1].has_focus(), "rapid Tab/ShiftTab/Tab ends on Jobs before the pending callback")
+	check(dialog.stage_buttons[1].has_focus() and dialog.focus_reveal_pending, "rapid Tab/ShiftTab/Tab schedules a fresh Jobs request before the cancelled older callback could run")
 	await settle()
 	check_stage_visible(dialog, 1, "rapid pending focus transitions reveal the current Jobs action, not stale Funding")
 	var settled := bar.value
@@ -232,6 +289,7 @@ func compact_initial_focus_cases(game: Variant, density: float) -> void:
 		check(not dialog.focus_reveal_pending, "popup settled focus scheduling becomes idle instead of polling")
 		if opening == 0:
 			await compact_context_cases(game, dialog)
+			await focus_scroll_order_cases(game, dialog)
 		var cached := var_to_bytes(dialog.quote)
 		var builds: int = dialog.build_count
 		var ids: Array = dialog.stage_buttons.map(func(button: Button): return button.get_instance_id())
