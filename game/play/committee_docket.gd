@@ -21,6 +21,7 @@ var refresh_button: Button
 var details_button: Button
 var details: Label
 var build_count: int = 0
+var focus_reveal_pending := false
 
 class MetricPlot:
 	extends Control
@@ -58,6 +59,35 @@ class MetricPlot:
 		var font: Font = get_theme_default_font()
 		var width: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
 		draw_string(font, Vector2(maxf(0.0, (size.x - width) * 0.5), y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("a4babe"))
+	func axis_labels() -> PackedStringArray:
+		if not delta_scale.available or delta_scale.overflow or not is_finite(delta_scale.radius) or delta_scale.radius < 0.0:
+			return PackedStringArray()
+		var radius: float = delta_scale.radius
+		if radius == 0.0:
+			return PackedStringArray(["0"])
+		# Three significant digits for ticks only. Exact raw data and the shared
+		# mathematical domain stay untouched in the plot, tooltip and AX detail.
+		var extent: String
+		if radius >= 0.01 and radius < 1000.0:
+			var decimals := 0 if radius >= 100.0 else 1 if radius >= 10.0 else 2 if radius >= 1.0 else 3 if radius >= 0.1 else 4
+			extent = String.num(radius, decimals)
+		else:
+			# Normalize by safe steps: pow(10,-324) underflows and log-based
+			# normalization can overflow at the opposite finite-double boundary.
+			var mantissa := radius
+			var exponent := 0
+			while mantissa >= 10.0:
+				mantissa /= 10.0
+				exponent += 1
+			while mantissa < 1.0:
+				mantissa *= 10.0
+				exponent -= 1
+			extent = String.num(mantissa, 2)
+			if extent.to_float() >= 10.0:
+				extent = "1"
+				exponent += 1
+			extent += "e" + str(exponent)
+		return PackedStringArray(["−" + extent, "0", "+" + extent])
 	func _draw() -> void:
 		var state: String = render_state()
 		if state == "overflow":
@@ -76,13 +106,15 @@ class MetricPlot:
 				var x: float = position_for(delta)
 				draw_line(Vector2(center, y), Vector2(x, y), direction_color(), 2.0)
 				draw_circle(Vector2(x, y), 3.5, direction_color())
-		if delta_scale.radius == 0.0:
-			_caption("0", 28)
+		var ticks := axis_labels()
+		if ticks.is_empty():
+			return
+		if ticks.size() == 1:
+			_caption(ticks[0], 28)
 			return
 		var font: Font = get_theme_default_font()
-		var extent: String = String.num_scientific(delta_scale.radius)
-		var left: String = "−" + extent
-		var right: String = "+" + extent
+		var left: String = ticks[0]
+		var right: String = ticks[2]
 		draw_string(font, Vector2(0, 28), left, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("a4babe"))
 		var width: float = font.get_string_size(right, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
 		draw_string(font, Vector2(maxf(0.0, size.x - width), 28), right, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("a4babe"))
@@ -141,6 +173,9 @@ func _init() -> void:
 	content.add_theme_constant_override("separation", 8)
 	scroll.add_child(content)
 	scroll.resized.connect(_reflow_cards)
+	content.sort_children.connect(_schedule_card_focus)
+	gui_focus_changed.connect(func(_control: Control): _schedule_card_focus())
+	visibility_changed.connect(_schedule_card_focus)
 
 func label_in(parent: Node, text: String, font_size: int = 14) -> Label:
 	var label := Label.new()
@@ -160,7 +195,20 @@ func _reflow_cards() -> void:
 		var columns: int = columns_for_width(scroll.size.x - scroll.get_v_scroll_bar().get_combined_minimum_size().x, cards.get_theme_constant("h_separation"))
 		if cards.columns != columns:
 			cards.columns = columns
-			_reveal_card_focus.call_deferred()
+		_schedule_card_focus()
+
+func _schedule_card_focus() -> void:
+	if focus_reveal_pending or not is_inside_tree() or not visible or is_queued_for_deletion():
+		return
+	focus_reveal_pending = true
+	# Reflow and wrapped minimum heights can settle after call_deferred. Each
+	# actual sort/focus change coalesces into the next frame, without refocusing.
+	get_tree().process_frame.connect(_reveal_settled_card_focus, CONNECT_ONE_SHOT)
+
+func _reveal_settled_card_focus() -> void:
+	focus_reveal_pending = false
+	if is_inside_tree() and visible and not is_queued_for_deletion():
+		_reveal_card_focus()
 
 func _reveal_card_focus() -> void:
 	var focused: Control = gui_get_focus_owner()
@@ -233,7 +281,9 @@ func _card(item: Dictionary, scales: Array, held: Dictionary) -> void:
 			plot.accessibility_description = "Nonzero changes below one plot point are labelled, not drawn as zero. Overflow withholds the shared plot. Colors show direction, not welfare."
 			change.add_theme_color_override("font_color", plot.direction_color())
 			change.tooltip_text = "Raw value: %s; Hold: %s; difference: %s pp. No significance threshold is implied." % [var_to_str(value), var_to_str(plot.held_value), var_to_str(plot.delta)]
+			change.tooltip_text += " Shared Δ radius: %s pp; axis ticks are rounded." % var_to_str(scales[metric].radius)
 			change.accessibility_description = change.tooltip_text
+			plot.accessibility_description += " " + change.tooltip_text
 			plot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			metric_group.add_child(plot)
 			metric_plots.append(plot)
@@ -327,8 +377,12 @@ func present(data: Dictionary) -> void:
 	for index in range(order.size()):
 		order[index].focus_next = order[index].get_path_to(order[(index + 1) % order.size()])
 		order[index].focus_previous = order[index].get_path_to(order[(index - 1 + order.size()) % order.size()])
+	for container in content.find_children("*", "Container", true, false):
+		if not container is ScrollContainer:
+			container.sort_children.connect(_schedule_card_focus)
 	_reflow_cards()
 	_reflow_cards.call_deferred()
+	_schedule_card_focus()
 
 func refuse(reason: String) -> void:
 	message.text = reason

@@ -18,10 +18,12 @@ func run() -> void:
 	var density := maxf(1.0, DisplayServer.screen_get_scale(root.current_screen))
 	root.size = Vector2i((Vector2(800, 480) * density).round())
 	var cold: Control = load("res://main.tscn").instantiate()
+	cold.career = ResizeCareer.new()
 	root.add_child(cold)
 	await settle_layout()
 	check(root.get_visible_rect().size.distance_to(Vector2(800, 480)) <= 1.5, "cold small window keeps its native 800x480 canvas")
 	check(cold.rate.get_line_edit().has_focus() and cold.cockpit_scroll.get_global_rect().encloses(cold.rate.get_line_edit().get_global_rect()) and cold.get_viewport_rect().encloses(cold.rate.get_line_edit().get_global_rect()), "cold small window exposes its focused native policy field")
+	await check_q1_button_resize(cold, density)
 	cold.free()
 	root.size = Vector2i((Vector2(960, 640) * density).round())
 	var game = load("res://main.tscn").instantiate()
@@ -92,10 +94,12 @@ func settle_layout() -> void:
 	for frame in range(6):
 		await process_frame
 
-func key(window: Window, code: Key) -> void:
+func key(window: Window, code: Key, command: bool = false) -> void:
 	var receiver: Window = root if window.is_embedded() else window
 	var event := InputEventKey.new()
 	event.keycode = code
+	event.meta_pressed = command and OS.get_name() == "macOS"
+	event.ctrl_pressed = command and OS.get_name() != "macOS"
 	event.pressed = true
 	receiver.push_input(event)
 	event = event.duplicate()
@@ -103,6 +107,34 @@ func key(window: Window, code: Key) -> void:
 	receiver.push_input(event)
 	await process_frame
 	await process_frame
+
+func check_q1_button_resize(game: Control, density: float) -> void:
+	root.size = Vector2i((Vector2(1440, 960) * density).round())
+	await settle_layout()
+	await key(root, KEY_K, true)
+	await settle_layout()
+	var dialog: Variant = game.committee_docket
+	check(dialog.stage_buttons[0].has_focus(), "Q1 resize fixture begins on actual committee price proposal")
+	await key(dialog, KEY_ENTER)
+	await settle_layout()
+	check(game.rate.value == 4.75 and game.guidance.value == 4.75 and game.career.state.quarter_index == 0, "actual price staging sets 4.75 rate/guidance without adopting")
+	game._advance()
+	await settle_layout()
+	check(game.career.state.quarter_index == 1, "button-focus resize fixture adopts exactly Q1")
+	game.committee_button.grab_focus()
+	await settle_layout()
+	var draft: LineEdit = game.rate.get_line_edit()
+	draft.text = "4.750"
+	draft.caret_column = 3
+	draft.select(1, 3)
+	var preserved := resize_snapshot(game)
+	for logical in [Vector2i(800, 480), Vector2i(1440, 960), Vector2i(800, 480)]:
+		root.size = Vector2i((Vector2(logical) * density).round())
+		await settle_layout()
+		var rect: Rect2 = game.committee_button.get_global_rect()
+		check(game.committee_button.has_focus() and game.get_viewport_rect().grow(0.5).encloses(rect) and game.cockpit_scroll.get_global_rect().grow(0.5).encloses(rect) and game.overflow_scroll.get_global_rect().grow(0.5).encloses(rect), "settled Q1 resize exposes the same focused committee opener without Tab/ShiftTab")
+		check(resize_snapshot(game) == preserved, "Q1 button-focus resize preserves controls, drafts, career, preview, fonts, targets and forecast cache")
+		check(not game.focus_reveal_pending, "main focus scheduling becomes idle after actual layout settles")
 
 func check_report_bounds(dialog: AcceptDialog) -> void:
 	var decorated := Rect2(Vector2(dialog.get_position_with_decorations()), Vector2(dialog.get_size_with_decorations()))

@@ -88,6 +88,76 @@ func delta_source_cases() -> void:
 	check(CommitteeDialog.delta_text(1.7e308, -1.7e308).contains("+overflow"), "positive subtraction overflow is explicit, not a fake finite magnitude")
 	check(CommitteeDialog.delta_text(-1.7e308, 1.7e308).contains("−overflow"), "negative subtraction overflow retains its known direction")
 
+func axis_tick_cases() -> void:
+	var plot := CommitteeDialog.MetricPlot.new()
+	plot.size = Vector2(240, 30)
+	if not plot.has_method("axis_labels"):
+		check(false, "axis ticks require bounded rounded/scientific display instead of full raw double strings")
+		plot.free()
+		return
+	var least_positive: float = PackedByteArray([1, 0, 0, 0, 0, 0, 0, 0]).decode_double(0)
+	var raw_caption := "+" + String.num_scientific(0.032788887974732894)
+	var raw_width := plot.get_theme_default_font().get_string_size(raw_caption, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
+	check(raw_caption.length() > 11 and raw_width > plot.size.x * 0.5, "old full-precision axis negative control genuinely overlaps the center at desktop-card width")
+	for radius in [0.032788887974732894, 0.09163598523005057, 0.0, least_positive, 1e-300, 1.7976931348623157e308]:
+		plot.delta_scale = {"available": true, "overflow": false, "radius": radius}
+		plot.held_value = -2.0
+		plot.value = -2.5
+		plot.delta = -0.5
+		var raw := var_to_bytes([plot.delta_scale, plot.value, plot.held_value, plot.delta, plot.size])
+		var coordinates := [plot.position_for(-radius), plot.position_for(0.0), plot.position_for(radius)]
+		var ticks: PackedStringArray = plot.call("axis_labels")
+		if radius == 0.0:
+			check(ticks == PackedStringArray(["0"]), "true zero scale has only its genuine zero tick")
+		else:
+			check(ticks.size() == 3 and ticks[0].begins_with("−") and ticks[1] == "0" and ticks[2].begins_with("+"), "nonzero axis endpoints retain both arithmetic signs around Hold zero")
+			check(ticks[2].length() <= 11 and ticks[2].substr(1).get_slice("e", 0).to_float() > 0.0, "smallest subnormal through largest finite extent never formats as false zero or cumbersome precision")
+			var font: Font = plot.get_theme_default_font()
+			var left_width := font.get_string_size(ticks[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
+			var zero_width := font.get_string_size("0", HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
+			var right_width := font.get_string_size(ticks[2], HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
+			check(left_width < (plot.size.x - zero_width) * 0.5 and plot.size.x - right_width > (plot.size.x + zero_width) * 0.5, "native-size axis endpoints do not overlap zero or neighboring card at desktop card width")
+			if radius in [0.032788887974732894, 0.09163598523005057]:
+				check(not ticks[2].contains(var_to_str(radius)) and absf(ticks[2].substr(1).to_float() - radius) <= radius * 0.005, "ordinary axis endpoints are concise truthful rounding, not raw 17-digit captions")
+		check(raw == var_to_bytes([plot.delta_scale, plot.value, plot.held_value, plot.delta, plot.size]) and coordinates == [plot.position_for(-radius), plot.position_for(0.0), plot.position_for(radius)], "tick formatting cannot change raw input, shared domain or plot coordinates")
+	for unavailable in [{"available": false, "overflow": false, "radius": 0.0}, {"available": true, "overflow": true, "radius": 1.7e308}]:
+		plot.delta_scale = unavailable
+		check(plot.call("axis_labels").is_empty(), "unavailable/overflow scale never invents finite axis ticks")
+	plot.free()
+
+func check_stage_visible(dialog: Variant, index: int, context: String) -> void:
+	var button: Button = dialog.stage_buttons[index]
+	check(button.has_focus() and dialog.scroll.get_global_rect().grow(0.5).encloses(button.get_global_rect()) and dialog.get_visible_rect().grow(0.5).encloses(button.get_global_rect()), context)
+
+func compact_initial_focus_cases(game: Variant, density: float) -> void:
+	var original_size := root.size
+	var career_bytes: PackedByteArray = game.career.encode()
+	var controls: Array = game._committee_control_snapshot()
+	root.size = Vector2i((Vector2(800, 480) * density).round())
+	await settle()
+	for opening in range(2):
+		var calls_before: int = game.docket_forecast_calls
+		await key(root, KEY_K, true)
+		var dialog: Variant = game.committee_docket
+		check_stage_visible(dialog, 0, "compact CmdK initial Stage price is visible after popup fit, including Escape/reopen")
+		check(not dialog.focus_reveal_pending, "popup settled focus scheduling becomes idle instead of polling")
+		var cached := var_to_bytes(dialog.quote)
+		var builds: int = dialog.build_count
+		var ids: Array = dialog.stage_buttons.map(func(button: Button): return button.get_instance_id())
+		for logical in [Vector2i(1440, 960), Vector2i(800, 480)]:
+			root.size = Vector2i((Vector2(logical) * density).round())
+			await settle()
+			check_stage_visible(dialog, 0, "popup resize/reflow keeps its existing focused Stage price fully visible")
+			check(dialog.stage_buttons.map(func(button: Button): return button.get_instance_id()) == ids and dialog.build_count == builds and var_to_bytes(dialog.quote) == cached, "settled popup focus reveal preserves controls and quote cache")
+		check(game.docket_forecast_calls == calls_before + 5 and game.career.encode() == career_bytes and game._committee_control_snapshot() == controls, "initial/resize focus visibility does not forecast again, adopt or submit drafts")
+		var before_page: float = dialog.scroll.get_v_scroll_bar().value
+		await key(dialog, KEY_PAGEDOWN)
+		check(dialog.scroll.get_v_scroll_bar().value > before_page and dialog.stage_buttons[0].has_focus(), "settled reveal does not undo explicit popup Page Down while a Stage button retains focus")
+		await key(dialog, KEY_ESCAPE)
+		check(game.committee_button.has_focus(), "closing a docket with scheduled reveal restores opener, not a dead Stage button")
+	root.size = original_size
+	await settle()
+
 func delta_ui_cases(dialog: Variant) -> void:
 	# Synthetic projections exercise display only; no additional economic forecast.
 	var original_quote: Dictionary = dialog.quote
@@ -111,6 +181,9 @@ func delta_ui_cases(dialog: Variant) -> void:
 		check(plot.value == value and plot.held_value == held and plot.delta == value - held, "plot keeps exact raw absolute and Hold-derived difference")
 		check(dialog.metric_values[index].text == Docket.value_text(value, metric == 2), "absolute value formatter and units remain unchanged")
 		check(plot.delta_scale == dialog.delta_scales[metric], "all cards share the identical metric scale")
+		for raw_value in [value, held, value - held, plot.delta_scale.radius]:
+			check(dialog.delta_values[index].tooltip_text.contains(var_to_str(raw_value)) and dialog.delta_values[index].accessibility_description.contains(var_to_str(raw_value)) and plot.accessibility_description.contains(var_to_str(raw_value)), "rounded ticks retain exact raw value, Hold, difference and shared radius in tooltip/AX detail")
+		check(plot.axis_labels().size() == 3 and plot.axis_labels()[2].length() <= 11, "negative-inflation and extreme live synthetic plots retain compact signed axes")
 		check(absf((plot.position_for(-plot.delta_scale.radius) + plot.position_for(plot.delta_scale.radius)) * 0.5 - plot.position_for(0.0)) < 1e-7, "each graphical scale is symmetric about Hold zero")
 		check(is_finite(plot.position_for(plot.delta)), "finite extremes never produce nonfinite plot coordinates")
 	check(dialog.metric_plots[2].render_state() == "below_resolution" and dialog.delta_values[2].text.begins_with("+<"), "a nonzero delta that cannot survive normalization is explicitly not plotted, never shown as a tie")
@@ -161,6 +234,7 @@ func delta_ui_cases(dialog: Variant) -> void:
 
 func run() -> void:
 	delta_source_cases()
+	axis_tick_cases()
 	# This isolated headless fixture starts at 64x64. Establish a desktop-sized
 	# private root before Main, using compact_ui_test's native-density technique.
 	var density: float = maxf(1.0, DisplayServer.screen_get_scale(root.current_screen))
@@ -374,6 +448,7 @@ func run() -> void:
 	check(root.get_visible_rect().size.distance_to(Vector2(800, 480)) <= 1.5, "private compact fixture establishes an 800x480 logical viewport")
 	check(dialog.get_size_with_decorations().x <= root.get_visible_rect().size.x and dialog.get_size_with_decorations().y <= root.get_visible_rect().size.y, "compact docket stays bounded by its private parent")
 	check(dialog.cards.columns == 1 and dialog.stage_buttons[1].has_focus(), "800x480 private parent stacks the same cards without stealing focus")
+	check_stage_visible(dialog, 1, "settled compact resize reveals the still-focused Stage jobs without Tab")
 	for index in range(3):
 		check(dialog.proposal_cards[index].get_instance_id() == card_ids[index], "reflow retains original Control identities")
 	for index in range(9):
@@ -405,6 +480,7 @@ func run() -> void:
 	await delta_ui_cases(dialog)
 	check(game.docket_forecast_calls == calls_before_display_cases and game.career.encode() == career_before_display_cases and game._committee_control_snapshot() == controls_before_display_cases, "synthetic display coverage preserves forecast count, career and drafts")
 	await key(dialog, KEY_ESCAPE)
+	await compact_initial_focus_cases(game, density)
 	for case_id in [game.WORKOUT_CASE, game.PRICED_WORKOUT_CASE]:
 		game._start_career(case_id, 417)
 		await settle()
