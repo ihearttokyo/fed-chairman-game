@@ -7,6 +7,7 @@ const PricedCreditPanel = preload("res://play/priced_credit_panel.gd")
 const WorkoutPanel = preload("res://play/bank_workout_panel.gd")
 const ClosedBookRunoff = preload("res://play/closed_book_runoff.gd")
 const BankOutlook = preload("res://play/bank_outlook.gd")
+const PortfolioOutlook = preload("res://play/portfolio_outlook.gd")
 const WorkoutDebrief = preload("res://play/workout_debrief.gd")
 const FundingPlan = preload("res://play/funding_plan.gd")
 const WORKOUT_CASE := "__bank_workout"
@@ -115,6 +116,8 @@ var docket_forecast_calls: int = 0
 var workout_panel: PanelContainer
 var runoff_context: ClosedBookRunoff
 var bank_outlook: BankOutlook
+var portfolio_outlook_button: Button
+var portfolio_outlook_snapshot: Dictionary = {}
 var workout_board: WorkoutPanel
 var workout_fed_stock: Label
 var workout_debrief_panel: PanelContainer
@@ -125,7 +128,7 @@ var city_panel: PanelContainer
 var normal_storage_buttons: Array[Button] = []
 var focus_reveal_pending := false
 
-const KEYBOARD_HELP := "Keyboard controls\nTab / Shift+Tab move forward / back through visible controls. Return or Space activates a focused button. In numeric fields, type a value and press Return to commit only that field; Up / Down use its advertised step. Arrow keys navigate open scenario or guidance menus; Return selects and Escape cancels.\n\nCharts: Left / Right inspect completed quarters; Home / End select the first / latest. Focused cockpit and reports: Page Up / Down scroll, Home / End reach the ends. Escape or modified Return closes an informational report and returns focus. Plain Return closes its text or OK button, otherwise activates the focused report control. Escape cancels replacement; Return still follows the focused confirmation control.\n\nOptional accelerators use Cmd on macOS or Ctrl elsewhere: N New, S Save, O Load, J journal, P Compare, R staff estimate, K open committee docket, modified Return adopt one quarter. F1 opens this guide. Every command also has a Tab-accessible control; plain typing never adopts a quarter.\n\n"
+const KEYBOARD_HELP := "Keyboard controls\nTab / Shift+Tab move forward / back through visible controls. Return or Space activates a focused button. In numeric fields, type a value and press Return to commit only that field; Up / Down use its advertised step. Arrow keys navigate open scenario or guidance menus; Return selects and Escape cancels.\n\nCharts: Left / Right inspect completed quarters; Home / End select the first / latest. Maturity outlook: use Left / Right or Home / End to inspect its staged principal path. Focused cockpit and reports: Page Up / Down scroll, Home / End reach the ends. Escape or modified Return closes an informational report and returns focus. Plain Return closes its text or OK button, otherwise activates the focused report control. Escape cancels replacement; Return still follows the focused confirmation control.\n\nOptional accelerators use Cmd on macOS or Ctrl elsewhere: N New, S Save, O Load, J journal, P Compare, R staff estimate, K open committee docket, modified Return adopt one quarter. F1 opens this guide. Every command also has a Tab-accessible control; plain typing never adopts a quarter.\n\n"
 const STAFF_HELP := "Staff estimates use two-decimal published inflation, output gap and long expectations with the scenario’s initial neutral-rate prior. They do not know the evolving neutral rate or short expectations. An estimate is not an optimal policy; other tools remain unchanged. The rate formula does not directly adjust for credit spreads, term premiums or weaker negative-rate transmission."
 const BENCHMARK_HELP := "The full-information benchmark uses the true neutral rate, short inflation expectations, inflation and output gap from the current model state. It does not know future shocks or identify an optimal policy. The rate formula does not directly adjust for credit spreads, term premiums or weaker negative-rate transmission."
 
@@ -766,6 +769,10 @@ func _build_policy(parent: Node, actions: Node) -> void:
 	_label(box, "Asset and loan units: % of current annual GDP", 11, MUTED)
 	funding_plan = FundingPlan.new()
 	box.add_child(funding_plan)
+	portfolio_outlook_button = _button(box, "Maturity outlook", _portfolio_outlook)
+	portfolio_outlook_button.tooltip_text = "Inspect the existing staged eight-quarter path: known principal maturities, runoff/reinvestment, reserve maintenance and securities. Reading the outlook does not adopt a quarter or run a new forecast."
+	portfolio_outlook_button.accessibility_name = "Balance-sheet maturity outlook"
+	portfolio_outlook_button.accessibility_description = portfolio_outlook_button.tooltip_text
 	var benchmark_button := _button(box, "Stage staff estimate", _staff_rule, KEY_R)
 	benchmark_button.tooltip_text = STAFF_HELP
 	benchmark_button.accessibility_description = benchmark_button.tooltip_text
@@ -936,6 +943,9 @@ func _refresh(reset_controls := false, update_preview := true) -> void:
 		quarter_label.text = "EPISODE COMPLETE · %d MEETINGS" % _active_horizon() if complete else "%s · MEETING %d / %d" % ["BANK RUNOFF" if _is_runoff() else "BANK WORKOUT", s.quarter_index + 1, _active_horizon()]
 	workout_panel.visible = _is_workout()
 	bank_outlook.update_forecast({}, int(s.quarter_index), _is_priced_workout(), _is_workout(), _active_horizon())
+	portfolio_outlook_button.visible = not _is_workout()
+	portfolio_outlook_button.disabled = true
+	portfolio_outlook_snapshot = {}
 	priced_credit_panel.visible = _is_priced_workout()
 	if _is_priced_workout():
 		priced_credit_board.update_credit((career as PricedWorkout).credit_snapshot(), {"ok": false, "error": "Episode complete." if complete else "Preview not refreshed."})
@@ -1085,12 +1095,14 @@ func _preview() -> void:
 	preview_hint.hide()
 	if career.decisions.size() >= _active_horizon():
 		bank_outlook.update_forecast({}, int(career.state.quarter_index), _is_priced_workout(), _is_workout(), _active_horizon())
+		_update_portfolio_outlook({})
 		_link_focus(_keyboard_focus_order())
 		forecast_label.text = "Episode complete. Review the retained bank ledger." if _is_workout() else "CAREER COMPLETE\nFinal outcomes at Q240. Compare paths is diagnostic only; no further decisions."
 		return
 	var policy := _policy()
 	var result: Dictionary = career.forecast(policy)
 	bank_outlook.update_forecast(result, int(career.state.quarter_index), _is_priced_workout(), _is_workout(), _active_horizon())
+	_update_portfolio_outlook(result)
 	_link_focus(_keyboard_focus_order())
 	if _is_priced_workout():
 		priced_credit_board.update_credit((career as PricedWorkout).credit_snapshot(), result)
@@ -1119,6 +1131,31 @@ func _preview() -> void:
 	var n: float = first.decision_nominal_gdp_ratio
 	funding_plan.update_plan(first, policy.liquidity_request_pct_initial_gdp, n)
 	forecast_label.text = "IF ADOPTED NOW\n%s · assets %+.2f\nRunoff %s · RMP %s · RRP %s\nUnsterilized %s\n\nCONDITIONAL Q+%d · Q%d\nInflation %.2f%% · unemployment %.2f%% · output gap %+.2f%%" % [rate_text, first.asset_flow_applied_pct_initial_gdp / n, Career.funding_amount_text(first.long_securities_runoff_pct_initial_gdp / n), Career.funding_amount_text(first.reserve_maintenance_purchase_pct_initial_gdp / n), Career.funding_amount_text(first.sterilization_applied_pct_initial_gdp / n), Career.funding_amount_text(first.sterilization_unfulfilled_pct_initial_gdp / n), count, endpoint, last.four_quarter_inflation_pct, last.unemployment_rate_pct, last.output_gap_pct]
+
+func _update_portfolio_outlook(preview: Dictionary) -> void:
+	portfolio_outlook_snapshot = PortfolioOutlook.present(preview, int(career.state.get("quarter_index", 0)), _active_horizon())
+	if portfolio_outlook_button == null:
+		return
+	portfolio_outlook_button.visible = not _is_workout()
+	portfolio_outlook_button.disabled = _is_workout() or not portfolio_outlook_snapshot.get("ok", false)
+	if portfolio_outlook_snapshot.get("ok", false):
+		portfolio_outlook_button.tooltip_text = "Inspect Q%d–Q%d principal maturities, runoff/reinvestment, reserve maintenance and balance-sheet stocks from the same conditional path shown in the cockpit. No new forecast or quarter adoption." % [portfolio_outlook_snapshot.first_quarter, portfolio_outlook_snapshot.last_quarter]
+	else:
+		portfolio_outlook_button.tooltip_text = "Maturity outlook unavailable until a complete playable conditional portfolio path is available. No stale values are shown."
+	portfolio_outlook_button.accessibility_description = portfolio_outlook_button.tooltip_text
+
+func _portfolio_outlook() -> void:
+	if not portfolio_outlook_snapshot.get("ok", false) or _is_workout():
+		return
+	var dialog := ReportDialog.new()
+	dialog.title = "Balance-sheet maturity outlook"
+	dialog.get_ok_button().text = "Close"
+	var pane := PortfolioOutlook.new()
+	pane.build(portfolio_outlook_snapshot)
+	pane.custom_minimum_size = Vector2(690, 280)
+	dialog.add_child(pane)
+	_show_dialog(dialog, Vector2i(740, 520), pane.timeline)
+	_link_focus([pane.timeline, dialog.get_ok_button()])
 
 func _decision_briefing() -> String:
 	comparison_series = []
