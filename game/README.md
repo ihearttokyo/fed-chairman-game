@@ -202,6 +202,24 @@ at the last playable meeting; it never claims a Q20 forecast at the opening.
 The terminal payment timeline remains keyboard-inspectable.
 See [the prospective screen and its limits](../docs/GAMEPLAY_DEPTH.md#closed-book-runoff-the-cost-after-q8).
 
+## Balance-sheet maturity outlook
+
+In normal careers, **Maturity outlook** in the policy panel opens a read-only
+timeline for the same staged eight-quarter preview already shown by the cockpit.
+Each bar splits forecast principal due into reinvestment and runoff. Left/Right
+or Home/End inspect quarterly Treasury, MBS and bill maturities, reserve-
+maintenance bill purchases, reserves, securities, reverse repos and term
+premium. Flows and stocks in this view are **% of initial annual GDP**, not the
+current-GDP policy-entry units.
+
+The outlook adds no simulation call and changes no policy, save or model state.
+It stops at the last playable meeting and reuses the forecast's assumptions:
+the staged decision is applied now; the applied rate is held after this meeting;
+future asset/loan offers and new shocks are zero; portfolio switches persist.
+Maturing principal is not a forced sale, and a conditional path is not a
+forecast of future Fed decisions or shock timing. This improves visibility of
+existing policy tools, not proven economic decision value or player enjoyment.
+
 ## Routine follow-up candidate
 
 `Include routine follow-up (4 quarters total)` adopts the staged decision, then

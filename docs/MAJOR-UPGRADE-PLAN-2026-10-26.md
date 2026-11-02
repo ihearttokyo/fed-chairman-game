@@ -14,6 +14,15 @@ adoption, using the ordinary or interest-inclusive ledger as appropriate.
 The outlook, comparison and opening-choice improvements are frozen. This is
 better decision visibility, not a new economic mechanism or whole-game acceptance.
 
+An in-source **balance-sheet maturity outlook** extends decision visibility to
+the normal policy cockpit. It uses the same cached conditional path to split
+Treasury/MBS/bill principal due into runoff and reinvestment and expose the
+associated reserve, securities and term-premium states. It introduces no
+coefficient, new forecast, save field or economic mechanism. This is a read-only
+instrument for the existing reinvestment/runoff controls, not evidence of deeper
+strategy, improved outcomes, human comprehension or acceptance; current-source
+rendered keyboard/compact review and release qualification remain separate.
+
 Main-career decision depth remains unfinished. A competent Staff rule is not
 itself a defect or a reason to hide advice. The retained strategy audit found
 Staff plus current secured funding met all six sampled Mandate assessments;
